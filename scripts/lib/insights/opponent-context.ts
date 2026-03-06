@@ -86,7 +86,7 @@ export async function generateOpponentContextInsights(): Promise<InsightRow[]> {
       : targetGame.home_team_id;
 
   const [oppTeam] = await sql<{ full_name: string }[]>`
-    SELECT full_name FROM teams WHERE team_id = ${oppTeamId}::bigint
+    SELECT (city || ' ' || name) AS full_name FROM teams WHERE team_id = ${oppTeamId}::bigint
   `;
   const oppName = oppTeam?.full_name ?? 'Opponent';
   const gameDateMs = new Date(targetGame.game_date).getTime();
@@ -95,43 +95,43 @@ export async function generateOpponentContextInsights(): Promise<InsightRow[]> {
   // 1. opp_def_rating: opponent defensive rating + league rank (rolling 10)
   // -------------------------------------------------------------------------
   const defRatingProofSql = `
-    SELECT rts.avg_def_rating,
+    SELECT rts.def_rating,
            (SELECT COUNT(*) + 1
             FROM rolling_team_stats r2
-            WHERE r2.window_size = $2
-              AND r2.avg_def_rating < rts.avg_def_rating) AS def_rank,
-           (SELECT COUNT(DISTINCT team_id) FROM rolling_team_stats WHERE window_size = $2) AS total_teams
+            WHERE r2.window_games = $2
+              AND r2.def_rating < rts.def_rating) AS def_rank,
+           (SELECT COUNT(DISTINCT team_id) FROM rolling_team_stats WHERE window_games = $2) AS total_teams
     FROM rolling_team_stats rts
     WHERE rts.team_id = $1::bigint
-      AND rts.window_size = $2
+      AND rts.window_games = $2
   `.trim();
 
   const defProofParams = {
     opp_team_id: oppTeamId,
-    window_size: ROLLING_WINDOW,
+    window_games: ROLLING_WINDOW,
   };
 
   const defProofResult = await sql<{
-    avg_def_rating: string;
+    def_rating: string;
     def_rank: string;
     total_teams: string;
   }[]>`
-    SELECT rts.avg_def_rating::text AS avg_def_rating,
+    SELECT rts.def_rating::text AS def_rating,
            (SELECT COUNT(*) + 1
             FROM rolling_team_stats r2
-            WHERE r2.window_size = ${ROLLING_WINDOW}
-              AND r2.avg_def_rating < rts.avg_def_rating)::text AS def_rank,
-           (SELECT COUNT(DISTINCT team_id) FROM rolling_team_stats WHERE window_size = ${ROLLING_WINDOW})::text AS total_teams
+            WHERE r2.window_games = ${ROLLING_WINDOW}
+              AND r2.def_rating < rts.def_rating)::text AS def_rank,
+           (SELECT COUNT(DISTINCT team_id) FROM rolling_team_stats WHERE window_games = ${ROLLING_WINDOW})::text AS total_teams
     FROM rolling_team_stats rts
     WHERE rts.team_id = ${oppTeamId}::bigint
-      AND rts.window_size = ${ROLLING_WINDOW}
+      AND rts.window_games = ${ROLLING_WINDOW}
   `;
 
   if (guardProofResult(defProofResult)) {
     const defRow = defProofResult[0];
     const defRank = parseInt(defRow.def_rank, 10);
     const totalTeams = parseInt(defRow.total_teams, 10);
-    const avgDefRating = parseFloat(defRow.avg_def_rating);
+    const avgDefRating = parseFloat(defRow.def_rating);
 
     const ordinal = (n: number) => {
       const s = ['th', 'st', 'nd', 'rd'];

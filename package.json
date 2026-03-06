@@ -10,6 +10,7 @@
     "test": "vitest run",
     "backfill": "node --env-file=.env.local node_modules/.bin/tsx scripts/backfill.ts",
     "compute-stats": "node --env-file=.env.local node_modules/.bin/tsx scripts/compute-stats.ts",
+    "generate-insights": "node --env-file=.env.local node_modules/.bin/tsx scripts/generate-insights.ts",
     "db:schema": "node --env-file=.env.local -e \"const postgres=require('postgres');const fs=require('fs');const sql=postgres(process.env.DATABASE_URL,{ max: 1 });sql.unsafe(fs.readFileSync('Docs/DB_SCHEMA.sql','utf8')).then(()=>{console.log('Schema applied');return sql.end()}).catch(e=>{console.error(e);process.exit(1)})\""
   },
   "dependencies": {

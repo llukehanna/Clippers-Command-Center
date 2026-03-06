@@ -32,11 +32,13 @@ export async function generateStreakInsights(): Promise<InsightRow[]> {
   // -------------------------------------------------------------------------
   // Get all Clippers players who have at least MIN_STREAK_GAMES box score rows
   const lacPlayers = await sql<{ player_id: string; display_name: string }[]>`
-    SELECT DISTINCT p.player_id::text AS player_id, p.display_name
-    FROM players p
-    JOIN game_player_box_scores pb ON pb.player_id = p.player_id
-    WHERE p.team_id = ${lacTeamId}::bigint
-    ORDER BY p.player_id
+    SELECT player_id, display_name FROM (
+      SELECT DISTINCT p.player_id::text AS player_id, p.display_name
+      FROM players p
+      JOIN game_player_box_scores pb ON pb.player_id = p.player_id
+      WHERE pb.team_id = ${lacTeamId}::bigint
+    ) sub
+    ORDER BY player_id
   `;
 
   for (const player of lacPlayers) {
