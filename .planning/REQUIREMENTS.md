@@ -7,7 +7,7 @@
 
 ### Live Game Mode
 
-- [ ] **LIVE-01**: Application detects when a Clippers game is active and automatically switches to Live Mode
+- [x] **LIVE-01**: Application detects when a Clippers game is active and automatically switches to Live Mode
 - [ ] **LIVE-02**: Live dashboard displays live score, game clock, and quarter
 - [ ] **LIVE-03**: Live dashboard displays full team box score with standard columns (MIN, PTS, REB, AST, STL, BLK, TO, FG, 3PT, FT, +/-)
 - [ ] **LIVE-04**: Live dashboard displays player box score rows with compact density
@@ -18,7 +18,7 @@
 - [ ] **LIVE-09**: System detects clutch situations (last 5 min of Q4/OT, score margin ≤ 8)
 - [ ] **LIVE-10**: Dashboard displays 2–3 rotating insight tiles simultaneously
 - [ ] **LIVE-11**: Dashboard displays other NBA games relevant to Clippers (score, time, Clippers-relevant note)
-- [ ] **LIVE-12**: If live source fails, system displays "data delayed" indicator and serves last cached snapshot
+- [x] **LIVE-12**: If live source fails, system displays "data delayed" indicator and serves last cached snapshot
 
 ### Between-Games Dashboard
 
@@ -145,12 +145,12 @@
 | INSIGHT-03 | Phase 6: Insight Engine | Complete |
 | INSIGHT-04 | Phase 6: Insight Engine | Complete |
 | INSIGHT-05 | Phase 6: Insight Engine | Complete |
-| LIVE-01 | Phase 7: Live Data Pipeline | Pending |
+| LIVE-01 | Phase 7: Live Data Pipeline | Complete |
 | LIVE-06 | Phase 7: Live Data Pipeline | Pending |
 | LIVE-07 | Phase 7: Live Data Pipeline | Pending |
 | LIVE-08 | Phase 7: Live Data Pipeline | Pending |
 | LIVE-09 | Phase 7: Live Data Pipeline | Pending |
-| LIVE-12 | Phase 7: Live Data Pipeline | Pending |
+| LIVE-12 | Phase 7: Live Data Pipeline | Complete |
 | ODDS-01 | Phase 8: Odds Integration | Pending |
 | ODDS-02 | Phase 8: Odds Integration | Pending |
 | ODDS-03 | Phase 8: Odds Integration | Pending |
