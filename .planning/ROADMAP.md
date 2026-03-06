@@ -13,7 +13,7 @@ Build a desktop analytics dashboard for Clippers fans that delivers live game st
 - [x] **Phase 1: Spec Lock** - Finalize all planning artifacts so implementation never relies on guessing
 - [x] **Phase 2: Wireframes** - Define exact screen structure and layout for all 5 MVP screens
 - [x] **Phase 3: DB Schema** - Design the full data model supporting all requirements
-- [ ] **Phase 4: Historical Data Ingestion** - Populate the database with 3 seasons of NBA data via BALLDONTLIE
+- [x] **Phase 4: Historical Data Ingestion** - Populate the database with 3 seasons of NBA data via BALLDONTLIE (completed 2026-03-06)
 - [ ] **Phase 5: Advanced Stats Engine** - Compute derived metrics used by insights and dashboards
 - [ ] **Phase 6: Insight Engine** - Generate provable contextual insights from stored data
 - [ ] **Phase 7: Live Data Pipeline** - Handle real-time game polling, snapshot storage, and run detection
@@ -265,7 +265,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 1. Spec Lock | - | Complete | 2026-03-05 |
 | 2. Wireframes | - | Complete | 2026-03-05 |
 | 3. DB Schema | - | Complete | 2026-03-05 |
-| 4. Historical Data Ingestion | 2/3 | In Progress|  |
+| 4. Historical Data Ingestion | 3/3 | Complete   | 2026-03-06 |
 | 5. Advanced Stats Engine | 0/TBD | Not started | - |
 | 6. Insight Engine | 0/TBD | Not started | - |
 | 7. Live Data Pipeline | 0/TBD | Not started | - |
