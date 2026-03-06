@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-03-06T03:17:01.290Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-03-06T03:23:48.105Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 15
 ---
 
@@ -51,6 +51,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 
 *Updated after each plan completion*
 | Phase 04-historical-data-ingestion P01 | 10 | 2 tasks | 10 files |
+| Phase 04-historical-data-ingestion P02 | 15 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,9 @@ Recent decisions affecting current work:
 - [Phase 04-01]: Use postgres npm package (not ORM) for DB client — lightweight, TypeScript-native, Neon-compatible
 - [Phase 04-01]: npm run backfill + db:schema as entry points for data pipeline — keeps data scripts separate from app layer
 - [Phase 04-01]: shadcn/ui Neutral color scheme chosen; DB_SCHEMA.sql applied directly to Neon (no ORM migrations)
+- [Phase 04-02]: bigint FK values fetched as text (::text) and cast back (::bigint) to avoid postgres.js SerializableParameter type gap
+- [Phase 04-02]: TransactionSql cast via unknown to typeof sql to work around TypeScript Omit stripping call signatures
+- [Phase 04-02]: upsertBoxScoresForGame aggregates team totals from player stats since BDL /stats is player-level only
 
 ### Pending Todos
 
@@ -78,6 +82,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T03:17:01.288Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-03-06T03:23:48.103Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None

@@ -265,7 +265,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 1. Spec Lock | - | Complete | 2026-03-05 |
 | 2. Wireframes | - | Complete | 2026-03-05 |
 | 3. DB Schema | - | Complete | 2026-03-05 |
-| 4. Historical Data Ingestion | 1/3 | In Progress|  |
+| 4. Historical Data Ingestion | 2/3 | In Progress|  |
 | 5. Advanced Stats Engine | 0/TBD | Not started | - |
 | 6. Insight Engine | 0/TBD | Not started | - |
 | 7. Live Data Pipeline | 0/TBD | Not started | - |
