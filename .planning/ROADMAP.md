@@ -102,7 +102,11 @@ Plans:
   1. advanced_stats table is populated with possessions, pace, offensive rating, defensive rating, eFG%, and TS% for historical games
   2. Rolling windows (last 5 / last 10) are computed for both teams and players
   3. At least one computed advanced stat is validated against a known reference value
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Seed script (hardcoded box scores for 2-3 real Clippers games) + formula library (pure advanced stat functions)
+- [ ] 05-02-PLAN.md — Compute-stats orchestrator, rolling windows library, verification SQL, npm script registration
 
 ---
 
@@ -273,7 +277,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 2. Wireframes | - | Complete | 2026-03-05 |
 | 3. DB Schema | - | Complete | 2026-03-05 |
 | 4. Historical Data Ingestion | 3/3 | Complete   | 2026-03-06 |
-| 5. Advanced Stats Engine | 0/TBD | Not started | - |
+| 5. Advanced Stats Engine | 0/2 | Not started | - |
 | 6. Insight Engine | 0/TBD | Not started | - |
 | 7. Live Data Pipeline | 0/TBD | Not started | - |
 | 8. Odds Integration | 0/TBD | Not started | - |
