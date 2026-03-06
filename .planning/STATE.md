@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 06-insight-engine-06-01-PLAN.md
-last_updated: "2026-03-06T22:12:32.779Z"
+stopped_at: Completed 06-insight-engine-06-02-PLAN.md
+last_updated: "2026-03-06T22:17:24.754Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
   completed_phases: 2
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 7
   percent: 15
 ---
 
@@ -55,6 +55,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 05-advanced-stats-engine P01 | 25 | 2 tasks | 2 files |
 | Phase 05-advanced-stats-engine P02 | 20 | 2 tasks | 4 files |
 | Phase 06-insight-engine P01 | 2 | 2 tasks | 5 files |
+| Phase 06-insight-engine P02 | 3 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,8 @@ Recent decisions affecting current work:
 - [Phase 06-insight-engine]: Vitest chosen as test runner — ESM-native, TypeScript-first, no transpile step required
 - [Phase 06-insight-engine]: uq_insights_proof_hash partial unique index (WHERE proof_hash IS NOT NULL) enables ON CONFLICT upsert deduplication while allowing null proof_hash rows
 - [Phase 06-insight-engine]: TDD Wave 0: RED tests committed before proof-utils.ts exists — Plan 02 turns them GREEN
+- [Phase 06-insight-engine]: makeProofHash hashes (sql, params, result) tuple to match existing RED tests — tests are the TDD source of truth
+- [Phase 06-insight-engine]: live.ts placed in src/lib/insights/ for Phase 9 Next.js API route import compatibility
 
 ### Pending Todos
 
@@ -96,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T22:12:32.777Z
-Stopped at: Completed 06-insight-engine-06-01-PLAN.md
+Last session: 2026-03-06T22:17:24.752Z
+Stopped at: Completed 06-insight-engine-06-02-PLAN.md
 Resume file: None
