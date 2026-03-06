@@ -2,8 +2,14 @@
 import { sql } from './db.js';
 import type { BDLTeam, BDLPlayer, BDLGame, BDLStat } from '../types/bdl.js';
 
-// --- Helper ---
-function parseHeightIn(height: string | null): number | null {
+// --- Helpers ---
+
+// Normalize external API values: undefined → null, everything else preserved.
+// The postgres driver rejects undefined; external APIs often omit fields entirely
+// rather than including them as null.
+const nn = <T>(v: T | null | undefined): T | null => v ?? null;
+
+function parseHeightIn(height: string | null | undefined): number | null {
   if (!height) return null;
   const [feet, inches] = height.split('-').map(Number);
   if (isNaN(feet) || isNaN(inches)) return null;
@@ -28,7 +34,7 @@ export async function upsertTeams(teams: BDLTeam[]): Promise<void> {
   for (const t of teams) {
     await sql`
       INSERT INTO teams (nba_team_id, abbreviation, name, city, conference, division)
-      VALUES (${t.id}, ${t.abbreviation}, ${t.name}, ${t.city}, ${t.conference}, ${t.division})
+      VALUES (${t.id}, ${nn(t.abbreviation)}, ${nn(t.name)}, ${nn(t.city)}, ${nn(t.conference)}, ${nn(t.division)})
       ON CONFLICT (nba_team_id) DO UPDATE SET
         abbreviation = EXCLUDED.abbreviation,
         name         = EXCLUDED.name,
@@ -43,16 +49,20 @@ export async function upsertTeams(teams: BDLTeam[]): Promise<void> {
 // --- Players ---
 export async function upsertPlayers(players: BDLPlayer[]): Promise<void> {
   for (const p of players) {
-    const displayName = `${p.first_name} ${p.last_name}`;
+    const firstName = nn(p.first_name) ?? '';
+    const lastName = nn(p.last_name) ?? '';
+    const displayName = `${firstName} ${lastName}`.trim();
     await sql`
       INSERT INTO players (
         nba_player_id, first_name, last_name, display_name,
         position, height_in, weight_lb, birthdate, is_active
       )
       VALUES (
-        ${p.id}, ${p.first_name}, ${p.last_name}, ${displayName},
-        ${p.position || null}, ${parseHeightIn(p.height)}, ${p.weight_pounds ? parseInt(p.weight_pounds) : null},
-        ${p.birthdate ? new Date(p.birthdate) : null}, ${p.is_active}
+        ${p.id}, ${firstName}, ${lastName}, ${displayName},
+        ${nn(p.position) || null}, ${parseHeightIn(p.height)},
+        ${p.weight_pounds != null ? parseInt(p.weight_pounds) : null},
+        ${p.birthdate != null ? new Date(p.birthdate) : null},
+        ${nn(p.is_active) ?? false}
       )
       ON CONFLICT (nba_player_id) DO UPDATE SET
         first_name   = EXCLUDED.first_name,
@@ -118,10 +128,10 @@ export async function upsertGames(games: BDLGame[], seasonId: number): Promise<v
         period, clock, is_playoffs
       )
       VALUES (
-        ${g.id}, ${seasonId}, ${g.date}, ${g.status},
+        ${g.id}, ${seasonId}, ${nn(g.date)}, ${nn(g.status)},
         ${homeTeam.team_id}::bigint, ${awayTeam.team_id}::bigint,
-        ${g.home_team_score || null}, ${g.visitor_team_score || null},
-        ${g.period || null}, ${g.time || null}, ${g.postseason}
+        ${nn(g.home_team_score)}, ${nn(g.visitor_team_score)},
+        ${nn(g.period)}, ${nn(g.time)}, ${nn(g.postseason) ?? false}
       )
       ON CONFLICT (nba_game_id) DO UPDATE SET
         status     = EXCLUDED.status,
@@ -227,7 +237,7 @@ export async function upsertBoxScoresForGame(
           raw_payload
         ) VALUES (
           ${gameId}::bigint, ${teamRow.team_id}::bigint, ${playerRow.player_id}::bigint,
-          ${stat.min}, ${stat.pts ?? 0}, ${stat.reb ?? 0}, ${stat.ast ?? 0},
+          ${nn(stat.min)}, ${stat.pts ?? 0}, ${stat.reb ?? 0}, ${stat.ast ?? 0},
           ${stat.stl ?? 0}, ${stat.blk ?? 0}, ${stat.turnover ?? 0}, ${stat.pf ?? 0}, ${null},
           ${stat.fgm ?? 0}, ${stat.fga ?? 0}, ${stat.fg3m ?? 0}, ${stat.fg3a ?? 0},
           ${stat.ftm ?? 0}, ${stat.fta ?? 0},
