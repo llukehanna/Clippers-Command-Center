@@ -63,8 +63,8 @@
 ### Data Pipeline
 
 - [x] **DATA-01**: System ingests 3 full NBA seasons of historical data (all teams, players, games)
-- [ ] **DATA-02**: System computes advanced stats after final box scores: possessions, pace, off/def/net rating, eFG%, TS%
-- [ ] **DATA-03**: System computes rolling windows (last 5 / last 10) for teams and players
+- [x] **DATA-02**: System computes advanced stats after final box scores: possessions, pace, off/def/net rating, eFG%, TS%
+- [x] **DATA-03**: System computes rolling windows (last 5 / last 10) for teams and players
 - [x] **DATA-04**: Ingestion jobs are idempotent and resumable
 - [x] **DATA-05**: Final box scores ingest correctly after games end
 
@@ -138,8 +138,8 @@
 | DATA-01 | Phase 4: Historical Data Ingestion | Complete |
 | DATA-04 | Phase 4: Historical Data Ingestion | Complete |
 | DATA-05 | Phase 4: Historical Data Ingestion | Complete |
-| DATA-02 | Phase 5: Advanced Stats Engine | Pending |
-| DATA-03 | Phase 5: Advanced Stats Engine | Pending |
+| DATA-02 | Phase 5: Advanced Stats Engine | Complete |
+| DATA-03 | Phase 5: Advanced Stats Engine | Complete |
 | INSIGHT-01 | Phase 6: Insight Engine | Pending |
 | INSIGHT-02 | Phase 6: Insight Engine | Pending |
 | INSIGHT-03 | Phase 6: Insight Engine | Pending |
