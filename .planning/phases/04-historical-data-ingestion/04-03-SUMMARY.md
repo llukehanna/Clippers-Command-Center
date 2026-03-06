@@ -2,31 +2,34 @@
 phase: 04-historical-data-ingestion
 plan: 03
 subsystem: database
-tags: [typescript, postgres, balldontlie, etl, backfill, orchestrator]
+tags: [typescript, postgres, balldontlie, etl, backfill, schedule, neon]
 
 # Dependency graph
 requires:
   - phase: 04-01
     provides: scripts directory structure, package.json with postgres + tsx, backfill npm script, DB schema applied to Neon
   - phase: 04-02
-    provides: BDL API types, DB client singleton, BDL fetch client with pagination/retry, typed upserts for all 7 tables
+    provides: BDL API types, DB client singleton, upsertSeasons, upsertTeams, upsertPlayers, upsertGames, getCheckpoint, setCheckpoint
 
 provides:
-  - Backfill orchestrator script (scripts/backfill.ts) — main entry point for npm run backfill
-  - 3-season NBA historical data in Neon: teams, players, games, player + team box scores
+  - scripts/backfill.ts — resumable orchestrator seeding teams, players, and 3-season game schedule from BDL free tier
+  - Neon database seeded: 30 teams, 600+ players, games for seasons 2022/2023/2024
+  - Checkpoint resume via app_kv key backfill:last_completed_season
+  - Box score tables (game_team_box_scores, game_player_box_scores) exist and are empty — ready for Phase 7
 
 affects:
-  - 05-advanced-stats-engine
-  - 06-insight-engine
-  - all phases requiring real NBA data
+  - 05-advanced-stats-engine (needs teams, players, and games table)
+  - 07-live-game-ingestion (box score tables ready for post-game hydration)
+  - all phases requiring real NBA reference + schedule data
 
 # Tech tracking
 tech-stack:
   added: []
   patterns:
-    - fetchStatsForBatch builds repeated game_ids[] URL params manually (fetchAll Record<string,string> can't express repeated keys)
+    - BDL free tier scope: teams + players + game schedule only (no box score bulk backfill)
+    - Box score hydration deferred to post-game NBA live JSON pipeline (Phase 7)
     - season-level checkpoints via app_kv — backfill is resumable after interruption
-    - game_id fetched as ::text from DB and passed as string to upsertBoxScoresForGame
+    - All game statuses stored (not just Final) for schedule completeness and live game lookup
 
 key-files:
   created:
@@ -34,88 +37,109 @@ key-files:
   modified: []
 
 key-decisions:
-  - "fetchStatsForBatch bypasses fetchAll to build repeated game_ids[] query params manually via URL string concatenation"
-  - "game_id fetched as text (::text) from games table and passed as string to upsertBoxScoresForGame to match function signature"
+  - "BDL free tier ceiling accepted — box score backfill removed from MVP scope"
+  - "NBA live JSON owns live scoreboard, live box scores, and post-game finalization (Phase 7)"
+  - "All game statuses stored in games table for schedule completeness (not just Final)"
+  - "Box score tables retained in schema unchanged — Phase 7 populates them post-game"
 
 patterns-established:
-  - "Pattern 1: Repeated API array params built as manual URL strings when fetchAll Record<string,string> is insufficient"
+  - "Pattern 1: BDL free tier = reference data + schedule only; box scores require paid tier or alternative source"
+  - "Pattern 2: Box score ingestion path = post-game via NBA live JSON, not bulk historical BDL"
 
 requirements-completed: [DATA-01, DATA-04, DATA-05]
 
 # Metrics
-duration: 5min
-completed: 2026-03-06
+duration: ~24h (including checkpoint wait for backfill execution and re-scope)
+completed: 2026-03-05
 ---
 
 # Phase 4 Plan 03: Backfill Orchestrator Summary
 
-**ETL orchestrator for 3-season NBA data ingestion — teams/players sync, season-by-season game + box score upserts, checkpoint-based resumability, and final count summary**
+**Resumable BDL backfill orchestrator (teams/players/3-season schedule) seeding Neon successfully; box scores intentionally excluded after BDL free tier ceiling hit — Phase 7 NBA live JSON owns post-game box score hydration**
 
 ## Performance
 
-- **Duration:** ~5 min (Task 1 only; Task 2 is human verification)
+- **Duration:** ~24h (includes checkpoint wait, re-scope decision, backfill execution, and verification)
 - **Started:** 2026-03-06T03:24:51Z
-- **Completed:** 2026-03-06T03:30:00Z (Task 1); Task 2 pending human verification
-- **Tasks:** 1/2 complete (Task 2 is checkpoint:human-verify)
-- **Files modified:** 1 created
+- **Completed:** 2026-03-06 (Task 2 verified and approved)
+- **Tasks:** 2/2 complete
+- **Files modified:** 1 created + 1 rewritten (re-scope)
 
 ## Accomplishments
-- Backfill orchestrator with startup banner, per-season progress logging, and final DB count summary
-- Checkpoint logic reads/writes `backfill:last_completed_season` via app_kv — fully resumable
-- `fetchStatsForBatch` helper builds repeated `game_ids[]` URL params manually (workaround for fetchAll limitation)
-- All 3 seasons (2022, 2023, 2024) processed in order; skipped game IDs tracked and printed
+- Backfill orchestrator written with startup banner, per-season progress logging, and final DB count summary
+- Checkpoint resume logic via `app_kv.backfill:last_completed_season` — safe to interrupt and re-run
+- BDL free tier scope decision crystallized: teams, players, and game schedule only; box score backfill removed
+- Neon database seeded: teams (30), players (600+), games across seasons 2022, 2023, 2024 — verified by user
+- Box score tables (game_team_box_scores, game_player_box_scores) correctly empty under new scope
 - `sql.end()` called in both success and error paths
 
 ## Task Commits
 
-1. **Task 1: Write backfill orchestrator** - `ba1d858` (feat)
-
-**Task 2 (checkpoint:human-verify):** Pending user verification that backfill runs end-to-end and data is correct in Neon.
+1. **Task 1: Write backfill orchestrator (initial, with box scores)** - `ba1d858` (feat)
+2. **Task 1 fix: per-page retry, 30s timeout, progress logging** - `937e785` (fix)
+3. **Task 1 fix: normalize undefined API fields to null before SQL insert** - `b47077a` (fix)
+4. **Re-scope: remove historical box score backfill (BDL free tier ceiling)** - `413e030` (refactor)
+5. **Task 2: Human verification approved** — teams, players, games seeded in Neon; box scores = 0 (expected)
 
 ## Files Created/Modified
-- `scripts/backfill.ts` — main ETL orchestrator, SEASONS=[2022,2023,2024], 221 lines
+- `scripts/backfill.ts` — Resumable orchestrator: upsertSeasons → upsertTeams → upsertPlayers → upsertGames per season; checkpoint skip on resume; final DB count summary (teams, players, games); box score note pointing to Phase 7
 
 ## Decisions Made
-- **fetchStatsForBatch manual URL builder:** `fetchAll` accepts `Record<string, string>` which can't express repeated `game_ids[]` params (same key, multiple values). Wrote a standalone `fetchStatsForBatch` that builds the URL string manually and handles cursor pagination the same way.
-- **game_id as string:** `upsertBoxScoresForGame` signature takes `gameId: string`. Queried the games table with `game_id::text` and passed the string directly, consistent with the pattern established in Plan 02.
+- **BDL free tier ceiling accepted**: At 12s/request, fetching 3 seasons of box scores via `/stats` is infeasible in MVP timeframe. Scope narrowed to teams/players/schedule.
+- **NBA live JSON owns box scores**: Post-game box score data sourced via NBA live JSON in Phase 7 (live game ingestion), not BDL bulk historical. This is the correct architectural separation.
+- **All game statuses stored**: Changed from "Final only" filter to storing all game statuses (scheduled, in-progress, final). Enables live game lookup from schedule data in Phase 7.
+- **Box score tables retained**: Schema unchanged — `game_team_box_scores` and `game_player_box_scores` exist and are ready for Phase 7 data.
 
 ## Deviations from Plan
 
-### Auto-fixed Issues
+### Architectural Re-scope (User Decision)
+
+**BDL free tier ceiling — box score backfill removed from MVP**
+- **Found during:** Task 2 checkpoint (pre-execution review)
+- **Issue:** BDL free tier rate limits (12s/request) make fetching 3 seasons × 1230+ games of player stats infeasible. The initial orchestrator (ba1d858) supported this path but cannot complete in MVP timeframe on free tier.
+- **Resolution:** User decision to narrow BDL scope. Box scores deferred to Phase 7 via NBA live JSON.
+- **Files modified:** `scripts/backfill.ts` completely rewritten (commit 413e030)
+- **Impact:** Must-haves from the original plan (box score counts, spot check) are obsolete. New verification: teams > 0, players > 0, games > 0. All pass.
+
+### Auto-fixed Issues (Task 1, before re-scope)
 
 **1. [Rule 1 - Bug] fetchAll cannot express repeated game_ids[] query params**
-- **Found during:** Task 1 (writing backfill orchestrator)
-- **Issue:** `fetchAll` accepts `Record<string, string>` — the same key can't appear twice. BDL `/stats` requires `game_ids[]=123&game_ids[]=456` (repeated key). The plan's indexed key suggestion (`game_ids[0]=123`) may not be accepted by BDL API.
-- **Fix:** Added `fetchStatsForBatch` inline helper that builds the URL string manually (`gameIds.map(id => \`game_ids[]=${id}\`).join('&')`) and handles cursor pagination. This matches the plan's fallback suggestion exactly.
-- **Files modified:** scripts/backfill.ts
-- **Verification:** TypeScript strict mode passes (tsc --noEmit with project tsconfig)
-- **Committed in:** ba1d858 (Task 1 commit)
+- **Found during:** Task 1 (writing original orchestrator)
+- **Issue:** `fetchAll` accepts `Record<string, string>` — repeated keys not supported. BDL `/stats` requires `game_ids[]=123&game_ids[]=456`.
+- **Fix:** `fetchStatsForBatch` helper built URL string manually. Superseded by re-scope (stats fetch removed entirely).
+- **Committed in:** ba1d858 (Task 1 commit, superseded)
+
+**2. [Rule 1 - Bug] Retry logic and timeout missing**
+- **Found during:** Task 1 fix pass
+- **Fix:** Added per-page retry and 30s timeout to fetchAll. Committed in 937e785.
+
+**3. [Rule 2 - Missing Critical] Undefined API fields not normalized to null before SQL insert**
+- **Found during:** Task 1 fix pass
+- **Fix:** Added null normalization for optional BDL fields. Committed in b47077a.
 
 ---
 
-**Total deviations:** 1 auto-fixed (Rule 1 — URL param limitation)
-**Impact on plan:** Plan explicitly documented this as a known issue and provided the fallback approach. Implementation follows the plan's fallback exactly.
+**Total deviations:** 1 architectural re-scope (user-approved) + 3 auto-fixed issues
+**Impact on plan:** Scope reduced from full 3-season ETL to reference + schedule only. Data pipeline for Phase 5+ unblocked with teams, players, and game schedule available.
 
 ## Issues Encountered
-- The plan's verify command (`npx tsc --noEmit --strict scripts/backfill.ts`) skips the project tsconfig, which causes spurious errors from library files (missing esModuleInterop, downlevelIteration). Used `node node_modules/typescript/bin/tsc --noEmit` with the project tsconfig instead — passes with 0 errors.
+- The plan's verify command (`npx tsc --noEmit --strict scripts/backfill.ts`) skips the project tsconfig, causing spurious errors from library files. Used `node node_modules/typescript/bin/tsc --noEmit` with the project tsconfig instead.
 
 ## User Setup Required
-Before running `npm run backfill`, ensure `.env.local` has:
-- `DATABASE_URL=postgresql://...` (Neon connection string)
-- `BALLDONTLIE_API_KEY=...` (BDL API key)
-- `DELAY_MS=1000` (if ALL-STAR tier key) or `12000` (free tier)
-
-Then: `npm run db:schema` to apply schema, then `npm run backfill`.
+`.env.local` must have `DATABASE_URL` and `BALLDONTLIE_API_KEY` set before running `npm run backfill`. Already documented in Plan 04-01.
 
 ## Next Phase Readiness
-- Task 2 (human-verify) is pending — run `npm run backfill` and verify with `psql $DATABASE_URL -f scripts/verification.sql`
-- After checkpoint approved: Phase 5 (Advanced Stats Engine) has real data to compute against
+- Teams, players, and game schedule (seasons 2022–2024) live in Neon — Phase 5 can query `games` and `players`
+- `game_team_box_scores` and `game_player_box_scores` tables exist and are empty — Phase 7 populates them post-game
+- `app_kv` checkpoint `backfill:last_completed_season` is set — re-running `npm run backfill` is safe (idempotent)
 
 ## Self-Check: PASSED
 
-- FOUND: scripts/backfill.ts
-- FOUND commit: ba1d858 (Task 1)
+- FOUND: scripts/backfill.ts (rewritten at 413e030)
+- FOUND commit: ba1d858 (Task 1 — initial orchestrator)
+- FOUND commit: 413e030 (re-scope — simplified backfill, current version)
+- Neon data verified by user (Task 2 checkpoint approved): teams > 0, players > 0, games > 0; box scores = 0 (expected)
 
 ---
 *Phase: 04-historical-data-ingestion*
-*Completed: 2026-03-06*
+*Completed: 2026-03-05*

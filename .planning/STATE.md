@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: "Phase 4 re-scoped: backfill reduced to reference + schedule only. Ready to run."
-last_updated: "2026-03-06T03:27:09.906Z"
+stopped_at: Completed 04-03-PLAN.md — Phase 4 historical data ingestion complete
+last_updated: "2026-03-06T06:08:07.353Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
@@ -73,6 +73,8 @@ Recent decisions affecting current work:
 - [Phase 04-02]: upsertBoxScoresForGame aggregates team totals from player stats since BDL /stats is player-level only
 - [Phase 04-03]: fetchStatsForBatch bypasses fetchAll to build repeated game_ids[] query params manually via URL string concatenation
 - [Re-scope 2026-03-06]: BDL free tier ceiling accepted. BDL scope narrowed to teams/players/schedule. NBA live JSON owns live scoreboard, live box scores, and post-game finalization. Historical box score backfill via BDL /stats removed from MVP. Box score tables remain in schema for extensibility.
+- [Phase 04-historical-data-ingestion]: BDL free tier ceiling accepted — box score backfill removed from MVP scope
+- [Phase 04-historical-data-ingestion]: NBA live JSON owns live scoreboard and post-game box scores (Phase 7)
 
 ### Pending Todos
 
@@ -84,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T03:27:06.302Z
-Stopped at: Checkpoint: 04-03 Task 2 awaiting human backfill verification
+Last session: 2026-03-06T06:08:07.352Z
+Stopped at: Completed 04-03-PLAN.md — Phase 4 historical data ingestion complete
 Resume file: None
