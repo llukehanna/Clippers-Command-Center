@@ -21,6 +21,8 @@ import { generateOpponentContextInsights } from './lib/insights/opponent-context
 import { generateLeagueComparisonInsights } from './lib/insights/league-comparisons.js';
 import type { InsightRow } from './lib/insights/proof-utils.js';
 
+type Json = Parameters<typeof sql.json>[0];
+
 // ---- Upsert ----
 
 async function upsertInsight(row: InsightRow): Promise<void> {
@@ -36,8 +38,8 @@ async function upsertInsight(row: InsightRow): Promise<void> {
       ${row.player_id !== null ? sql`${row.player_id}::bigint` : null},
       ${row.season_id},
       ${row.category}, ${row.headline}, ${row.detail}, ${row.importance},
-      ${row.proof_sql}, ${sql.json(row.proof_params)},
-      ${sql.json(row.proof_result)}, ${row.proof_hash}
+      ${row.proof_sql}, ${sql.json(row.proof_params as unknown as Json)},
+      ${sql.json(row.proof_result as unknown as Json)}, ${row.proof_hash}
     )
     ON CONFLICT (proof_hash) WHERE proof_hash IS NOT NULL DO UPDATE SET
       headline     = EXCLUDED.headline,
