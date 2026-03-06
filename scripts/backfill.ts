@@ -29,21 +29,44 @@ function chunk<T>(arr: T[], size: number): T[][] {
 async function fetchStatsForBatch(gameIds: number[]): Promise<BDLStat[]> {
   const BDL_BASE = 'https://api.balldontlie.io/v1';
   const BDL_API_KEY = process.env.BALLDONTLIE_API_KEY!;
+  const REQUEST_TIMEOUT_MS = 30_000;
+  const MAX_RETRIES = 3;
   const results: BDLStat[] = [];
   let cursor: number | null = null;
+  let page = 0;
 
   do {
+    page++;
     const qp = gameIds.map(id => `game_ids[]=${id}`).join('&');
     const cursorParam = cursor !== null ? `&cursor=${cursor}` : '';
     const url = `${BDL_BASE}/stats?${qp}&per_page=100${cursorParam}`;
 
-    const res = await fetch(url, { headers: { Authorization: BDL_API_KEY } });
-    if (res.status === 429) throw new Error('RATE_LIMITED');
-    if (!res.ok) throw new Error(`BDL ${res.status}: /stats game_ids batch`);
+    type StatsPage = { data: BDLStat[]; meta: { next_cursor: number | null; per_page: number } };
+    let data: StatsPage | null = null;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        const res = await fetch(url, { headers: { Authorization: BDL_API_KEY }, signal: controller.signal });
+        if (res.status === 429) throw new Error('RATE_LIMITED');
+        if (!res.ok) throw new Error(`BDL ${res.status}: /stats game_ids batch`);
+        data = await res.json() as StatsPage;
+        break;
+      } catch (err) {
+        const msg = (err as Error).name === 'AbortError' ? `TIMEOUT after ${REQUEST_TIMEOUT_MS}ms` : (err as Error).message;
+        const wait = msg.startsWith('RATE_LIMITED') ? DELAY_MS : Math.pow(2, attempt) * 1000;
+        console.warn(`  [/stats] page ${page} attempt ${attempt + 1}/${MAX_RETRIES} failed: ${msg}. Retrying in ${wait}ms...`);
+        await sleep(wait);
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
 
-    const data = await res.json() as { data: BDLStat[]; meta: { next_cursor: number | null; per_page: number } };
+    if (!data) throw new Error(`/stats batch: page ${page} failed after ${MAX_RETRIES} retries`);
+
     results.push(...data.data);
-    cursor = data.meta.next_cursor;
+    cursor = data.meta?.next_cursor ?? null;
+    console.log(`  [/stats] page ${page}: +${data.data.length} (${results.length} total)${cursor !== null ? ', fetching next...' : ', done'}`);
     if (cursor !== null) await sleep(DELAY_MS);
   } while (cursor !== null);
 
@@ -94,23 +117,18 @@ async function main(): Promise<void> {
   // Step 0: Upsert season metadata rows
   await upsertSeasons(SEASONS);
 
-  // Step 1: Sync all teams (one-time, ~30 teams — no pagination needed at full scale)
+  // Step 1: Sync all teams (one-time, ~30 teams)
   console.log('[1/5] Syncing teams...');
-  const teams = await withRetry(() => fetchAll<BDLTeam>('/teams'));
-  if (teams) {
-    await upsertTeams(teams);
-    console.log(`  Teams: ${teams.length} upserted`);
-  }
+  const teams = await fetchAll<BDLTeam>('/teams');
+  await upsertTeams(teams);
+  console.log(`  Teams: ${teams.length} upserted`);
   await sleep(DELAY_MS);
 
   // Step 2: Sync all players (paginated, 500-700+ players)
   console.log('\n[2/5] Syncing players...');
-  console.log('  Players: fetching...');
-  const players = await withRetry(() => fetchAll<BDLPlayer>('/players', { per_page: '100' }));
-  if (players) {
-    await upsertPlayers(players);
-    console.log(`  Players: ${players.length} upserted`);
-  }
+  const players = await fetchAll<BDLPlayer>('/players');
+  await upsertPlayers(players);
+  console.log(`  Players: ${players.length} upserted`);
   await sleep(DELAY_MS);
 
   // Step 3-5: Process each season
@@ -129,13 +147,7 @@ async function main(): Promise<void> {
 
     // 4a: Fetch all games for this season
     console.log('  Fetching games...');
-    const allGames = await withRetry(() =>
-      fetchAll<BDLGame>('/games', { 'seasons[]': String(seasonId) })
-    );
-    if (!allGames) {
-      console.error(`  Failed to fetch games for season ${seasonId}. Skipping season.`);
-      continue;
-    }
+    const allGames = await fetchAll<BDLGame>('/games', { 'seasons[]': String(seasonId) });
     await sleep(DELAY_MS);
 
     const finalGames = allGames.filter(g => g.status === 'Final');
