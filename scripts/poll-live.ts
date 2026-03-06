@@ -25,6 +25,7 @@ import type {
   RollingContext,
 } from '../src/lib/insights/live.js';
 import { setCheckpoint } from './lib/upserts.js';
+import { finalizeGame } from './lib/finalize.js';
 
 const POLL_INTERVAL_MS = 12_000;
 const RECENT_SCORING_LOOKBACK_SECONDS = 120; // last 2 minutes of play-by-play
@@ -286,17 +287,6 @@ async function fetchRollingContext(
     home_rolling_10: rows.find((r) => r.team_id === homeTeamId) ?? null,
     away_rolling_10: rows.find((r) => r.team_id === awayTeamId) ?? null,
   };
-}
-
-/**
- * Stub for inline finalization — finalize-games logic extracted to shared module in Plan 05.
- * Full implementation wired when finalize-games.ts is built in Plan 05.
- * poll-live will re-import the shared finalize function from scripts/lib/finalize.ts.
- */
-async function finalizeGame(gameDbId: string, nbaGameId: string): Promise<void> {
-  console.log(`[finalize] Finalizing game ${nbaGameId} (db id: ${gameDbId})...`);
-  console.log('[finalize] Run npm run finalize-games to complete box score write if this errors.');
-  // Full implementation wired when finalize-games.ts is built in Plan 05
 }
 
 function sleep(ms: number): Promise<void> {
