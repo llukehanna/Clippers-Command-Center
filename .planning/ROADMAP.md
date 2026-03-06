@@ -277,7 +277,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 2. Wireframes | - | Complete | 2026-03-05 |
 | 3. DB Schema | - | Complete | 2026-03-05 |
 | 4. Historical Data Ingestion | 3/3 | Complete   | 2026-03-06 |
-| 5. Advanced Stats Engine | 0/2 | Not started | - |
+| 5. Advanced Stats Engine | 1/2 | In Progress|  |
 | 6. Insight Engine | 0/TBD | Not started | - |
 | 7. Live Data Pipeline | 0/TBD | Not started | - |
 | 8. Odds Integration | 0/TBD | Not started | - |
