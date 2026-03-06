@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 06-insight-engine-06-03-PLAN.md
-last_updated: "2026-03-06T22:23:25.130Z"
+stopped_at: Completed 06-insight-engine-06-04-PLAN.md
+last_updated: "2026-03-06T22:30:52.026Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
   percent: 15
 ---
 
@@ -57,6 +57,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 06-insight-engine P01 | 2 | 2 tasks | 5 files |
 | Phase 06-insight-engine P02 | 3 | 2 tasks | 3 files |
 | Phase 06-insight-engine P03 | 5 | 2 tasks | 5 files |
+| Phase 06-insight-engine P04 | 6 | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,9 @@ Recent decisions affecting current work:
 - [Phase 06-insight-engine]: Streak detection uses rn-rn2 SQL window function grouping pattern — consecutive detection in DB not app-side
 - [Phase 06-insight-engine]: opponent-context queries next non-final LAC game, falls back to most recent completed — useful year-round
 - [Phase 06-insight-engine]: league-comparisons only generates when Clippers rank <= 5 — filters noise, keeps insights meaningful
+- [Phase 06-insight-engine]: ON CONFLICT partial index requires WHERE proof_hash IS NOT NULL predicate — must match index definition exactly
+- [Phase 06-insight-engine]: players table has no team_id — Clippers player filter uses EXISTS on game_player_box_scores.team_id
+- [Phase 06-insight-engine]: rolling_team_stats uses window_games (not window_size) and def/off/net_rating (no avg_ prefix); teams has no full_name — use city || name
 
 ### Pending Todos
 
@@ -103,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T22:23:25.128Z
-Stopped at: Completed 06-insight-engine-06-03-PLAN.md
+Last session: 2026-03-06T22:30:52.024Z
+Stopped at: Completed 06-insight-engine-06-04-PLAN.md
 Resume file: None
