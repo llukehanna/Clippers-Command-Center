@@ -54,8 +54,8 @@
 
 ### Insight Engine
 
-- [ ] **INSIGHT-01**: System generates algorithmic insights from stored data
-- [ ] **INSIGHT-02**: Insight engine supports: scoring runs, clutch alerts, player streaks, milestones, rare statistical events, opponent context, league comparisons
+- [x] **INSIGHT-01**: System generates algorithmic insights from stored data
+- [x] **INSIGHT-02**: Insight engine supports: scoring runs, clutch alerts, player streaks, milestones, rare statistical events, opponent context, league comparisons
 - [x] **INSIGHT-03**: Every insight stores proof_sql, proof_params, and proof_result
 - [x] **INSIGHT-04**: Insights without valid proof are never displayed
 - [x] **INSIGHT-05**: Live insights generated on-demand from current snapshot + rolling windows
@@ -140,8 +140,8 @@
 | DATA-05 | Phase 4: Historical Data Ingestion | Complete |
 | DATA-02 | Phase 5: Advanced Stats Engine | Complete |
 | DATA-03 | Phase 5: Advanced Stats Engine | Complete |
-| INSIGHT-01 | Phase 6: Insight Engine | Pending |
-| INSIGHT-02 | Phase 6: Insight Engine | Pending |
+| INSIGHT-01 | Phase 6: Insight Engine | Complete |
+| INSIGHT-02 | Phase 6: Insight Engine | Complete |
 | INSIGHT-03 | Phase 6: Insight Engine | Complete |
 | INSIGHT-04 | Phase 6: Insight Engine | Complete |
 | INSIGHT-05 | Phase 6: Insight Engine | Complete |
