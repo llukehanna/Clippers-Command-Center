@@ -1,6 +1,7 @@
 // scripts/lib/upserts.ts
 import { sql } from './db.js';
 import type { BDLTeam, BDLPlayer, BDLGame, BDLStat } from '../types/bdl.js';
+import type { BoxscorePlayer, TeamStatistics } from '../../src/lib/types/live.js';
 
 // --- Helpers ---
 
@@ -265,6 +266,109 @@ export async function upsertBoxScoresForGame(
       `;
     }
   });
+}
+
+// --- NBA Live Box Score Upserts ---
+
+/**
+ * Upsert team box score from NBA live boxscore JSON.
+ * Uses NBA-provided team statistics directly (not aggregated from players).
+ * ON CONFLICT (game_id, team_id) DO UPDATE — idempotent, safe to re-run.
+ */
+export async function upsertTeamBoxScore(
+  gameId: string,      // internal bigint as string
+  teamId: string,      // internal bigint as string
+  isHome: boolean,
+  stats: TeamStatistics,
+  rawPayload: string
+): Promise<void> {
+  await sql`
+    INSERT INTO game_team_box_scores (
+      game_id, team_id, is_home,
+      points, fg_made, fg_attempted, fg3_made, fg3_attempted,
+      ft_made, ft_attempted, rebounds, offensive_reb, defensive_reb,
+      assists, steals, blocks, turnovers, fouls, raw_payload
+    ) VALUES (
+      ${gameId}::bigint, ${teamId}::bigint, ${isHome},
+      ${stats.points}, ${stats.fieldGoalsMade}, ${stats.fieldGoalsAttempted},
+      ${stats.threePointersMade}, ${stats.threePointersAttempted},
+      ${stats.freeThrowsMade}, ${stats.freeThrowsAttempted},
+      ${stats.reboundsTotal}, ${stats.reboundsOffensive}, ${stats.reboundsDefensive},
+      ${stats.assists}, ${stats.steals}, ${stats.blocks}, ${stats.turnovers},
+      ${stats.foulsPersonal}, ${rawPayload}
+    )
+    ON CONFLICT (game_id, team_id) DO UPDATE SET
+      points        = EXCLUDED.points,
+      fg_made       = EXCLUDED.fg_made,
+      fg_attempted  = EXCLUDED.fg_attempted,
+      fg3_made      = EXCLUDED.fg3_made,
+      fg3_attempted = EXCLUDED.fg3_attempted,
+      ft_made       = EXCLUDED.ft_made,
+      ft_attempted  = EXCLUDED.ft_attempted,
+      rebounds      = EXCLUDED.rebounds,
+      offensive_reb = EXCLUDED.offensive_reb,
+      defensive_reb = EXCLUDED.defensive_reb,
+      assists       = EXCLUDED.assists,
+      steals        = EXCLUDED.steals,
+      blocks        = EXCLUDED.blocks,
+      turnovers     = EXCLUDED.turnovers,
+      fouls         = EXCLUDED.fouls,
+      raw_payload   = EXCLUDED.raw_payload
+  `;
+}
+
+/**
+ * Upsert a single player box score row from NBA live boxscore JSON.
+ * Skips DNPs (played === '0') — callers must guard before calling.
+ * ON CONFLICT (game_id, player_id) DO UPDATE — idempotent, safe to re-run.
+ */
+export async function upsertPlayerBoxScore(
+  gameId: string,
+  playerId: string,    // internal players.player_id as string
+  teamId: string,
+  starter: boolean,
+  player: BoxscorePlayer
+): Promise<void> {
+  const s = player.statistics;
+  await sql`
+    INSERT INTO game_player_box_scores (
+      game_id, player_id, team_id, starter, minutes,
+      points, rebounds, offensive_reb, defensive_reb, assists,
+      steals, blocks, turnovers, fouls, plus_minus,
+      fg_made, fg_attempted, fg3_made, fg3_attempted,
+      ft_made, ft_attempted, raw_payload
+    ) VALUES (
+      ${gameId}::bigint, ${playerId}::bigint, ${teamId}::bigint,
+      ${starter}, ${s.minutes},
+      ${s.points}, ${s.reboundsTotal}, ${s.reboundsOffensive}, ${s.reboundsDefensive},
+      ${s.assists}, ${s.steals}, ${s.blocks}, ${s.turnovers}, ${s.foulsPersonal},
+      ${s.plusMinusPoints},
+      ${s.fieldGoalsMade}, ${s.fieldGoalsAttempted},
+      ${s.threePointersMade}, ${s.threePointersAttempted},
+      ${s.freeThrowsMade}, ${s.freeThrowsAttempted},
+      ${JSON.stringify(player)}
+    )
+    ON CONFLICT (game_id, player_id) DO UPDATE SET
+      starter       = EXCLUDED.starter,
+      minutes       = EXCLUDED.minutes,
+      points        = EXCLUDED.points,
+      rebounds      = EXCLUDED.rebounds,
+      offensive_reb = EXCLUDED.offensive_reb,
+      defensive_reb = EXCLUDED.defensive_reb,
+      assists       = EXCLUDED.assists,
+      steals        = EXCLUDED.steals,
+      blocks        = EXCLUDED.blocks,
+      turnovers     = EXCLUDED.turnovers,
+      fouls         = EXCLUDED.fouls,
+      plus_minus    = EXCLUDED.plus_minus,
+      fg_made       = EXCLUDED.fg_made,
+      fg_attempted  = EXCLUDED.fg_attempted,
+      fg3_made      = EXCLUDED.fg3_made,
+      fg3_attempted = EXCLUDED.fg3_attempted,
+      ft_made       = EXCLUDED.ft_made,
+      ft_attempted  = EXCLUDED.ft_attempted,
+      raw_payload   = EXCLUDED.raw_payload
+  `;
 }
 
 // --- app_kv checkpoints ---
