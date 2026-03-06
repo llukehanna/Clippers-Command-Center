@@ -271,7 +271,7 @@ async function fetchRollingContext(
     SELECT
       team_id::text,
       window_games          AS window_size,
-      0                     AS avg_points,
+      COALESCE(ROUND((off_rating * pace / 100)::numeric, 1), 0) AS avg_points,
       0                     AS avg_fg_pct,
       COALESCE(efg_pct, 0)  AS avg_efg_pct,
       COALESCE(pace, 0)     AS avg_pace,
