@@ -14,7 +14,7 @@ Build a desktop analytics dashboard for Clippers fans that delivers live game st
 - [x] **Phase 2: Wireframes** - Define exact screen structure and layout for all 5 MVP screens
 - [x] **Phase 3: DB Schema** - Design the full data model supporting all requirements
 - [x] **Phase 4: Historical Data Ingestion** - Populate the database with 3 seasons of NBA data via BALLDONTLIE (completed 2026-03-06)
-- [ ] **Phase 5: Advanced Stats Engine** - Compute derived metrics used by insights and dashboards
+- [x] **Phase 5: Advanced Stats Engine** - Compute derived metrics used by insights and dashboards (completed 2026-03-06)
 - [ ] **Phase 6: Insight Engine** - Generate provable contextual insights from stored data
 - [ ] **Phase 7: Live Data Pipeline** - Handle real-time game polling, snapshot storage, and run detection
 - [ ] **Phase 8: Odds Integration** - Add Vegas betting odds as display-only contextual signals
@@ -277,7 +277,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 2. Wireframes | - | Complete | 2026-03-05 |
 | 3. DB Schema | - | Complete | 2026-03-05 |
 | 4. Historical Data Ingestion | 3/3 | Complete   | 2026-03-06 |
-| 5. Advanced Stats Engine | 1/2 | In Progress|  |
+| 5. Advanced Stats Engine | 2/2 | Complete   | 2026-03-06 |
 | 6. Insight Engine | 0/TBD | Not started | - |
 | 7. Live Data Pipeline | 0/TBD | Not started | - |
 | 8. Odds Integration | 0/TBD | Not started | - |

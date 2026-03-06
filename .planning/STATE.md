@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 05-advanced-stats-engine 05-01-PLAN.md
-last_updated: "2026-03-06T17:38:24.117Z"
+stopped_at: Completed 05-advanced-stats-engine 05-02-PLAN.md
+last_updated: "2026-03-06T17:44:50.125Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
   percent: 15
 ---
 
@@ -53,6 +53,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 04-historical-data-ingestion P01 | 10 | 2 tasks | 10 files |
 | Phase 04-historical-data-ingestion P02 | 15 | 3 tasks | 4 files |
 | Phase 05-advanced-stats-engine P01 | 25 | 2 tasks | 2 files |
+| Phase 05-advanced-stats-engine P02 | 20 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,8 @@ Recent decisions affecting current work:
 - [Phase 04-historical-data-ingestion]: NBA live JSON owns live scoreboard and post-game box scores (Phase 7)
 - [Phase 05-advanced-stats-engine]: Selected LAC vs MIA (2024-01-01) and LAC vs PHX (2024-01-08) as seed games — regulation wins, confirmed in games table
 - [Phase 05-advanced-stats-engine]: Formula library has zero DB dependency — pure functions enable isolated verification without DB setup
+- [Phase 05-advanced-stats-engine]: Rolling windows yield 0 rows when seeded game count (2) is below minimum window size (5) — correct behavior per plan spec
+- [Phase 05-advanced-stats-engine]: DISTINCT + ORDER BY on cast expressions requires subquery wrapping in PostgreSQL (error 42P10)
 
 ### Pending Todos
 
@@ -89,6 +92,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T17:38:24.115Z
-Stopped at: Completed 05-advanced-stats-engine 05-01-PLAN.md
+Last session: 2026-03-06T17:44:50.124Z
+Stopped at: Completed 05-advanced-stats-engine 05-02-PLAN.md
 Resume file: None
