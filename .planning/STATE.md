@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 06-insight-engine-06-02-PLAN.md
-last_updated: "2026-03-06T22:17:24.754Z"
+stopped_at: Completed 06-insight-engine-06-03-PLAN.md
+last_updated: "2026-03-06T22:23:25.130Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
   completed_phases: 2
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
   percent: 15
 ---
 
@@ -56,6 +56,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 05-advanced-stats-engine P02 | 20 | 2 tasks | 4 files |
 | Phase 06-insight-engine P01 | 2 | 2 tasks | 5 files |
 | Phase 06-insight-engine P02 | 3 | 2 tasks | 3 files |
+| Phase 06-insight-engine P03 | 5 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,9 @@ Recent decisions affecting current work:
 - [Phase 06-insight-engine]: TDD Wave 0: RED tests committed before proof-utils.ts exists — Plan 02 turns them GREEN
 - [Phase 06-insight-engine]: makeProofHash hashes (sql, params, result) tuple to match existing RED tests — tests are the TDD source of truth
 - [Phase 06-insight-engine]: live.ts placed in src/lib/insights/ for Phase 9 Next.js API route import compatibility
+- [Phase 06-insight-engine]: Streak detection uses rn-rn2 SQL window function grouping pattern — consecutive detection in DB not app-side
+- [Phase 06-insight-engine]: opponent-context queries next non-final LAC game, falls back to most recent completed — useful year-round
+- [Phase 06-insight-engine]: league-comparisons only generates when Clippers rank <= 5 — filters noise, keeps insights meaningful
 
 ### Pending Todos
 
@@ -99,6 +103,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T22:17:24.752Z
-Stopped at: Completed 06-insight-engine-06-02-PLAN.md
+Last session: 2026-03-06T22:23:25.128Z
+Stopped at: Completed 06-insight-engine-06-03-PLAN.md
 Resume file: None
