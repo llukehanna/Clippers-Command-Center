@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: "Checkpoint: 04-03 Task 2 awaiting human backfill verification"
+stopped_at: "Phase 4 re-scoped: backfill reduced to reference + schedule only. Ready to run."
 last_updated: "2026-03-06T03:27:09.906Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
@@ -72,6 +72,7 @@ Recent decisions affecting current work:
 - [Phase 04-02]: TransactionSql cast via unknown to typeof sql to work around TypeScript Omit stripping call signatures
 - [Phase 04-02]: upsertBoxScoresForGame aggregates team totals from player stats since BDL /stats is player-level only
 - [Phase 04-03]: fetchStatsForBatch bypasses fetchAll to build repeated game_ids[] query params manually via URL string concatenation
+- [Re-scope 2026-03-06]: BDL free tier ceiling accepted. BDL scope narrowed to teams/players/schedule. NBA live JSON owns live scoreboard, live box scores, and post-game finalization. Historical box score backfill via BDL /stats removed from MVP. Box score tables remain in schema for extensibility.
 
 ### Pending Todos
 

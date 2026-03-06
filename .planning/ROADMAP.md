@@ -72,20 +72,25 @@ Build a desktop analytics dashboard for Clippers fans that delivers live game st
 ---
 
 ### Phase 4: Historical Data Ingestion
-**Goal**: The database is populated with 3 full seasons of NBA data, giving the insight and stats engines real data to work with
+**Goal**: The database is seeded with 3 seasons of reference and schedule data from BALLDONTLIE, giving the live pipeline and dashboards real teams, players, and game records to work with
 **Depends on**: Phase 3
-**Requirements**: DATA-01, DATA-04, DATA-05
+**Requirements**: DATA-01, DATA-04
 **Success Criteria** (what must be TRUE):
-  1. 3 full NBA seasons of games, teams, players, and box scores are present in the database
-  2. Box score values match source data from BALLDONTLIE API
-  3. Ingestion scripts are idempotent — re-running them does not create duplicate records
-  4. Final box scores for completed games ingest correctly after games end
+  1. All NBA teams and active players are present in the database
+  2. 3 seasons (2022–2024) of game schedule and metadata are present in `games`
+  3. Ingestion scripts are idempotent — re-running does not create duplicate records
+  4. Box scores are intentionally out of scope for backfill: `game_team_box_scores` and `game_player_box_scores` are populated going forward by the NBA live JSON finalization pipeline (Phase 7)
+
+**Source split (locked):**
+- BALLDONTLIE free tier: teams, players, schedule/game metadata
+- NBA live JSON: live scoreboard, live box scores, post-game final box score finalization
+
 **Plans**: 3 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Next.js scaffold, dependencies, DB schema application, verification SQL
-- [ ] 04-02-PLAN.md — Script library: BDL types, DB client, API fetch client with retry, upsert functions
-- [ ] 04-03-PLAN.md — Backfill orchestrator, 3-season data load, human verification checkpoint
+- [x] 04-01-PLAN.md — Next.js scaffold, dependencies, DB schema application, verification SQL
+- [x] 04-02-PLAN.md — Script library: BDL types, DB client, API fetch client with retry, upsert functions
+- [x] 04-03-PLAN.md — Backfill orchestrator (reference + schedule only), human verification checkpoint
 
 ---
 
@@ -115,15 +120,17 @@ Plans:
 ---
 
 ### Phase 7: Live Data Pipeline
-**Goal**: The system detects active Clippers games, polls live data at ~12s cadence, stores snapshots, and surfaces scoring runs and clutch situations in real time
+**Goal**: The system detects active Clippers games, polls NBA live JSON at ~12s cadence, stores snapshots, detects runs and clutch moments in real time, and finalizes box scores after each game ends
 **Depends on**: Phase 6
 **Requirements**: LIVE-01, LIVE-06, LIVE-07, LIVE-08, LIVE-09, LIVE-12
+**Source**: NBA live JSON (`cdn.nba.com/static/json/liveData/`) — public, key-free
 **Success Criteria** (what must be TRUE):
   1. System correctly detects when a Clippers game is in progress and activates live mode
   2. Live snapshots are stored in live_snapshots on every poll, append-only
   3. Scoring runs of 8–0 or greater are detected and flagged
   4. Clutch situations (last 5 min of Q4/OT, margin ≤ 8) are detected correctly
   5. When the live source fails, the system serves the last cached snapshot with a "data delayed" indicator
+  6. After a game reaches Final status, the finalization job writes team and player box scores to `game_team_box_scores` / `game_player_box_scores` from the NBA live JSON boxscore endpoint
 **Plans**: TBD
 
 ---
