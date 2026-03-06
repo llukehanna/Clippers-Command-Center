@@ -141,7 +141,14 @@ Plans:
   4. Clutch situations (last 5 min of Q4/OT, margin ≤ 8) are detected correctly
   5. When the live source fails, the system serves the last cached snapshot with a "data delayed" indicator
   6. After a game reaches Final status, the finalization job writes team and player box scores to `game_team_box_scores` / `game_player_box_scores` from the NBA live JSON boxscore endpoint
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 07-01-PLAN.md — Shared types (src/lib/types/live.ts) and NBA live JSON HTTP client (scripts/lib/nba-live-client.ts)
+- [ ] 07-02-PLAN.md — TDD: clock parsing tests and poll-live-logic pure helpers (game detection, backoff)
+- [ ] 07-03-PLAN.md — sync-schedule.ts script and Phase 7 npm script registration in package.json
+- [ ] 07-04-PLAN.md — poll-live.ts: game detection, poll loop, snapshot INSERT, insight wiring, backoff, finalization trigger
+- [ ] 07-05-PLAN.md — finalize-games.ts catch-up script, box score upserts in upserts.ts, shared finalize.ts module
 
 ---
 
@@ -285,7 +292,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 4. Historical Data Ingestion | 3/3 | Complete   | 2026-03-06 |
 | 5. Advanced Stats Engine | 2/2 | Complete   | 2026-03-06 |
 | 6. Insight Engine | 4/4 | Complete   | 2026-03-06 |
-| 7. Live Data Pipeline | 0/TBD | Not started | - |
+| 7. Live Data Pipeline | 1/5 | In Progress|  |
 | 8. Odds Integration | 0/TBD | Not started | - |
 | 9. API Layer | 0/TBD | Not started | - |
 | 10. Core UI Framework | 0/TBD | Not started | - |
