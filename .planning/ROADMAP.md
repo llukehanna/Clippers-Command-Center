@@ -119,7 +119,13 @@ Plans:
   2. Every insight record contains proof_sql, proof_params, and proof_result
   3. Insights without a valid proof are excluded from all output — zero fabricated insights surface
   4. Live insights can be generated on-demand from a current snapshot combined with rolling window data
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Vitest test infrastructure, proof_hash unique index schema migration
+- [ ] 06-02-PLAN.md — Shared types (proof-utils.ts), live insight pure function (src/lib/insights/live.ts)
+- [ ] 06-03-PLAN.md — 5 batch category modules (streaks, milestones, rare-events, opponent-context, league-comparisons)
+- [ ] 06-04-PLAN.md — generate-insights.ts orchestrator, upsert loop, npm script, verification SQL
 
 ---
 
@@ -278,7 +284,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 3. DB Schema | - | Complete | 2026-03-05 |
 | 4. Historical Data Ingestion | 3/3 | Complete   | 2026-03-06 |
 | 5. Advanced Stats Engine | 2/2 | Complete   | 2026-03-06 |
-| 6. Insight Engine | 0/TBD | Not started | - |
+| 6. Insight Engine | 1/4 | In Progress|  |
 | 7. Live Data Pipeline | 0/TBD | Not started | - |
 | 8. Odds Integration | 0/TBD | Not started | - |
 | 9. API Layer | 0/TBD | Not started | - |

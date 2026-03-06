@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 6 context gathered
-last_updated: "2026-03-06T18:07:35.388Z"
+stopped_at: Completed 06-insight-engine-06-01-PLAN.md
+last_updated: "2026-03-06T22:12:32.779Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 9
+  completed_plans: 6
   percent: 15
 ---
 
@@ -54,6 +54,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 04-historical-data-ingestion P02 | 15 | 3 tasks | 4 files |
 | Phase 05-advanced-stats-engine P01 | 25 | 2 tasks | 2 files |
 | Phase 05-advanced-stats-engine P02 | 20 | 2 tasks | 4 files |
+| Phase 06-insight-engine P01 | 2 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,9 @@ Recent decisions affecting current work:
 - [Phase 05-advanced-stats-engine]: Formula library has zero DB dependency — pure functions enable isolated verification without DB setup
 - [Phase 05-advanced-stats-engine]: Rolling windows yield 0 rows when seeded game count (2) is below minimum window size (5) — correct behavior per plan spec
 - [Phase 05-advanced-stats-engine]: DISTINCT + ORDER BY on cast expressions requires subquery wrapping in PostgreSQL (error 42P10)
+- [Phase 06-insight-engine]: Vitest chosen as test runner — ESM-native, TypeScript-first, no transpile step required
+- [Phase 06-insight-engine]: uq_insights_proof_hash partial unique index (WHERE proof_hash IS NOT NULL) enables ON CONFLICT upsert deduplication while allowing null proof_hash rows
+- [Phase 06-insight-engine]: TDD Wave 0: RED tests committed before proof-utils.ts exists — Plan 02 turns them GREEN
 
 ### Pending Todos
 
@@ -92,6 +96,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T18:07:35.386Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-insight-engine/06-CONTEXT.md
+Last session: 2026-03-06T22:12:32.777Z
+Stopped at: Completed 06-insight-engine-06-01-PLAN.md
+Resume file: None
