@@ -68,7 +68,11 @@ export async function generateRareEventInsights(): Promise<InsightRow[]> {
     JOIN players pl ON pl.player_id = sub.player_id::bigint
     JOIN games g ON g.game_id = sub.game_id::bigint
     WHERE sub.pct_rank >= ${PCT_RANK_THRESHOLD}
-      AND pl.team_id = ${lacTeamId}::bigint
+      AND EXISTS (
+        SELECT 1 FROM game_player_box_scores pb2
+        WHERE pb2.player_id = sub.player_id::bigint
+          AND pb2.team_id = ${lacTeamId}::bigint
+      )
     ORDER BY sub.pct_rank DESC, sub.game_id DESC
     LIMIT ${TOP_N_RESULTS}
   `;
@@ -103,7 +107,11 @@ export async function generateRareEventInsights(): Promise<InsightRow[]> {
       WHERE sub.pct_rank >= ${PCT_RANK_THRESHOLD}
         AND sub.player_id = ${row.player_id}
         AND sub.game_id = ${row.game_id}
-        AND p.team_id = ${lacTeamId}::bigint
+        AND EXISTS (
+          SELECT 1 FROM game_player_box_scores pb2
+          WHERE pb2.player_id = sub.player_id::bigint
+            AND pb2.team_id = ${lacTeamId}::bigint
+        )
       ORDER BY sub.pct_rank DESC
       LIMIT 1
     `;
@@ -173,7 +181,11 @@ export async function generateRareEventInsights(): Promise<InsightRow[]> {
     JOIN players pl ON pl.player_id = sub.player_id::bigint
     JOIN games g ON g.game_id = sub.game_id::bigint
     WHERE sub.pct_rank >= ${PCT_RANK_THRESHOLD}
-      AND pl.team_id = ${lacTeamId}::bigint
+      AND EXISTS (
+        SELECT 1 FROM game_player_box_scores pb2
+        WHERE pb2.player_id = sub.player_id::bigint
+          AND pb2.team_id = ${lacTeamId}::bigint
+      )
     ORDER BY sub.pct_rank DESC, sub.game_id DESC
     LIMIT ${TOP_N_RESULTS}
   `;
@@ -208,7 +220,11 @@ export async function generateRareEventInsights(): Promise<InsightRow[]> {
       WHERE sub.pct_rank >= ${PCT_RANK_THRESHOLD}
         AND sub.player_id = ${row.player_id}
         AND sub.game_id = ${row.game_id}
-        AND p.team_id = ${lacTeamId}::bigint
+        AND EXISTS (
+          SELECT 1 FROM game_player_box_scores pb2
+          WHERE pb2.player_id = sub.player_id::bigint
+            AND pb2.team_id = ${lacTeamId}::bigint
+        )
       ORDER BY sub.pct_rank DESC
       LIMIT 1
     `;

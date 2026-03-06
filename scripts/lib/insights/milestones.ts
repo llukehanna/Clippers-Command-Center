@@ -26,18 +26,20 @@ export async function generateMilestoneInsights(): Promise<InsightRow[]> {
 
   // Get current season (most recent season in DB)
   const [currentSeasonRow] = await sql<{ season_id: number }[]>`
-    SELECT season_id FROM seasons ORDER BY year DESC LIMIT 1
+    SELECT season_id FROM seasons ORDER BY season_id DESC LIMIT 1
   `;
   if (!currentSeasonRow) return [];
   const currentSeasonId = currentSeasonRow.season_id;
 
   // Get all Clippers players
   const lacPlayers = await sql<{ player_id: string; display_name: string }[]>`
-    SELECT DISTINCT p.player_id::text AS player_id, p.display_name
-    FROM players p
-    JOIN game_player_box_scores pb ON pb.player_id = p.player_id
-    WHERE p.team_id = ${lacTeamId}::bigint
-    ORDER BY p.player_id
+    SELECT player_id, display_name FROM (
+      SELECT DISTINCT p.player_id::text AS player_id, p.display_name
+      FROM players p
+      JOIN game_player_box_scores pb ON pb.player_id = p.player_id
+      WHERE pb.team_id = ${lacTeamId}::bigint
+    ) sub
+    ORDER BY player_id
   `;
 
   // -------------------------------------------------------------------------

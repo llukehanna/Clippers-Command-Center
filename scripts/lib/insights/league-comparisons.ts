@@ -38,20 +38,20 @@ export async function generateLeagueComparisonInsights(): Promise<InsightRow[]> 
     CROSS JOIN (
       SELECT COUNT(DISTINCT team_id) AS total_teams
       FROM rolling_team_stats
-      WHERE window_size = $2
+      WHERE window_games = $2
     ) total
-    WHERE rts.window_size = $2
-      AND rts.avg_off_rating > (
-        SELECT avg_off_rating
+    WHERE rts.window_games = $2
+      AND rts.off_rating > (
+        SELECT off_rating
         FROM rolling_team_stats
         WHERE team_id = $1::bigint
-          AND window_size = $2
+          AND window_games = $2
       )
   `.trim();
 
   const offRankProofParams = {
     lac_team_id: lacTeamId,
-    window_size: ROLLING_WINDOW,
+    window_games: ROLLING_WINDOW,
     as_of_date: asOfDate,
   };
 
@@ -59,21 +59,22 @@ export async function generateLeagueComparisonInsights(): Promise<InsightRow[]> 
     rank: string;
     total_teams: string;
   }[]>`
-    SELECT (COUNT(*) + 1)::text AS rank,
-           total.total_teams::text AS total_teams
-    FROM rolling_team_stats rts
-    CROSS JOIN (
-      SELECT COUNT(DISTINCT team_id) AS total_teams
-      FROM rolling_team_stats
-      WHERE window_size = ${ROLLING_WINDOW}
-    ) total
-    WHERE rts.window_size = ${ROLLING_WINDOW}
-      AND rts.avg_off_rating > (
-        SELECT avg_off_rating
+    SELECT
+      (
+        SELECT (COUNT(*) + 1)::text
         FROM rolling_team_stats
-        WHERE team_id = ${lacTeamId}::bigint
-          AND window_size = ${ROLLING_WINDOW}
-      )
+        WHERE window_games = ${ROLLING_WINDOW}
+          AND off_rating > (
+            SELECT off_rating FROM rolling_team_stats
+            WHERE team_id = ${lacTeamId}::bigint AND window_games = ${ROLLING_WINDOW}
+            LIMIT 1
+          )
+      ) AS rank,
+      (
+        SELECT COUNT(DISTINCT team_id)::text
+        FROM rolling_team_stats
+        WHERE window_games = ${ROLLING_WINDOW}
+      ) AS total_teams
   `;
 
   if (guardProofResult(offRankProofResult)) {
@@ -120,20 +121,20 @@ export async function generateLeagueComparisonInsights(): Promise<InsightRow[]> 
     CROSS JOIN (
       SELECT COUNT(DISTINCT team_id) AS total_teams
       FROM rolling_team_stats
-      WHERE window_size = $2
+      WHERE window_games = $2
     ) total
-    WHERE rts.window_size = $2
-      AND rts.avg_net_rating > (
-        SELECT avg_net_rating
+    WHERE rts.window_games = $2
+      AND rts.net_rating > (
+        SELECT net_rating
         FROM rolling_team_stats
         WHERE team_id = $1::bigint
-          AND window_size = $2
+          AND window_games = $2
       )
   `.trim();
 
   const netRankProofParams = {
     lac_team_id: lacTeamId,
-    window_size: ROLLING_WINDOW,
+    window_games: ROLLING_WINDOW,
     as_of_date: asOfDate,
   };
 
@@ -141,21 +142,22 @@ export async function generateLeagueComparisonInsights(): Promise<InsightRow[]> 
     rank: string;
     total_teams: string;
   }[]>`
-    SELECT (COUNT(*) + 1)::text AS rank,
-           total.total_teams::text AS total_teams
-    FROM rolling_team_stats rts
-    CROSS JOIN (
-      SELECT COUNT(DISTINCT team_id) AS total_teams
-      FROM rolling_team_stats
-      WHERE window_size = ${ROLLING_WINDOW}
-    ) total
-    WHERE rts.window_size = ${ROLLING_WINDOW}
-      AND rts.avg_net_rating > (
-        SELECT avg_net_rating
+    SELECT
+      (
+        SELECT (COUNT(*) + 1)::text
         FROM rolling_team_stats
-        WHERE team_id = ${lacTeamId}::bigint
-          AND window_size = ${ROLLING_WINDOW}
-      )
+        WHERE window_games = ${ROLLING_WINDOW}
+          AND net_rating > (
+            SELECT net_rating FROM rolling_team_stats
+            WHERE team_id = ${lacTeamId}::bigint AND window_games = ${ROLLING_WINDOW}
+            LIMIT 1
+          )
+      ) AS rank,
+      (
+        SELECT COUNT(DISTINCT team_id)::text
+        FROM rolling_team_stats
+        WHERE window_games = ${ROLLING_WINDOW}
+      ) AS total_teams
   `;
 
   if (guardProofResult(netRankProofResult)) {
