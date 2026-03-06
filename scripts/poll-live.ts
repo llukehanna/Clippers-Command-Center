@@ -27,6 +27,8 @@ import type {
 import { setCheckpoint } from './lib/upserts.js';
 import { finalizeGame } from './lib/finalize.js';
 
+type Json = Parameters<typeof sql.json>[0];
+
 const POLL_INTERVAL_MS = 12_000;
 const RECENT_SCORING_LOOKBACK_SECONDS = 120; // last 2 minutes of play-by-play
 
@@ -100,7 +102,7 @@ async function insertSnapshot(gameDbId: string, game: ScoreboardGame): Promise<v
       ${clock},
       ${game.homeTeam.score},
       ${game.awayTeam.score},
-      ${sql.json(game)}
+      ${sql.json(game as unknown as Json)}
     )
   `;
 }
