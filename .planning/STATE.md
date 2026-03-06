@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 5 context gathered
-last_updated: "2026-03-06T09:46:42.824Z"
+stopped_at: Completed 05-advanced-stats-engine 05-01-PLAN.md
+last_updated: "2026-03-06T17:38:24.117Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 5
+  completed_plans: 4
   percent: 15
 ---
 
@@ -52,6 +52,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 *Updated after each plan completion*
 | Phase 04-historical-data-ingestion P01 | 10 | 2 tasks | 10 files |
 | Phase 04-historical-data-ingestion P02 | 15 | 3 tasks | 4 files |
+| Phase 05-advanced-stats-engine P01 | 25 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,8 @@ Recent decisions affecting current work:
 - [Re-scope 2026-03-06]: BDL free tier ceiling accepted. BDL scope narrowed to teams/players/schedule. NBA live JSON owns live scoreboard, live box scores, and post-game finalization. Historical box score backfill via BDL /stats removed from MVP. Box score tables remain in schema for extensibility.
 - [Phase 04-historical-data-ingestion]: BDL free tier ceiling accepted — box score backfill removed from MVP scope
 - [Phase 04-historical-data-ingestion]: NBA live JSON owns live scoreboard and post-game box scores (Phase 7)
+- [Phase 05-advanced-stats-engine]: Selected LAC vs MIA (2024-01-01) and LAC vs PHX (2024-01-08) as seed games — regulation wins, confirmed in games table
+- [Phase 05-advanced-stats-engine]: Formula library has zero DB dependency — pure functions enable isolated verification without DB setup
 
 ### Pending Todos
 
@@ -86,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T09:46:42.817Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-advanced-stats-engine/05-CONTEXT.md
+Last session: 2026-03-06T17:38:24.115Z
+Stopped at: Completed 05-advanced-stats-engine 05-01-PLAN.md
+Resume file: None
