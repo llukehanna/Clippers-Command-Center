@@ -18,19 +18,42 @@ describe('buildMeta for insights endpoint', () => {
 
 // ─── Mock setup ──────────────────────────────────────────────────────────────
 
-const mockSql = vi.fn();
+// The postgres sql tag is a tagged template literal. Conditional sub-expressions
+// (sql`AND game_id = ...` or sql``) are evaluated BEFORE the outer sql call,
+// and each results in a fragment object. The outer call returns a Promise<rows>.
+//
+// Strategy: the sub-fragment calls have a short template strings array (1-2 strings).
+// The main query call has a long template strings array (5+ strings). We distinguish
+// by checking the length of the first argument (strings array).
+//
+// Fragment call: sql`AND game_id = ${val}` -> strings has 2 elements
+// Fragment call: sql`` -> strings has 1 element
+// Main query: sql`SELECT ... FROM insights WHERE ...` -> strings has many elements
+
+let mockRows: unknown[] = [];
+let shouldReject = false;
+let rejectError: Error | null = null;
+
+const FRAGMENT_THRESHOLD = 4; // fewer than this = fragment, more = main query
+
+const mockSqlImpl = (...args: unknown[]) => {
+  const strings = args[0] as string[];
+  const isFragment = !strings || strings.length < FRAGMENT_THRESHOLD;
+  if (isFragment) {
+    // Return a postgres fragment-like object (non-promise)
+    return { strings, values: args.slice(1) };
+  }
+  // Main query call
+  if (shouldReject && rejectError) {
+    return Promise.reject(rejectError);
+  }
+  return Promise.resolve(mockRows);
+};
+
+const mockSqlTag = vi.fn(mockSqlImpl);
 
 vi.mock('../lib/db.js', () => ({
-  sql: new Proxy(mockSql, {
-    get(target, prop) {
-      // Allow tagged template literal: sql`...`
-      if (prop === Symbol.toPrimitive || prop === 'toString') return target;
-      return target;
-    },
-    apply(target, _thisArg, args) {
-      return target(...args);
-    },
-  }),
+  sql: mockSqlTag,
   LAC_NBA_TEAM_ID: 1610612746,
 }));
 
@@ -39,6 +62,11 @@ vi.mock('../lib/db.js', () => ({
 describe('GET /api/insights', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRows = [];
+    shouldReject = false;
+    rejectError = null;
+    // Re-apply after clearAllMocks resets the implementation
+    mockSqlTag.mockImplementation(mockSqlImpl);
   });
 
   it('returns 400 when scope param is missing', async () => {
@@ -62,7 +90,7 @@ describe('GET /api/insights', () => {
   });
 
   it('returns 200 with insights and meta envelope for valid scope', async () => {
-    const fakeRows = [
+    mockRows = [
       {
         insight_id: 'uuid-1',
         scope: 'live',
@@ -73,9 +101,6 @@ describe('GET /api/insights', () => {
         proof_result: { wins: 5, losses: 0 },
       },
     ];
-    // sql is called as a tagged template literal — mock returns rows
-    mockSql.mockResolvedValueOnce(fakeRows);
-
     const { GET } = await import('../app/api/insights/route.js');
     const req = new Request('http://localhost/api/insights?scope=live');
     const res = await GET(req);
@@ -87,9 +112,7 @@ describe('GET /api/insights', () => {
   });
 
   it('returns only is_active=true insights — is_active filter expressed in query condition', async () => {
-    // Route only queries is_active=true (enforced by SQL WHERE clause).
-    // This test verifies the SQL call happens and shapes output correctly.
-    const fakeRows = [
+    mockRows = [
       {
         insight_id: 'uuid-active',
         scope: 'between_games',
@@ -100,8 +123,6 @@ describe('GET /api/insights', () => {
         proof_result: { value: 42 },
       },
     ];
-    mockSql.mockResolvedValueOnce(fakeRows);
-
     const { GET } = await import('../app/api/insights/route.js');
     const req = new Request('http://localhost/api/insights?scope=between_games');
     const res = await GET(req);
@@ -110,7 +131,7 @@ describe('GET /api/insights', () => {
   });
 
   it('each insight has proof with summary=category and result=proof_result', async () => {
-    const fakeRows = [
+    mockRows = [
       {
         insight_id: 'uuid-proof',
         scope: 'historical',
@@ -121,21 +142,18 @@ describe('GET /api/insights', () => {
         proof_result: { games: 3, triple_doubles: 2 },
       },
     ];
-    mockSql.mockResolvedValueOnce(fakeRows);
-
     const { GET } = await import('../app/api/insights/route.js');
     const req = new Request('http://localhost/api/insights?scope=historical');
     const res = await GET(req);
     const body = await res.json();
     const insight = body.insights[0];
     expect(insight.proof).toBeDefined();
-    expect(insight.proof.summary).toBe('rare_event'); // summary = category
-    expect(insight.proof.result).toEqual({ games: 3, triple_doubles: 2 }); // result = proof_result
+    expect(insight.proof.summary).toBe('rare_event');
+    expect(insight.proof.result).toEqual({ games: 3, triple_doubles: 2 });
   });
 
   it('returns empty array when no insights exist (not null, not error)', async () => {
-    mockSql.mockResolvedValueOnce([]);
-
+    mockRows = [];
     const { GET } = await import('../app/api/insights/route.js');
     const req = new Request('http://localhost/api/insights?scope=live');
     const res = await GET(req);
@@ -146,8 +164,7 @@ describe('GET /api/insights', () => {
   });
 
   it('meta has all required fields: generated_at, source, stale, stale_reason, ttl_seconds', async () => {
-    mockSql.mockResolvedValueOnce([]);
-
+    mockRows = [];
     const { GET } = await import('../app/api/insights/route.js');
     const req = new Request('http://localhost/api/insights?scope=live');
     const res = await GET(req);
@@ -160,8 +177,8 @@ describe('GET /api/insights', () => {
   });
 
   it('returns 500 on unexpected database error', async () => {
-    mockSql.mockRejectedValueOnce(new Error('DB connection failed'));
-
+    shouldReject = true;
+    rejectError = new Error('DB connection failed');
     const { GET } = await import('../app/api/insights/route.js');
     const req = new Request('http://localhost/api/insights?scope=live');
     const res = await GET(req);
@@ -171,8 +188,7 @@ describe('GET /api/insights', () => {
   });
 
   it('sets Cache-Control: public, max-age=30 header', async () => {
-    mockSql.mockResolvedValueOnce([]);
-
+    mockRows = [];
     const { GET } = await import('../app/api/insights/route.js');
     const req = new Request('http://localhost/api/insights?scope=live');
     const res = await GET(req);
@@ -180,21 +196,21 @@ describe('GET /api/insights', () => {
   });
 
   it('scope param "live" is accepted as valid', async () => {
-    mockSql.mockResolvedValueOnce([]);
+    mockRows = [];
     const { GET } = await import('../app/api/insights/route.js');
     const res = await GET(new Request('http://localhost/api/insights?scope=live'));
     expect(res.status).toBe(200);
   });
 
   it('scope param "between_games" is accepted as valid', async () => {
-    mockSql.mockResolvedValueOnce([]);
+    mockRows = [];
     const { GET } = await import('../app/api/insights/route.js');
     const res = await GET(new Request('http://localhost/api/insights?scope=between_games'));
     expect(res.status).toBe(200);
   });
 
   it('scope param "historical" is accepted as valid', async () => {
-    mockSql.mockResolvedValueOnce([]);
+    mockRows = [];
     const { GET } = await import('../app/api/insights/route.js');
     const res = await GET(new Request('http://localhost/api/insights?scope=historical'));
     expect(res.status).toBe(200);
