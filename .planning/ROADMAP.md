@@ -254,7 +254,11 @@ Plans:
   4. Player trend summaries appear for top Clippers players
   5. Rotating team performance insights display from stored data
   6. Vegas odds (spread, moneyline, over/under) appear on schedule rows when available
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 12-01-PLAN.md — API extension (last10_games), home-utils lib + tests, TeamSnapshot, NextGameHero, ScheduleTable, page shell
+- [ ] 12-02-PLAN.md — PlayerTrendsTable, PointDiffChart, complete page assembly, visual verification checkpoint
 
 ---
 
