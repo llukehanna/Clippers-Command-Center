@@ -14,7 +14,8 @@
     "sync-schedule": "node --env-file=.env.local node_modules/.bin/tsx scripts/sync-schedule.ts",
     "poll-live": "node --env-file=.env.local node_modules/.bin/tsx scripts/poll-live.ts",
     "finalize-games": "node --env-file=.env.local node_modules/.bin/tsx scripts/finalize-games.ts",
-    "db:schema": "node --env-file=.env.local -e \"const postgres=require('postgres');const fs=require('fs');const sql=postgres(process.env.DATABASE_URL,{ max: 1 });sql.unsafe(fs.readFileSync('Docs/DB_SCHEMA.sql','utf8')).then(()=>{console.log('Schema applied');return sql.end()}).catch(e=>{console.error(e);process.exit(1)})\""
+    "sync-odds": "node --env-file=.env.local node_modules/.bin/tsx scripts/sync-odds.ts",
+    "db:schema": "node --env-file=.env.local -e \"const postgres=require('postgres');const fs=require('fs');const sql=postgres(process.env.DATABASE_URL,{ max: 1 });sql.unsafe(fs.readFileSync('docs/DB_SCHEMA.sql','utf8')).then(()=>{console.log('Schema applied');return sql.end()}).catch(e=>{console.error(e);process.exit(1)})\""
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -26,6 +27,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.7.0",
+    "swr": "^2.4.1",
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
