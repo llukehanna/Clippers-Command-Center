@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 10.1-01-PLAN.md
-last_updated: "2026-03-07T02:47:27.266Z"
+stopped_at: Completed 10.1-02-PLAN.md
+last_updated: "2026-03-07T02:51:30.336Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 17
   completed_phases: 7
   total_plans: 28
-  completed_plans: 26
+  completed_plans: 27
   percent: 15
 ---
 
@@ -73,6 +73,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 10-core-ui-framework P02 | 15 | 2 tasks | 6 files |
 | Phase 10-core-ui-framework P03 | 2 | 3 tasks | 7 files |
 | Phase 10.1-design-system-refinement-for-premium-apple-like-analytics-ui P01 | 2 | 3 tasks | 5 files |
+| Phase 10.1-design-system-refinement-for-premium-apple-like-analytics-ui P02 | 2 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -150,6 +151,8 @@ Recent decisions affecting current work:
 - [Phase 10.1-design-system-refinement-for-premium-apple-like-analytics-ui]: StatCard uses plain div (not Card/CardContent) — shadcn Card applies its own CSS variable mappings that fight new tokens; direct div gives precise control
 - [Phase 10.1-design-system-refinement-for-premium-apple-like-analytics-ui]: border-white/[0.06] instead of border-border — rgba hairline avoids the old #334155 heavy border value, gives premium floating appearance on dark backgrounds
 - [Phase 10.1-design-system-refinement-for-premium-apple-like-analytics-ui]: --muted set to rgba(255,255,255,0.05) — drives Skeleton shimmer base color automatically at correct darkness level
+- [Phase 10.1-design-system-refinement-for-premium-apple-like-analytics-ui]: ChartSeries.color made optional with CHART_COLORS fallback — callers using var(--chart-N) still work; new callers get automatic token defaults
+- [Phase 10.1-design-system-refinement-for-premium-apple-like-analytics-ui]: strokeOpacity not opacity for CartesianGrid — targets line stroke color only, not the whole SVG group
 
 ### Roadmap Evolution
 
@@ -165,6 +168,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T02:47:27.264Z
-Stopped at: Completed 10.1-01-PLAN.md
+Last session: 2026-03-07T02:51:30.334Z
+Stopped at: Completed 10.1-02-PLAN.md
 Resume file: None
