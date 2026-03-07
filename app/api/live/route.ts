@@ -254,20 +254,21 @@ export async function GET(): Promise<NextResponse> {
 
     const [snap] = await sql<SnapRow[]>`
       SELECT
-        snapshot_id,
-        game_id::text          AS game_id,
-        period,
-        clock,
-        home_score,
-        away_score,
-        home_team_id::text     AS home_team_id,
-        away_team_id::text     AS away_team_id,
-        captured_at::text      AS captured_at,
-        payload
-      FROM live_snapshots
-      WHERE home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
-         OR away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
-      ORDER BY captured_at DESC
+        ls.snapshot_id,
+        ls.game_id::text          AS game_id,
+        ls.period,
+        ls.clock,
+        ls.home_score,
+        ls.away_score,
+        g.home_team_id::text      AS home_team_id,
+        g.away_team_id::text      AS away_team_id,
+        ls.captured_at::text      AS captured_at,
+        ls.payload
+      FROM live_snapshots ls
+      JOIN games g ON g.game_id = ls.game_id
+      WHERE g.home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+         OR g.away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+      ORDER BY ls.captured_at DESC
       LIMIT 1
     `;
 

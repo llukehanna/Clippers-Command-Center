@@ -30,7 +30,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 /**
- * NBA canonical team ID for the LA Clippers.
- * Used by all API routes that need to identify the Clippers in NBA data.
+ * Internal nba_team_id for the LA Clippers as stored in the teams table.
+ * The DB uses sequential IDs (1-30), not real NBA API IDs. LAC = 13.
  */
-export const LAC_NBA_TEAM_ID = 1610612746;
+export const LAC_NBA_TEAM_ID = 13;
