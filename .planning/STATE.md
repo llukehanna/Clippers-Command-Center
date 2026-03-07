@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 10-core-ui-framework-01-PLAN.md
-last_updated: "2026-03-07T01:57:07.743Z"
+stopped_at: Completed 10-core-ui-framework-02-PLAN.md
+last_updated: "2026-03-07T02:01:05.240Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 25
-  completed_plans: 23
+  completed_plans: 25
   percent: 15
 ---
 
@@ -70,6 +70,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 09-api-layer P06 | 5 | 1 tasks | 2 files |
 | Phase 09-api-layer P03 | 5 | 1 tasks | 2 files |
 | Phase 10-core-ui-framework P01 | 12 | 3 tasks | 15 files |
+| Phase 10-core-ui-framework P02 | 15 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,9 @@ Recent decisions affecting current work:
 - [Phase 10-core-ui-framework]: Clippers dark palette: :root and .dark use identical hex values since html.dark is always active — dark-only design
 - [Phase 10-core-ui-framework]: shadcn CLI used exclusively for UI primitives — keeps components in sync with registry
 - [Phase 10-core-ui-framework]: TopNav import commented in layout.tsx — Plan 02 uncomments it when component is created
+- [Phase 10-core-ui-framework]: LiveDashboardPayload defined locally in useLiveData.ts — type was not in Phase 7 types; meta typed as MetaEnvelope from api-utils
+- [Phase 10-core-ui-framework]: TopNav is Server Component — NavLinks and LiveDot are client components; client boundary propagates through import chain
+- [Phase 10-core-ui-framework]: LiveDot polls /api/live at 30s; useLiveData hook polls at 12s — polling intervals split by consumer granularity need
 
 ### Pending Todos
 
@@ -149,6 +153,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T01:57:07.741Z
-Stopped at: Completed 10-core-ui-framework-01-PLAN.md
+Last session: 2026-03-07T02:01:05.238Z
+Stopped at: Completed 10-core-ui-framework-02-PLAN.md
 Resume file: None
