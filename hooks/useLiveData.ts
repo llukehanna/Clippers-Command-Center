@@ -1,7 +1,15 @@
 'use client'
 
 import useSWR from 'swr'
-import type { LiveDashboardPayload } from '@/src/lib/types/live'
+import type { MetaEnvelope } from '@/src/lib/api-utils'
+
+/** Shape returned by the /api/live endpoint */
+export interface LiveDashboardPayload {
+  meta: MetaEnvelope
+  // Game data and other fields are present when a game is active
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any
+}
 
 const fetcher = (url: string): Promise<LiveDashboardPayload> =>
   fetch(url).then((res) => {
