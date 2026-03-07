@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 12-between-games-dashboard-12-01-PLAN.md
-last_updated: "2026-03-07T09:47:05.843Z"
+stopped_at: "Checkpoint: Task 3 visual verification of Between-Games Dashboard at /home — awaiting human approval"
+last_updated: "2026-03-07T09:50:49.413Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 17
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 33
-  completed_plans: 32
+  completed_plans: 33
   percent: 15
 ---
 
@@ -78,6 +78,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 11-live-game-dashboard P01 | 5 | 2 tasks | 5 files |
 | Phase 11-live-game-dashboard P02 | 12 | 3 tasks | 3 files |
 | Phase 12-between-games-dashboard P01 | 3 | 3 tasks | 7 files |
+| Phase 12-between-games-dashboard P02 | 1 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -168,6 +169,8 @@ Recent decisions affecting current work:
 - [Phase 12-between-games-dashboard]: Import path for src/lib from components is @/src/lib (not @/lib) — tsconfig @/* maps to project root, src/ is a subdirectory
 - [Phase 12-between-games-dashboard]: last10Rows query extended with JOIN teams for abbreviations and game_date — reuses existing query without adding new SQL
 - [Phase 12-between-games-dashboard]: ScheduleTable is 'use client' (BoxScoreTable requires client boundary); TeamSnapshot and NextGameHero are Server Components
+- [Phase 12-between-games-dashboard]: PointDiffChart uses direct recharts Cell for per-bar coloring — BarChartWrapper lacks Cell support; approved deviation per plan
+- [Phase 12-between-games-dashboard]: PointDiffTooltipProps custom interface instead of TooltipProps generic — Recharts type does not expose payload for destructuring in installed version; matches BarChartWrapper pattern
 
 ### Roadmap Evolution
 
@@ -183,6 +186,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T09:47:05.841Z
-Stopped at: Completed 12-between-games-dashboard-12-01-PLAN.md
+Last session: 2026-03-07T09:50:49.411Z
+Stopped at: Checkpoint: Task 3 visual verification of Between-Games Dashboard at /home — awaiting human approval
 Resume file: None
