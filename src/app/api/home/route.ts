@@ -59,6 +59,12 @@ interface GameRecordRow {
   away_score: number;
 }
 
+interface Last10GameRow extends GameRecordRow {
+  game_date: string;
+  home_abbr: string;
+  away_abbr: string;
+}
+
 interface RatingsRow {
   net_rating: number | null;
   off_rating: number | null;
@@ -133,22 +139,27 @@ export async function GET(_req: Request): Promise<NextResponse> {
         LIMIT 1
       ` as Promise<RatingsRow[]>,
 
-      // B: Last 10 LAC final games (for last_10 W/L record)
+      // B: Last 10 LAC final games (for last_10 W/L record and last10_games array)
       sql`
         SELECT
-          home_team_id::text AS home_team_id,
-          away_team_id::text AS away_team_id,
-          home_score,
-          away_score
-        FROM games
+          g.home_team_id::text AS home_team_id,
+          g.away_team_id::text AS away_team_id,
+          g.home_score,
+          g.away_score,
+          g.game_date::text AS game_date,
+          ht.abbreviation AS home_abbr,
+          at.abbreviation AS away_abbr
+        FROM games g
+        JOIN teams ht ON ht.team_id = g.home_team_id
+        JOIN teams at ON at.team_id = g.away_team_id
         WHERE (
-          home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
-          OR away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+          g.home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+          OR g.away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
         )
-          AND status = 'final'
-        ORDER BY game_date DESC
+          AND g.status = 'final'
+        ORDER BY g.game_date DESC
         LIMIT 10
-      ` as Promise<GameRecordRow[]>,
+      ` as Promise<Last10GameRow[]>,
 
       // C: Season W/L record (all final games this season)
       sql`
@@ -284,6 +295,7 @@ export async function GET(_req: Request): Promise<NextResponse> {
     // Last 10
     let last10Wins = 0;
     let last10Losses = 0;
+    const last10GamesMapped: Array<{ opponent_abbr: string; game_date: string; margin: number }> = [];
     for (const game of last10Rows) {
       const lacIsHome = game.home_team_id === lacTeamIdStr;
       const lacScore = lacIsHome ? game.home_score : game.away_score;
@@ -293,6 +305,11 @@ export async function GET(_req: Request): Promise<NextResponse> {
       } else {
         last10Losses++;
       }
+      last10GamesMapped.push({
+        opponent_abbr: lacIsHome ? game.away_abbr : game.home_abbr,
+        game_date: game.game_date,
+        margin: lacIsHome ? game.home_score - game.away_score : game.away_score - game.home_score,
+      });
     }
 
     // Ratings (null if no rows)
@@ -307,6 +324,7 @@ export async function GET(_req: Request): Promise<NextResponse> {
       off_rating: ratingsRow?.off_rating ?? null,
       def_rating: ratingsRow?.def_rating ?? null,
       last_10: { wins: last10Wins, losses: last10Losses },
+      last10_games: last10GamesMapped,
     };
 
     // ── upcoming_schedule ─────────────────────────────────────────────────────
