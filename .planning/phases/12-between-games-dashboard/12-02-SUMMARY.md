@@ -15,8 +15,7 @@ requires:
 provides:
   - PlayerTrendsTable component (6-column table: Player link, PPG, RPG, APG, TS%=always-dash, L5 Δ=always-dash)
   - PointDiffChart component (Recharts BarChart with Cell per-bar coloring: emerald wins, red losses)
-  - Complete Between-Games Dashboard at /home with all five sections assembled
-  - Awaiting human visual verification (checkpoint:human-verify — Task 3)
+  - Complete Between-Games Dashboard at /home with all five sections assembled and human-verified
 
 affects:
   - Future phases building on /home page or home component patterns
@@ -39,6 +38,7 @@ key-decisions:
   - "PointDiffChart uses direct recharts imports with Cell (not BarChartWrapper) — BarChartWrapper lacks per-bar Cell coloring support; approved deviation per plan spec"
   - "PointDiffTooltipProps custom interface instead of TooltipProps<number,string> — Recharts type does not expose payload as destructured prop; matches BarChartWrapper pattern already established"
   - "InsightTileArea wrapped in teamInsights.length > 0 check at page level — belt-and-suspenders alongside component's own null return"
+  - "insights scope fixed to between_games (not team) — only live/between_games/historical are valid API values"
 
 patterns-established:
   - "Custom Recharts tooltip: define interface with active?: boolean, payload?: Array<{value: T, payload: DataType}> — avoids TooltipProps generic type gap"
@@ -46,20 +46,20 @@ patterns-established:
 
 requirements-completed: [HOME-04, HOME-05]
 
-duration: 1min
+duration: ~60min (including human review checkpoint)
 completed: "2026-03-07"
 ---
 
 # Phase 12 Plan 02: Between-Games Dashboard Lower Sections Summary
 
-**PlayerTrendsTable and PointDiffChart components built and wired into /home page; all five dashboard sections assembled — awaiting human visual verification at checkpoint Task 3**
+**PlayerTrendsTable and PointDiffChart components built and wired into /home page; all five dashboard sections human-verified and complete, with insights scope bug fix applied**
 
 ## Performance
 
-- **Duration:** 1 min
+- **Duration:** ~60 min (including human review checkpoint)
 - **Started:** 2026-03-07T09:48:15Z
-- **Completed:** 2026-03-07T09:49:35Z
-- **Tasks:** 2 of 3 complete (Task 3 is checkpoint:human-verify)
+- **Completed:** 2026-03-07T10:10:00Z
+- **Tasks:** 3 of 3 complete
 - **Files modified:** 3
 
 ## Accomplishments
@@ -74,7 +74,7 @@ Each task was committed atomically:
 
 1. **Task 1: PlayerTrendsTable and PointDiffChart components** - `8ca176d` (feat)
 2. **Task 2: Complete app/home/page.tsx — add all remaining sections** - `37eafd7` (feat)
-3. **Task 3: Visual verification** — PENDING (checkpoint:human-verify)
+3. **Task 3: Visual verification + bug fix** - `376a7ea` (fix — insights scope team→between_games)
 
 ## Files Created/Modified
 
@@ -100,10 +100,18 @@ Each task was committed atomically:
 - **Verification:** `npx tsc --noEmit` passes with zero errors
 - **Committed in:** 37eafd7 (Task 2 commit)
 
+**2. [Rule 1 - Bug] Fixed insights API scope param: team → between_games**
+- **Found during:** Task 3 (human visual verification checkpoint review)
+- **Issue:** `app/home/page.tsx` called `/api/insights?scope=team` — only `live`, `between_games`, or `historical` are valid values; `team` caused the insights fetch to return no data
+- **Fix:** Changed `scope=team` to `scope=between_games`
+- **Files modified:** app/home/page.tsx
+- **Verification:** Human visual review confirmed insights render correctly after fix
+- **Committed in:** 376a7ea (Task 3 bug fix commit)
+
 ---
 
-**Total deviations:** 1 auto-fixed (Rule 1 - Bug: Recharts type incompatibility)
-**Impact on plan:** Minor type correction. No scope creep. Component behavior identical to plan spec.
+**Total deviations:** 2 auto-fixed (Rule 1 - Bug: Recharts type incompatibility; Rule 1 - Bug: invalid insights scope param)
+**Impact on plan:** Both fixes essential for correctness. No scope creep.
 
 ## Issues Encountered
 
@@ -115,10 +123,10 @@ None — no external service configuration required.
 
 ## Next Phase Readiness
 
-- All five sections assembled at /home; full TypeScript and test verification clean
-- Human visual verification (Task 3 checkpoint) pending — user must open http://localhost:3000/home and approve
-- After approval, plan is complete and HOME-04, HOME-05 requirements are satisfied
-- Plan 03 (if any) can proceed once checkpoint approved
+- All five sections assembled at /home; full TypeScript and test verification clean, human visual sign-off obtained
+- HOME-04 and HOME-05 requirements satisfied
+- Player name links to /players/{id} ready — player profile page (Phase 13) can be built against these URLs
+- No blockers
 
 ## Self-Check: PASSED
 
@@ -130,6 +138,7 @@ Files found on disk:
 Task commits verified:
 - 8ca176d (Task 1): FOUND
 - 37eafd7 (Task 2): FOUND
+- 376a7ea (Task 3 bug fix): FOUND
 
 ---
 *Phase: 12-between-games-dashboard*
