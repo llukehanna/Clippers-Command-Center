@@ -234,7 +234,12 @@ Plans:
   3. Key live metrics row shows eFG%, TO margin, rebound margin, pace, and FT edge
   4. 2–3 rotating insight tiles display simultaneously with provable content
   5. Other NBA games relevant to the Clippers appear in the side panel with score, time, and a Clippers-relevant note
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 11-01-PLAN.md — Utility functions (formatClock, computeFtEdge) + Wave 0 test scaffolds
+- [ ] 11-02-PLAN.md — LiveScoreboard, KeyMetricsRow, BoxScoreModule components
+- [ ] 11-03-PLAN.md — InsightTileArea, useInsightRotation, OtherGamesPanel, NoGameIdleState, full page assembly + visual checkpoint
 
 ---
 
