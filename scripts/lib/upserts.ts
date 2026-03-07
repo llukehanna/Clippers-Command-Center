@@ -107,6 +107,33 @@ export async function upsertStints(
 }
 
 // --- Games ---
+
+/**
+ * Normalize a raw BDL game status string into an internal status value.
+ *
+ * BDL sends three kinds of status values:
+ *   - "Final"                        → finished game
+ *   - ISO timestamp (scheduled game) → "2026-03-08T01:00:00Z"
+ *   - Period/quarter strings          → "1st Qtr", "2nd Qtr", "Halftime", etc.
+ *
+ * Returns { status, startTimeUtc } where:
+ *   status       = "Final" | "scheduled" | "in_progress"
+ *   startTimeUtc = the ISO string when status was a timestamp, else null
+ */
+function normalizeBDLStatus(raw: string | null | undefined): {
+  status: string;
+  startTimeUtc: string | null;
+} {
+  if (!raw) return { status: 'scheduled', startTimeUtc: null };
+  if (raw === 'Final') return { status: 'Final', startTimeUtc: null };
+  // ISO timestamp = scheduled game; use it as start_time_utc
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) {
+    return { status: 'scheduled', startTimeUtc: raw };
+  }
+  // Anything else ("1st Qtr", "2nd Qtr", "Halftime", "4th Qtr", etc.) = live
+  return { status: 'in_progress', startTimeUtc: null };
+}
+
 export async function upsertGames(games: BDLGame[], seasonId: number): Promise<void> {
   for (const g of games) {
     // Resolve internal team IDs
@@ -121,26 +148,29 @@ export async function upsertGames(games: BDLGame[], seasonId: number): Promise<v
       continue;
     }
 
+    const { status, startTimeUtc } = normalizeBDLStatus(g.status);
+
     await sql`
       INSERT INTO games (
-        nba_game_id, season_id, game_date, status,
+        nba_game_id, season_id, game_date, status, start_time_utc,
         home_team_id, away_team_id,
         home_score, away_score,
         period, clock, is_playoffs
       )
       VALUES (
-        ${g.id}, ${seasonId}, ${nn(g.date)}, ${nn(g.status)},
+        ${g.id}, ${seasonId}, ${nn(g.date)}, ${status}, ${startTimeUtc},
         ${homeTeam.team_id}::bigint, ${awayTeam.team_id}::bigint,
         ${nn(g.home_team_score)}, ${nn(g.visitor_team_score)},
         ${nn(g.period)}, ${nn(g.time)}, ${nn(g.postseason) ?? false}
       )
       ON CONFLICT (nba_game_id) DO UPDATE SET
-        status     = EXCLUDED.status,
-        home_score = EXCLUDED.home_score,
-        away_score = EXCLUDED.away_score,
-        period     = EXCLUDED.period,
-        clock      = EXCLUDED.clock,
-        updated_at = now()
+        status         = EXCLUDED.status,
+        start_time_utc = EXCLUDED.start_time_utc,
+        home_score     = EXCLUDED.home_score,
+        away_score     = EXCLUDED.away_score,
+        period         = EXCLUDED.period,
+        clock          = EXCLUDED.clock,
+        updated_at     = now()
     `;
   }
 }
