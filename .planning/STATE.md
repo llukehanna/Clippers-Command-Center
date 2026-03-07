@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 13-player-trends-page-02-PLAN.md
-last_updated: "2026-03-07T20:48:08.434Z"
+stopped_at: Completed 13-player-trends-page-03-PLAN.md
+last_updated: "2026-03-07T20:49:19.582Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 17
   completed_phases: 10
   total_plans: 37
-  completed_plans: 35
+  completed_plans: 36
   percent: 15
 ---
 
@@ -82,6 +82,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 12-between-games-dashboard P02 | 60 | 3 tasks | 3 files |
 | Phase 13-player-trends-page P01 | 3 | 3 tasks | 4 files |
 | Phase 13-player-trends-page P02 | 2 | 2 tasks | 2 files |
+| Phase 13-player-trends-page P03 | 5 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -180,6 +181,8 @@ Recent decisions affecting current work:
 - [Phase 13-player-trends-page]: season_averages in player detail scoped to last 25 box score rows (SQL LIMIT 25) — labeled accordingly for UI
 - [Phase 13-player-trends-page]: RosterViewToggle exports Player type so app/players/page.tsx can import it and avoid duplication
 - [Phase 13-player-trends-page]: L10 stats displayed as em-dash in all roster views since /api/players does not include trend_summary
+- [Phase 13-player-trends-page]: SplitsDisplay returns null when splits is null — hides section entirely rather than showing empty state
+- [Phase 13-player-trends-page]: TrendChartSection shows placeholder text when chartData is empty — graceful empty state for LineChartWrapper
 
 ### Roadmap Evolution
 
@@ -195,6 +198,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T20:48:08.432Z
-Stopped at: Completed 13-player-trends-page-02-PLAN.md
+Last session: 2026-03-07T20:49:19.580Z
+Stopped at: Completed 13-player-trends-page-03-PLAN.md
 Resume file: None
