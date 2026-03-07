@@ -1,8 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-// TopNav is created in Phase 10 Plan 02 — import will be uncommented then
-// import { TopNav } from '@/components/nav/TopNav'
+import { TopNav } from '@/components/nav/TopNav'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -25,7 +24,7 @@ export default function RootLayout({
       <body
         className={`${inter.variable} font-sans antialiased bg-background text-foreground min-w-[1024px]`}
       >
-        {/* <TopNav /> — uncomment after Plan 02 */}
+        <TopNav />
         <main className="pt-14">
           {children}
         </main>
