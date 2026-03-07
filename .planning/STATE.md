@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 09-api-layer 09-06-PLAN.md
-last_updated: "2026-03-07T01:11:18.905Z"
+stopped_at: Completed 09-api-layer 09-03-PLAN.md
+last_updated: "2026-03-07T01:12:44.154Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 22
-  completed_plans: 21
+  completed_plans: 22
   percent: 15
 ---
 
@@ -68,6 +68,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 09-api-layer P02 | 2 | 1 tasks | 1 files |
 | Phase 09-api-layer P05 | 4 | 2 tasks | 4 files |
 | Phase 09-api-layer P06 | 5 | 1 tasks | 2 files |
+| Phase 09-api-layer P03 | 5 | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -130,6 +131,9 @@ Recent decisions affecting current work:
 - [Phase 09-api-layer]: cursor pagination for history/games uses base64(JSON({game_date, game_id})) — opaque cursor for DESC ordering
 - [Phase 09-api-layer]: Fragment-aware sql mock: distinguishes sub-fragment calls from main query calls for accurate tagged-template-literal mocking in vitest
 - [Phase 09-api-layer]: insights route: proof.summary=category, proof.result=proof_result (JSONB parsed by postgres driver); TTL=30s with Cache-Control: public, max-age=30
+- [Phase 09-api-layer]: Team lookup embedded as SQL subquery (not cached bigint) — avoids postgres.js type error, consistent with /api/live pattern
+- [Phase 09-api-layer]: minutes TEXT parsed in JS not SQL — handles PT34M12S and MM:SS provider formats; keeps SQL portable and logic testable
+- [Phase 09-api-layer]: ts_pct null in player_trends — not stored in game_player_box_scores; null is honest per never-fabricate rule
 
 ### Pending Todos
 
@@ -141,6 +145,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T01:11:18.903Z
-Stopped at: Completed 09-api-layer 09-06-PLAN.md
+Last session: 2026-03-07T01:12:44.152Z
+Stopped at: Completed 09-api-layer 09-03-PLAN.md
 Resume file: None
