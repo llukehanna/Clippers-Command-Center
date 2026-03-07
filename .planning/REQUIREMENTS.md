@@ -25,8 +25,8 @@
 - [x] **HOME-01**: Default dashboard displays when no Clippers game is active
 - [x] **HOME-02**: Dashboard shows recent team performance trends
 - [x] **HOME-03**: Dashboard shows upcoming Clippers schedule
-- [ ] **HOME-04**: Dashboard shows player trend summaries for top Clippers players
-- [ ] **HOME-05**: Dashboard shows rotating insights about team performance
+- [x] **HOME-04**: Dashboard shows player trend summaries for top Clippers players
+- [x] **HOME-05**: Dashboard shows rotating insights about team performance
 - [x] **HOME-06**: Dashboard shows Vegas odds for upcoming games when available
 
 ### Player Trends
@@ -171,8 +171,8 @@
 | HOME-01 | Phase 12: Between-Games Dashboard | Complete |
 | HOME-02 | Phase 12: Between-Games Dashboard | Complete |
 | HOME-03 | Phase 12: Between-Games Dashboard | Complete |
-| HOME-04 | Phase 12: Between-Games Dashboard | Pending |
-| HOME-05 | Phase 12: Between-Games Dashboard | Pending |
+| HOME-04 | Phase 12: Between-Games Dashboard | Complete |
+| HOME-05 | Phase 12: Between-Games Dashboard | Complete |
 | HOME-06 | Phase 12: Between-Games Dashboard | Complete |
 | SCHED-01 | Phase 12: Between-Games Dashboard | Complete |
 | SCHED-02 | Phase 12: Between-Games Dashboard | Complete |
