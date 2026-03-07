@@ -2,7 +2,7 @@
 // Query helper for odds data — reads from odds_snapshots table.
 // Imported by Phase 9 API routes via src/lib/.
 
-import { sql } from '../../scripts/lib/db.js';
+import { sql } from './db.js';
 import type { OddsSnapshot } from './types/odds.js';
 
 /**
