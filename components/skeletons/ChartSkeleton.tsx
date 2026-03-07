@@ -1,15 +1,11 @@
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 
-interface ChartSkeletonProps {
-  height?: number
-  title?: boolean
-}
-
-export function ChartSkeleton({ height = 240, title = false }: ChartSkeletonProps) {
+export function ChartSkeleton({ height = 200, className }: { height?: number; className?: string }) {
   return (
-    <div className="space-y-2">
-      {title && <Skeleton className="h-4 w-32" />}
-      <Skeleton className="w-full rounded-md" style={{ height }} />
-    </div>
+    <Skeleton
+      className={cn('w-full rounded-md', className)}
+      style={{ height: `${height}px` }}
+    />
   )
 }

@@ -45,10 +45,12 @@ interface CustomTooltipProps {
   label?: string
 }
 
+const CHART_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)']
+
 function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (!active || !payload?.length) return null
   return (
-    <div className="rounded-md border border-border bg-surface px-3 py-2 text-xs shadow-lg">
+    <div className="rounded border border-white/[0.06] bg-[var(--surface-alt)] px-3 py-2 text-[0.8125rem] shadow-lg">
       {label && <p className="mb-1 text-muted-foreground">{label}</p>}
       {payload.map((p) => (
         <p key={p.dataKey} style={{ color: p.color }}>
@@ -79,9 +81,9 @@ export function BarChartWrapper({
           margin={{ top: 4, right: 8, bottom: 4, left: 0 }}
         >
           <CartesianGrid
-            strokeDasharray="3 3"
+            strokeDasharray=""
             stroke="var(--border)"
-            opacity={0.5}
+            strokeOpacity={0.08}
             vertical={false}
           />
           <XAxis
@@ -101,11 +103,11 @@ export function BarChartWrapper({
           <Legend
             wrapperStyle={{ fontSize: '11px', color: 'var(--muted-foreground)' }}
           />
-          {series.map((s) => (
+          {series.map((s, index) => (
             <Bar
               key={s.key}
               dataKey={s.key}
-              fill={s.color}
+              fill={s.color ?? CHART_COLORS[index % CHART_COLORS.length]}
               name={s.label}
               stackId={stacked ? 'stack' : undefined}
               radius={[2, 2, 0, 0]}

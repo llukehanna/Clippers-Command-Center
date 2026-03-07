@@ -18,14 +18,16 @@ export function StaleBanner({ stale, generatedAt, className }: StaleBannerProps)
   return (
     <div
       className={cn(
-        'w-full bg-highlight/10 border-b border-highlight/30 px-6 py-2 text-xs text-highlight text-center',
+        'bg-amber-950/40 border-b border-amber-800/30 px-6 py-2 flex items-center gap-2',
         className
       )}
       role="status"
       aria-live="polite"
     >
-      Data delayed
-      {minutesAgo !== null && minutesAgo >= 1 && ` — last updated ${minutesAgo} min ago`}
+      <span className="text-[0.75rem] text-amber-400">
+        Data delayed
+        {minutesAgo !== null && minutesAgo >= 1 && ` — last updated ${minutesAgo} min ago`}
+      </span>
     </div>
   )
 }
