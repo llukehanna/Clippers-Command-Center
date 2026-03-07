@@ -161,7 +161,11 @@ Plans:
   2. Spread, moneyline, and over/under display correctly for upcoming Clippers games
   3. When the odds provider is unavailable, odds sections are hidden — no fabricated values appear
   4. The odds provider is swappable by changing the adapter without touching display logic
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Types contracts (OddsAdapter, OddsSnapshot, OddsEvent) + TDD getLatestOdds query helper
+- [ ] 08-02-PLAN.md — TheOddsApiAdapter HTTP client, sync-odds.ts orchestrator, npm script, GitHub Actions cron
 
 ---
 
@@ -293,7 +297,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 5. Advanced Stats Engine | 2/2 | Complete   | 2026-03-06 |
 | 6. Insight Engine | 4/4 | Complete   | 2026-03-06 |
 | 7. Live Data Pipeline | 3/5 | In Progress|  |
-| 8. Odds Integration | 0/TBD | Not started | - |
+| 8. Odds Integration | 0/2 | Not started | - |
 | 9. API Layer | 0/TBD | Not started | - |
 | 10. Core UI Framework | 0/TBD | Not started | - |
 | 11. Live Game Dashboard | 0/TBD | Not started | - |
