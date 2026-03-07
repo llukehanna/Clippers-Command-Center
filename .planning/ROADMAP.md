@@ -215,7 +215,7 @@ Plans:
 **Goal:** Refine the visual language of the existing UI shell — design tokens, typography, spacing, and all shared components from Phase 10 — to achieve a premium dark analytics aesthetic (Apple Sports / Linear / Raycast references). No new features. Every component that Phase 11–14 builds on top of reflects the premium direction.
 **Requirements**: (inserted phase — no formal requirement IDs)
 **Depends on:** Phase 10
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 10.1-01-PLAN.md — globals.css token rewrite (background, surface, border, chart palette, spacing) + TopNav + NavLinks + StatCard + StatCardSkeleton
@@ -327,7 +327,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 8. Odds Integration | 2/2 | Complete   | 2026-03-07 |
 | 9. API Layer | 6/6 | Complete   | 2026-03-07 |
 | 10. Core UI Framework | 3/3 | Complete    | 2026-03-07 |
-| 10.1 Design System Refinement | 0/3 | Not started | - |
+| 10.1 Design System Refinement | 1/3 | In Progress|  |
 | 11. Live Game Dashboard | 0/TBD | Not started | - |
 | 12. Between-Games Dashboard | 0/TBD | Not started | - |
 | 13. Player Trends Page | 0/TBD | Not started | - |

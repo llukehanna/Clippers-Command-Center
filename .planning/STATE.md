@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 10.1 context gathered
-last_updated: "2026-03-07T02:26:51.159Z"
+stopped_at: Completed 10.1-01-PLAN.md
+last_updated: "2026-03-07T02:47:27.266Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 17
   completed_phases: 7
-  total_plans: 25
-  completed_plans: 25
+  total_plans: 28
+  completed_plans: 26
   percent: 15
 ---
 
@@ -72,6 +72,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 10-core-ui-framework P01 | 12 | 3 tasks | 15 files |
 | Phase 10-core-ui-framework P02 | 15 | 2 tasks | 6 files |
 | Phase 10-core-ui-framework P03 | 2 | 3 tasks | 7 files |
+| Phase 10.1-design-system-refinement-for-premium-apple-like-analytics-ui P01 | 2 | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -146,6 +147,9 @@ Recent decisions affecting current work:
 - [Phase 10-core-ui-framework]: BoxScoreTable uses raw HTML table inside overflow-y-auto div — avoids shadcn Table wrapper's overflow-auto breaking sticky thead
 - [Phase 10-core-ui-framework]: formatStat and CustomTooltip intentionally duplicated per chart file — self-contained MVP design
 - [Phase 10-core-ui-framework]: ChartSeries type exported from LineChartWrapper, re-imported by BarChartWrapper — minimal inter-file coupling
+- [Phase 10.1-design-system-refinement-for-premium-apple-like-analytics-ui]: StatCard uses plain div (not Card/CardContent) — shadcn Card applies its own CSS variable mappings that fight new tokens; direct div gives precise control
+- [Phase 10.1-design-system-refinement-for-premium-apple-like-analytics-ui]: border-white/[0.06] instead of border-border — rgba hairline avoids the old #334155 heavy border value, gives premium floating appearance on dark backgrounds
+- [Phase 10.1-design-system-refinement-for-premium-apple-like-analytics-ui]: --muted set to rgba(255,255,255,0.05) — drives Skeleton shimmer base color automatically at correct darkness level
 
 ### Roadmap Evolution
 
@@ -161,6 +165,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T02:26:51.157Z
-Stopped at: Phase 10.1 context gathered
-Resume file: .planning/phases/10.1-design-system-refinement-for-premium-apple-like-analytics-ui/10.1-CONTEXT.md
+Last session: 2026-03-07T02:47:27.264Z
+Stopped at: Completed 10.1-01-PLAN.md
+Resume file: None
