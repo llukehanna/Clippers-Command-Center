@@ -1,15 +1,20 @@
 'use client'
-import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, TooltipProps } from 'recharts'
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 interface ChartEntry {
   label: string
   margin: number
 }
 
-function PointDiffTooltip({ active, payload }: TooltipProps<number, string>) {
+interface PointDiffTooltipProps {
+  active?: boolean
+  payload?: Array<{ value: number; payload: ChartEntry }>
+}
+
+function PointDiffTooltip({ active, payload }: PointDiffTooltipProps) {
   if (!active || !payload?.length) return null
   const entry = payload[0]
-  const margin = entry.value as number
+  const margin = entry.value
   return (
     <div className="rounded-lg border border-white/[0.06] bg-surface-alt px-3 py-2 text-[0.8125rem]">
       <p className="font-medium text-foreground">{entry.payload.label}</p>

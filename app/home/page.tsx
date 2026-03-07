@@ -1,8 +1,9 @@
 import { TeamSnapshot } from '@/components/home/TeamSnapshot'
 import { NextGameHero } from '@/components/home/NextGameHero'
 import { ScheduleTable } from '@/components/home/ScheduleTable'
-// Plan 02 will add: PlayerTrendsTable, PointDiffChart
-// InsightTileArea import added in Plan 02
+import { PlayerTrendsTable } from '@/components/home/PlayerTrendsTable'
+import { InsightTileArea } from '@/components/live/InsightTileArea'
+import { PointDiffChart } from '@/components/home/PointDiffChart'
 
 async function getHomeData() {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
@@ -39,7 +40,11 @@ export default async function HomePage() {
           <ScheduleTable games={data.upcoming_schedule.slice(1, 5)} />
         )}
       </div>
-      {/* Plan 02 will add PlayerTrendsTable, InsightTileArea, PointDiffChart here */}
+      <PlayerTrendsTable players={data.player_trends} />
+      {teamInsights.length > 0 && (
+        <InsightTileArea insights={teamInsights} className="h-[200px]" />
+      )}
+      <PointDiffChart games={data.team_snapshot.last10_games ?? []} />
     </div>
   )
 }
