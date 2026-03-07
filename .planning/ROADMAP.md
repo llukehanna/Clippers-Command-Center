@@ -181,7 +181,15 @@ Plans:
   5. GET /api/history/seasons, /games, and /games/{id} return historical data correctly
   6. GET /api/insights returns eligible insights with proof payloads by scope
   7. Every endpoint response includes meta: generated_at, source, stale, stale_reason, ttl_seconds
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 09-01-PLAN.md — Foundation: src/lib/db.ts singleton, src/lib/api-utils.ts helpers, odds.ts import fix, 6 RED test scaffolds
+- [ ] 09-02-PLAN.md — GET /api/live: live snapshot query, key_metrics computation, insights, odds, 3 game states
+- [ ] 09-03-PLAN.md — GET /api/home: team snapshot, rolling ratings, last_10, schedule with odds, player trends, insights
+- [ ] 09-04-PLAN.md — GET /api/players (roster) and GET /api/players/{id} (trends, splits, game log)
+- [ ] 09-05-PLAN.md — GET /api/schedule, GET /api/history/seasons, /games (paginated), /games/{id} (with available flag)
+- [ ] 09-06-PLAN.md — GET /api/insights: scope-filtered, is_active=true only, sorted by importance DESC
 
 ---
 
@@ -298,7 +306,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 6. Insight Engine | 4/4 | Complete   | 2026-03-06 |
 | 7. Live Data Pipeline | 3/5 | In Progress|  |
 | 8. Odds Integration | 2/2 | Complete   | 2026-03-07 |
-| 9. API Layer | 0/TBD | Not started | - |
+| 9. API Layer | 0/6 | Not started | - |
 | 10. Core UI Framework | 0/TBD | Not started | - |
 | 11. Live Game Dashboard | 0/TBD | Not started | - |
 | 12. Between-Games Dashboard | 0/TBD | Not started | - |
