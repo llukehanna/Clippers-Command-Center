@@ -7,6 +7,7 @@
 import { sql } from './lib/db.js';
 import {
   fetchScoreboard,
+  fetchBoxscore,
   fetchPlayByPlay,
   parseNBAClock,
   clockToSecondsRemaining,
@@ -18,7 +19,7 @@ import {
   LAC_TEAM_ID,
 } from './lib/poll-live-logic.js';
 import { generateLiveInsights } from '../src/lib/insights/live.js';
-import type { ScoreboardGame } from '../src/lib/types/live.js';
+import type { ScoreboardGame, BoxscoreTeam } from '../src/lib/types/live.js';
 import type {
   LiveSnapshot,
   ScoringEvent,
@@ -85,11 +86,24 @@ async function findActiveClippersGameInDB(): Promise<{
   return row ?? null;
 }
 
+interface SnapshotPayload {
+  is_stale: boolean;
+  stale_reason: string | null;
+  home_box: BoxscoreTeam | null;
+  away_box: BoxscoreTeam | null;
+  recent_scoring: ScoringEvent[];
+}
+
 /**
  * Plain INSERT (append-only — NO ON CONFLICT) into live_snapshots.
  * game_id is the internal bigint PK from games table.
+ * Payload uses the structured SnapshotPayload shape expected by /api/live.
  */
-async function insertSnapshot(gameDbId: string, game: ScoreboardGame): Promise<void> {
+async function insertSnapshot(
+  gameDbId: string,
+  game: ScoreboardGame,
+  payload: SnapshotPayload
+): Promise<void> {
   const clock = parseNBAClock(game.gameClock);
   const providerTs = game.gameTimeUTC ? new Date(game.gameTimeUTC) : null;
   await sql`
@@ -102,7 +116,7 @@ async function insertSnapshot(gameDbId: string, game: ScoreboardGame): Promise<v
       ${clock},
       ${game.homeTeam.score},
       ${game.awayTeam.score},
-      ${sql.json(game as unknown as Json)}
+      ${sql.json(payload as unknown as Json)}
     )
   `;
 }
@@ -149,9 +163,32 @@ async function pollLoop(candidate: {
         break;
       }
 
+      // Fetch boxscore (non-fatal — degrades to null boxes if CDN unavailable)
+      let homeBox: BoxscoreTeam | null = null;
+      let awayBox: BoxscoreTeam | null = null;
+      try {
+        const boxscore = await fetchBoxscore(String(game.gameId ?? candidate.nba_game_id));
+        homeBox = boxscore.game.homeTeam;
+        awayBox = boxscore.game.awayTeam;
+      } catch (boxErr) {
+        console.warn(`[WARN] Boxscore fetch failed: ${(boxErr as Error).message}. Storing without box data.`);
+      }
+
+      // Build recent scoring (needed for both payload and insight generation)
+      const recentScoring = await buildRecentScoring(candidate.nba_game_id, game);
+
+      // Build structured payload expected by /api/live
+      const payload: SnapshotPayload = {
+        is_stale: false,
+        stale_reason: null,
+        home_box: homeBox,
+        away_box: awayBox,
+        recent_scoring: recentScoring,
+      };
+
       // Insert snapshot (append-only)
       snapshotCount++;
-      await insertSnapshot(candidate.game_id, game);
+      await insertSnapshot(candidate.game_id, game, payload);
       await updateGamesRow(candidate.game_id, game);
 
       // Build console label
@@ -159,11 +196,12 @@ async function pollLoop(candidate: {
       const lacScore = lacIsHome ? game.homeTeam.score : game.awayTeam.score;
       const oppScore = lacIsHome ? game.awayTeam.score : game.homeTeam.score;
       const oppTricode = lacIsHome ? game.awayTeam.teamTricode : game.homeTeam.teamTricode;
+      const hasBox = homeBox !== null ? ' +box' : '';
       const label =
         game.period === 0
           ? 'PRE'
           : `${gameStatusLabel(game.gameStatus) === 'LIVE' ? `Q${game.period}` : gameStatusLabel(game.gameStatus)} ${parseNBAClock(game.gameClock)}`;
-      console.log(`[${label}] LAC ${lacScore} - ${oppTricode} ${oppScore} | snapshot #${snapshotCount} stored`);
+      console.log(`[${label}] LAC ${lacScore} - ${oppTricode} ${oppScore} | snapshot #${snapshotCount} stored${hasBox}`);
 
       // Update app_kv checkpoints
       await setCheckpoint('poll-live:failure_count', 0);
@@ -172,8 +210,7 @@ async function pollLoop(candidate: {
       failureCount = 0;
       delayMs = POLL_INTERVAL_MS;
 
-      // Run live insight detection (transient — not stored)
-      const recentScoring = await buildRecentScoring(candidate.nba_game_id, game);
+      // Run live insight detection for console logging
       const snap: LiveSnapshot = {
         game_id: candidate.game_id,
         period: game.period,
@@ -182,7 +219,7 @@ async function pollLoop(candidate: {
         away_score: game.awayTeam.score,
         home_team_id: candidate.home_team_id,
         away_team_id: candidate.away_team_id,
-        recent_scoring: recentScoring,
+        recent_scoring: payload.recent_scoring,
       };
       const rollingCtx: RollingContext = await fetchRollingContext(
         candidate.home_team_id,
