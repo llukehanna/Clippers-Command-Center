@@ -273,7 +273,13 @@ Plans:
   4. Trend charts render for rolling scoring and at least one secondary metric
   5. Game log table shows all standard box score columns
   6. Splits (home/away, wins/losses) are visible
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 13-01-PLAN.md — API extensions (traded players, rolling_reb/ast, season_averages) + player-utils TDD
+- [ ] 13-02-PLAN.md — Roster page /players with list/cards/grid toggle and traded badges
+- [ ] 13-03-PLAN.md — Player detail page: header, rolling averages table, trend chart, splits, game log
+- [ ] 13-04-PLAN.md — Visual verification checkpoint for all six PLAYER requirements
 
 ---
 
