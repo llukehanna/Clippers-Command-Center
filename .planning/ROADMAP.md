@@ -201,7 +201,12 @@ Plans:
   1. Navigation renders correctly and routes between all 5 pages
   2. Stat cards, tables, and chart components render correctly with mock data
   3. Layout grid respects the 1024px minimum and 1280px primary target
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 10-01-PLAN.md — SWR install, Clippers design tokens (globals.css), root layout (Inter, dark, 1024px), 5 page stubs, shadcn primitives
+- [ ] 10-02-PLAN.md — Navigation shell: TopNav, NavLinks (active state), LiveDot (SWR polling), StaleBanner, useLiveData hook
+- [ ] 10-03-PLAN.md — Reusable data components: StatCard, BoxScoreTable (sticky/sortable), LineChartWrapper, BarChartWrapper, skeleton loaders
 
 ---
 
@@ -307,7 +312,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 7. Live Data Pipeline | 3/5 | In Progress|  |
 | 8. Odds Integration | 2/2 | Complete   | 2026-03-07 |
 | 9. API Layer | 6/6 | Complete   | 2026-03-07 |
-| 10. Core UI Framework | 0/TBD | Not started | - |
+| 10. Core UI Framework | 0/3 | Not started | - |
 | 11. Live Game Dashboard | 0/TBD | Not started | - |
 | 12. Between-Games Dashboard | 0/TBD | Not started | - |
 | 13. Player Trends Page | 0/TBD | Not started | - |
