@@ -8,15 +8,15 @@
 ### Live Game Mode
 
 - [x] **LIVE-01**: Application detects when a Clippers game is active and automatically switches to Live Mode
-- [ ] **LIVE-02**: Live dashboard displays live score, game clock, and quarter
+- [x] **LIVE-02**: Live dashboard displays live score, game clock, and quarter
 - [ ] **LIVE-03**: Live dashboard displays full team box score with standard columns (MIN, PTS, REB, AST, STL, BLK, TO, FG, 3PT, FT, +/-)
 - [ ] **LIVE-04**: Live dashboard displays player box score rows with compact density
-- [ ] **LIVE-05**: Live dashboard displays key live metrics row (eFG%, TO margin, rebound margin, pace, FT edge)
+- [x] **LIVE-05**: Live dashboard displays key live metrics row (eFG%, TO margin, rebound margin, pace, FT edge)
 - [ ] **LIVE-06**: Live data refreshes approximately every 12 seconds
 - [ ] **LIVE-07**: A snapshot of game state is stored in live_snapshots on every poll
 - [ ] **LIVE-08**: System detects scoring runs of 8–0 or greater by either team
 - [ ] **LIVE-09**: System detects clutch situations (last 5 min of Q4/OT, score margin ≤ 8)
-- [ ] **LIVE-10**: Dashboard displays 2–3 rotating insight tiles simultaneously
+- [x] **LIVE-10**: Dashboard displays 2–3 rotating insight tiles simultaneously
 - [ ] **LIVE-11**: Dashboard displays other NBA games relevant to Clippers (score, time, Clippers-relevant note)
 - [x] **LIVE-12**: If live source fails, system displays "data delayed" indicator and serves last cached snapshot
 
@@ -162,11 +162,11 @@
 | API-05 | Phase 9: API Layer | Complete |
 | API-06 | Phase 9: API Layer | Complete |
 | API-07 | Phase 9: API Layer | Complete |
-| LIVE-02 | Phase 11: Live Game Dashboard | Pending |
+| LIVE-02 | Phase 11: Live Game Dashboard | Complete |
 | LIVE-03 | Phase 11: Live Game Dashboard | Pending |
 | LIVE-04 | Phase 11: Live Game Dashboard | Pending |
-| LIVE-05 | Phase 11: Live Game Dashboard | Pending |
-| LIVE-10 | Phase 11: Live Game Dashboard | Pending |
+| LIVE-05 | Phase 11: Live Game Dashboard | Complete |
+| LIVE-10 | Phase 11: Live Game Dashboard | Complete |
 | LIVE-11 | Phase 11: Live Game Dashboard | Pending |
 | HOME-01 | Phase 12: Between-Games Dashboard | Pending |
 | HOME-02 | Phase 12: Between-Games Dashboard | Pending |
