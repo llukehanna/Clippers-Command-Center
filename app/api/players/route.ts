@@ -6,10 +6,18 @@ import { NextResponse } from 'next/server';
 import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 
+function getSeasonStartDate(): string {
+  const now = new Date();
+  const month = now.getMonth(); // 0-indexed: January = 0, June = 5
+  const year = month < 6 ? now.getFullYear() - 1 : now.getFullYear();
+  return `${year}-10-01`;
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const url = new URL(request.url);
     const activeOnly = url.searchParams.get('active_only') !== 'false';
+    const includeTraded = url.searchParams.get('include_traded') === 'true';
 
     let rows: Array<{
       player_id: string;
@@ -17,9 +25,39 @@ export async function GET(request: Request): Promise<NextResponse> {
       display_name: string;
       position: string;
       is_active: boolean;
+      is_traded?: boolean;
     }>;
 
-    if (activeOnly) {
+    if (includeTraded) {
+      const seasonStart = getSeasonStartDate();
+      rows = await sql<
+        Array<{
+          player_id: string;
+          nba_player_id: string;
+          display_name: string;
+          position: string;
+          is_active: boolean;
+          is_traded: boolean;
+        }>
+      >`
+        SELECT DISTINCT
+          p.player_id::text,
+          p.nba_player_id::text,
+          p.display_name,
+          p.position,
+          p.is_active,
+          NOT p.is_active AS is_traded
+        FROM players p
+        WHERE EXISTS (
+          SELECT 1 FROM player_team_stints pts
+          JOIN teams t ON pts.team_id = t.team_id
+          WHERE pts.player_id = p.player_id
+            AND t.nba_team_id = ${LAC_NBA_TEAM_ID}
+            AND pts.start_date >= ${seasonStart}
+        )
+        ORDER BY p.display_name ASC
+      `;
+    } else if (activeOnly) {
       rows = await sql<
         Array<{
           player_id: string;
