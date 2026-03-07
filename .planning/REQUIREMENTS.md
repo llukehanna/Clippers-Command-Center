@@ -9,8 +9,8 @@
 
 - [x] **LIVE-01**: Application detects when a Clippers game is active and automatically switches to Live Mode
 - [x] **LIVE-02**: Live dashboard displays live score, game clock, and quarter
-- [ ] **LIVE-03**: Live dashboard displays full team box score with standard columns (MIN, PTS, REB, AST, STL, BLK, TO, FG, 3PT, FT, +/-)
-- [ ] **LIVE-04**: Live dashboard displays player box score rows with compact density
+- [x] **LIVE-03**: Live dashboard displays full team box score with standard columns (MIN, PTS, REB, AST, STL, BLK, TO, FG, 3PT, FT, +/-)
+- [x] **LIVE-04**: Live dashboard displays player box score rows with compact density
 - [x] **LIVE-05**: Live dashboard displays key live metrics row (eFG%, TO margin, rebound margin, pace, FT edge)
 - [ ] **LIVE-06**: Live data refreshes approximately every 12 seconds
 - [ ] **LIVE-07**: A snapshot of game state is stored in live_snapshots on every poll
@@ -163,8 +163,8 @@
 | API-06 | Phase 9: API Layer | Complete |
 | API-07 | Phase 9: API Layer | Complete |
 | LIVE-02 | Phase 11: Live Game Dashboard | Complete |
-| LIVE-03 | Phase 11: Live Game Dashboard | Pending |
-| LIVE-04 | Phase 11: Live Game Dashboard | Pending |
+| LIVE-03 | Phase 11: Live Game Dashboard | Complete |
+| LIVE-04 | Phase 11: Live Game Dashboard | Complete |
 | LIVE-05 | Phase 11: Live Game Dashboard | Complete |
 | LIVE-10 | Phase 11: Live Game Dashboard | Complete |
 | LIVE-11 | Phase 11: Live Game Dashboard | Pending |
