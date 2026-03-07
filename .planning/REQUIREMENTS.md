@@ -31,10 +31,10 @@
 
 ### Player Trends
 
-- [ ] **PLAYER-01**: User can select a Clippers player and view their performance trends
-- [ ] **PLAYER-02**: Player page shows rolling averages (last 5, last 10 games)
-- [ ] **PLAYER-03**: Player page shows season averages
-- [ ] **PLAYER-04**: Player page shows trend charts (rolling scoring, secondary metric)
+- [x] **PLAYER-01**: User can select a Clippers player and view their performance trends
+- [x] **PLAYER-02**: Player page shows rolling averages (last 5, last 10 games)
+- [x] **PLAYER-03**: Player page shows season averages
+- [x] **PLAYER-04**: Player page shows trend charts (rolling scoring, secondary metric)
 - [ ] **PLAYER-05**: Player page shows game log table with standard box score columns
 - [ ] **PLAYER-06**: Player page shows splits (home/away, wins/losses)
 
@@ -176,10 +176,10 @@
 | HOME-06 | Phase 12: Between-Games Dashboard | Complete |
 | SCHED-01 | Phase 12: Between-Games Dashboard | Complete |
 | SCHED-02 | Phase 12: Between-Games Dashboard | Complete |
-| PLAYER-01 | Phase 13: Player Trends Page | Pending |
-| PLAYER-02 | Phase 13: Player Trends Page | Pending |
-| PLAYER-03 | Phase 13: Player Trends Page | Pending |
-| PLAYER-04 | Phase 13: Player Trends Page | Pending |
+| PLAYER-01 | Phase 13: Player Trends Page | Complete |
+| PLAYER-02 | Phase 13: Player Trends Page | Complete |
+| PLAYER-03 | Phase 13: Player Trends Page | Complete |
+| PLAYER-04 | Phase 13: Player Trends Page | Complete |
 | PLAYER-05 | Phase 13: Player Trends Page | Pending |
 | PLAYER-06 | Phase 13: Player Trends Page | Pending |
 | HIST-01 | Phase 14: Historical Explorer | Pending |
