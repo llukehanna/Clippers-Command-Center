@@ -14,7 +14,7 @@ async function getHomeData() {
 
 async function getTeamInsights() {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-  const res = await fetch(`${baseUrl}/api/insights?scope=team&is_active=true`, { cache: 'no-store' })
+  const res = await fetch(`${baseUrl}/api/insights?scope=between_games`, { cache: 'no-store' })
   if (!res.ok) return []
   const body = await res.json()
   return body.insights ?? []
