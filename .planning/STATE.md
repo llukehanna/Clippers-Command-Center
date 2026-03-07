@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 12 context gathered
-last_updated: "2026-03-07T09:18:20.255Z"
+stopped_at: Completed 12-between-games-dashboard-12-01-PLAN.md
+last_updated: "2026-03-07T09:47:05.843Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 17
   completed_phases: 9
-  total_plans: 31
-  completed_plans: 31
+  total_plans: 33
+  completed_plans: 32
   percent: 15
 ---
 
@@ -77,6 +77,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 10.1-design-system-refinement-for-premium-apple-like-analytics-ui P03 | 20 | 2 tasks | 1 files |
 | Phase 11-live-game-dashboard P01 | 5 | 2 tasks | 5 files |
 | Phase 11-live-game-dashboard P02 | 12 | 3 tasks | 3 files |
+| Phase 12-between-games-dashboard P01 | 3 | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -164,6 +165,9 @@ Recent decisions affecting current work:
 - [Phase Phase 11-live-game-dashboard]: useInsightRotation omits items from useEffect deps — timer runs at fixed 8s, SWR refresh does not reset cycle
 - [Phase Phase 11-live-game-dashboard]: OtherGamesPanel returns null when games empty — no placeholder per design decision
 - [Phase Phase 11-live-game-dashboard]: NoGameIdleState uses SWR refreshInterval:0 — one-time fetch for next game data
+- [Phase 12-between-games-dashboard]: Import path for src/lib from components is @/src/lib (not @/lib) — tsconfig @/* maps to project root, src/ is a subdirectory
+- [Phase 12-between-games-dashboard]: last10Rows query extended with JOIN teams for abbreviations and game_date — reuses existing query without adding new SQL
+- [Phase 12-between-games-dashboard]: ScheduleTable is 'use client' (BoxScoreTable requires client boundary); TeamSnapshot and NextGameHero are Server Components
 
 ### Roadmap Evolution
 
@@ -179,6 +183,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T09:18:20.247Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-between-games-dashboard/12-CONTEXT.md
+Last session: 2026-03-07T09:47:05.841Z
+Stopped at: Completed 12-between-games-dashboard-12-01-PLAN.md
+Resume file: None
