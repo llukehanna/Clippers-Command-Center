@@ -21,14 +21,20 @@ describe('buildMeta for home endpoint', () => {
 // These tests import the real route module with DB mocked.
 // They will FAIL (RED) until route.ts is created in Plan 03.
 
+// The sql mock returns a fake LAC team_id row on the first invocation
+// (team lookup), then empty arrays for all subsequent queries.
+// This matches real behaviour when DB has a team record but no game/stats data.
+const mockSqlFn = vi.fn();
+
 vi.mock('./db.js', () => ({
-  sql: Object.assign(
-    // Template tag mock: returns empty array by default
-    vi.fn(async () => []),
-    {
-      // Allow sql`...` and sql(strings, ...values) usage
-    }
-  ),
+  sql: new Proxy(mockSqlFn, {
+    apply(target: typeof mockSqlFn, thisArg: unknown, args: unknown[]) {
+      return (target as Function).apply(thisArg, args);
+    },
+    get(target: typeof mockSqlFn, prop: string | symbol) {
+      return (target as unknown as Record<string | symbol, unknown>)[prop];
+    },
+  }),
   LAC_NBA_TEAM_ID: 1610612746,
 }));
 
@@ -39,6 +45,16 @@ vi.mock('./odds.js', () => ({
 describe('GET /api/home', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    let callCount = 0;
+    // First call: team lookup — return a fake internal team_id row
+    // Subsequent calls: parallel DB queries — return empty arrays
+    mockSqlFn.mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return [{ team_id: BigInt(42) }];
+      }
+      return [];
+    });
   });
 
   it('team_snapshot has conference_seed:null (no standings table in DB)', async () => {
