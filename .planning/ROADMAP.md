@@ -17,7 +17,7 @@ Build a desktop analytics dashboard for Clippers fans that delivers live game st
 - [x] **Phase 5: Advanced Stats Engine** - Compute derived metrics used by insights and dashboards (completed 2026-03-06)
 - [x] **Phase 6: Insight Engine** - Generate provable contextual insights from stored data (completed 2026-03-06)
 - [ ] **Phase 7: Live Data Pipeline** - Handle real-time game polling, snapshot storage, and run detection
-- [ ] **Phase 8: Odds Integration** - Add Vegas betting odds as display-only contextual signals
+- [x] **Phase 8: Odds Integration** - Add Vegas betting odds as display-only contextual signals (completed 2026-03-07)
 - [ ] **Phase 9: API Layer** - Expose backend data to the frontend via 10 REST endpoints
 - [ ] **Phase 10: Core UI Framework** - Build base frontend structure: nav, layout, stat cards, tables, charts
 - [ ] **Phase 11: Live Game Dashboard** - Implement the primary product experience: scoreboard, box score, insights
@@ -297,7 +297,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 5. Advanced Stats Engine | 2/2 | Complete   | 2026-03-06 |
 | 6. Insight Engine | 4/4 | Complete   | 2026-03-06 |
 | 7. Live Data Pipeline | 3/5 | In Progress|  |
-| 8. Odds Integration | 1/2 | In Progress|  |
+| 8. Odds Integration | 2/2 | Complete   | 2026-03-07 |
 | 9. API Layer | 0/TBD | Not started | - |
 | 10. Core UI Framework | 0/TBD | Not started | - |
 | 11. Live Game Dashboard | 0/TBD | Not started | - |
