@@ -229,16 +229,19 @@ export async function GET(
             efg_pct: trendRows[0].efg_pct,
           };
 
-    // 4. Build charts — empty arrays when no data, NEVER zeroes
+    // 4. Build charts — split by window_games, empty arrays when no data, NEVER zeroes
+    const l5ChartRows = chartRows.filter((r) => r.window_games === 5);
+    const l10ChartRows = chartRows.filter((r) => r.window_games === 10);
+
     const charts = {
-      rolling_pts: chartRows.map((r) => ({
-        game_date: r.as_of_game_date,
-        value: r.points,
-      })),
-      rolling_ts: chartRows.map((r) => ({
-        game_date: r.as_of_game_date,
-        value: r.ts_pct,
-      })),
+      rolling_pts_l5: l5ChartRows.map((r) => ({ game_date: r.as_of_game_date, value: r.points })),
+      rolling_pts_l10: l10ChartRows.map((r) => ({ game_date: r.as_of_game_date, value: r.points })),
+      rolling_ts_l5: l5ChartRows.map((r) => ({ game_date: r.as_of_game_date, value: r.ts_pct })),
+      rolling_ts_l10: l10ChartRows.map((r) => ({ game_date: r.as_of_game_date, value: r.ts_pct })),
+      rolling_reb_l5: l5ChartRows.map((r) => ({ game_date: r.as_of_game_date, value: r.rebounds })),
+      rolling_reb_l10: l10ChartRows.map((r) => ({ game_date: r.as_of_game_date, value: r.rebounds })),
+      rolling_ast_l5: l5ChartRows.map((r) => ({ game_date: r.as_of_game_date, value: r.assists })),
+      rolling_ast_l10: l10ChartRows.map((r) => ({ game_date: r.as_of_game_date, value: r.assists })),
     };
 
     // 5. Build splits — compute ts_pct from raw shooting stats
@@ -248,8 +251,25 @@ export async function GET(
     }));
     const splits = computeSplits(boxScoreRowsWithTs);
 
+    // 5b. Compute season averages from all box score rows
+    function avg(vals: (number | null)[]): number | null {
+      const nums = vals.filter((v): v is number => v !== null);
+      if (nums.length === 0) return null;
+      return nums.reduce((a, b) => a + b, 0) / nums.length;
+    }
+
+    const season_averages =
+      boxScoreRowsWithTs.length === 0
+        ? null
+        : {
+            pts_avg: avg(boxScoreRowsWithTs.map((r) => r.points)),
+            reb_avg: avg(boxScoreRowsWithTs.map((r) => r.rebounds)),
+            ast_avg: avg(boxScoreRowsWithTs.map((r) => r.assists)),
+            ts_pct: avg(boxScoreRowsWithTs.map((r) => r.ts_pct_computed)),
+          };
+
     // 6. Build game log
-    const gameLog = boxScoreRows.map((r) => {
+    const gameLog = boxScoreRowsWithTs.map((r) => {
       const isHome = r.player_team_id === r.home_team_id;
       return {
         game_id: r.game_id,
@@ -264,6 +284,7 @@ export async function GET(
         '3PT': `${r.fg3_made ?? 0}-${r.fg3_attempted ?? 0}`,
         FT: `${r.ft_made ?? 0}-${r.ft_attempted ?? 0}`,
         '+/-': r.plus_minus ?? 0,
+        ts_pct_computed: r.ts_pct_computed,
       };
     });
 
@@ -272,6 +293,7 @@ export async function GET(
         meta: buildMeta('mixed', 600),
         player,
         trend_summary: trendSummary,
+        season_averages,
         charts,
         splits,
         game_log: gameLog,
