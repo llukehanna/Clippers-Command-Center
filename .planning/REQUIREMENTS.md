@@ -77,13 +77,13 @@
 
 ### API Layer
 
-- [ ] **API-01**: GET /api/live returns complete Live Dashboard payload
-- [ ] **API-02**: GET /api/home returns complete Between-Games Dashboard payload
-- [ ] **API-03**: GET /api/players and GET /api/players/{id} return player data and trends
-- [ ] **API-04**: GET /api/schedule returns upcoming games with odds
-- [ ] **API-05**: GET /api/history/seasons, /games, /games/{id} return historical data
-- [ ] **API-06**: GET /api/insights returns eligible insights by scope with proof payloads
-- [ ] **API-07**: All endpoints include meta with generated_at, source, stale, stale_reason, ttl_seconds
+- [x] **API-01**: GET /api/live returns complete Live Dashboard payload
+- [x] **API-02**: GET /api/home returns complete Between-Games Dashboard payload
+- [x] **API-03**: GET /api/players and GET /api/players/{id} return player data and trends
+- [x] **API-04**: GET /api/schedule returns upcoming games with odds
+- [x] **API-05**: GET /api/history/seasons, /games, /games/{id} return historical data
+- [x] **API-06**: GET /api/insights returns eligible insights by scope with proof payloads
+- [x] **API-07**: All endpoints include meta with generated_at, source, stale, stale_reason, ttl_seconds
 
 ### Performance and Reliability
 
@@ -155,13 +155,13 @@
 | ODDS-02 | Phase 8: Odds Integration | Complete |
 | ODDS-03 | Phase 8: Odds Integration | Complete |
 | ODDS-04 | Phase 8: Odds Integration | Complete |
-| API-01 | Phase 9: API Layer | Pending |
-| API-02 | Phase 9: API Layer | Pending |
-| API-03 | Phase 9: API Layer | Pending |
-| API-04 | Phase 9: API Layer | Pending |
-| API-05 | Phase 9: API Layer | Pending |
-| API-06 | Phase 9: API Layer | Pending |
-| API-07 | Phase 9: API Layer | Pending |
+| API-01 | Phase 9: API Layer | Complete |
+| API-02 | Phase 9: API Layer | Complete |
+| API-03 | Phase 9: API Layer | Complete |
+| API-04 | Phase 9: API Layer | Complete |
+| API-05 | Phase 9: API Layer | Complete |
+| API-06 | Phase 9: API Layer | Complete |
+| API-07 | Phase 9: API Layer | Complete |
 | LIVE-02 | Phase 11: Live Game Dashboard | Pending |
 | LIVE-03 | Phase 11: Live Game Dashboard | Pending |
 | LIVE-04 | Phase 11: Live Game Dashboard | Pending |

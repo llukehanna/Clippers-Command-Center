@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 9 context gathered
-last_updated: "2026-03-07T00:42:11.090Z"
+stopped_at: Completed 09-api-layer 09-01-PLAN.md
+last_updated: "2026-03-07T01:04:25.572Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
   completed_phases: 5
-  total_plans: 16
-  completed_plans: 16
+  total_plans: 22
+  completed_plans: 17
   percent: 15
 ---
 
@@ -63,6 +63,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 07-live-data-pipeline P03 | 8 | 2 tasks | 2 files |
 | Phase 08-odds-integration P01 | 1 | 2 tasks | 3 files |
 | Phase 08-odds-integration P02 | 2 | 2 tasks | 4 files |
+| Phase 09-api-layer P01 | 3 | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -113,6 +114,9 @@ Recent decisions affecting current work:
 - [Phase 08-odds-integration]: captured_at::text returned as ISO string for Phase 9 meta.stale computation
 - [Phase 08-odds-integration]: TheOddsApiAdapter throws at construction if ODDS_API_KEY missing — startup guard before any HTTP call
 - [Phase 08-odds-integration]: sync-odds.ts exits 0 with console.warn on provider failure — non-fatal cron design
+- [Phase 09-api-layer]: db.ts throws Error on missing DATABASE_URL (not process.exit) — Next.js surfaces error in overlay rather than hard-crashing
+- [Phase 09-api-layer]: globalThis._sql cache in db.ts survives Next.js hot reload — avoids connection pool exhaustion during development
+- [Phase 09-api-layer]: odds.ts import changed from scripts/lib/db.js to ./db.js — eliminates process.exit code path from API layer
 
 ### Pending Todos
 
@@ -124,6 +128,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T00:42:11.088Z
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-api-layer/09-CONTEXT.md
+Last session: 2026-03-07T01:04:25.570Z
+Stopped at: Completed 09-api-layer 09-01-PLAN.md
+Resume file: None
