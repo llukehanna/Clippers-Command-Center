@@ -3,8 +3,8 @@
 // Requires season_id query param. Uses cursor pagination (base64 JSON).
 
 import { NextResponse } from 'next/server';
-import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db.js';
-import { buildMeta, buildError } from '@/src/lib/api-utils.js';
+import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
+import { buildMeta, buildError } from '@/src/lib/api-utils';
 
 interface TeamRow {
   team_id: string;

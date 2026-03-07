@@ -6,9 +6,9 @@
 // SLA: < 300ms (all DB queries run in parallel via Promise.all).
 
 import { NextResponse } from 'next/server';
-import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db.js';
-import { buildMeta, buildError } from '@/src/lib/api-utils.js';
-import { getLatestOdds } from '@/src/lib/odds.js';
+import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
+import { buildMeta, buildError } from '@/src/lib/api-utils';
+import { getLatestOdds } from '@/src/lib/odds';
 
 // ─── Season derivation ────────────────────────────────────────────────────────
 // NBA seasons span calendar years. Month < 6 means we're in the spring portion
