@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 09-api-layer 09-04-PLAN.md
-last_updated: "2026-03-07T01:09:16.400Z"
+stopped_at: Completed 09-api-layer 09-02-PLAN.md
+last_updated: "2026-03-07T01:09:44.719Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
   completed_phases: 5
   total_plans: 22
-  completed_plans: 18
+  completed_plans: 19
   percent: 15
 ---
 
@@ -65,6 +65,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 08-odds-integration P02 | 2 | 2 tasks | 4 files |
 | Phase 09-api-layer P01 | 3 | 2 tasks | 10 files |
 | Phase 09-api-layer P04 | 3 | 2 tasks | 2 files |
+| Phase 09-api-layer P02 | 2 | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -120,6 +121,8 @@ Recent decisions affecting current work:
 - [Phase 09-api-layer]: odds.ts import changed from scripts/lib/db.js to ./db.js — eliminates process.exit code path from API layer
 - [Phase 09-api-layer]: Two separate SQL queries for active_only filter rather than dynamic interpolation — cleaner postgres.js template parameterization
 - [Phase 09-api-layer]: rolling_player_stats uses columns points/rebounds/assists/minutes (not avg-suffixed) — actual DB schema overrides plan interface spec
+- [Phase 09-api-layer]: key_metrics computed from live snapshot payload (not advanced_stats table) — on-the-fly eFG%, TO margin, reb margin, pace in GET /api/live
+- [Phase 09-api-layer]: other_games returns [] for MVP in /api/live — non-LAC live snapshot data not stored in current schema
 
 ### Pending Todos
 
@@ -131,6 +134,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T01:09:16.399Z
-Stopped at: Completed 09-api-layer 09-04-PLAN.md
+Last session: 2026-03-07T01:09:44.718Z
+Stopped at: Completed 09-api-layer 09-02-PLAN.md
 Resume file: None
