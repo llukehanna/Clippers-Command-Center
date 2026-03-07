@@ -3,8 +3,8 @@
 // players table has NO team_id column — team membership comes from player_team_stints.
 
 import { NextResponse } from 'next/server';
-import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db.js';
-import { buildMeta, buildError } from '@/src/lib/api-utils.js';
+import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
+import { buildMeta, buildError } from '@/src/lib/api-utils';
 
 export async function GET(request: Request): Promise<NextResponse> {
   try {

@@ -3,9 +3,9 @@
 // Powers the Schedule page.
 
 import { NextResponse } from 'next/server';
-import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db.js';
-import { buildMeta, buildError } from '@/src/lib/api-utils.js';
-import { getLatestOdds } from '@/src/lib/odds.js';
+import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
+import { buildMeta, buildError } from '@/src/lib/api-utils';
+import { getLatestOdds } from '@/src/lib/odds';
 
 interface GameRow {
   game_id: string;

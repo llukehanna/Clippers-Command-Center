@@ -2,8 +2,8 @@
 // GET /api/players/{player_id} — Player detail with trend summary, charts, splits, and game log.
 
 import { NextResponse } from 'next/server';
-import { sql } from '@/src/lib/db.js';
-import { buildMeta, buildError } from '@/src/lib/api-utils.js';
+import { sql } from '@/src/lib/db';
+import { buildMeta, buildError } from '@/src/lib/api-utils';
 
 type RollingRow = {
   window_games: number;

@@ -3,8 +3,8 @@
 // No hardcoding — always reflects actual data in DB.
 
 import { NextResponse } from 'next/server';
-import { sql } from '@/src/lib/db.js';
-import { buildMeta, buildError } from '@/src/lib/api-utils.js';
+import { sql } from '@/src/lib/db';
+import { buildMeta, buildError } from '@/src/lib/api-utils';
 
 interface SeasonRow {
   season_id: number;

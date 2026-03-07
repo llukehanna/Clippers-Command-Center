@@ -3,8 +3,8 @@
 // Powers the rotating insight tile system across all dashboard states.
 
 import { NextResponse } from 'next/server';
-import { sql } from '@/src/lib/db.js';
-import { buildMeta, buildError } from '@/src/lib/api-utils.js';
+import { sql } from '@/src/lib/db';
+import { buildMeta, buildError } from '@/src/lib/api-utils';
 
 const VALID_SCOPES = ['live', 'between_games', 'historical'] as const;
 type InsightScope = (typeof VALID_SCOPES)[number];

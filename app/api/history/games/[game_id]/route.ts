@@ -4,8 +4,8 @@
 // Insights queried from `insights` table (NOT `generated_insights`).
 
 import { NextResponse } from 'next/server';
-import { sql } from '@/src/lib/db.js';
-import { buildMeta, buildError } from '@/src/lib/api-utils.js';
+import { sql } from '@/src/lib/db';
+import { buildMeta, buildError } from '@/src/lib/api-utils';
 
 // Box score stat columns as defined by API_SPEC.md
 const BOX_SCORE_COLUMNS = ['MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', 'FG', '3PT', 'FT', '+/-'];
