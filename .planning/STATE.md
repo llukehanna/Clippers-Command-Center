@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 11-02-PLAN.md (display components)
-last_updated: "2026-03-07T03:46:20.994Z"
+stopped_at: "Checkpoint: Task 3 human-verify of 11-03 Live Game Dashboard"
+last_updated: "2026-03-07T03:49:48.164Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 17
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 31
-  completed_plans: 30
+  completed_plans: 31
   percent: 15
 ---
 
@@ -161,6 +161,9 @@ Recent decisions affecting current work:
 - [Phase 11-live-game-dashboard]: getNextIndex extracted as pure function from hook — testable without jsdom per LIVE-10 requirement
 - [Phase 11-live-game-dashboard]: LiveScoreboard renders LIVE and DATA_DELAYED states identically — StaleBanner in page shell (Plan 03) handles delay indicator
 - [Phase 11-live-game-dashboard]: BoxScoreModule each BoxScoreTable sorts independently — intentional per-team sort state
+- [Phase Phase 11-live-game-dashboard]: useInsightRotation omits items from useEffect deps — timer runs at fixed 8s, SWR refresh does not reset cycle
+- [Phase Phase 11-live-game-dashboard]: OtherGamesPanel returns null when games empty — no placeholder per design decision
+- [Phase Phase 11-live-game-dashboard]: NoGameIdleState uses SWR refreshInterval:0 — one-time fetch for next game data
 
 ### Roadmap Evolution
 
@@ -176,6 +179,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T03:46:13.876Z
-Stopped at: Completed 11-02-PLAN.md (display components)
+Last session: 2026-03-07T03:49:43.117Z
+Stopped at: Checkpoint: Task 3 human-verify of 11-03 Live Game Dashboard
 Resume file: None
