@@ -294,13 +294,20 @@ export async function GET(): Promise<NextResponse> {
 
     const payload = snap.payload as SnapshotPayload;
 
-    if (payload.is_stale) {
-      // Still populate game data from the stale snapshot for context
+    // Time-based stale check: if the newest snapshot is >60s old, the poll
+    // daemon is offline regardless of what the payload flag says.
+    const snapshotAgeMs = Date.now() - new Date(snap.captured_at).getTime();
+    const isStale = payload.is_stale || snapshotAgeMs > 60_000;
+    const staleReason = isStale
+      ? (payload.stale_reason ?? (snapshotAgeMs > 60_000 ? 'poll daemon offline' : null))
+      : null;
+
+    if (isStale) {
       const gameData = await fetchGameDetails(snap.game_id, snap);
 
       return NextResponse.json(
         {
-          meta: buildMeta('mixed', 5, true, payload.stale_reason ?? 'poll daemon offline'),
+          meta: buildMeta('mixed', 5, true, staleReason ?? 'poll daemon offline'),
           state: 'DATA_DELAYED',
           game: gameData,
           key_metrics: [],
@@ -388,7 +395,7 @@ export async function GET(): Promise<NextResponse> {
 
     return NextResponse.json(
       {
-        meta: buildMeta('mixed', 5, payload.is_stale, payload.stale_reason ?? null),
+        meta: buildMeta('mixed', 5, false, null),
         state: 'LIVE',
         game: gameData,
         key_metrics: keyMetrics,
