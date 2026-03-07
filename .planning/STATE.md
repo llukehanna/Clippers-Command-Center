@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 09-api-layer 09-05-PLAN.md
-last_updated: "2026-03-07T01:10:49.068Z"
+stopped_at: Completed 09-api-layer 09-06-PLAN.md
+last_updated: "2026-03-07T01:11:18.905Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
@@ -67,6 +67,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 09-api-layer P04 | 3 | 2 tasks | 2 files |
 | Phase 09-api-layer P02 | 2 | 1 tasks | 1 files |
 | Phase 09-api-layer P05 | 4 | 2 tasks | 4 files |
+| Phase 09-api-layer P06 | 5 | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -127,6 +128,8 @@ Recent decisions affecting current work:
 - [Phase 09-api-layer]: odds:null when no snapshot — never fabricate; meta.source='mixed' only when at least one game has odds
 - [Phase 09-api-layer]: insights always queried from insights table (not generated_insights) — CONTEXT.md had wrong table name
 - [Phase 09-api-layer]: cursor pagination for history/games uses base64(JSON({game_date, game_id})) — opaque cursor for DESC ordering
+- [Phase 09-api-layer]: Fragment-aware sql mock: distinguishes sub-fragment calls from main query calls for accurate tagged-template-literal mocking in vitest
+- [Phase 09-api-layer]: insights route: proof.summary=category, proof.result=proof_result (JSONB parsed by postgres driver); TTL=30s with Cache-Control: public, max-age=30
 
 ### Pending Todos
 
@@ -138,6 +141,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T01:10:49.066Z
-Stopped at: Completed 09-api-layer 09-05-PLAN.md
+Last session: 2026-03-07T01:11:18.903Z
+Stopped at: Completed 09-api-layer 09-06-PLAN.md
 Resume file: None
