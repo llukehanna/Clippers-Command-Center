@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 10 context gathered
-last_updated: "2026-03-07T01:34:43.590Z"
+stopped_at: Completed 10-core-ui-framework-01-PLAN.md
+last_updated: "2026-03-07T01:57:07.743Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
   completed_phases: 6
-  total_plans: 22
-  completed_plans: 22
+  total_plans: 25
+  completed_plans: 23
   percent: 15
 ---
 
@@ -69,6 +69,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 09-api-layer P05 | 4 | 2 tasks | 4 files |
 | Phase 09-api-layer P06 | 5 | 1 tasks | 2 files |
 | Phase 09-api-layer P03 | 5 | 1 tasks | 2 files |
+| Phase 10-core-ui-framework P01 | 12 | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -134,6 +135,9 @@ Recent decisions affecting current work:
 - [Phase 09-api-layer]: Team lookup embedded as SQL subquery (not cached bigint) — avoids postgres.js type error, consistent with /api/live pattern
 - [Phase 09-api-layer]: minutes TEXT parsed in JS not SQL — handles PT34M12S and MM:SS provider formats; keeps SQL portable and logic testable
 - [Phase 09-api-layer]: ts_pct null in player_trends — not stored in game_player_box_scores; null is honest per never-fabricate rule
+- [Phase 10-core-ui-framework]: Clippers dark palette: :root and .dark use identical hex values since html.dark is always active — dark-only design
+- [Phase 10-core-ui-framework]: shadcn CLI used exclusively for UI primitives — keeps components in sync with registry
+- [Phase 10-core-ui-framework]: TopNav import commented in layout.tsx — Plan 02 uncomments it when component is created
 
 ### Pending Todos
 
@@ -145,6 +149,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T01:34:43.588Z
-Stopped at: Phase 10 context gathered
-Resume file: .planning/phases/10-core-ui-framework/10-CONTEXT.md
+Last session: 2026-03-07T01:57:07.741Z
+Stopped at: Completed 10-core-ui-framework-01-PLAN.md
+Resume file: None
