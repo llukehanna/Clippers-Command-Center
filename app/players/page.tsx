@@ -5,7 +5,7 @@ export default async function PlayersPage() {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
   let players: Player[] = []
   try {
-    const res = await fetch(`${baseUrl}/api/players?include_traded=true`, { cache: 'no-store' })
+    const res = await fetch(`${baseUrl}/api/players`, { cache: 'no-store' })
     if (res.ok) {
       const data = await res.json()
       players = data.players ?? []

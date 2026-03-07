@@ -8,7 +8,7 @@ export type Player = {
   display_name: string
   position: string
   is_active: boolean
-  is_traded: boolean
+  is_traded?: boolean
 }
 
 interface RosterViewToggleProps {
