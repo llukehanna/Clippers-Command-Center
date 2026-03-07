@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 10-core-ui-framework-02-PLAN.md
-last_updated: "2026-03-07T02:01:05.240Z"
+stopped_at: Completed 10-core-ui-framework-03-PLAN.md
+last_updated: "2026-03-07T02:01:36.875Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 16
@@ -71,6 +71,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 09-api-layer P03 | 5 | 1 tasks | 2 files |
 | Phase 10-core-ui-framework P01 | 12 | 3 tasks | 15 files |
 | Phase 10-core-ui-framework P02 | 15 | 2 tasks | 6 files |
+| Phase 10-core-ui-framework P03 | 2 | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -142,6 +143,9 @@ Recent decisions affecting current work:
 - [Phase 10-core-ui-framework]: LiveDashboardPayload defined locally in useLiveData.ts — type was not in Phase 7 types; meta typed as MetaEnvelope from api-utils
 - [Phase 10-core-ui-framework]: TopNav is Server Component — NavLinks and LiveDot are client components; client boundary propagates through import chain
 - [Phase 10-core-ui-framework]: LiveDot polls /api/live at 30s; useLiveData hook polls at 12s — polling intervals split by consumer granularity need
+- [Phase 10-core-ui-framework]: BoxScoreTable uses raw HTML table inside overflow-y-auto div — avoids shadcn Table wrapper's overflow-auto breaking sticky thead
+- [Phase 10-core-ui-framework]: formatStat and CustomTooltip intentionally duplicated per chart file — self-contained MVP design
+- [Phase 10-core-ui-framework]: ChartSeries type exported from LineChartWrapper, re-imported by BarChartWrapper — minimal inter-file coupling
 
 ### Pending Todos
 
@@ -153,6 +157,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T02:01:05.238Z
-Stopped at: Completed 10-core-ui-framework-02-PLAN.md
+Last session: 2026-03-07T02:01:36.873Z
+Stopped at: Completed 10-core-ui-framework-03-PLAN.md
 Resume file: None
