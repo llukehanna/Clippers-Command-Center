@@ -17,17 +17,17 @@
 - [ ] **LIVE-08**: System detects scoring runs of 8–0 or greater by either team
 - [ ] **LIVE-09**: System detects clutch situations (last 5 min of Q4/OT, score margin ≤ 8)
 - [x] **LIVE-10**: Dashboard displays 2–3 rotating insight tiles simultaneously
-- [ ] **LIVE-11**: Dashboard displays other NBA games relevant to Clippers (score, time, Clippers-relevant note)
+- [x] **LIVE-11**: Dashboard displays other NBA games relevant to Clippers (score, time, Clippers-relevant note)
 - [x] **LIVE-12**: If live source fails, system displays "data delayed" indicator and serves last cached snapshot
 
 ### Between-Games Dashboard
 
-- [ ] **HOME-01**: Default dashboard displays when no Clippers game is active
-- [ ] **HOME-02**: Dashboard shows recent team performance trends
-- [ ] **HOME-03**: Dashboard shows upcoming Clippers schedule
+- [x] **HOME-01**: Default dashboard displays when no Clippers game is active
+- [x] **HOME-02**: Dashboard shows recent team performance trends
+- [x] **HOME-03**: Dashboard shows upcoming Clippers schedule
 - [ ] **HOME-04**: Dashboard shows player trend summaries for top Clippers players
 - [ ] **HOME-05**: Dashboard shows rotating insights about team performance
-- [ ] **HOME-06**: Dashboard shows Vegas odds for upcoming games when available
+- [x] **HOME-06**: Dashboard shows Vegas odds for upcoming games when available
 
 ### Player Trends
 
@@ -40,8 +40,8 @@
 
 ### Schedule
 
-- [ ] **SCHED-01**: Schedule page shows upcoming Clippers games
-- [ ] **SCHED-02**: Schedule rows include opponent, date, time, and home/away
+- [x] **SCHED-01**: Schedule page shows upcoming Clippers games
+- [x] **SCHED-02**: Schedule rows include opponent, date, time, and home/away
 - [ ] **SCHED-03**: Schedule rows include Vegas spread, moneyline, and over/under when available
 - [ ] **SCHED-04**: If odds are unavailable, UI shows null/unavailable rather than fabricated values
 
@@ -167,15 +167,15 @@
 | LIVE-04 | Phase 11: Live Game Dashboard | Complete |
 | LIVE-05 | Phase 11: Live Game Dashboard | Complete |
 | LIVE-10 | Phase 11: Live Game Dashboard | Complete |
-| LIVE-11 | Phase 11: Live Game Dashboard | Pending |
-| HOME-01 | Phase 12: Between-Games Dashboard | Pending |
-| HOME-02 | Phase 12: Between-Games Dashboard | Pending |
-| HOME-03 | Phase 12: Between-Games Dashboard | Pending |
+| LIVE-11 | Phase 11: Live Game Dashboard | Complete |
+| HOME-01 | Phase 12: Between-Games Dashboard | Complete |
+| HOME-02 | Phase 12: Between-Games Dashboard | Complete |
+| HOME-03 | Phase 12: Between-Games Dashboard | Complete |
 | HOME-04 | Phase 12: Between-Games Dashboard | Pending |
 | HOME-05 | Phase 12: Between-Games Dashboard | Pending |
-| HOME-06 | Phase 12: Between-Games Dashboard | Pending |
-| SCHED-01 | Phase 12: Between-Games Dashboard | Pending |
-| SCHED-02 | Phase 12: Between-Games Dashboard | Pending |
+| HOME-06 | Phase 12: Between-Games Dashboard | Complete |
+| SCHED-01 | Phase 12: Between-Games Dashboard | Complete |
+| SCHED-02 | Phase 12: Between-Games Dashboard | Complete |
 | PLAYER-01 | Phase 13: Player Trends Page | Pending |
 | PLAYER-02 | Phase 13: Player Trends Page | Pending |
 | PLAYER-03 | Phase 13: Player Trends Page | Pending |
