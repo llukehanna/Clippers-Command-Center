@@ -22,7 +22,7 @@ Build a desktop analytics dashboard for Clippers fans that delivers live game st
 - [x] **Phase 10: Core UI Framework** - Build base frontend structure: nav, layout, stat cards, tables, charts (completed 2026-03-07)
 - [x] **Phase 11: Live Game Dashboard** - Implement the primary product experience: scoreboard, box score, insights (completed 2026-03-07)
 - [x] **Phase 12: Between-Games Dashboard** - Provide team trends, schedule, and insights when no game is active (completed 2026-03-07)
-- [ ] **Phase 13: Player Trends Page** - Explore individual player performance with logs, rolling averages, charts
+- [x] **Phase 13: Player Trends Page** - Explore individual player performance with logs, rolling averages, charts (completed 2026-03-07)
 - [ ] **Phase 14: Historical Explorer** - Browse historical Clippers games by season with full box scores
 - [ ] **Phase 15: Reliability and Validation** - Validate failure handling, backoff, fallback, and performance SLAs
 - [ ] **Phase 16: MVP Launch** - Deploy to Vercel + Neon and ship the first fully usable version
@@ -345,7 +345,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 10.1 Design System Refinement | 3/3 | Complete    | 2026-03-07 |
 | 11. Live Game Dashboard | 3/3 | Complete   | 2026-03-07 |
 | 12. Between-Games Dashboard | 2/2 | Complete    | 2026-03-07 |
-| 13. Player Trends Page | 3/4 | In Progress|  |
+| 13. Player Trends Page | 4/4 | Complete   | 2026-03-07 |
 | 14. Historical Explorer | 0/TBD | Not started | - |
 | 15. Reliability and Validation | 0/TBD | Not started | - |
 | 16. MVP Launch | 0/TBD | Not started | - |
