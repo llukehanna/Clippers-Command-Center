@@ -306,7 +306,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 6. Insight Engine | 4/4 | Complete   | 2026-03-06 |
 | 7. Live Data Pipeline | 3/5 | In Progress|  |
 | 8. Odds Integration | 2/2 | Complete   | 2026-03-07 |
-| 9. API Layer | 2/6 | In Progress|  |
+| 9. API Layer | 5/6 | In Progress|  |
 | 10. Core UI Framework | 0/TBD | Not started | - |
 | 11. Live Game Dashboard | 0/TBD | Not started | - |
 | 12. Between-Games Dashboard | 0/TBD | Not started | - |
