@@ -154,28 +154,35 @@ async function pollLoop(candidate: {
 
   while (true) {
     try {
-      // Fetch scoreboard
-      const scoreboard = await fetchScoreboard();
-      const game = findClippersGame(scoreboard.scoreboard.games);
+      // Fetch all three CDN endpoints in parallel — nba_game_id is known upfront.
+      // Boxscore and PBP failures are non-fatal; scoreboard failure aborts the cycle.
+      const [scoreboardResult, boxscoreResult, pbpResult] = await Promise.allSettled([
+        fetchScoreboard(),
+        fetchBoxscore(candidate.nba_game_id),
+        fetchPlayByPlay(candidate.nba_game_id),
+      ]);
+
+      if (scoreboardResult.status === 'rejected') throw scoreboardResult.reason;
+      const game = findClippersGame(scoreboardResult.value.scoreboard.games);
 
       if (!game) {
         console.warn("[WARN] Clippers game not found in today's scoreboard. Game may have ended.");
         break;
       }
 
-      // Fetch boxscore (non-fatal — degrades to null boxes if CDN unavailable)
       let homeBox: BoxscoreTeam | null = null;
       let awayBox: BoxscoreTeam | null = null;
-      try {
-        const boxscore = await fetchBoxscore(String(game.gameId ?? candidate.nba_game_id));
-        homeBox = boxscore.game.homeTeam;
-        awayBox = boxscore.game.awayTeam;
-      } catch (boxErr) {
-        console.warn(`[WARN] Boxscore fetch failed: ${(boxErr as Error).message}. Storing without box data.`);
+      if (boxscoreResult.status === 'fulfilled') {
+        homeBox = boxscoreResult.value.game.homeTeam;
+        awayBox = boxscoreResult.value.game.awayTeam;
+      } else {
+        console.warn(`[WARN] Boxscore fetch failed: ${(boxscoreResult.reason as Error).message}`);
       }
 
-      // Build recent scoring (needed for both payload and insight generation)
-      const recentScoring = await buildRecentScoring(candidate.nba_game_id, game);
+      const recentScoring: ScoringEvent[] =
+        pbpResult.status === 'fulfilled'
+          ? extractRecentScoring(pbpResult.value, game)
+          : [];
 
       // Build structured payload expected by /api/live
       const payload: SnapshotPayload = {
@@ -254,31 +261,26 @@ async function pollLoop(candidate: {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Fetch play-by-play and extract scoring events from last RECENT_SCORING_LOOKBACK_SECONDS.
- * Play-by-play failure is non-fatal — returns [] and insight detection degrades gracefully.
+ * Extract recent scoring events from an already-fetched PBP response.
+ * Pure/sync — called after parallel fetch resolves.
  */
-async function buildRecentScoring(
-  nbaGameId: string,
+function extractRecentScoring(
+  pbp: Awaited<ReturnType<typeof fetchPlayByPlay>>,
   game: ScoreboardGame
-): Promise<ScoringEvent[]> {
-  try {
-    const pbp = await fetchPlayByPlay(nbaGameId);
-    const quarterDurationSeconds = 720; // 12 min per quarter
-    const periodElapsed = (game.period - 1) * quarterDurationSeconds;
-    const gameElapsedSeconds = periodElapsed + (quarterDurationSeconds - clockToSecondsRemaining(game.gameClock));
-    const cutoffSeconds = gameElapsedSeconds - RECENT_SCORING_LOOKBACK_SECONDS;
-    return pbp.game.actions
-      .filter((a) => a.pointsTotal > 0)
-      .map((a) => ({
-        team_id: String(a.teamId),
-        points: a.pointsTotal,
-        event_time_seconds:
-          periodElapsed + (quarterDurationSeconds - clockToSecondsRemaining(a.clock)),
-      }))
-      .filter((e) => e.team_id !== '0' && e.points > 0 && e.event_time_seconds >= cutoffSeconds);
-  } catch {
-    return []; // play-by-play failure is non-fatal; insight detection degrades gracefully
-  }
+): ScoringEvent[] {
+  const quarterDurationSeconds = 720;
+  const periodElapsed = (game.period - 1) * quarterDurationSeconds;
+  const gameElapsedSeconds = periodElapsed + (quarterDurationSeconds - clockToSecondsRemaining(game.gameClock));
+  const cutoffSeconds = gameElapsedSeconds - RECENT_SCORING_LOOKBACK_SECONDS;
+  return pbp.game.actions
+    .filter((a) => a.pointsTotal > 0)
+    .map((a) => ({
+      team_id: String(a.teamId),
+      points: a.pointsTotal,
+      event_time_seconds:
+        periodElapsed + (quarterDurationSeconds - clockToSecondsRemaining(a.clock)),
+    }))
+    .filter((e) => e.team_id !== '0' && e.points > 0 && e.event_time_seconds >= cutoffSeconds);
 }
 
 /**
