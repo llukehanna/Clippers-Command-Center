@@ -71,9 +71,9 @@
 ### Odds Integration
 
 - [ ] **ODDS-01**: Odds data ingests from external provider into odds_snapshots (append-only)
-- [ ] **ODDS-02**: System displays spread, moneyline, and over/under for Clippers games
-- [ ] **ODDS-03**: System hides odds sections when odds data is unavailable — never fabricates
-- [ ] **ODDS-04**: Odds provider is swappable via adapter layer
+- [x] **ODDS-02**: System displays spread, moneyline, and over/under for Clippers games
+- [x] **ODDS-03**: System hides odds sections when odds data is unavailable — never fabricates
+- [x] **ODDS-04**: Odds provider is swappable via adapter layer
 
 ### API Layer
 
@@ -152,9 +152,9 @@
 | LIVE-09 | Phase 7: Live Data Pipeline | Pending |
 | LIVE-12 | Phase 7: Live Data Pipeline | Complete |
 | ODDS-01 | Phase 8: Odds Integration | Pending |
-| ODDS-02 | Phase 8: Odds Integration | Pending |
-| ODDS-03 | Phase 8: Odds Integration | Pending |
-| ODDS-04 | Phase 8: Odds Integration | Pending |
+| ODDS-02 | Phase 8: Odds Integration | Complete |
+| ODDS-03 | Phase 8: Odds Integration | Complete |
+| ODDS-04 | Phase 8: Odds Integration | Complete |
 | API-01 | Phase 9: API Layer | Pending |
 | API-02 | Phase 9: API Layer | Pending |
 | API-03 | Phase 9: API Layer | Pending |
