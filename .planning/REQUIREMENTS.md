@@ -35,8 +35,8 @@
 - [x] **PLAYER-02**: Player page shows rolling averages (last 5, last 10 games)
 - [x] **PLAYER-03**: Player page shows season averages
 - [x] **PLAYER-04**: Player page shows trend charts (rolling scoring, secondary metric)
-- [ ] **PLAYER-05**: Player page shows game log table with standard box score columns
-- [ ] **PLAYER-06**: Player page shows splits (home/away, wins/losses)
+- [x] **PLAYER-05**: Player page shows game log table with standard box score columns
+- [x] **PLAYER-06**: Player page shows splits (home/away, wins/losses)
 
 ### Schedule
 
@@ -180,8 +180,8 @@
 | PLAYER-02 | Phase 13: Player Trends Page | Complete |
 | PLAYER-03 | Phase 13: Player Trends Page | Complete |
 | PLAYER-04 | Phase 13: Player Trends Page | Complete |
-| PLAYER-05 | Phase 13: Player Trends Page | Pending |
-| PLAYER-06 | Phase 13: Player Trends Page | Pending |
+| PLAYER-05 | Phase 13: Player Trends Page | Complete |
+| PLAYER-06 | Phase 13: Player Trends Page | Complete |
 | HIST-01 | Phase 14: Historical Explorer | Pending |
 | HIST-02 | Phase 14: Historical Explorer | Pending |
 | HIST-03 | Phase 14: Historical Explorer | Pending |
