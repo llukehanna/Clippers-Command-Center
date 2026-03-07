@@ -75,21 +75,21 @@ export function BoxScoreTable({
     // Custom scroll container — NOT the shadcn Table's wrapper div
     <div
       className={cn(
-        'overflow-y-auto rounded-md border border-border',
+        'overflow-y-auto rounded-md',
         maxHeight,
         className
       )}
     >
       <table className="w-full caption-bottom text-sm">
         {/* sticky top-0 works here because the parent div is the scroll container */}
-        <thead className="sticky top-0 z-10 bg-surface border-b border-border">
+        <thead className="sticky top-0 z-10 bg-surface border-b border-white/[0.04]">
           <tr>
             {columns.map((col) => (
               <th
                 key={col.key}
                 onClick={() => handleSort(col.key)}
                 className={cn(
-                  'px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide cursor-pointer select-none whitespace-nowrap hover:text-foreground transition-colors',
+                  'px-3 py-2 text-[0.6875rem] font-semibold text-muted-foreground uppercase tracking-[0.06em] cursor-pointer select-none whitespace-nowrap hover:text-foreground transition-colors duration-150',
                   col.numeric ? 'text-right' : 'text-left',
                   col.width
                 )}
@@ -108,16 +108,17 @@ export function BoxScoreTable({
           {sortedRows.map((row) => (
             <tr
               key={row.id}
-              className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors"
+              className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.03] transition-colors duration-150 h-9"
             >
-              {columns.map((col) => {
+              {columns.map((col, colIndex) => {
                 const val = row[col.key]
                 return (
                   <td
                     key={col.key}
                     className={cn(
-                      'px-3 py-2 text-sm text-foreground',
-                      col.numeric ? 'text-right tabular-nums' : 'text-left'
+                      'px-3 py-2 text-[0.8125rem] text-foreground',
+                      col.numeric ? 'text-right tabular-nums' : 'text-left',
+                      !col.numeric && colIndex === 0 ? 'font-medium' : ''
                     )}
                   >
                     {val ?? '—'}
