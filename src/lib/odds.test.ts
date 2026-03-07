@@ -6,13 +6,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Mock the DB module before importing getLatestOdds ─────────────────────────
 
-vi.mock('../../scripts/lib/db.js', () => {
+vi.mock('./db.js', () => {
   const mockSql = vi.fn();
   return { sql: mockSql };
 });
 
 import { getLatestOdds } from './odds.js';
-import { sql } from '../../scripts/lib/db.js';
+import { sql } from './db.js';
 
 const mockSql = sql as unknown as ReturnType<typeof vi.fn>;
 
