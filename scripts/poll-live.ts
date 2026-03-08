@@ -154,21 +154,20 @@ async function pollLoop(candidate: {
 
   while (true) {
     try {
-      // Fetch all three CDN endpoints in parallel — nba_game_id is known upfront.
-      // Boxscore and PBP failures are non-fatal; scoreboard failure aborts the cycle.
-      const [scoreboardResult, boxscoreResult, pbpResult] = await Promise.allSettled([
-        fetchScoreboard(),
-        fetchBoxscore(candidate.nba_game_id),
-        fetchPlayByPlay(candidate.nba_game_id),
-      ]);
-
-      if (scoreboardResult.status === 'rejected') throw scoreboardResult.reason;
-      const game = findClippersGame(scoreboardResult.value.scoreboard.games);
+      // Scoreboard first so we have the official NBA gameId for box score fallback (stats.nba.com
+      // requires it; games.nba_game_id is BDL id and must not be used for stats.nba.com).
+      const scoreboard = await fetchScoreboard();
+      const game = findClippersGame(scoreboard.scoreboard.games);
 
       if (!game) {
         console.warn("[WARN] Clippers game not found in today's scoreboard. Game may have ended.");
         break;
       }
+
+      const [boxscoreResult, pbpResult] = await Promise.allSettled([
+        fetchBoxscore(candidate.nba_game_id, game.gameId),
+        fetchPlayByPlay(candidate.nba_game_id),
+      ]);
 
       let homeBox: BoxscoreTeam | null = null;
       let awayBox: BoxscoreTeam | null = null;
