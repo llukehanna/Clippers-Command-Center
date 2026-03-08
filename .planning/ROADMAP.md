@@ -293,7 +293,12 @@ Plans:
   3. Opening a historical game displays the full box score
   4. Historical game detail surfaces insights related to that specific game
   5. Odds columns on schedule show null/unavailable rather than fabricated values when data is absent
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 14-01-PLAN.md — history-utils + GameListTable + SeasonControls + SeasonSummaryBar + /history page (HIST-01, HIST-02)
+- [ ] 14-02-PLAN.md — GameHeader + HistoryGameDetail + /history/[game_id] page (HIST-03, HIST-04)
+- [ ] 14-03-PLAN.md — ScheduleTable odds fix + full visual verification checkpoint (SCHED-03, SCHED-04)
 
 ---
 
