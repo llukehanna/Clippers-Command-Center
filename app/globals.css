@@ -26,6 +26,11 @@
   /* Clippers-specific semantic tokens */
   --color-surface: var(--surface);
   --color-surface-alt: var(--surface-alt);
+  --color-surface-glass: var(--surface-glass);
+  --color-surface-glass-nav: var(--surface-glass-nav);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-border-edge: var(--border-edge);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
   --color-neutral-stat: var(--neutral-stat);
@@ -46,27 +51,33 @@
 
 :root {
   --radius: 0.5rem;
-  /* Clippers dark palette — refined for premium Apple-like analytics aesthetic */
-  --background: #090B10;
+  /* Clippers dark palette — deep Clippers navy base, premium analytics aesthetic */
+  --background: #090B10; /* Clippers navy base */
   --foreground: #EDEFF2;
-  --surface: #141620;
+  --surface: #141620; /* Slightly lighter surface layer */
   --surface-alt: #1C2030;
   --card: #141620;
   --card-foreground: #EDEFF2;
   --popover: #141620;
   --popover-foreground: #EDEFF2;
-  --primary: #C8102E;
+  --primary: #C8102E; /* Clippers red accent */
   --primary-foreground: #F8FAFC;
-  --secondary: #1D428A;
+  --secondary: #161a28; /* Clippers navy — tonal shift, not bright chrome */
   --secondary-foreground: #F8FAFC;
   --muted: rgba(255, 255, 255, 0.05);
-  --muted-foreground: rgba(255, 255, 255, 0.45);
+  --muted-foreground: rgba(255, 255, 255, 0.45); /* Muted text tones */
   --accent: #1C2030;
   --accent-foreground: #EDEFF2;
   --destructive: #EF4444;
   --border: rgba(255, 255, 255, 0.06);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.08);
+  --border-edge: rgba(255, 255, 255, 0.12);
   --input: rgba(255, 255, 255, 0.06);
   --ring: rgba(255, 255, 255, 0.12);
+  /* Glass surfaces for floating nav and frosted panels */
+  --surface-glass: rgba(20, 22, 32, 0.82);
+  --surface-glass-nav: rgba(20, 22, 32, 0.72);
   --positive: #34D399;
   --negative: #F87171;
   --neutral-stat: rgba(255, 255, 255, 0.45);
@@ -99,7 +110,7 @@
   --popover-foreground: #EDEFF2;
   --primary: #C8102E;
   --primary-foreground: #F8FAFC;
-  --secondary: #1D428A;
+  --secondary: #161a28;
   --secondary-foreground: #F8FAFC;
   --muted: rgba(255, 255, 255, 0.05);
   --muted-foreground: rgba(255, 255, 255, 0.45);
@@ -107,8 +118,13 @@
   --accent-foreground: #EDEFF2;
   --destructive: #EF4444;
   --border: rgba(255, 255, 255, 0.06);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.08);
+  --border-edge: rgba(255, 255, 255, 0.12);
   --input: rgba(255, 255, 255, 0.06);
   --ring: rgba(255, 255, 255, 0.12);
+  --surface-glass: rgba(20, 22, 32, 0.82);
+  --surface-glass-nav: rgba(20, 22, 32, 0.72);
   --positive: #34D399;
   --negative: #F87171;
   --neutral-stat: rgba(255, 255, 255, 0.45);
@@ -126,6 +142,29 @@
   --space-6: 24px;
   --space-8: 32px;
   --space-12: 48px;
+}
+
+/* CCC typography hierarchy — UI-DESIGN-SPEC §3.1, §3.2, §7.2 */
+@layer components {
+  .ccc-hero-stat {
+    @apply text-7xl font-bold tabular-nums tracking-tight text-foreground;
+  }
+  .ccc-section-title {
+    @apply text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground;
+  }
+  .ccc-card-label {
+    @apply text-[0.625rem] font-medium uppercase tracking-[0.12em] text-muted-foreground leading-none;
+  }
+  .ccc-body {
+    @apply text-[0.8125rem] text-foreground;
+  }
+  .ccc-table-meta {
+    @apply text-[0.625rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground;
+  }
+  /* Tactile hover for cards and modules — spec §7.3, §9.3, §11.2 */
+  .ccc-hover-card {
+    @apply transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-white/[0.1] hover:bg-surface-alt/80 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.08)_inset,0_8px_24px_-8px_rgba(0,0,0,0.5)];
+  }
 }
 
 @layer base {

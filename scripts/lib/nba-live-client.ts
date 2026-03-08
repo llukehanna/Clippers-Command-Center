@@ -11,6 +11,14 @@ import type {
 const NBA_CDN = 'https://cdn.nba.com/static/json/liveData';
 const REQUEST_TIMEOUT_MS = 15_000;
 
+/** Headers required to avoid 403 from NBA CDN (expects browser-like requests). */
+const NBA_CDN_HEADERS: HeadersInit = {
+  Accept: 'application/json',
+  Referer: 'https://www.nba.com/',
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+};
+
 // ── Clock parsing utilities ───────────────────────────────────────────────────
 
 /**
@@ -43,9 +51,12 @@ export async function fetchScoreboard(): Promise<NBAScoreboardResponse> {
   return nbaGet('/scoreboard/todaysScoreboard_00.json');
 }
 
-/** Fetches full live boxscore for a specific game. Used by finalize-games. */
+/** Fetches full live boxscore for a specific game. Used by poll-live and finalize-games. */
 export async function fetchBoxscore(gameId: string): Promise<NBABoxscoreResponse> {
-  return nbaGet(`/boxscore/boxscore_${gameId}.json`);
+  const path = `/boxscore/boxscore_${gameId}.json`;
+  const url = `${NBA_CDN}${path}`;
+  console.log(`[nba-live] Box score URL: ${url}`);
+  return nbaGet(path);
 }
 
 /** Fetches play-by-play actions for a specific game. Used by poll-live for recent_scoring. */
@@ -54,10 +65,14 @@ export async function fetchPlayByPlay(gameId: string): Promise<NBAPlayByPlayResp
 }
 
 async function nbaGet<T>(path: string): Promise<T> {
+  const url = `${NBA_CDN}${path}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(`${NBA_CDN}${path}`, { signal: controller.signal });
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: NBA_CDN_HEADERS,
+    });
     if (!res.ok) throw new Error(`NBA CDN ${res.status}: ${path}`);
     return res.json() as Promise<T>;
   } catch (err) {

@@ -1,5 +1,6 @@
 'use client'
 
+import { Surface } from '@/components/ui/surface'
 import { cn } from '@/lib/utils'
 import { BoxScoreTable, BoxScoreColumn, BoxScoreRow } from '@/components/box-score/BoxScoreTable'
 import { BoxScoreSkeleton } from '@/components/skeletons/BoxScoreSkeleton'
@@ -81,19 +82,14 @@ export function BoxScoreModule({ boxScore, className }: BoxScoreModuleProps) {
   }
 
   return (
-    <div
-      className={cn(
-        'rounded-xl border border-white/[0.06] bg-surface overflow-hidden',
-        className
-      )}
-    >
+    <Surface variant="card" className={cn('overflow-hidden p-0', className)}>
       {boxScore.teams.map((team, index) => (
         <div key={team.team_abbr}>
           {/* Divider between teams — BoxScoreTable instances sort independently */}
-          {index > 0 && <div className="h-px bg-white/[0.06] my-2" />}
+          {index > 0 && <div className="my-2 h-px border-t border-border-subtle" />}
 
           {/* Team label row */}
-          <div className="text-[0.6875rem] font-semibold uppercase tracking-[0.06em] text-muted-foreground px-3 py-2 bg-surface-alt">
+          <div className="ccc-section-title bg-surface-alt px-3 py-2">
             {team.team_abbr}
           </div>
 
@@ -104,6 +100,6 @@ export function BoxScoreModule({ boxScore, className }: BoxScoreModuleProps) {
           />
         </div>
       ))}
-    </div>
+    </Surface>
   )
 }

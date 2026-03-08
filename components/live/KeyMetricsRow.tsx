@@ -20,6 +20,8 @@ interface KeyMetricsRowProps {
   lacFt?: string  // e.g., "18-24"
   oppFt?: string  // e.g., "12-20"
   className?: string
+  /** When true, use prototype grid layout (grid-cols-2 sm:grid-cols-3 lg:grid-cols-6) */
+  useGridLayout?: boolean
 }
 
 function formatMetricValue(key: string, value: number): string {
@@ -60,12 +62,18 @@ function formatDelta(key: string, delta: number | null): string | undefined {
   }
 }
 
-export function KeyMetricsRow({ metrics, lacFt, oppFt, className }: KeyMetricsRowProps) {
+const gridLayoutClass = 'grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6'
+const flexLayoutClass = 'flex flex-wrap gap-3'
+
+export function KeyMetricsRow({ metrics, lacFt, oppFt, className, useGridLayout = false }: KeyMetricsRowProps) {
+  const containerClass = useGridLayout ? gridLayoutClass : flexLayoutClass
+  const cardClass = useGridLayout ? '' : 'flex-1 min-w-[100px]'
+
   if (!metrics) {
     return (
-      <div className={cn('flex flex-wrap gap-3', className)}>
+      <div className={cn(containerClass, className)}>
         {[...Array(5)].map((_, i) => (
-          <StatCardSkeleton key={i} className="flex-1 min-w-[100px]" />
+          <StatCardSkeleton key={i} className={cardClass} />
         ))}
       </div>
     )
@@ -76,12 +84,12 @@ export function KeyMetricsRow({ metrics, lacFt, oppFt, className }: KeyMetricsRo
   const ftDelta = ftEdge !== 0 ? ftValue : undefined
 
   return (
-    <div className={cn('flex flex-wrap gap-3', className)}>
+    <div className={cn(containerClass, className)}>
       {/* First 4 cards from API metrics (efg_pct, tov_margin, reb_margin, pace) */}
       {metrics.map((metric) => (
         <StatCard
           key={metric.key}
-          className="flex-1 min-w-[100px]"
+          className={cardClass}
           label={metric.label}
           value={formatMetricValue(metric.key, metric.value)}
           delta={formatDelta(metric.key, metric.delta_vs_opp)}
@@ -91,7 +99,7 @@ export function KeyMetricsRow({ metrics, lacFt, oppFt, className }: KeyMetricsRo
 
       {/* 5th card: FT Edge — computed client-side from box score totals */}
       <StatCard
-        className="flex-1 min-w-[100px]"
+        className={cardClass}
         label="FT Edge"
         value={ftValue}
         delta={ftDelta}

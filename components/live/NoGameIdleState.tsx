@@ -63,12 +63,12 @@ export function NoGameIdleState({ className }: NoGameIdleStateProps) {
       </h1>
 
       {nextGame && (
-        <p className="text-[0.875rem] text-muted-foreground mt-3">
+        <p className="ccc-body mt-3 text-muted-foreground">
           {formatNextGame(nextGame)}
         </p>
       )}
 
-      <p className="text-[0.9375rem] text-muted-foreground mt-2">
+      <p className="ccc-body mt-2 text-muted-foreground">
         Live stats and insights appear here automatically during games.
       </p>
     </div>
