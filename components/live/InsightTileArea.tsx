@@ -1,5 +1,6 @@
 'use client'
 
+import { Surface } from '@/components/ui/surface'
 import { cn } from '@/lib/utils'
 import { useInsightRotation } from '@/hooks/useInsightRotation'
 
@@ -32,22 +33,22 @@ export function InsightTileArea({ insights, className }: InsightTileAreaProps) {
           visible ? 'opacity-100' : 'opacity-0'
         )}
       >
-        <div className="h-full rounded-xl border border-white/[0.06] bg-surface-alt px-5 py-4 flex flex-col justify-between">
+        <Surface variant="card" hover className="h-full flex flex-col justify-between px-5 py-4">
           <div>
-            <span className="block text-[0.6875rem] uppercase tracking-widest text-muted-foreground">
+            <span className="ccc-section-title block text-primary">
               {current.category}
             </span>
-            <p className="mt-1 text-[0.9375rem] font-semibold text-foreground leading-snug">
+            <p className="mt-1 text-[0.9375rem] font-semibold leading-snug text-foreground">
               {current.headline}
             </p>
-            <p className="mt-1 text-[0.8125rem] text-muted-foreground">
+            <p className="ccc-body mt-1 text-muted-foreground">
               {current.detail}
             </p>
           </div>
 
           {/* Dot indicators — only shown when multiple insights */}
           {insights.length > 1 && (
-            <div className="flex justify-end gap-1 mt-2">
+            <div className="mt-2 flex justify-end gap-1">
               {insights.map((_, i) => (
                 <span
                   key={i}
@@ -61,7 +62,7 @@ export function InsightTileArea({ insights, className }: InsightTileAreaProps) {
               ))}
             </div>
           )}
-        </div>
+        </Surface>
       </div>
     </div>
   )

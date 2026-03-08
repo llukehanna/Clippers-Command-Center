@@ -82,14 +82,14 @@ export function BoxScoreTable({
     >
       <table className="w-full caption-bottom text-sm">
         {/* sticky top-0 works here because the parent div is the scroll container */}
-        <thead className="sticky top-0 z-10 bg-surface border-b border-white/[0.04]">
+        <thead className="sticky top-0 z-10 border-b border-border-strong bg-surface-alt">
           <tr>
             {columns.map((col) => (
               <th
                 key={col.key}
                 onClick={() => handleSort(col.key)}
                 className={cn(
-                  'px-3 py-2 text-[0.6875rem] font-semibold text-muted-foreground uppercase tracking-[0.06em] cursor-pointer select-none whitespace-nowrap hover:text-foreground transition-colors duration-150',
+                  'ccc-table-meta px-3 py-2.5 cursor-pointer select-none whitespace-nowrap hover:text-foreground transition-colors duration-150',
                   col.numeric ? 'text-right' : 'text-left',
                   col.width
                 )}
@@ -108,7 +108,7 @@ export function BoxScoreTable({
           {sortedRows.map((row) => (
             <tr
               key={row.id}
-              className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.03] transition-colors duration-150 h-9"
+              className="h-9 border-b border-border-subtle transition-colors duration-150 last:border-0 hover:bg-white/[0.06]"
             >
               {columns.map((col, colIndex) => {
                 const val = row[col.key]
@@ -116,7 +116,7 @@ export function BoxScoreTable({
                   <td
                     key={col.key}
                     className={cn(
-                      'px-3 py-2 text-[0.8125rem] text-foreground',
+                      'ccc-body px-3 py-2',
                       col.numeric ? 'text-right tabular-nums' : 'text-left',
                       !col.numeric && colIndex === 0 ? 'font-medium' : ''
                     )}
