@@ -155,4 +155,25 @@ describe('GET /api/home', () => {
     const body = await res.json();
     expect(Array.isArray(body.insights)).toBe(true);
   });
+
+  // ── PERF-02: Timing SLA ─────────────────────────────────────────────────────
+
+  it('responds in under 300ms with mocked DB (PERF-02)', async () => {
+    const { GET } = await import('../../src/app/api/home/route.js');
+    const req = new Request('http://localhost:3000/api/home');
+    const start = Date.now();
+    const res = await GET(req);
+    const elapsed = Date.now() - start;
+    expect(res.status).toBe(200);
+    expect(elapsed).toBeLessThan(300);
+  });
+
+  it('returns meta envelope with generated_at and stale fields (PERF-02)', async () => {
+    const { GET } = await import('../../src/app/api/home/route.js');
+    const req = new Request('http://localhost:3000/api/home');
+    const res = await GET(req);
+    const body = await res.json();
+    expect(body.meta).toHaveProperty('generated_at');
+    expect(body.meta).toHaveProperty('stale');
+  });
 });
