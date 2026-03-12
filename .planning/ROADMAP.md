@@ -25,7 +25,7 @@ Build a desktop analytics dashboard for Clippers fans that delivers live game st
 - [x] **Phase 13: Player Trends Page** - Explore individual player performance with logs, rolling averages, charts (completed 2026-03-07)
 - [x] **Phase 14: Historical Explorer** - Browse historical Clippers games by season with full box scores (completed 2026-03-12)
 - [x] **Phase 15: Reliability and Validation** - Validate failure handling, backoff, fallback, and performance SLAs (completed 2026-03-12)
-- [ ] **Phase 16: MVP Launch** - Deploy to Vercel + Neon and ship the first fully usable version
+- [x] **Phase 16: MVP Launch** - Deploy to Vercel + Neon and ship the first fully usable version (completed 2026-03-12)
 
 ## Phase Details
 
@@ -363,4 +363,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 13. Player Trends Page | 4/4 | Complete    | 2026-03-07 |
 | 14. Historical Explorer | 4/4 | Complete    | 2026-03-12 |
 | 15. Reliability and Validation | 3/3 | Complete    | 2026-03-12 |
-| 16. MVP Launch | 2/3 | In Progress|  |
+| 16. MVP Launch | 3/3 | Complete   | 2026-03-12 |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 16-01-PLAN.md
-last_updated: "2026-03-12T07:03:20.108Z"
+stopped_at: "Completed 16-03-PLAN.md — MVP v1.0 live at https://clippers-command-center.vercel.app"
+last_updated: "2026-03-12T08:22:34.096Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 17
-  completed_phases: 13
+  completed_phases: 14
   total_plans: 47
-  completed_plans: 46
+  completed_plans: 47
   percent: 15
 ---
 
@@ -94,6 +94,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 15-reliability-and-validation P03 | 15 | 2 tasks | 4 files |
 | Phase 16-mvp-launch P02 | 2 | 2 tasks | 2 files |
 | Phase 16-mvp-launch P01 | 2 | 2 tasks | 3 files |
+| Phase 16-mvp-launch P03 | 11 | 3 tasks | 0 files |
 
 ## Accumulated Context
 
@@ -214,6 +215,8 @@ Recent decisions affecting current work:
 - [Phase 16-mvp-launch]: Each step in post-game.yml scoped to only its required env vars — finalize-games gets BALLDONTLIE_API_KEY, compute-stats/generate-insights get DATABASE_URL only
 - [Phase 16-mvp-launch]: Finalization logic inlined with src/lib/db sql instead of importing scripts/lib/finalize.ts to avoid process.exit code path from Next.js API layer
 - [Phase 16-mvp-launch]: All cron route error paths return HTTP 200 to prevent Vercel Cron retry storm on CDN outage
+- [Phase 16-mvp-launch]: NEXT_PUBLIC_BASE_URL must be set in Vercel env vars — server-side fetch in page components falls back to localhost:3000 without it
+- [Phase 16-mvp-launch]: Post-backfill maintenance: re-set LAC player is_active=true after each npm run backfill run (backfill resets all players to false)
 
 ### Roadmap Evolution
 
@@ -229,6 +232,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T07:03:20.105Z
-Stopped at: Completed 16-01-PLAN.md
+Last session: 2026-03-12T08:22:34.093Z
+Stopped at: Completed 16-03-PLAN.md — MVP v1.0 live at https://clippers-command-center.vercel.app
 Resume file: None
