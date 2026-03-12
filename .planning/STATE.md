@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 14-historical-explorer-01-PLAN.md
-last_updated: "2026-03-12T01:33:53.651Z"
+stopped_at: Completed 14-historical-explorer-03-PLAN.md
+last_updated: "2026-03-12T01:46:49.746Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 17
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 40
-  completed_plans: 39
+  completed_plans: 40
   percent: 15
 ---
 
@@ -87,6 +87,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 13-player-trends-page P04 | 12 | 2 tasks | 2 files |
 | Phase 14-historical-explorer P02 | 2 | 2 tasks | 3 files |
 | Phase 14-historical-explorer P01 | 3 | 3 tasks | 6 files |
+| Phase 14-historical-explorer P03 | 20 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -193,6 +194,8 @@ Recent decisions affecting current work:
 - [Phase 14-historical-explorer]: allGames fetched once unfiltered in RSC; display filters applied server-side so W-L summary always reflects full season
 - [Phase 14-historical-explorer]: Date formatted with T12:00:00 suffix to prevent timezone shift on ISO date strings in game list
 - [Phase 14-historical-explorer]: Season change in SeasonControls deletes home_away and result params to reset filters on season switch
+- [Phase 14-historical-explorer]: isFinal status guard: status.includes('Final') || status.startsWith('F/') — covers NBA CDN final status formats without brittle enum
+- [Phase 14-historical-explorer]: isScheduled derived from result===null && \!final_score in GameListTable — double guard prevents misclassification at component layer
 
 ### Roadmap Evolution
 
@@ -208,6 +211,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T01:33:53.648Z
-Stopped at: Completed 14-historical-explorer-01-PLAN.md
+Last session: 2026-03-12T01:46:49.743Z
+Stopped at: Completed 14-historical-explorer-03-PLAN.md
 Resume file: None
