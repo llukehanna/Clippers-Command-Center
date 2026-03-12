@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 13-player-trends-page-04-PLAN.md — Phase 13 complete
-last_updated: "2026-03-07T21:20:37.825Z"
+stopped_at: Completed 14-historical-explorer-02-PLAN.md
+last_updated: "2026-03-12T01:33:09.848Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 17
   completed_phases: 11
-  total_plans: 37
-  completed_plans: 37
+  total_plans: 40
+  completed_plans: 38
   percent: 15
 ---
 
@@ -85,6 +85,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 13-player-trends-page P03 | 5 | 2 tasks | 6 files |
 | Phase 13-player-trends-page P04 | 2 | 1 tasks | 0 files |
 | Phase 13-player-trends-page P04 | 12 | 2 tasks | 2 files |
+| Phase 14-historical-explorer P02 | 2 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -187,6 +188,7 @@ Recent decisions affecting current work:
 - [Phase 13-player-trends-page]: TrendChartSection shows placeholder text when chartData is empty — graceful empty state for LineChartWrapper
 - [Phase 13-player-trends-page]: Removed ?include_traded=true from /api/players fetch — caused 0 results due to season date filter; plain endpoint returns correct active roster
 - [Phase 13-player-trends-page]: is_traded made optional (is_traded?: boolean) in RosterViewToggle Player type — API does not guarantee the field when include_traded is not passed
+- [Phase 14-historical-explorer]: GameHeader derives W/L from isHome flag passed by page shell — component stays pure; proof.summary mapped to category in page shell before passing to HistoryGameDetail
 
 ### Roadmap Evolution
 
@@ -202,6 +204,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T21:15:14.501Z
-Stopped at: Completed 13-player-trends-page-04-PLAN.md — Phase 13 complete
+Last session: 2026-03-12T01:33:09.845Z
+Stopped at: Completed 14-historical-explorer-02-PLAN.md
 Resume file: None

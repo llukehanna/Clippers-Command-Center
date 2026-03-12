@@ -49,8 +49,8 @@
 
 - [ ] **HIST-01**: User can browse Clippers games by season
 - [ ] **HIST-02**: Game list shows date, opponent, result, and final score
-- [ ] **HIST-03**: User can open a historical game and view full box score
-- [ ] **HIST-04**: Historical game detail shows insights related to that game
+- [x] **HIST-03**: User can open a historical game and view full box score
+- [x] **HIST-04**: Historical game detail shows insights related to that game
 
 ### Insight Engine
 
@@ -184,8 +184,8 @@
 | PLAYER-06 | Phase 13: Player Trends Page | Complete |
 | HIST-01 | Phase 14: Historical Explorer | Pending |
 | HIST-02 | Phase 14: Historical Explorer | Pending |
-| HIST-03 | Phase 14: Historical Explorer | Pending |
-| HIST-04 | Phase 14: Historical Explorer | Pending |
+| HIST-03 | Phase 14: Historical Explorer | Complete |
+| HIST-04 | Phase 14: Historical Explorer | Complete |
 | SCHED-03 | Phase 14: Historical Explorer | Pending |
 | SCHED-04 | Phase 14: Historical Explorer | Pending |
 | PERF-01 | Phase 15: Reliability and Validation | Pending |
