@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { vi, describe, it, expect } from 'vitest';
 import {
   calculateBackoff,
   isClippersGame,
   findClippersGame,
   gameStatusLabel,
+  runPollCycle,
 } from './poll-live-logic.js';
 import type { ScoreboardGame } from '../../src/lib/types/live.js';
 
@@ -134,5 +135,52 @@ describe('gameStatusLabel', () => {
 
   it('returns UNKNOWN for unrecognized status', () => {
     expect(gameStatusLabel(99)).toBe('UNKNOWN');
+  });
+});
+
+// ── polling daemon failure counter ────────────────────────────────────────────
+
+describe('polling daemon failure counter', () => {
+  it('increments failureCount on consecutive failures', async () => {
+    // Mock fetchScoreboard to throw on every call
+    const mockFetch = vi.fn()
+      .mockRejectedValueOnce(new Error('network timeout'))
+      .mockRejectedValueOnce(new Error('network timeout'));
+
+    const deps = { fetchScoreboard: mockFetch as unknown as () => ReturnType<typeof import('./nba-live-client.js').fetchScoreboard> };
+
+    // First failure: 0 → 1
+    const count1 = await runPollCycle(0, deps);
+    expect(count1).toBe(1);
+
+    // Second consecutive failure: 1 → 2
+    const count2 = await runPollCycle(count1, deps);
+    expect(count2).toBe(2);
+
+    // Backoff for second failure must be larger than for first (RELY-02 math check)
+    const backoff1 = calculateBackoff(count1, 12_000);
+    const backoff2 = calculateBackoff(count2, 12_000);
+    expect(backoff2).toBeGreaterThan(backoff1);
+  });
+
+  it('resets failureCount to 0 after a successful poll', async () => {
+    const mockFetch = vi.fn()
+      .mockRejectedValueOnce(new Error('network timeout'))  // first call fails
+      .mockResolvedValueOnce({ scoreboard: { games: [] } }); // second call succeeds
+
+    const deps = { fetchScoreboard: mockFetch as unknown as () => ReturnType<typeof import('./nba-live-client.js').fetchScoreboard> };
+
+    // Failure cycle: counter increments to 1
+    const afterFailure = await runPollCycle(0, deps);
+    expect(afterFailure).toBe(1);
+
+    // Success cycle: counter resets to 0
+    const afterSuccess = await runPollCycle(afterFailure, deps);
+    expect(afterSuccess).toBe(0);
+
+    // Confirm: next failure after reset uses failureCount=1 (not 2),
+    // meaning calculateBackoff gets 1 not 2 → 24s not 48s
+    expect(calculateBackoff(afterSuccess + 1, 12_000)).toBe(24_000);
+    expect(calculateBackoff(afterFailure + 1, 12_000)).toBe(48_000);
   });
 });
