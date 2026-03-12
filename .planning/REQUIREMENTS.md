@@ -42,13 +42,13 @@
 
 - [x] **SCHED-01**: Schedule page shows upcoming Clippers games
 - [x] **SCHED-02**: Schedule rows include opponent, date, time, and home/away
-- [ ] **SCHED-03**: Schedule rows include Vegas spread, moneyline, and over/under when available
-- [ ] **SCHED-04**: If odds are unavailable, UI shows null/unavailable rather than fabricated values
+- [x] **SCHED-03**: Schedule rows include Vegas spread, moneyline, and over/under when available
+- [x] **SCHED-04**: If odds are unavailable, UI shows null/unavailable rather than fabricated values
 
 ### Historical Explorer
 
-- [ ] **HIST-01**: User can browse Clippers games by season
-- [ ] **HIST-02**: Game list shows date, opponent, result, and final score
+- [x] **HIST-01**: User can browse Clippers games by season
+- [x] **HIST-02**: Game list shows date, opponent, result, and final score
 - [x] **HIST-03**: User can open a historical game and view full box score
 - [x] **HIST-04**: Historical game detail shows insights related to that game
 
@@ -182,12 +182,12 @@
 | PLAYER-04 | Phase 13: Player Trends Page | Complete |
 | PLAYER-05 | Phase 13: Player Trends Page | Complete |
 | PLAYER-06 | Phase 13: Player Trends Page | Complete |
-| HIST-01 | Phase 14: Historical Explorer | Pending |
-| HIST-02 | Phase 14: Historical Explorer | Pending |
+| HIST-01 | Phase 14: Historical Explorer | Complete |
+| HIST-02 | Phase 14: Historical Explorer | Complete |
 | HIST-03 | Phase 14: Historical Explorer | Complete |
 | HIST-04 | Phase 14: Historical Explorer | Complete |
-| SCHED-03 | Phase 14: Historical Explorer | Pending |
-| SCHED-04 | Phase 14: Historical Explorer | Pending |
+| SCHED-03 | Phase 14: Historical Explorer | Complete |
+| SCHED-04 | Phase 14: Historical Explorer | Complete |
 | PERF-01 | Phase 15: Reliability and Validation | Pending |
 | PERF-02 | Phase 15: Reliability and Validation | Pending |
 | PERF-03 | Phase 15: Reliability and Validation | Pending |
