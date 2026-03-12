@@ -1,0 +1,17 @@
+name: Poll Live Games
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # every 5 minutes
+  workflow_dispatch:         # manual trigger for testing
+
+jobs:
+  poll-live:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger cron endpoint
+        run: |
+          curl -sf -X GET "${{ secrets.VERCEL_APP_URL }}/api/cron/poll-live" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            || echo "No live games or endpoint returned non-2xx"
