@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 16 context gathered
-last_updated: "2026-03-12T06:43:18.591Z"
+stopped_at: Completed 16-02-PLAN.md
+last_updated: "2026-03-12T07:02:33.204Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 17
   completed_phases: 13
-  total_plans: 44
-  completed_plans: 44
+  total_plans: 47
+  completed_plans: 45
   percent: 15
 ---
 
@@ -92,6 +92,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 15-reliability-and-validation P01 | 3 | 2 tasks | 4 files |
 | Phase 15-reliability-and-validation P02 | 5 | 2 tasks | 3 files |
 | Phase 15-reliability-and-validation P03 | 15 | 2 tasks | 4 files |
+| Phase 16-mvp-launch P02 | 2 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -208,6 +209,8 @@ Recent decisions affecting current work:
 - [Phase 15-reliability-and-validation]: Timing tests added to existing test files (not new files) since both already existed with partial content
 - [Phase 15-reliability-and-validation]: src/app/api/live/route.ts had zero codebase references — safe delete confirmed via grep before removal
 - [Phase 15-reliability-and-validation]: snapshot_captured_at added as top-level DATA_DELAYED-only field; StaleBanner prefers capturedAt over generatedAt; LiveDashboardPayload.snapshot_captured_at typed optional string
+- [Phase 16-mvp-launch]: post-game uses single job with sequential run steps (not separate jobs with needs:) — step-level failure stops chain automatically
+- [Phase 16-mvp-launch]: Each step in post-game.yml scoped to only its required env vars — finalize-games gets BALLDONTLIE_API_KEY, compute-stats/generate-insights get DATABASE_URL only
 
 ### Roadmap Evolution
 
@@ -223,6 +226,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T06:43:18.588Z
-Stopped at: Phase 16 context gathered
-Resume file: .planning/phases/16-mvp-launch/16-CONTEXT.md
+Last session: 2026-03-12T07:02:33.200Z
+Stopped at: Completed 16-02-PLAN.md
+Resume file: None
