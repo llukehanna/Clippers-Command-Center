@@ -87,11 +87,11 @@
 
 ### Performance and Reliability
 
-- [ ] **PERF-01**: /api/live response time < 200ms
+- [x] **PERF-01**: /api/live response time < 200ms
 - [ ] **PERF-02**: /api/home response time < 300ms
 - [ ] **PERF-03**: /api/history/* response time < 400ms
-- [ ] **RELY-01**: System continues serving cached data during upstream API outages
-- [ ] **RELY-02**: Exponential backoff on live polling failures
+- [x] **RELY-01**: System continues serving cached data during upstream API outages
+- [x] **RELY-02**: Exponential backoff on live polling failures
 - [ ] **RELY-03**: UI remains functional and meaningful during all upstream outage scenarios
 
 ## v2 Requirements
@@ -188,11 +188,11 @@
 | HIST-04 | Phase 14: Historical Explorer | Complete |
 | SCHED-03 | Phase 14: Historical Explorer | Complete |
 | SCHED-04 | Phase 14: Historical Explorer | Complete |
-| PERF-01 | Phase 15: Reliability and Validation | Pending |
+| PERF-01 | Phase 15: Reliability and Validation | Complete |
 | PERF-02 | Phase 15: Reliability and Validation | Pending |
 | PERF-03 | Phase 15: Reliability and Validation | Pending |
-| RELY-01 | Phase 15: Reliability and Validation | Pending |
-| RELY-02 | Phase 15: Reliability and Validation | Pending |
+| RELY-01 | Phase 15: Reliability and Validation | Complete |
+| RELY-02 | Phase 15: Reliability and Validation | Complete |
 | RELY-03 | Phase 15: Reliability and Validation | Pending |
 
 **Coverage:**

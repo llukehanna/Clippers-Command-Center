@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 15 context gathered
-last_updated: "2026-03-12T02:25:42.693Z"
+stopped_at: Completed 15-reliability-and-validation-01-PLAN.md
+last_updated: "2026-03-12T02:55:01.880Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 17
   completed_phases: 12
-  total_plans: 41
-  completed_plans: 41
+  total_plans: 44
+  completed_plans: 42
   percent: 15
 ---
 
@@ -89,6 +89,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 14-historical-explorer P01 | 3 | 3 tasks | 6 files |
 | Phase 14-historical-explorer P03 | 20 | 3 tasks | 4 files |
 | Phase 14-historical-explorer P04 | 2 | 2 tasks | 2 files |
+| Phase 15-reliability-and-validation P01 | 3 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -199,6 +200,8 @@ Recent decisions affecting current work:
 - [Phase 14-historical-explorer]: isScheduled derived from result===null && \!final_score in GameListTable — double guard prevents misclassification at component layer
 - [Phase 14-historical-explorer]: page.tsx adapts API shape (teams[] array) to HistoryGameDetail interface (home?/away? named keys) — no component changes needed, adapter logic lives in RSC page shell
 - [Phase 14-historical-explorer]: mapPlayerRow adds id alongside player_id for backward compat — BoxScoreRow uses id as React key
+- [Phase 15-reliability-and-validation]: vitest.config.ts updated with @/* path alias — required for route handler imports in src/lib/ tests
+- [Phase 15-reliability-and-validation]: runPollCycle() extracted to poll-live-logic.ts as minimal injectable unit — avoids refactoring the while(true) loop in poll-live.ts
 
 ### Roadmap Evolution
 
@@ -214,6 +217,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T02:25:42.690Z
-Stopped at: Phase 15 context gathered
-Resume file: .planning/phases/15-reliability-and-validation/15-CONTEXT.md
+Last session: 2026-03-12T02:55:01.877Z
+Stopped at: Completed 15-reliability-and-validation-01-PLAN.md
+Resume file: None
