@@ -104,9 +104,44 @@ interface StatsNbaResultSet {
   rowSet: (string | number)[][];
 }
 
-function getResultSet(data: { resultSets?: StatsNbaResultSet[] }, name: string): StatsNbaResultSet | null {
-  const set = data.resultSets?.find((s) => s.name === name) ?? null;
-  return set ?? null;
+/** Get the display name of a raw set (API may use 'name' or 'resultSetName'). */
+function getSetName(raw: unknown): string {
+  if (raw !== null && typeof raw === 'object') {
+    const o = raw as Record<string, unknown>;
+    if (typeof o.name === 'string') return o.name;
+    if (typeof o.resultSetName === 'string') return o.resultSetName;
+  }
+  return '';
+}
+
+/** Normalize a raw result-set item to StatsNbaResultSet. Handles array resultSets; does not assume direct key access. */
+function normalizeOneSet(raw: unknown): StatsNbaResultSet | null {
+  if (raw === null || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const name = getSetName(raw);
+  const headers = Array.isArray(o.headers) ? (o.headers as string[]) : [];
+  const rowSet = Array.isArray(o.rowSet) ? (o.rowSet as (string | number)[][]) : [];
+  return { name, headers, rowSet };
+}
+
+/** Log available set names from a resultSets array (no assumption about object-key access). */
+function logAvailableSetNames(label: string, resultSets: unknown[]): void {
+  const names = resultSets.map((s) => getSetName(s)).filter(Boolean);
+  console.log(`[nba-live] stats.nba.com fallback: ${label} available set names: ${names.join(', ') || '(none)'}`);
+}
+
+/** Find a set by name (exact or trimmed/lower). Do not assume direct object-key access on resultSets. */
+function findResultSetByName(resultSets: StatsNbaResultSet[], want: string): StatsNbaResultSet | null {
+  const w = want.trim().toLowerCase();
+  for (const s of resultSets) {
+    const n = (s.name ?? '').trim().toLowerCase();
+    if (n === w) return s;
+  }
+  return null;
+}
+
+function getResultSet(data: { resultSets: StatsNbaResultSet[] }, name: string): StatsNbaResultSet | null {
+  return findResultSetByName(data.resultSets, name);
 }
 
 function rowToMap(rs: StatsNbaResultSet, row: (string | number)[]): Record<string, string | number> {
@@ -131,7 +166,17 @@ function normalizeGameIdForStatsNba(gameId: string): string {
   return id.padStart(10, '0');
 }
 
-async function statsNbaGet<T>(path: string): Promise<T> {
+const STATS_DEBUG_BODY_SNIP = 500;
+
+interface StatsNbaDebugResult {
+  url: string;
+  status: number;
+  contentType: string;
+  bodyPreview: string;
+  parsed: { resultSets?: StatsNbaResultSet[]; resultSet?: StatsNbaResultSet[] };
+}
+
+async function statsNbaGetDebug(path: string): Promise<StatsNbaDebugResult> {
   const url = `${NBA_STATS}${path}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -140,36 +185,91 @@ async function statsNbaGet<T>(path: string): Promise<T> {
       signal: controller.signal,
       headers: NBA_STATS_HEADERS,
     });
+    const contentType = res.headers.get('content-type') ?? '';
+    const text = await res.text();
+    const bodyPreview = text.length > STATS_DEBUG_BODY_SNIP ? text.slice(0, STATS_DEBUG_BODY_SNIP) : text;
+    let parsed: { resultSets?: StatsNbaResultSet[]; resultSet?: StatsNbaResultSet[] } = {};
+    let hasResultSets = false;
+    try {
+      const json = JSON.parse(text) as { resultSets?: StatsNbaResultSet[]; resultSet?: StatsNbaResultSet[] };
+      parsed = json;
+      const sets = json?.resultSets ?? json?.resultSet;
+      hasResultSets = Array.isArray(sets) && sets.length > 0;
+      const hasResultSet = Array.isArray(json?.resultSet) && json.resultSet.length > 0;
+      if (!hasResultSets && !hasResultSet) {
+        console.warn(
+          `[nba-live] stats.nba.com DEBUG ${path.split('?')[0]} | URL: ${url} | HTTP ${res.status} | content-type: ${contentType} | resultSets/resultSet missing, body (first ${STATS_DEBUG_BODY_SNIP} chars): ${bodyPreview}`
+        );
+      }
+      if (/^\s*text\/html/i.test(contentType) || (bodyPreview.trimStart().startsWith('<') && bodyPreview.includes('</'))) {
+        console.warn(
+          `[nba-live] stats.nba.com DEBUG ${path.split('?')[0]} | URL: ${url} | HTTP ${res.status} | content-type: ${contentType} | response appears to be HTML/challenge, body (first ${STATS_DEBUG_BODY_SNIP} chars): ${bodyPreview}`
+        );
+      }
+    } catch (_) {
+      console.warn(
+        `[nba-live] stats.nba.com DEBUG ${path.split('?')[0]} | URL: ${url} | HTTP ${res.status} | content-type: ${contentType} | body not JSON, first ${STATS_DEBUG_BODY_SNIP} chars: ${bodyPreview}`
+      );
+    }
+    console.log(
+      `[nba-live] stats.nba.com DEBUG ${path.split('?')[0]} | URL: ${url} | HTTP ${res.status} | content-type: ${contentType} | resultSets present: ${hasResultSets}`
+    );
     if (!res.ok) throw new Error(`stats.nba.com ${res.status}: ${path}`);
-    return res.json() as Promise<T>;
+    return { url, status: res.status, contentType, bodyPreview, parsed };
   } finally {
     clearTimeout(timeout);
   }
 }
 
+/** Normalize response: accept resultSets or resultSet array; normalize each element to StatsNbaResultSet. */
+function normalizeResultSets(raw: StatsNbaDebugResult): { resultSets: StatsNbaResultSet[] } {
+  const rawSets = raw.parsed.resultSets ?? raw.parsed.resultSet ?? [];
+  const arr = Array.isArray(rawSets) ? rawSets : [];
+  const resultSets: StatsNbaResultSet[] = [];
+  for (const item of arr) {
+    const normalized = normalizeOneSet(item);
+    if (normalized) resultSets.push(normalized);
+  }
+  return { resultSets };
+}
+
 /** Uses official NBA GameID (e.g. 0022400001) — do not pass BDL/internal id. */
 async function fetchBoxscoreStatsNba(statsNbaGameId: string): Promise<NBABoxscoreResponse> {
   const gid = statsNbaGameId.length >= 10 ? statsNbaGameId.slice(0, 10) : statsNbaGameId.padStart(10, '0');
-  const [summaryRaw, traditionalRaw] = await Promise.all([
-    statsNbaGet<{ resultSets?: StatsNbaResultSet[] }>(
-      `/boxscoresummaryv2?GameID=${gid}`
-    ),
-    statsNbaGet<{ resultSets?: StatsNbaResultSet[] }>(
-      `/boxscoretraditionalv2?GameID=${gid}&StartPeriod=0&EndPeriod=14&StartRange=0&EndRange=2147483647&RangeType=0`
-    ),
+  const summaryPath = `/boxscoresummaryv2?GameID=${gid}`;
+  const traditionalPath = `/boxscoretraditionalv2?GameID=${gid}&StartPeriod=0&EndPeriod=14&StartRange=0&EndRange=2147483647&RangeType=0`;
+
+  const [summaryDebug, traditionalDebug] = await Promise.all([
+    statsNbaGetDebug(summaryPath),
+    statsNbaGetDebug(traditionalPath),
   ]);
+
+  const summaryRaw = normalizeResultSets(summaryDebug);
+  const traditionalRaw = normalizeResultSets(traditionalDebug);
+
+  logAvailableSetNames('summary', summaryRaw.resultSets);
+  logAvailableSetNames('traditional', traditionalRaw.resultSets);
 
   const gameSummary = getResultSet(summaryRaw, 'GameSummary');
   const lineScore = getResultSet(summaryRaw, 'LineScore');
   const playerStats = getResultSet(traditionalRaw, 'PlayerStats');
   const teamStats = getResultSet(traditionalRaw, 'TeamStats');
 
-  if (!gameSummary?.rowSet?.length || !playerStats || !teamStats?.rowSet?.length) {
-    throw new Error(`stats.nba.com fallback: missing resultSets for GameID=${gid}`);
+  const missing: string[] = [];
+  if (!gameSummary?.rowSet?.length) missing.push('GameSummary');
+  if (!playerStats) missing.push('PlayerStats');
+  if (!teamStats?.rowSet?.length) missing.push('TeamStats');
+  if (missing.length > 0) {
+    console.warn(
+      `[nba-live] stats.nba.com fallback: missing named set(s) for GameID=${gid}: ${missing.join(', ')}`
+    );
+    throw new Error(`stats.nba.com fallback: missing result set(s): ${missing.join(', ')} for GameID=${gid}`);
   }
-  const ps: StatsNbaResultSet = playerStats;
+  const gs = gameSummary!;
+  const ps = playerStats!;
+  const ts = teamStats!;
 
-  const summaryRow = rowToMap(gameSummary, gameSummary.rowSet[0] as (string | number)[]);
+  const summaryRow = rowToMap(gs, gs.rowSet[0] as (string | number)[]);
   const homeTeamId = Number(summaryRow.HOME_TEAM_ID);
   const visitorTeamId = Number(summaryRow.VISITOR_TEAM_ID);
 
@@ -197,10 +297,10 @@ async function fetchBoxscoreStatsNba(statsNbaGameId: string): Promise<NBABoxscor
     teamScoresByPeriod.set(tid, { score: Number(row.PTS ?? 0), periods });
   }
 
-  const teamStatsRows = teamStats.rowSet as (string | number[])[];
+  const teamStatsRows = ts.rowSet as (string | number[])[];
   const teamStatsByTeamId = new Map<number, Record<string, string | number>>();
   for (const row of teamStatsRows) {
-    const rowMap = rowToMap(teamStats, row as (string | number)[]);
+    const rowMap = rowToMap(ts, row as (string | number)[]);
     const tid = Number(rowMap.TEAM_ID);
     teamStatsByTeamId.set(tid, rowMap);
   }
