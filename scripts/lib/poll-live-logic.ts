@@ -4,7 +4,7 @@
 // Imported by scripts/poll-live.ts (Plan 04).
 
 import type { ScoreboardGame } from '../../src/lib/types/live.js';
-import { fetchScoreboard } from './nba-live-client.js';
+import { fetchScoreboard } from './nba-live-client';
 
 export const LAC_TEAM_ID = 1610612746;
 const BACKOFF_CEILING_MS = 60_000;
