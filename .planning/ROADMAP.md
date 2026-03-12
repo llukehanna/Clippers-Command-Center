@@ -331,7 +331,12 @@ Plans:
   2. Scheduled GitHub Actions jobs run ingestion and odds refresh on correct cadence
   3. End-to-end workflow tested: live game detected, dashboard updates, insights appear
   4. No fabricated data surfaces anywhere in the deployed application
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 16-01-PLAN.md — Stateless Vercel Cron route (/api/cron/poll-live) + vercel.json cron config + .env.example update
+- [ ] 16-02-PLAN.md — GitHub Actions workflows: sync-schedule.yml (daily 6am PT) + post-game.yml (nightly 2am PT chain)
+- [ ] 16-03-PLAN.md — Pre-launch data backfill + Vercel deployment + MVP smoke test checkpoint
 
 ---
 
@@ -358,4 +363,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 13. Player Trends Page | 4/4 | Complete    | 2026-03-07 |
 | 14. Historical Explorer | 4/4 | Complete    | 2026-03-12 |
 | 15. Reliability and Validation | 3/3 | Complete    | 2026-03-12 |
-| 16. MVP Launch | 0/TBD | Not started | - |
+| 16. MVP Launch | 0/3 | Planning    | - |
