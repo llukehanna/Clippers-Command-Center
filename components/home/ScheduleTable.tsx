@@ -5,7 +5,7 @@
 // Must be 'use client' because BoxScoreTable is a client component.
 
 import { BoxScoreTable, BoxScoreColumn, BoxScoreRow } from '@/components/box-score/BoxScoreTable'
-import { formatGameDate, formatGameTime, hasAnyOdds } from '@/src/lib/home-utils'
+import { formatGameDate, formatGameTime } from '@/src/lib/home-utils'
 
 interface GameOdds {
   spread: string | null
@@ -29,8 +29,6 @@ interface ScheduleTableProps {
 export function ScheduleTable({ games }: ScheduleTableProps) {
   if (!games || games.length === 0) return null
 
-  const anyOdds = hasAnyOdds(games)
-
   const baseColumns: BoxScoreColumn[] = [
     { key: 'opponent', label: 'Opponent' },
     { key: 'date', label: 'Date' },
@@ -38,13 +36,12 @@ export function ScheduleTable({ games }: ScheduleTableProps) {
     { key: 'location', label: 'H/A', numeric: false },
   ]
 
-  const oddsColumns: BoxScoreColumn[] = anyOdds
-    ? [
-        { key: 'spread', label: 'Spread', numeric: true },
-        { key: 'ml', label: 'ML', numeric: true },
-        { key: 'ou', label: 'O/U', numeric: true },
-      ]
-    : []
+  // Always include odds columns — show '—' when unavailable (SCHED-04)
+  const oddsColumns: BoxScoreColumn[] = [
+    { key: 'spread', label: 'Spread', numeric: true },
+    { key: 'ml', label: 'ML', numeric: true },
+    { key: 'ou', label: 'O/U', numeric: true },
+  ]
 
   const columns = [...baseColumns, ...oddsColumns]
 
@@ -55,12 +52,9 @@ export function ScheduleTable({ games }: ScheduleTableProps) {
       date: formatGameDate(g.game_date),
       time: formatGameTime(g.start_time_utc),
       location: g.home_away === 'home' ? 'Home' : 'Away',
-    }
-
-    if (anyOdds) {
-      row.spread = g.odds?.spread ?? '—'
-      row.ml = g.odds?.moneyline ?? '—'
-      row.ou = g.odds?.over_under ?? '—'
+      spread: g.odds?.spread ?? '—',
+      ml: g.odds?.moneyline ?? '—',
+      ou: g.odds?.over_under ?? '—',
     }
 
     return row
