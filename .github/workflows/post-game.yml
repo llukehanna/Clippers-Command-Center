@@ -1,0 +1,36 @@
+name: Post-Game Pipeline
+
+on:
+  schedule:
+    - cron: '0 10 * * *'   # nightly at 2am PT
+  workflow_dispatch:
+
+jobs:
+  post-game:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Finalize games
+        run: npm run finalize-games
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BALLDONTLIE_API_KEY: ${{ secrets.BALLDONTLIE_API_KEY }}
+
+      - name: Compute stats
+        run: npm run compute-stats
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Generate insights
+        run: npm run generate-insights
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
