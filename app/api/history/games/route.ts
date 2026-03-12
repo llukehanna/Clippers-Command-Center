@@ -258,9 +258,14 @@ export async function GET(request: Request) {
         const lacScore = isHome ? g.home_score : g.away_score;
         const oppScore = isHome ? g.away_score : g.home_score;
 
-        // Determine result: W/L based on scores (null if game not final or scores absent)
+        // Determine result: W/L only for final games (status contains "Final" or starts with "F").
+        // Scheduled games may have scores stored as 0 in the DB — never use those to infer W/L.
+        const isFinal = g.status != null && (
+          g.status.includes('Final') ||
+          g.status.startsWith('F/')
+        );
         let result: 'W' | 'L' | null = null;
-        if (lacScore !== null && oppScore !== null) {
+        if (isFinal && lacScore !== null && oppScore !== null) {
           result = lacScore > oppScore ? 'W' : 'L';
         }
 
@@ -270,8 +275,9 @@ export async function GET(request: Request) {
           opponent_abbr: opponentAbbr,
           home_away: homeAway,
           result,
+          // Only surface a score for finalized games — scheduled games may have 0s stored
           final_score:
-            lacScore !== null && oppScore !== null
+            isFinal && lacScore !== null && oppScore !== null
               ? { team: lacScore, opp: oppScore }
               : null,
           status: g.status,
