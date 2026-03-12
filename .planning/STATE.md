@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 16-02-PLAN.md
-last_updated: "2026-03-12T07:02:33.204Z"
+stopped_at: Completed 16-01-PLAN.md
+last_updated: "2026-03-12T07:03:20.108Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 17
   completed_phases: 13
   total_plans: 47
-  completed_plans: 45
+  completed_plans: 46
   percent: 15
 ---
 
@@ -93,6 +93,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 15-reliability-and-validation P02 | 5 | 2 tasks | 3 files |
 | Phase 15-reliability-and-validation P03 | 15 | 2 tasks | 4 files |
 | Phase 16-mvp-launch P02 | 2 | 2 tasks | 2 files |
+| Phase 16-mvp-launch P01 | 2 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -211,6 +212,8 @@ Recent decisions affecting current work:
 - [Phase 15-reliability-and-validation]: snapshot_captured_at added as top-level DATA_DELAYED-only field; StaleBanner prefers capturedAt over generatedAt; LiveDashboardPayload.snapshot_captured_at typed optional string
 - [Phase 16-mvp-launch]: post-game uses single job with sequential run steps (not separate jobs with needs:) — step-level failure stops chain automatically
 - [Phase 16-mvp-launch]: Each step in post-game.yml scoped to only its required env vars — finalize-games gets BALLDONTLIE_API_KEY, compute-stats/generate-insights get DATABASE_URL only
+- [Phase 16-mvp-launch]: Finalization logic inlined with src/lib/db sql instead of importing scripts/lib/finalize.ts to avoid process.exit code path from Next.js API layer
+- [Phase 16-mvp-launch]: All cron route error paths return HTTP 200 to prevent Vercel Cron retry storm on CDN outage
 
 ### Roadmap Evolution
 
@@ -226,6 +229,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T07:02:33.200Z
-Stopped at: Completed 16-02-PLAN.md
+Last session: 2026-03-12T07:03:20.105Z
+Stopped at: Completed 16-01-PLAN.md
 Resume file: None
