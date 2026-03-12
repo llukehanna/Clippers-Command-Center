@@ -1,10 +1,8 @@
 // src/lib/api-history.test.ts
-// RED test scaffold for GET /api/history/games and GET /api/history/games/{id} — covers API-05 and API-07.
-// Route handlers don't exist yet — these tests go GREEN in Plan 06.
-// They document the expected contract from Docs/API_SPEC.md.
+// Tests for GET /api/history/games — covers API-05, API-07, and PERF-03.
 
 import { buildMeta } from './api-utils.js';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Smoke test (passes immediately) ─────────────────────────────────────────
 
@@ -17,9 +15,60 @@ describe('buildMeta for history endpoint', () => {
   });
 });
 
-// ─── GET /api/history/games — spec-driven RED tests (todo) ───────────────────
+// ─── GET /api/history/games — mocked DB tests ────────────────────────────────
+// The route calls sql for team lookup, then for games. Mock sql to return a
+// fake team row on the first call, then [] for subsequent calls.
+
+const mockHistorySqlFn = vi.fn();
+
+vi.mock('./db.js', () => ({
+  sql: new Proxy(mockHistorySqlFn, {
+    apply(target: typeof mockHistorySqlFn, thisArg: unknown, args: unknown[]) {
+      return (target as Function).apply(thisArg, args);
+    },
+    get(target: typeof mockHistorySqlFn, prop: string | symbol) {
+      return (target as unknown as Record<string | symbol, unknown>)[prop];
+    },
+  }),
+  LAC_NBA_TEAM_ID: 1610612746,
+}));
 
 describe('GET /api/history/games', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    let callCount = 0;
+    // First call: team lookup — return a fake internal team_id row
+    // Subsequent calls: games query — return empty arrays
+    mockHistorySqlFn.mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return [{ team_id: '42' }];
+      }
+      return [];
+    });
+  });
+
+  // ── PERF-03: Timing SLA ─────────────────────────────────────────────────────
+
+  it('responds in under 400ms with mocked DB (PERF-03)', async () => {
+    const { GET } = await import('../../app/api/history/games/route.js');
+    const request = new Request('http://localhost/api/history/games?season_id=2025');
+    const start = Date.now();
+    const res = await GET(request);
+    const elapsed = Date.now() - start;
+    expect(res.status).toBe(200);
+    expect(elapsed).toBeLessThan(400);
+  });
+
+  it('returns meta envelope with generated_at and stale fields (PERF-03)', async () => {
+    const { GET } = await import('../../app/api/history/games/route.js');
+    const request = new Request('http://localhost/api/history/games?season_id=2025');
+    const res = await GET(request);
+    const body = await res.json();
+    expect(body.meta).toHaveProperty('generated_at');
+    expect(body.meta).toHaveProperty('stale');
+  });
+
   it.todo('returns paginated list of completed LAC games ordered by game_date DESC');
   it.todo('next_cursor is null when all games fit within the first page');
   it.todo('next_cursor is a cursor string when more games exist beyond the page limit');
