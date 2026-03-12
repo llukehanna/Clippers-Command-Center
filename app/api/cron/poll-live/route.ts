@@ -36,7 +36,15 @@ const FINALIZE_RETRY_DELAY_MS = 60_000;
 
 // ── GET handler ───────────────────────────────────────────────────────────────
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    const auth = request.headers.get('authorization');
+    if (auth !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+  }
+
   try {
     // 1. Query games table for active/imminent Clippers game
     const candidate = await findActiveClippersGameInDB();

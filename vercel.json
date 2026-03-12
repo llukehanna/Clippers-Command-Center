@@ -1,8 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/poll-live",
-      "schedule": "* * * * *"
-    }
-  ]
-}
+{}
