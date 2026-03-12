@@ -1,9 +1,9 @@
 ---
 phase: 15
 slug: reliability-and-validation
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: ready
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-11
 ---
 
@@ -38,25 +38,20 @@ created: 2026-03-11
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 15-01-01 | 01 | 0 | PERF-02 | integration | `npm test -- src/lib/api-home.test.ts` | ❌ W0 | ⬜ pending |
-| 15-01-02 | 01 | 0 | PERF-03 | integration | `npm test -- src/lib/api-history.test.ts` | ❌ W0 | ⬜ pending |
-| 15-02-01 | 02 | 1 | PERF-01 | integration | `npm test -- src/lib/api-live.test.ts` | ✅ | ⬜ pending |
-| 15-02-02 | 02 | 1 | RELY-01 | integration | `npm test -- src/lib/api-live.test.ts` | ✅ | ⬜ pending |
-| 15-02-03 | 02 | 1 | RELY-01 | integration | `npm test -- src/lib/api-live.test.ts` | ✅ | ⬜ pending |
-| 15-03-01 | 03 | 1 | RELY-02 | unit | `npm test -- scripts/lib/poll-live-logic.test.ts` | ✅ | ⬜ pending |
-| 15-04-01 | 04 | 2 | RELY-01 | integration | `npm test -- src/lib/api-live.test.ts` | ✅ | ⬜ pending |
-| 15-04-02 | 04 | 2 | RELY-03 | manual | Manual smoke test (see below) | N/A | ⬜ pending |
+| 15-01-01 | 01 | 1 | PERF-01, RELY-01 | integration | `npm test -- src/lib/api-live.test.ts` | ✅ | ⬜ pending |
+| 15-01-02 | 01 | 1 | RELY-02 | unit | `npm test -- scripts/lib/poll-live-logic.test.ts` | ✅ | ⬜ pending |
+| 15-02-01 | 02 | 1 | PERF-02, PERF-03 | integration | `npm test -- src/lib/api-home.test.ts src/lib/api-history.test.ts` | ❌ created by plan | ⬜ pending |
+| 15-02-02 | 02 | 1 | — | cleanup | `npm test` | N/A | ⬜ pending |
+| 15-03-01 | 03 | 2 | RELY-03 | TS compile + integration | `npx tsc --noEmit && npm test -- src/lib/api-live.test.ts` | ✅ | ⬜ pending |
+| 15-03-02 | 03 | 2 | RELY-03 | manual | Manual smoke test (see below) | N/A | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
 ---
 
-## Wave 0 Requirements
+## Wave 0 Notes
 
-- [ ] `src/lib/api-home.test.ts` — stubs for PERF-02 (minimal timing test, mocked DB)
-- [ ] `src/lib/api-history.test.ts` — stubs for PERF-03 (minimal timing test, mocked DB)
-
-*Existing infrastructure (vitest.config.ts, `src/lib/api-live.test.ts`, `scripts/lib/poll-live-logic.test.ts`) covers all other phase requirements. No framework installation needed.*
+Wave 0 gaps are handled by Wave 1 parallel plans (15-01 and 15-02). All tasks have automated verify commands. `api-home.test.ts` and `api-history.test.ts` are created by Plan 15-02 Task 1 — no pre-existing stub files needed.
 
 ---
 
@@ -70,11 +65,11 @@ created: 2026-03-11
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 5s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify commands
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 gaps handled by Wave 1 parallel plans (15-01 and 15-02)
+- [x] No watch-mode flags
+- [x] Feedback latency < 5s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** ready for execution
