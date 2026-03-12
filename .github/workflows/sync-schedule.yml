@@ -1,0 +1,25 @@
+name: Sync Schedule
+
+on:
+  schedule:
+    - cron: '0 14 * * *'   # daily at 6am PT
+  workflow_dispatch:
+
+jobs:
+  sync-schedule:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run sync-schedule
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BALLDONTLIE_API_KEY: ${{ secrets.BALLDONTLIE_API_KEY }}
