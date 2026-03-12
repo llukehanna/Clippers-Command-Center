@@ -1,9 +1,10 @@
 // scripts/lib/poll-live-logic.ts
-// Pure helper functions for the live polling loop.
-// Zero DB imports, zero fetch calls, zero side effects — fully unit-testable.
+// Pure helper functions and testable cycle unit for the live polling loop.
+// Zero DB imports — helpers are pure; runPollCycle only calls fetchScoreboard.
 // Imported by scripts/poll-live.ts (Plan 04).
 
 import type { ScoreboardGame } from '../../src/lib/types/live.js';
+import { fetchScoreboard } from './nba-live-client.js';
 
 export const LAC_TEAM_ID = 1610612746;
 const BACKOFF_CEILING_MS = 60_000;
@@ -44,4 +45,27 @@ export function gameStatusLabel(status: number): string {
   if (status === 2) return 'LIVE';
   if (status === 3) return 'FINAL';
   return 'UNKNOWN';
+}
+
+/**
+ * Run a single poll cycle against the NBA CDN scoreboard.
+ * Manages the failure counter: increments on error, resets to 0 on success.
+ *
+ * Returns the updated failureCount after this cycle.
+ * On success: 0 (reset).
+ * On failure: previousFailureCount + 1.
+ *
+ * Exported for unit-testing the backoff/reset behavior without running the
+ * full pollLoop (which has DB side-effects and a while(true) loop).
+ */
+export async function runPollCycle(
+  previousFailureCount: number,
+  deps: { fetchScoreboard: () => ReturnType<typeof fetchScoreboard> } = { fetchScoreboard }
+): Promise<number> {
+  try {
+    await deps.fetchScoreboard();
+    return 0; // success → reset counter
+  } catch {
+    return previousFailureCount + 1; // failure → increment counter
+  }
 }
