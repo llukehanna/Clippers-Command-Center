@@ -92,7 +92,7 @@
 - [x] **PERF-03**: /api/history/* response time < 400ms
 - [x] **RELY-01**: System continues serving cached data during upstream API outages
 - [x] **RELY-02**: Exponential backoff on live polling failures
-- [ ] **RELY-03**: UI remains functional and meaningful during all upstream outage scenarios
+- [x] **RELY-03**: UI remains functional and meaningful during all upstream outage scenarios
 
 ## v2 Requirements
 
@@ -193,7 +193,7 @@
 | PERF-03 | Phase 15: Reliability and Validation | Complete |
 | RELY-01 | Phase 15: Reliability and Validation | Complete |
 | RELY-02 | Phase 15: Reliability and Validation | Complete |
-| RELY-03 | Phase 15: Reliability and Validation | Pending |
+| RELY-03 | Phase 15: Reliability and Validation | Complete |
 
 **Coverage:**
 - v1 requirements: 50 total

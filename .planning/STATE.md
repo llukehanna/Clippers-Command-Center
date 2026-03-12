@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 15-reliability-and-validation-02-PLAN.md
-last_updated: "2026-03-12T02:58:51.933Z"
+stopped_at: Completed 15-reliability-and-validation-03-PLAN.md
+last_updated: "2026-03-12T03:07:16.434Z"
 last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
 progress:
   total_phases: 17
-  completed_phases: 12
+  completed_phases: 13
   total_plans: 44
-  completed_plans: 43
+  completed_plans: 44
   percent: 15
 ---
 
@@ -91,6 +91,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 14-historical-explorer P04 | 2 | 2 tasks | 2 files |
 | Phase 15-reliability-and-validation P01 | 3 | 2 tasks | 4 files |
 | Phase 15-reliability-and-validation P02 | 5 | 2 tasks | 3 files |
+| Phase 15-reliability-and-validation P03 | 15 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -206,6 +207,7 @@ Recent decisions affecting current work:
 - [Phase 15-reliability-and-validation]: api-history.test.ts: added vi.mock Proxy wrapper to enable tagged-template-literal sql mock — same pattern as api-home.test.ts
 - [Phase 15-reliability-and-validation]: Timing tests added to existing test files (not new files) since both already existed with partial content
 - [Phase 15-reliability-and-validation]: src/app/api/live/route.ts had zero codebase references — safe delete confirmed via grep before removal
+- [Phase 15-reliability-and-validation]: snapshot_captured_at added as top-level DATA_DELAYED-only field; StaleBanner prefers capturedAt over generatedAt; LiveDashboardPayload.snapshot_captured_at typed optional string
 
 ### Roadmap Evolution
 
@@ -221,6 +223,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T02:58:51.931Z
-Stopped at: Completed 15-reliability-and-validation-02-PLAN.md
+Last session: 2026-03-12T03:07:16.432Z
+Stopped at: Completed 15-reliability-and-validation-03-PLAN.md
 Resume file: None
