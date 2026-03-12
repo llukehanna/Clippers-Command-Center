@@ -309,6 +309,7 @@ export async function GET(): Promise<NextResponse> {
         {
           meta: buildMeta('mixed', 5, true, staleReason ?? 'poll daemon offline'),
           state: 'DATA_DELAYED',
+          snapshot_captured_at: snap.captured_at,
           game: gameData,
           key_metrics: [],
           box_score: null,
