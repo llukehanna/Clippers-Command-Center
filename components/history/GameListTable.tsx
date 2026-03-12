@@ -46,10 +46,15 @@ export function GameListTable({ games }: GameListTableProps) {
           </tr>
         </thead>
         <tbody>
-          {games.map((g) => (
+          {games.map((g) => {
+            const isScheduled = g.result === null && !g.final_score
+            return (
             <tr
               key={g.game_id}
-              className="h-9 border-b border-white/[0.04] hover:bg-white/[0.06] transition-colors duration-150 cursor-pointer"
+              className={[
+                'h-9 border-b border-white/[0.04] hover:bg-white/[0.06] transition-colors duration-150 cursor-pointer',
+                isScheduled ? 'opacity-60' : '',
+              ].join(' ')}
               onClick={() => router.push('/history/' + g.game_id)}
             >
               <td className="text-[0.8125rem] text-foreground px-4 tabular-nums">
@@ -78,12 +83,17 @@ export function GameListTable({ games }: GameListTableProps) {
                   <span className="text-positive font-semibold">W</span>
                 ) : g.result === 'L' ? (
                   <span className="text-negative font-semibold">L</span>
+                ) : isScheduled ? (
+                  <span className="inline-block text-[0.625rem] font-semibold text-muted-foreground tracking-wider px-1.5 py-0.5 rounded border border-white/[0.08]">
+                    SCH
+                  </span>
                 ) : (
                   '\u2014'
                 )}
               </td>
             </tr>
-          ))}
+            )
+          })}
         </tbody>
       </table>
     </div>
