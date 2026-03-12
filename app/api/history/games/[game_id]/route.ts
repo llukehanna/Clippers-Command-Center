@@ -86,6 +86,7 @@ function buildTeamTotals(players: PlayerBoxRow[]): Record<string, unknown> {
 
 function mapPlayerRow(p: PlayerBoxRow) {
   return {
+    id: p.player_id,          // Required by BoxScoreRow interface (used as React key)
     player_id: p.player_id,
     name: p.display_name,
     MIN: p.minutes ?? null,
