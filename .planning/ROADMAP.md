@@ -313,7 +313,12 @@ Plans:
   4. During a simulated upstream API outage, the system continues serving cached data without errors
   5. Live polling applies exponential backoff on repeated failures
   6. The UI remains functional and meaningful during all simulated upstream outage scenarios
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 15-01-PLAN.md — /api/live integration tests: all 3 states, timing SLA, DATA_DELAYED contract (PERF-01, RELY-01, RELY-02)
+- [ ] 15-02-PLAN.md — /api/home and /api/history timing spot-check tests + delete stale src/app/api/live/route.ts (PERF-02, PERF-03)
+- [ ] 15-03-PLAN.md — StaleBanner captured_at fix + DATA_DELAYED UI verification checkpoint (RELY-03)
 
 ---
 
@@ -352,5 +357,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 12. Between-Games Dashboard | 2/2 | Complete    | 2026-03-07 |
 | 13. Player Trends Page | 4/4 | Complete    | 2026-03-07 |
 | 14. Historical Explorer | 4/4 | Complete    | 2026-03-12 |
-| 15. Reliability and Validation | 0/TBD | Not started | - |
+| 15. Reliability and Validation | 0/3 | Not started | - |
 | 16. MVP Launch | 0/TBD | Not started | - |
