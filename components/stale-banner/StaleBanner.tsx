@@ -5,14 +5,16 @@ import { cn } from '@/lib/utils'
 interface StaleBannerProps {
   stale: boolean
   generatedAt?: string  // ISO timestamp string from meta.generated_at
+  capturedAt?: string   // ISO timestamp of last actual snapshot (preferred over generatedAt)
   className?: string
 }
 
-export function StaleBanner({ stale, generatedAt, className }: StaleBannerProps) {
+export function StaleBanner({ stale, generatedAt, capturedAt, className }: StaleBannerProps) {
   if (!stale) return null
 
-  const minutesAgo = generatedAt
-    ? Math.floor((Date.now() - new Date(generatedAt).getTime()) / 60_000)
+  const timeRef = capturedAt ?? generatedAt
+  const minutesAgo = timeRef
+    ? Math.floor((Date.now() - new Date(timeRef).getTime()) / 60_000)
     : null
 
   return (

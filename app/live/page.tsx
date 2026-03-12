@@ -121,6 +121,7 @@ export default function LivePage() {
         <StaleBanner
           stale={data?.meta?.stale ?? false}
           generatedAt={data?.meta?.generated_at}
+          capturedAt={data?.snapshot_captured_at}
         />
 
         {/* Analytics metrics row */}
