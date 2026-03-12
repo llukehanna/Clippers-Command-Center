@@ -29,13 +29,29 @@ export default async function HistoryGamePage({
   }))
 
   // Determine if LAC is home team
-  const isHome = game.home_abbr === 'LAC'
+  const homeAbbr: string = game.home_team.abbreviation
+  const awayAbbr: string = game.away_team.abbreviation
+  const isHome = homeAbbr === 'LAC'
+
+  // box_score.teams is an array [{team_abbr, players, totals}, ...].
+  // HistoryGameDetail expects home? / away? named keys — derive them here.
+  const homeTeamData = box_score.teams?.find(
+    (t: { team_abbr: string }) => t.team_abbr === homeAbbr
+  )
+  const awayTeamData = box_score.teams?.find(
+    (t: { team_abbr: string }) => t.team_abbr === awayAbbr
+  )
+  const boxScoreForDetail = {
+    available: box_score.available,
+    home: homeTeamData,
+    away: awayTeamData,
+  }
 
   return (
     <div className="px-6 py-6 max-w-[1440px] mx-auto space-y-6">
       <GameHeader
-        homeAbbr={game.home_abbr}
-        awayAbbr={game.away_abbr}
+        homeAbbr={homeAbbr}
+        awayAbbr={awayAbbr}
         homeScore={game.home_score}
         awayScore={game.away_score}
         gameDate={game.game_date}
@@ -43,9 +59,9 @@ export default async function HistoryGamePage({
         isHome={isHome}
       />
       <HistoryGameDetail
-        boxScore={box_score}
-        homeAbbr={game.home_abbr}
-        awayAbbr={game.away_abbr}
+        boxScore={boxScoreForDetail}
+        homeAbbr={homeAbbr}
+        awayAbbr={awayAbbr}
         insights={mappedInsights}
       />
     </div>
