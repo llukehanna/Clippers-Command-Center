@@ -335,6 +335,12 @@ export async function GET(_req: Request): Promise<NextResponse> {
         const opponentAbbr = lacIsHome ? game.away_abbr : game.home_abbr;
         const homeAway = lacIsHome ? 'home' : 'away';
         const odds = await getLatestOdds(game.game_id);
+        const oddsDisplay = odds ? {
+          spread: lacIsHome ? odds.spread_home : odds.spread_away,
+          moneyline: lacIsHome ? odds.moneyline_home : odds.moneyline_away,
+          over_under: odds.total_points,
+          captured_at: odds.captured_at,
+        } : null;
         return {
           game_id: parseInt(game.game_id, 10),
           game_date: game.game_date,
@@ -342,7 +348,7 @@ export async function GET(_req: Request): Promise<NextResponse> {
           opponent_abbr: opponentAbbr,
           home_away: homeAway,
           status: game.status,
-          odds,
+          odds: oddsDisplay,
         };
       })
     );
