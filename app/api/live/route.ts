@@ -305,17 +305,56 @@ export async function GET(): Promise<NextResponse> {
     if (isStale) {
       const gameData = await fetchGameDetails(snap.game_id, snap);
 
+      // Build box score and key metrics from stale snapshot — show last-known stats
+      const lacTeamRowStale = await sql<{ team_id: string; abbreviation: string }[]>`
+        SELECT team_id::text AS team_id, abbreviation
+        FROM teams
+        WHERE nba_team_id = ${LAC_NBA_TEAM_ID}
+        LIMIT 1
+      `;
+      const lacStale = lacTeamRowStale[0];
+      const lacInternalIdStale = lacStale?.team_id;
+
+      const lacIsHomeStale = snap.home_team_id === lacInternalIdStale;
+      const lacBoxStale = lacIsHomeStale ? payload.home_box : payload.away_box;
+      const oppBoxStale = lacIsHomeStale ? payload.away_box : payload.home_box;
+
+      const lacAbbrStale = gameData
+        ? (lacIsHomeStale ? gameData.home.abbreviation : gameData.away.abbreviation) ?? 'LAC'
+        : 'LAC';
+      const oppAbbrStale = gameData
+        ? (lacIsHomeStale ? gameData.away.abbreviation : gameData.home.abbreviation) ?? 'OPP'
+        : 'OPP';
+
+      const staleKeyMetrics = lacBoxStale && oppBoxStale
+        ? computeKeyMetrics(lacBoxStale, oppBoxStale)
+        : [];
+      const staleBoxScore = lacBoxStale && oppBoxStale
+        ? buildBoxScore(lacBoxStale, oppBoxStale, lacAbbrStale, oppAbbrStale)
+        : null;
+
+      const staleOddsRaw = await getLatestOdds(snap.game_id);
+      const staleOdds = staleOddsRaw ? {
+        provider: 'odds_api',
+        captured_at: staleOddsRaw.captured_at,
+        spread_home: staleOddsRaw.spread_home,
+        spread_away: staleOddsRaw.spread_away,
+        moneyline_home: staleOddsRaw.moneyline_home,
+        moneyline_away: staleOddsRaw.moneyline_away,
+        total_points: staleOddsRaw.total_points,
+      } : null;
+
       return NextResponse.json(
         {
           meta: buildMeta('mixed', 5, true, staleReason ?? 'poll daemon offline'),
           state: 'DATA_DELAYED',
           snapshot_captured_at: snap.captured_at,
           game: gameData,
-          key_metrics: [],
-          box_score: null,
+          key_metrics: staleKeyMetrics,
+          box_score: staleBoxScore,
           insights: [],
           other_games: [],
-          odds: null,
+          odds: staleOdds,
         },
         NO_STORE
       );
