@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Ready to execute
-stopped_at: "Paused at checkpoint: 16.1-04 Task 2 human-action — awaiting pipeline execution"
-last_updated: "2026-03-23T18:17:05.014Z"
+stopped_at: Completed 16.1-04-PLAN.md
+last_updated: "2026-03-23T18:30:01.513Z"
 progress:
   total_phases: 18
   completed_phases: 15
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 16.1 (bug-fixes) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 
 ## Performance Metrics
 
@@ -94,6 +94,7 @@ Plan: 2 of 4
 | Phase 16.1-bug-fixes P02 | 1 | 1 tasks | 1 files |
 | Phase 16.1-bug-fixes P01 | 12 | 2 tasks | 5 files |
 | Phase 16.1-bug-fixes P04 | 8 | 1 tasks | 4 files |
+| Phase 16.1-bug-fixes P04 | 30 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -220,6 +221,7 @@ Recent decisions affecting current work:
 - [Phase 16.1-bug-fixes]: Odds mapped at API layer to spread/moneyline/over_under with LAC perspective before reaching UI
 - [Phase 16.1-bug-fixes]: Task 2 marked complete: human ran data pipeline; partial results accepted; gap closure needed for history date filters, player logs, and home stats
 - [Phase 16.1-bug-fixes]: normalizeBDLStatus maps BDL 'Final' to lowercase 'final' — consistent with finalize-games query and all API routes
+- [Phase 16.1-bug-fixes]: normalizeBDLStatus maps BDL 'Final' to lowercase 'final' — consistent with finalize-games query and all API routes
 
 ### Roadmap Evolution
 
@@ -235,6 +237,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T18:17:05.011Z
-Stopped at: Paused at checkpoint: 16.1-04 Task 2 human-action — awaiting pipeline execution
+Last session: 2026-03-23T18:30:01.510Z
+Stopped at: Completed 16.1-04-PLAN.md
 Resume file: None
