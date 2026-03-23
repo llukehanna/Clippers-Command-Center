@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Awaiting human action
-stopped_at: "16.1-03 Task 1 complete (bbb472a) — paused at Task 2 checkpoint: human must run data pipeline"
-last_updated: "2026-03-23T18:00:00.000Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 16.1-03-PLAN.md — data pipeline scripts; partial data population, gap closure needed
+last_updated: "2026-03-23T18:00:05.723Z"
 progress:
   total_phases: 18
-  completed_phases: 14
+  completed_phases: 15
   total_plans: 50
-  completed_plans: 48
+  completed_plans: 50
 ---
 
 # Project State
@@ -217,6 +217,7 @@ Recent decisions affecting current work:
 - [Phase 16-mvp-launch]: Post-backfill maintenance: re-set LAC player is_active=true after each npm run backfill run (backfill resets all players to false)
 - [Phase 16.1-bug-fixes]: TopNav now renders on all pages including /live — LiveFloatingNav removed, single source of truth for nav
 - [Phase 16.1-bug-fixes]: Odds mapped at API layer to spread/moneyline/over_under with LAC perspective before reaching UI
+- [Phase 16.1-bug-fixes]: Task 2 marked complete: human ran data pipeline; partial results accepted; gap closure needed for history date filters, player logs, and home stats
 
 ### Roadmap Evolution
 
@@ -232,6 +233,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T17:48:24.813Z
-Stopped at: Completed 16.1-01-PLAN.md — nav centering and odds field mapping fixes
+Last session: 2026-03-23T18:00:02.728Z
+Stopped at: Completed 16.1-03-PLAN.md — data pipeline scripts; partial data population, gap closure needed
 Resume file: None
