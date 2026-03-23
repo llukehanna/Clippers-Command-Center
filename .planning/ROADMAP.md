@@ -344,13 +344,19 @@ Plans:
 ### Phase 16.1: Bug Fixes
 **Goal**: Fix all known post-launch bugs so the application displays correct data and consistent UI across all pages
 **Depends on**: Phase 16
+**Requirements**: BUG-01-NAV, BUG-02-LIVE-STATS, BUG-03-ODDS, BUG-04-HISTORY, BUG-05-PLAYER-STATS
 **Success Criteria** (what must be TRUE):
   1. Nav bar is centered consistently on all pages (live, home, players, history, schedule)
   2. Live game display shows all expected stats beyond box score and FT edge
   3. Betting columns (spread, ML, O/U) are populated in the schedule view
   4. Historical explorer shows full season data and reflects games completed after March 9th
   5. Player stats are fully populated
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 16.1-01-PLAN.md — Nav bar centering (centered floating pill on all pages) + odds field name mapping in schedule/home API routes
+- [ ] 16.1-02-PLAN.md — Live DATA_DELAYED state: return box score and key metrics from stale snapshot instead of null/empty
+- [ ] 16.1-03-PLAN.md — Data pipeline script fixes (--full-season, --since flags) + human pipeline run for historical/player data
 
 ---
 
@@ -378,3 +384,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 14. Historical Explorer | 4/4 | Complete    | 2026-03-12 |
 | 15. Reliability and Validation | 3/3 | Complete    | 2026-03-12 |
 | 16. MVP Launch | 3/3 | Complete    | 2026-03-12 |
+| 16.1 Bug Fixes | 0/3 | Planning    |  |
