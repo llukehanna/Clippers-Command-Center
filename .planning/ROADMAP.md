@@ -26,6 +26,7 @@ Build a desktop analytics dashboard for Clippers fans that delivers live game st
 - [x] **Phase 14: Historical Explorer** - Browse historical Clippers games by season with full box scores (completed 2026-03-12)
 - [x] **Phase 15: Reliability and Validation** - Validate failure handling, backoff, fallback, and performance SLAs (completed 2026-03-12)
 - [x] **Phase 16: MVP Launch** - Deploy to Vercel + Neon and ship the first fully usable version (completed 2026-03-12)
+- [ ] **Phase 16.1: Bug Fixes** - Fix nav bar centering, live stats display, betting columns, historical date filter, and player stats population
 
 ## Phase Details
 
@@ -337,6 +338,19 @@ Plans:
 - [ ] 16-01-PLAN.md — Stateless Vercel Cron route (/api/cron/poll-live) + vercel.json cron config + .env.example update
 - [ ] 16-02-PLAN.md — GitHub Actions workflows: sync-schedule.yml (daily 6am PT) + post-game.yml (nightly 2am PT chain)
 - [ ] 16-03-PLAN.md — Pre-launch data backfill + Vercel deployment + MVP smoke test checkpoint
+
+---
+
+### Phase 16.1: Bug Fixes
+**Goal**: Fix all known post-launch bugs so the application displays correct data and consistent UI across all pages
+**Depends on**: Phase 16
+**Success Criteria** (what must be TRUE):
+  1. Nav bar is centered consistently on all pages (live, home, players, history, schedule)
+  2. Live game display shows all expected stats beyond box score and FT edge
+  3. Betting columns (spread, ML, O/U) are populated in the schedule view
+  4. Historical explorer shows full season data and reflects games completed after March 9th
+  5. Player stats are fully populated
+**Plans**: TBD
 
 ---
 
