@@ -19,7 +19,7 @@ describe('computeSeasonRecord', () => {
         home_away: 'home',
         result: 'W',
         final_score: { team: 110, opp: 100 },
-        status: 'Final',
+        status: 'final',
       },
       {
         game_id: '2',
@@ -28,7 +28,7 @@ describe('computeSeasonRecord', () => {
         home_away: 'away',
         result: 'L',
         final_score: { team: 90, opp: 105 },
-        status: 'Final',
+        status: 'final',
       },
     ]
     const result = computeSeasonRecord(games)
@@ -46,7 +46,7 @@ describe('computeSeasonRecord', () => {
         home_away: 'home',
         result: 'W',
         final_score: { team: 110, opp: 100 },
-        status: 'Final',
+        status: 'final',
       },
       {
         game_id: '2',

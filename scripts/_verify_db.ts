@@ -20,7 +20,7 @@ async function main() {
 
   // Query 3: Games by season
   const bySeasons = await sql`
-    SELECT season_id::text, count(*)::text AS game_count, count(*) FILTER (WHERE status = 'Final')::text AS final_count
+    SELECT season_id::text, count(*)::text AS game_count, count(*) FILTER (WHERE status = 'final')::text AS final_count
     FROM games
     GROUP BY season_id
     ORDER BY season_id
@@ -41,7 +41,7 @@ async function main() {
     SELECT count(*)::text AS cnt
     FROM games g
     JOIN game_team_box_scores b ON b.game_id = g.game_id
-    WHERE g.status != 'Final'
+    WHERE g.status != 'final'
   `;
   console.log(`\n=== Non-Final Box Scores (DATA-05) === ${nonFinalBoxScores[0].cnt === '0' ? 'PASS (0 rows)' : `FAIL (${nonFinalBoxScores[0].cnt} rows)`}`);
 
