@@ -117,7 +117,7 @@ export async function upsertStints(
  *   - Period/quarter strings          → "1st Qtr", "2nd Qtr", "Halftime", etc.
  *
  * Returns { status, startTimeUtc } where:
- *   status       = "Final" | "scheduled" | "in_progress"
+ *   status       = "final" | "scheduled" | "in_progress"
  *   startTimeUtc = the ISO string when status was a timestamp, else null
  */
 function normalizeBDLStatus(raw: string | null | undefined): {
@@ -125,7 +125,7 @@ function normalizeBDLStatus(raw: string | null | undefined): {
   startTimeUtc: string | null;
 } {
   if (!raw) return { status: 'scheduled', startTimeUtc: null };
-  if (raw === 'Final') return { status: 'Final', startTimeUtc: null };
+  if (raw === 'Final') return { status: 'final', startTimeUtc: null };
   // ISO timestamp = scheduled game; use it as start_time_utc
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) {
     return { status: 'scheduled', startTimeUtc: raw };

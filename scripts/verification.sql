@@ -18,7 +18,7 @@ UNION ALL SELECT 'player_team_stints', count(*) FROM player_team_stints
 ORDER BY tbl;
 
 -- 3. Games by season (must have 3 seasons: 2022, 2023, 2024)
-SELECT season_id, count(*) AS game_count, count(*) FILTER (WHERE status = 'Final') AS final_count
+SELECT season_id, count(*) AS game_count, count(*) FILTER (WHERE status = 'final') AS final_count
 FROM games
 GROUP BY season_id
 ORDER BY season_id;
@@ -31,14 +31,14 @@ SELECT g.nba_game_id, g.game_date
 FROM games g
 JOIN game_team_box_scores t ON t.game_id = g.game_id
 LEFT JOIN game_player_box_scores p ON p.game_id = g.game_id
-WHERE p.game_id IS NULL AND g.status = 'Final'
+WHERE p.game_id IS NULL AND g.status = 'final'
 LIMIT 10;
 
 -- 6. DATA-05: Verify no box scores exist for non-Final games
 SELECT g.nba_game_id, g.status
 FROM games g
 JOIN game_team_box_scores b ON b.game_id = g.game_id
-WHERE g.status != 'Final'
+WHERE g.status != 'final'
 LIMIT 10;
 
 -- 7. Spot-check: sample player box scores for a known game
