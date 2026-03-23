@@ -1,8 +1,6 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
 import { Surface } from '@/components/ui/surface'
-import { NavLinkCapsule } from '@/components/ui/nav-link-capsule'
 import { useLiveData } from '@/hooks/useLiveData'
 import { LiveScoreboard } from '@/components/live/LiveScoreboard'
 import { KeyMetricsRow } from '@/components/live/KeyMetricsRow'
@@ -13,46 +11,13 @@ import { StaleBanner } from '@/components/stale-banner/StaleBanner'
 import { BoxScoreSkeleton } from '@/components/skeletons/BoxScoreSkeleton'
 import { StatCardSkeleton } from '@/components/skeletons/StatCardSkeleton'
 
-function LiveFloatingNav() {
-  const pathname = usePathname()
-  const isLive = pathname === '/live' || pathname.startsWith('/live/')
-
-  return (
-    <header className="pt-8 pb-4">
-      <Surface variant="nav" className="relative mx-auto flex max-w-max items-center gap-6 px-6 py-2.5">
-        <span className="text-[0.875rem] font-bold tracking-widest text-foreground">
-          CCC
-        </span>
-        <nav className="flex items-center gap-0.5" aria-label="Main">
-          <NavLinkCapsule href="/home" active={pathname === '/home'}>
-            Home
-          </NavLinkCapsule>
-          <NavLinkCapsule href="/live" active={isLive}>
-            Live
-          </NavLinkCapsule>
-          <NavLinkCapsule href="/players" active={pathname.startsWith('/players')}>
-            Players
-          </NavLinkCapsule>
-          <NavLinkCapsule href="/schedule" active={pathname.startsWith('/schedule')}>
-            Schedule
-          </NavLinkCapsule>
-          <NavLinkCapsule href="/history" active={pathname.startsWith('/history')}>
-            History
-          </NavLinkCapsule>
-        </nav>
-      </Surface>
-    </header>
-  )
-}
-
 export default function LivePage() {
   const { data, error, isLoading } = useLiveData()
 
   // Initial load skeleton — before first data arrives
   if (isLoading && !data) {
     return (
-      <div className="-mt-14 min-h-screen bg-background text-foreground">
-        <LiveFloatingNav />
+      <div className="min-h-screen bg-background text-foreground">
         <main className="mx-auto max-w-[1440px] px-6 pb-12">
           <section className="mt-6">
             <Surface variant="scoreboard" className="h-[120px] animate-pulse" />
@@ -75,8 +40,7 @@ export default function LivePage() {
   // Error with no cached data
   if (error && !data) {
     return (
-      <div className="-mt-14 min-h-screen bg-background text-foreground">
-        <LiveFloatingNav />
+      <div className="min-h-screen bg-background text-foreground">
         <main className="mx-auto max-w-[1440px] px-6 pb-12">
           <p className="ccc-body mt-6 text-muted-foreground">
             Unable to load live data. Retrying…
@@ -90,8 +54,7 @@ export default function LivePage() {
 
   if (state === 'NO_ACTIVE_GAME') {
     return (
-      <div className="-mt-14 min-h-screen bg-background text-foreground">
-        <LiveFloatingNav />
+      <div className="min-h-screen bg-background text-foreground">
         <main className="mx-auto max-w-[1440px] px-6 pb-12">
           <NoGameIdleState className="mt-6" />
         </main>
@@ -108,8 +71,7 @@ export default function LivePage() {
   const insights = data?.insights ?? []
 
   return (
-    <div className="-mt-14 min-h-screen bg-background text-foreground">
-      <LiveFloatingNav />
+    <div className="min-h-screen bg-background text-foreground">
       <main className="mx-auto max-w-[1440px] px-6 pb-12">
         {/* Scoreboard hero */}
         {data?.game && (
