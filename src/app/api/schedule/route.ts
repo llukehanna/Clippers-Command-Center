@@ -95,6 +95,12 @@ export async function GET(request: Request) {
       const opponentAbbr = isHome ? g.away_abbr : g.home_abbr;
       const homeAway: 'home' | 'away' = isHome ? 'home' : 'away';
       const odds = includeOdds ? (oddsResults[i] ?? null) : null;
+      const oddsDisplay = odds ? {
+        spread: isHome ? odds.spread_home : odds.spread_away,
+        moneyline: isHome ? odds.moneyline_home : odds.moneyline_away,
+        over_under: odds.total_points,
+        captured_at: odds.captured_at,
+      } : null;
 
       return {
         game_id: g.game_id,
@@ -115,7 +121,7 @@ export async function GET(request: Request) {
         opponent_abbr: opponentAbbr,
         home_away: homeAway,
         status: g.status,
-        odds,
+        odds: oddsDisplay,
       };
     });
 
