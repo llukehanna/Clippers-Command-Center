@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to execute
-stopped_at: Completed 16.1-01-PLAN.md — nav centering and odds field mapping fixes
-last_updated: "2026-03-23T17:48:24.816Z"
+status: Awaiting human action
+stopped_at: "16.1-03 Task 1 complete (bbb472a) — paused at Task 2 checkpoint: human must run data pipeline"
+last_updated: "2026-03-23T18:00:00.000Z"
 progress:
   total_phases: 18
   completed_phases: 14
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 16.1 (bug-fixes) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3 (partial — awaiting human action at Task 2)
 
 ## Performance Metrics
 
