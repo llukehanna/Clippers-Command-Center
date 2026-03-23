@@ -258,16 +258,19 @@ async function fetchBoxscoreStatsNba(statsNbaGameId: string): Promise<NBABoxscor
   const missing: string[] = [];
   if (!gameSummary?.rowSet?.length) missing.push('GameSummary');
   if (!playerStats) missing.push('PlayerStats');
-  if (!teamStats?.rowSet?.length) missing.push('TeamStats');
+  // TeamStats is optional — if empty, team aggregates fall back to emptyTeamStatistics()
+  // and scores come from LineScore. Player box scores are still written correctly.
   if (missing.length > 0) {
     console.warn(
       `[nba-live] stats.nba.com fallback: missing named set(s) for GameID=${gid}: ${missing.join(', ')}`
     );
     throw new Error(`stats.nba.com fallback: missing result set(s): ${missing.join(', ')} for GameID=${gid}`);
   }
+  if (teamStats && !teamStats.rowSet?.length) {
+    console.warn(`[nba-live] stats.nba.com fallback: TeamStats present but empty for GameID=${gid} — using empty team aggregates`);
+  }
   const gs = gameSummary!;
   const ps = playerStats!;
-  const ts = teamStats!;
 
   const summaryRow = rowToMap(gs, gs.rowSet[0] as (string | number)[]);
   const homeTeamId = Number(summaryRow.HOME_TEAM_ID);
@@ -297,12 +300,13 @@ async function fetchBoxscoreStatsNba(statsNbaGameId: string): Promise<NBABoxscor
     teamScoresByPeriod.set(tid, { score: Number(row.PTS ?? 0), periods });
   }
 
-  const teamStatsRows = ts.rowSet as (string | number[])[];
   const teamStatsByTeamId = new Map<number, Record<string, string | number>>();
-  for (const row of teamStatsRows) {
-    const rowMap = rowToMap(ts, row as (string | number)[]);
-    const tid = Number(rowMap.TEAM_ID);
-    teamStatsByTeamId.set(tid, rowMap);
+  if (teamStats?.rowSet?.length) {
+    for (const row of teamStats.rowSet as (string | number)[][]) {
+      const rowMap = rowToMap(teamStats, row);
+      const tid = Number(rowMap.TEAM_ID);
+      teamStatsByTeamId.set(tid, rowMap);
+    }
   }
 
   function buildTeamStatistics(row: Record<string, string | number>): TeamStatistics {
