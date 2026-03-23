@@ -25,7 +25,7 @@ export default function RootLayout({
         className={`${inter.variable} font-sans antialiased bg-background text-foreground min-w-[1024px]`}
       >
         <TopNav />
-        <main className="pt-14">
+        <main>
           {children}
         </main>
       </body>
