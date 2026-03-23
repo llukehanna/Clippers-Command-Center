@@ -26,7 +26,7 @@ Build a desktop analytics dashboard for Clippers fans that delivers live game st
 - [x] **Phase 14: Historical Explorer** - Browse historical Clippers games by season with full box scores (completed 2026-03-12)
 - [x] **Phase 15: Reliability and Validation** - Validate failure handling, backoff, fallback, and performance SLAs (completed 2026-03-12)
 - [x] **Phase 16: MVP Launch** - Deploy to Vercel + Neon and ship the first fully usable version (completed 2026-03-12)
-- [x] **Phase 16.1: Bug Fixes** - Fix nav bar centering, live stats display, betting columns, historical date filter, and player stats population (completed 2026-03-23)
+- [ ] **Phase 16.1: Bug Fixes** - Fix nav bar centering, live stats display, betting columns, historical date filter, and player stats population
 
 ## Phase Details
 
@@ -351,12 +351,13 @@ Plans:
   3. Betting columns (spread, ML, O/U) are populated in the schedule view
   4. Historical explorer shows full season data and reflects games completed after March 9th
   5. Player stats are fully populated
-**Plans**: 3 plans
+**Plans**: 4 plans
 
 Plans:
 - [x] 16.1-01-PLAN.md — Nav bar centering (centered floating pill on all pages) + odds field name mapping in schedule/home API routes
 - [x] 16.1-02-PLAN.md — Live DATA_DELAYED state: return box score and key metrics from stale snapshot instead of null/empty
 - [x] 16.1-03-PLAN.md — Data pipeline script fixes (--full-season, --since flags) + human pipeline run for historical/player data
+- [ ] 16.1-04-PLAN.md — Gap closure: fix status case mismatch ('Final' vs 'final') in normalizeBDLStatus + DB correction + pipeline re-run
 
 ---
 
@@ -384,4 +385,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 14. Historical Explorer | 4/4 | Complete    | 2026-03-12 |
 | 15. Reliability and Validation | 3/3 | Complete    | 2026-03-12 |
 | 16. MVP Launch | 3/3 | Complete    | 2026-03-12 |
-| 16.1 Bug Fixes | 3/3 | Complete   | 2026-03-23 |
+| 16.1 Bug Fixes | 3/4 | In Progress |  |
