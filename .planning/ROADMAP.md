@@ -354,7 +354,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 16.1-01-PLAN.md — Nav bar centering (centered floating pill on all pages) + odds field name mapping in schedule/home API routes
+- [x] 16.1-01-PLAN.md — Nav bar centering (centered floating pill on all pages) + odds field name mapping in schedule/home API routes
 - [ ] 16.1-02-PLAN.md — Live DATA_DELAYED state: return box score and key metrics from stale snapshot instead of null/empty
 - [ ] 16.1-03-PLAN.md — Data pipeline script fixes (--full-season, --since flags) + human pipeline run for historical/player data
 
@@ -384,4 +384,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → ... → 16
 | 14. Historical Explorer | 4/4 | Complete    | 2026-03-12 |
 | 15. Reliability and Validation | 3/3 | Complete    | 2026-03-12 |
 | 16. MVP Launch | 3/3 | Complete    | 2026-03-12 |
-| 16.1 Bug Fixes | 0/3 | Planning    |  |
+| 16.1 Bug Fixes | 1/3 | In Progress|  |

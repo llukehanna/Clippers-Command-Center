@@ -2,16 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: "Completed 16-03-PLAN.md — MVP v1.0 live at https://clippers-command-center.vercel.app"
-last_updated: "2026-03-12T08:41:50.222Z"
-last_activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
+status: Ready to execute
+stopped_at: Completed 16.1-01-PLAN.md — nav centering and odds field mapping fixes
+last_updated: "2026-03-23T17:48:24.816Z"
 progress:
-  total_phases: 17
+  total_phases: 18
   completed_phases: 14
-  total_plans: 47
-  completed_plans: 47
-  percent: 15
+  total_plans: 50
+  completed_plans: 48
 ---
 
 # Project State
@@ -21,20 +19,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** A Clippers fan watching a game opens the dashboard and immediately sees the live score, full box score, and 2–3 provable insight tiles — all from real data.
-**Current focus:** Phase 4 — Historical Data Ingestion
+**Current focus:** Phase 16.1 — bug-fixes
 
 ## Current Position
 
-Phase: 4 of 16 (Historical Data Ingestion)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-05 — Roadmap created; Phases 1–3 confirmed complete from existing Docs/
-
-Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/16 phases complete)
+Phase: 16.1 (bug-fixes) — EXECUTING
+Plan: 2 of 3
 
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0
 - Average duration: N/A
 - Total execution time: 0 hours
@@ -46,6 +41,7 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | 1–3 (complete, pre-coded) | - | - | - |
 
 **Recent Trend:**
+
 - Last 5 plans: N/A
 - Trend: N/A
 
@@ -95,6 +91,8 @@ Progress: [███░░░░░░░░░░░░░░░░░] 15% (3/
 | Phase 16-mvp-launch P02 | 2 | 2 tasks | 2 files |
 | Phase 16-mvp-launch P01 | 2 | 2 tasks | 3 files |
 | Phase 16-mvp-launch P03 | 11 | 3 tasks | 0 files |
+| Phase 16.1-bug-fixes P02 | 1 | 1 tasks | 1 files |
+| Phase 16.1-bug-fixes P01 | 12 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -217,6 +215,8 @@ Recent decisions affecting current work:
 - [Phase 16-mvp-launch]: All cron route error paths return HTTP 200 to prevent Vercel Cron retry storm on CDN outage
 - [Phase 16-mvp-launch]: NEXT_PUBLIC_BASE_URL must be set in Vercel env vars — server-side fetch in page components falls back to localhost:3000 without it
 - [Phase 16-mvp-launch]: Post-backfill maintenance: re-set LAC player is_active=true after each npm run backfill run (backfill resets all players to false)
+- [Phase 16.1-bug-fixes]: TopNav now renders on all pages including /live — LiveFloatingNav removed, single source of truth for nav
+- [Phase 16.1-bug-fixes]: Odds mapped at API layer to spread/moneyline/over_under with LAC perspective before reaching UI
 
 ### Roadmap Evolution
 
@@ -232,6 +232,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T08:22:34.093Z
-Stopped at: Completed 16-03-PLAN.md — MVP v1.0 live at https://clippers-command-center.vercel.app
+Last session: 2026-03-23T17:48:24.813Z
+Stopped at: Completed 16.1-01-PLAN.md — nav centering and odds field mapping fixes
 Resume file: None
