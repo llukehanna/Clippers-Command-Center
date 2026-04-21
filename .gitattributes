@@ -1,0 +1,11 @@
+# Tooling and planning artifacts — exclude from GitHub's language detection
+# so the repo reads as TypeScript (what it actually is).
+
+.claude/**            linguist-vendored
+get-shit-done-*/**    linguist-vendored
+.planning/**          linguist-documentation
+scripts/**            linguist-vendored=false
+
+# Treat generated files as such
+*.tsbuildinfo         linguist-generated
+package-lock.json     linguist-generated
