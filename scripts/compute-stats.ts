@@ -9,7 +9,13 @@
 //
 // All four derived tables are populated idempotently (ON CONFLICT DO UPDATE).
 //
-// Run via: npm run compute-stats
+// Incremental by default: only games with team box scores but no advanced
+// rows are computed (finalizeGame deletes a game's advanced rows whenever it
+// rewrites the box score), and rolling windows are rebuilt only for the
+// (team, season) / (player, season) pairs those games touch. --all recomputes
+// everything.
+//
+// Run via: npm run compute-stats [-- --all]
 import { sql } from './lib/db.js';
 import {
   computeTeamPossessions,
@@ -171,6 +177,7 @@ async function computeGameStats(gameId: string): Promise<void> {
   // Regulation team minutes: 5 players × 48 minutes = 240
   const TEAM_MINUTES = 240;
 
+  const advRows: Record<string, string | number | null>[] = [];
   for (const p of playerRows) {
     const teamBox = teamBoxMap.get(p.team_id);
     const oppBox = oppBoxMap.get(p.team_id);
@@ -204,14 +211,20 @@ async function computeGameStats(gameId: string): Promise<void> {
       oppBox ? oppBox.rebounds : 0
     );
 
+    advRows.push({
+      game_id: gameId, player_id: p.player_id, team_id: p.team_id,
+      usage_rate: usageRate, ts_pct: tsPct, efg_pct: efgPct,
+      ast_rate: astRate, reb_rate: rebRate, tov_rate: tovRate,
+    });
+  }
+
+  if (advRows.length > 0) {
     await sql`
-      INSERT INTO advanced_player_game_stats (
-        game_id, player_id, team_id,
-        usage_rate, ts_pct, efg_pct, ast_rate, reb_rate, tov_rate
-      ) VALUES (
-        ${gameId}::bigint, ${p.player_id}::bigint, ${p.team_id}::bigint,
-        ${usageRate}, ${tsPct}, ${efgPct}, ${astRate}, ${rebRate}, ${tovRate}
-      )
+      INSERT INTO advanced_player_game_stats ${sql(
+        advRows,
+        'game_id', 'player_id', 'team_id',
+        'usage_rate', 'ts_pct', 'efg_pct', 'ast_rate', 'reb_rate', 'tov_rate'
+      )}
       ON CONFLICT (game_id, player_id) DO UPDATE SET
         team_id    = EXCLUDED.team_id,
         usage_rate = EXCLUDED.usage_rate,
@@ -251,40 +264,45 @@ async function printSummary(): Promise<void> {
 // ---- Main ----
 
 async function main(): Promise<void> {
+  const all = process.argv.slice(2).includes('--all');
   console.log('========================================');
   console.log('Clippers Command Center — Advanced Stats Engine');
-  console.log('Compute: advanced team/player stats + rolling windows');
+  console.log(`Compute: advanced team/player stats + rolling windows (${all ? 'all games' : 'incremental'})`);
   console.log('========================================\n');
 
-  // Fetch all games with box score data (ordered by date for rolling windows correctness)
-  const gamesWithBoxScores = await sql<{ game_id: string; season_id: number }[]>`
-    SELECT game_id, season_id
-    FROM (
-      SELECT DISTINCT g.game_id::text AS game_id, g.season_id
-      FROM games g
-      WHERE EXISTS (
-        SELECT 1 FROM game_team_box_scores b
-        WHERE b.game_id = g.game_id
-      )
-    ) sub
-    ORDER BY game_id ASC
+  // Games to compute: every game with box scores (--all), or only those whose
+  // advanced rows are missing. Ordered by date for readable progress.
+  const games = await sql<{ game_id: string }[]>`
+    SELECT g.game_id::text AS game_id
+    FROM games g
+    WHERE EXISTS (SELECT 1 FROM game_team_box_scores b WHERE b.game_id = g.game_id)
+      ${all ? sql`` : sql`AND NOT EXISTS (SELECT 1 FROM advanced_team_game_stats a WHERE a.game_id = g.game_id)`}
+    ORDER BY g.game_date, g.game_id
   `;
+  const gameIds = games.map((g) => g.game_id);
 
-  console.log(`[1/4] Computing team advanced stats for ${gamesWithBoxScores.length} game(s)...`);
-  for (const { game_id } of gamesWithBoxScores) {
-    await computeGameStats(game_id);
+  console.log(`[1/4] Computing team + player advanced stats for ${gameIds.length} game(s)...`);
+  for (let i = 0; i < gameIds.length; i++) {
+    await computeGameStats(gameIds[i]);
+    if ((i + 1) % 200 === 0) console.log(`  ${i + 1}/${gameIds.length}`);
   }
   console.log(`  Done.`);
 
-  // Step 3: Team rolling windows — distinct (team_id, season_id) pairs
+  if (gameIds.length === 0 && !all) {
+    console.log('\nNothing new to compute.');
+    await printSummary();
+    await sql.end();
+    return;
+  }
+
+  // Step 3: Team rolling windows — (team_id, season_id) pairs touched by these games
   const teamPairs = await sql<{ team_id: string; season_id: number }[]>`
-    SELECT team_id, season_id
-    FROM (
-      SELECT DISTINCT atgs.team_id::text AS team_id, g.season_id
-      FROM advanced_team_game_stats atgs
-      JOIN games g ON g.game_id = atgs.game_id
-    ) sub
-    ORDER BY team_id, season_id
+    SELECT DISTINCT atgs.team_id::text AS team_id, g.season_id
+    FROM advanced_team_game_stats atgs
+    JOIN games g ON g.game_id = atgs.game_id
+    WHERE g.season_id IS NOT NULL
+      ${all ? sql`` : sql`AND g.game_id = ANY(${gameIds}::bigint[])`}
+    ORDER BY 1, 2
   `;
 
   console.log(`\n[3/4] Computing team rolling windows for ${teamPairs.length} team-season pair(s)...`);
@@ -293,20 +311,22 @@ async function main(): Promise<void> {
   }
   console.log(`  Done.`);
 
-  // Step 4: Player rolling windows — distinct (player_id, team_id, season_id) triples
-  const playerTriples = await sql<{ player_id: string; team_id: string; season_id: number }[]>`
-    SELECT player_id, team_id, season_id
-    FROM (
-      SELECT DISTINCT apgs.player_id::text AS player_id, apgs.team_id::text AS team_id, g.season_id
-      FROM advanced_player_game_stats apgs
-      JOIN games g ON g.game_id = apgs.game_id
-    ) sub
-    ORDER BY player_id, season_id
+  // Step 4: Player rolling windows — (player_id, season_id) pairs touched by these games
+  const playerPairs = await sql<{ player_id: string; team_id: string; season_id: number }[]>`
+    SELECT DISTINCT ON (apgs.player_id, g.season_id)
+           apgs.player_id::text AS player_id, apgs.team_id::text AS team_id, g.season_id
+    FROM advanced_player_game_stats apgs
+    JOIN games g ON g.game_id = apgs.game_id
+    WHERE g.season_id IS NOT NULL
+      ${all ? sql`` : sql`AND g.game_id = ANY(${gameIds}::bigint[])`}
+    ORDER BY apgs.player_id, g.season_id
   `;
 
-  console.log(`\n[4/4] Computing player rolling windows for ${playerTriples.length} player-season pair(s)...`);
-  for (const { player_id, team_id, season_id } of playerTriples) {
+  console.log(`\n[4/4] Computing player rolling windows for ${playerPairs.length} player-season pair(s)...`);
+  for (let i = 0; i < playerPairs.length; i++) {
+    const { player_id, team_id, season_id } = playerPairs[i];
     await computePlayerRollingWindows(player_id, team_id, season_id);
+    if ((i + 1) % 200 === 0) console.log(`  ${i + 1}/${playerPairs.length}`);
   }
   console.log(`  Done.`);
 

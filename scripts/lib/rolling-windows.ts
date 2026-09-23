@@ -35,6 +35,17 @@ interface PlayerAdvRow {
 
 // ---- Helpers ----
 
+type Row = Record<string, string | number | Date | null>;
+
+/** Multi-row insert chunk size (well under Postgres' 65k bind-parameter limit). */
+const INSERT_CHUNK = 500;
+
+function chunks<T>(rows: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < rows.length; i += size) out.push(rows.slice(i, i + size));
+  return out;
+}
+
 function avgField(rows: TeamAdvRow[], field: keyof TeamAdvRow): number {
   const n = rows.length;
   if (n === 0) return 0;
@@ -77,6 +88,7 @@ export async function computeTeamRollingWindows(
   if (rows.length === 0) return;
 
   const WINDOWS = [5, 10];
+  const out: Row[] = [];
 
   for (const window of WINDOWS) {
     for (let i = 0; i < rows.length; i++) {
@@ -99,18 +111,23 @@ export async function computeTeamRollingWindows(
         reb_pct: avgField(slice, 'reb_pct'),
       };
 
-      await sql`
-        INSERT INTO rolling_team_stats (
-          team_id, season_id, window_games, as_of_game_date,
-          off_rating, def_rating, net_rating, pace,
-          efg_pct, ts_pct, tov_pct, reb_pct,
-          record_wins, record_losses
-        ) VALUES (
-          ${teamId}::bigint, ${seasonId}, ${window}, ${asOfDate},
-          ${avg.off_rating}, ${avg.def_rating}, ${avg.net_rating}, ${avg.pace},
-          ${avg.efg_pct}, ${avg.ts_pct}, ${avg.tov_pct}, ${avg.reb_pct},
-          ${wins}, ${losses}
-        )
+      out.push({
+        team_id: teamId, season_id: seasonId, window_games: window, as_of_game_date: asOfDate,
+        ...avg,
+        record_wins: wins, record_losses: losses,
+      });
+    }
+  }
+
+  for (const batch of chunks(out, INSERT_CHUNK)) {
+    await sql`
+        INSERT INTO rolling_team_stats ${sql(
+          batch,
+          'team_id', 'season_id', 'window_games', 'as_of_game_date',
+          'off_rating', 'def_rating', 'net_rating', 'pace',
+          'efg_pct', 'ts_pct', 'tov_pct', 'reb_pct',
+          'record_wins', 'record_losses'
+        )}
         ON CONFLICT (team_id, season_id, window_games, as_of_game_date) DO UPDATE SET
           off_rating    = EXCLUDED.off_rating,
           def_rating    = EXCLUDED.def_rating,
@@ -123,7 +140,6 @@ export async function computeTeamRollingWindows(
           record_wins   = EXCLUDED.record_wins,
           record_losses = EXCLUDED.record_losses
       `;
-    }
   }
 }
 
@@ -161,6 +177,7 @@ export async function computePlayerRollingWindows(
   if (rows.length === 0) return;
 
   const WINDOWS = [5, 10];
+  const out: Row[] = [];
 
   for (const window of WINDOWS) {
     for (let i = 0; i < rows.length; i++) {
@@ -177,14 +194,21 @@ export async function computePlayerRollingWindows(
       const avgEfgPct = slice.reduce((s, r) => s + ((r.efg_pct as number | null) ?? 0), 0) / n;
       const avgMinutes = slice.reduce((s, r) => s + parseMinutes(r.minutes), 0) / n;
 
-      await sql`
-        INSERT INTO rolling_player_stats (
-          player_id, season_id, window_games, as_of_game_date,
-          points, rebounds, assists, ts_pct, efg_pct, minutes
-        ) VALUES (
-          ${playerId}::bigint, ${seasonId}, ${window}, ${asOfDate},
-          ${avgPoints}, ${avgRebounds}, ${avgAssists}, ${avgTsPct}, ${avgEfgPct}, ${avgMinutes}
-        )
+      out.push({
+        player_id: playerId, season_id: seasonId, window_games: window, as_of_game_date: asOfDate,
+        points: avgPoints, rebounds: avgRebounds, assists: avgAssists,
+        ts_pct: avgTsPct, efg_pct: avgEfgPct, minutes: avgMinutes,
+      });
+    }
+  }
+
+  for (const batch of chunks(out, INSERT_CHUNK)) {
+    await sql`
+        INSERT INTO rolling_player_stats ${sql(
+          batch,
+          'player_id', 'season_id', 'window_games', 'as_of_game_date',
+          'points', 'rebounds', 'assists', 'ts_pct', 'efg_pct', 'minutes'
+        )}
         ON CONFLICT (player_id, season_id, window_games, as_of_game_date) DO UPDATE SET
           points   = EXCLUDED.points,
           rebounds = EXCLUDED.rebounds,
@@ -193,6 +217,5 @@ export async function computePlayerRollingWindows(
           efg_pct  = EXCLUDED.efg_pct,
           minutes  = EXCLUDED.minutes
       `;
-    }
   }
 }
