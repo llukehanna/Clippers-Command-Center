@@ -49,6 +49,11 @@ describe('game ids', () => {
     expect(isNbaFormatGameId('0022501199', 2026)).toBe(false);
   });
 
+  it('rejects balldontlie ids that fall in the NBA numeric range once a season is given', () => {
+    expect(isNbaFormatGameId(21681584)).toBe(true); // why the season check matters
+    expect(isNbaFormatGameId(21681584, 2025)).toBe(false);
+  });
+
   it('pads to the 10-char CDN form', () => {
     expect(toNbaGameId10(22501199)).toBe('0022501199');
     expect(toNbaGameId10('0022501199', 2025)).toBe('0022501199');
