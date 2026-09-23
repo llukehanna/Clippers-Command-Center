@@ -3,7 +3,7 @@
 // Mocks the sql tag from src/lib/db so tests run offline with no Neon dependency.
 // Route imported from app/api/live/route.ts (active Next.js app dir).
 
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, type Mock } from 'vitest';
 import { buildMeta, buildError } from './api-utils.js';
 
 // ── Module mocks (hoisted by Vitest before any imports below) ─────────────────
@@ -26,7 +26,8 @@ vi.mock('@/src/lib/insights/live', () => ({
 import { GET } from '../../app/api/live/route';
 import { sql } from '@/src/lib/db';
 
-const mockedSql = vi.mocked(sql);
+// postgres' Sql type expects RowList results; the mock just resolves plain arrays.
+const mockedSql = sql as unknown as Mock<(...args: unknown[]) => Promise<unknown>>;
 
 // ─── Smoke tests for shared helpers (pass immediately) ───────────────────────
 
@@ -111,6 +112,7 @@ function makeFreshSnapRow() {
     home_team_id: '13',  // LAC internal team_id
     away_team_id: '5',
     captured_at: new Date().toISOString(),
+    lac_team_id: '13',
     payload: {
       is_stale: false,
       stale_reason: null,
@@ -133,6 +135,7 @@ function makeStaleSnapRow_flag() {
     home_team_id: '13',
     away_team_id: '5',
     captured_at: new Date().toISOString(), // recent, but is_stale=true
+    lac_team_id: '13',
     payload: {
       is_stale: true,
       stale_reason: 'poll daemon offline',
@@ -143,7 +146,7 @@ function makeStaleSnapRow_flag() {
   };
 }
 
-/** Snap that is 90 seconds old — triggers time-based stale (>60s) */
+/** Snap that is 8 minutes old — triggers time-based stale (>7 min poll threshold) */
 function makeStaleSnapRow_age() {
   return {
     snapshot_id: 2,
@@ -154,9 +157,10 @@ function makeStaleSnapRow_age() {
     away_score: 82,
     home_team_id: '13',
     away_team_id: '5',
-    captured_at: new Date(Date.now() - 90_000).toISOString(),
+    captured_at: new Date(Date.now() - 8 * 60_000).toISOString(),
+    lac_team_id: '13',
     payload: {
-      is_stale: false, // flag NOT set, but age > 60s triggers stale
+      is_stale: false, // flag NOT set, but age > 7 min triggers stale
       stale_reason: null,
       home_box: null,
       away_box: null,
@@ -178,13 +182,6 @@ const gameRow = {
   away_team_id: '5',
   away_abbr: 'PHX',
   away_name: 'Suns',
-};
-
-/** LAC team row returned by third sql call in LIVE path */
-const lacTeamRow = {
-  team_id: '13',
-  abbreviation: 'LAC',
-  name: 'Clippers',
 };
 
 // ─── GET /api/live — integration tests ───────────────────────────────────────
@@ -222,7 +219,7 @@ describe('GET /api/live', () => {
     expect(body.box_score).toBeNull();
   });
 
-  it('returns state:"DATA_DELAYED" and meta.stale:true when snapshot captured_at is 90s ago', async () => {
+  it('returns state:"DATA_DELAYED" and meta.stale:true when snapshot captured_at is 8 min ago', async () => {
     const ageSnap = makeStaleSnapRow_age();
     mockedSql
       .mockResolvedValueOnce([ageSnap])    // 1st: snapshot query
@@ -240,8 +237,7 @@ describe('GET /api/live', () => {
     const freshSnap = makeFreshSnapRow();
     mockedSql
       .mockResolvedValueOnce([freshSnap])  // 1st: snapshot query
-      .mockResolvedValueOnce([gameRow])    // 2nd: fetchGameDetails
-      .mockResolvedValueOnce([lacTeamRow]); // 3rd: LAC team row
+      .mockResolvedValueOnce([gameRow]);   // 2nd: fetchGameDetails
 
     const response = await GET();
     const body = await response.json();
@@ -254,8 +250,7 @@ describe('GET /api/live', () => {
     const freshSnap = makeFreshSnapRow();
     mockedSql
       .mockResolvedValueOnce([freshSnap])
-      .mockResolvedValueOnce([gameRow])
-      .mockResolvedValueOnce([lacTeamRow]);
+      .mockResolvedValueOnce([gameRow]);
 
     const response = await GET();
     const body = await response.json();
@@ -277,8 +272,7 @@ describe('GET /api/live', () => {
     const freshSnap = makeFreshSnapRow();
     mockedSql
       .mockResolvedValueOnce([freshSnap])
-      .mockResolvedValueOnce([gameRow])
-      .mockResolvedValueOnce([lacTeamRow]);
+      .mockResolvedValueOnce([gameRow]);
     const liveRes = await GET();
     const liveBody = await liveRes.json();
     expect(liveBody.meta.ttl_seconds).toBe(5);
@@ -315,8 +309,7 @@ describe('GET /api/live', () => {
     const freshSnap = makeFreshSnapRow();
     mockedSql
       .mockResolvedValueOnce([freshSnap])
-      .mockResolvedValueOnce([gameRow])
-      .mockResolvedValueOnce([lacTeamRow]);
+      .mockResolvedValueOnce([gameRow]);
 
     const response = await GET();
     const body = await response.json();
@@ -332,6 +325,49 @@ describe('GET /api/live', () => {
 
     expect(Array.isArray(body.other_games)).toBe(true);
     expect(body.other_games).toHaveLength(0);
+  });
+
+  it('returns NO_ACTIVE_GAME when the only LAC snapshot is old and its game is not in_progress', async () => {
+    // The snapshot query filters to in_progress games or snapshots captured in the
+    // last 30 minutes, so an old snapshot from a finished game yields no row.
+    mockedSql.mockResolvedValueOnce([]);
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.state).toBe('NO_ACTIVE_GAME');
+    expect(body.game).toBeNull();
+    // Exactly one query: no follow-up game/team lookups for a non-live game
+    expect(mockedSql).toHaveBeenCalledTimes(1);
+    const queryText = (mockedSql.mock.calls[0][0] as string[]).join('?');
+    expect(queryText).toMatch(/lower\(g\.status\) = 'in_progress'/);
+    expect(queryText).toMatch(/interval '30 minutes'/);
+  });
+
+  it('treats a 90s-old snapshot as LIVE (poller runs every 5 min; stale threshold is 7 min)', async () => {
+    const snap = { ...makeFreshSnapRow(), captured_at: new Date(Date.now() - 90_000).toISOString() };
+    mockedSql
+      .mockResolvedValueOnce([snap])
+      .mockResolvedValueOnce([gameRow]);
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.state).toBe('LIVE');
+    expect(body.meta.stale).toBe(false);
+  });
+
+  it('returns 500 without leaking internal error text', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockedSql.mockRejectedValueOnce(new Error('password authentication failed for user neondb'));
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+    expect(JSON.stringify(body)).not.toContain('password');
+    consoleSpy.mockRestore();
   });
 
   it('/api/live NO_ACTIVE_GAME path completes in under 200ms (wall-clock, mocked DB)', async () => {

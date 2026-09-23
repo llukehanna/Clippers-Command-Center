@@ -1,4 +1,4 @@
-// src/app/api/home/route.ts
+// app/api/home/route.ts
 // GET /api/home — Between-Games Dashboard endpoint.
 //
 // Returns team snapshot, upcoming schedule with odds, player trends, and insights.
@@ -9,18 +9,7 @@ import { NextResponse } from 'next/server';
 import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { getLatestOdds } from '@/src/lib/odds';
-
-// ─── Season derivation ────────────────────────────────────────────────────────
-// NBA seasons span calendar years. Month < 6 means we're in the spring portion
-// of the season that started the prior year.
-// Example: March 2026 → season_id 2025 (the 2025-26 season).
-
-function currentSeasonId(): number {
-  const now = new Date();
-  return now.getMonth() < 6
-    ? now.getFullYear() - 1
-    : now.getFullYear();
-}
+import { getDisplaySeasonId } from '@/src/lib/season';
 
 // ─── Minutes parsing helper ───────────────────────────────────────────────────
 // game_player_box_scores.minutes is stored as TEXT, e.g. "34:12" or "PT34M12.00S".
@@ -57,6 +46,12 @@ interface GameRecordRow {
   away_team_id: string;
   home_score: number;
   away_score: number;
+}
+
+interface Last10GameRow extends GameRecordRow {
+  game_date: string;
+  home_abbr: string;
+  away_abbr: string;
 }
 
 interface RatingsRow {
@@ -99,11 +94,15 @@ interface InsightRow {
 
 export async function GET(_req: Request): Promise<NextResponse> {
   try {
-    const seasonId = currentSeasonId();
+    // Display season is derived from the DB (next scheduled LAC game within
+    // the lookahead window, else the latest season with a final LAC game) so
+    // record, last_10 and ratings always describe the same season — including
+    // through the offseason, when the calendar season has no games yet.
+    const seasonId = await getDisplaySeasonId();
 
     // ── Parallel queries (all run concurrently for < 300ms SLA) ─────────────
     // Team lookup is embedded as a subquery so we never store a bigint in JS.
-    // Pattern consistent with src/app/api/live/route.ts.
+    // Pattern consistent with app/api/live/route.ts.
 
     const [
       teamRows,
@@ -121,7 +120,7 @@ export async function GET(_req: Request): Promise<NextResponse> {
         WHERE nba_team_id = ${LAC_NBA_TEAM_ID}
       ` as Promise<TeamRow[]>,
 
-      // A: Most recent rolling_team_stats row for LAC
+      // A: Most recent 10-game rolling_team_stats row for LAC in the display season
       sql`
         SELECT
           net_rating::float8 AS net_rating,
@@ -129,28 +128,37 @@ export async function GET(_req: Request): Promise<NextResponse> {
           def_rating::float8 AS def_rating
         FROM rolling_team_stats
         WHERE team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+          AND season_id = ${seasonId}
+          AND window_games = 10
         ORDER BY as_of_game_date DESC
         LIMIT 1
       ` as Promise<RatingsRow[]>,
 
-      // B: Last 10 LAC final games (for last_10 W/L record)
+      // B: Last 10 LAC final games in the display season
+      //    (for last_10 W/L record and the last10_games point-diff chart)
       sql`
         SELECT
-          home_team_id::text AS home_team_id,
-          away_team_id::text AS away_team_id,
-          home_score,
-          away_score
-        FROM games
+          g.home_team_id::text AS home_team_id,
+          g.away_team_id::text AS away_team_id,
+          g.home_score,
+          g.away_score,
+          g.game_date::text AS game_date,
+          ht.abbreviation AS home_abbr,
+          at.abbreviation AS away_abbr
+        FROM games g
+        JOIN teams ht ON ht.team_id = g.home_team_id
+        JOIN teams at ON at.team_id = g.away_team_id
         WHERE (
-          home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
-          OR away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+          g.home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+          OR g.away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
         )
-          AND status = 'final'
-        ORDER BY game_date DESC
+          AND lower(g.status) = 'final'
+          AND g.season_id = ${seasonId}
+        ORDER BY g.game_date DESC
         LIMIT 10
-      ` as Promise<GameRecordRow[]>,
+      ` as Promise<Last10GameRow[]>,
 
-      // C: Season W/L record (all final games this season)
+      // C: Season W/L record (regular-season final games in the display season)
       sql`
         SELECT
           home_team_id::text AS home_team_id,
@@ -162,7 +170,8 @@ export async function GET(_req: Request): Promise<NextResponse> {
           home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
           OR away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
         )
-          AND status = 'final'
+          AND lower(status) = 'final'
+          AND NOT is_playoffs
           AND season_id = ${seasonId}
         ORDER BY game_date DESC
       ` as Promise<GameRecordRow[]>,
@@ -185,8 +194,10 @@ export async function GET(_req: Request): Promise<NextResponse> {
           g.home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
           OR g.away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
         )
-          AND g.game_date >= CURRENT_DATE
-          AND g.status != 'final'
+          -- game_date is the US Eastern calendar date; compare against today in ET
+          -- so tonight's game doesn't drop off after midnight UTC (5pm PT).
+          AND g.game_date >= (now() AT TIME ZONE 'America/New_York')::date
+          AND lower(g.status) <> 'final'
         ORDER BY g.game_date ASC
         LIMIT 10
       ` as Promise<UpcomingGameRow[]>,
@@ -215,7 +226,7 @@ export async function GET(_req: Request): Promise<NextResponse> {
               home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
               OR away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
             )
-              AND status = 'final'
+              AND lower(status) = 'final'
             ORDER BY game_date DESC LIMIT 10
           )
         GROUP BY p.player_id, p.display_name
@@ -284,6 +295,7 @@ export async function GET(_req: Request): Promise<NextResponse> {
     // Last 10
     let last10Wins = 0;
     let last10Losses = 0;
+    const last10GamesMapped: Array<{ opponent_abbr: string; game_date: string; margin: number }> = [];
     for (const game of last10Rows) {
       const lacIsHome = game.home_team_id === lacTeamIdStr;
       const lacScore = lacIsHome ? game.home_score : game.away_score;
@@ -293,6 +305,11 @@ export async function GET(_req: Request): Promise<NextResponse> {
       } else {
         last10Losses++;
       }
+      last10GamesMapped.push({
+        opponent_abbr: lacIsHome ? game.away_abbr : game.home_abbr,
+        game_date: game.game_date,
+        margin: lacScore - oppScore,
+      });
     }
 
     // Ratings (null if no rows)
@@ -307,6 +324,7 @@ export async function GET(_req: Request): Promise<NextResponse> {
       off_rating: ratingsRow?.off_rating ?? null,
       def_rating: ratingsRow?.def_rating ?? null,
       last_10: { wins: last10Wins, losses: last10Losses },
+      last10_games: last10GamesMapped,
     };
 
     // ── upcoming_schedule ─────────────────────────────────────────────────────
@@ -317,6 +335,13 @@ export async function GET(_req: Request): Promise<NextResponse> {
         const opponentAbbr = lacIsHome ? game.away_abbr : game.home_abbr;
         const homeAway = lacIsHome ? 'home' : 'away';
         const odds = await getLatestOdds(game.game_id);
+        // Present odds from LAC's perspective (shape consumed by NextGameHero / ScheduleTable)
+        const oddsDisplay = odds ? {
+          spread: lacIsHome ? odds.spread_home : odds.spread_away,
+          moneyline: lacIsHome ? odds.moneyline_home : odds.moneyline_away,
+          over_under: odds.total_points,
+          captured_at: odds.captured_at,
+        } : null;
         return {
           game_id: parseInt(game.game_id, 10),
           game_date: game.game_date,
@@ -324,7 +349,7 @@ export async function GET(_req: Request): Promise<NextResponse> {
           opponent_abbr: opponentAbbr,
           home_away: homeAway,
           status: game.status,
-          odds,
+          odds: oddsDisplay,
         };
       })
     );

@@ -32,6 +32,18 @@ interface BoxScoreTableProps {
 
 type SortDir = 'asc' | 'desc'
 
+function isTotalsRow(row: BoxScoreRow): boolean {
+  return String(row.id).startsWith('totals-')
+}
+
+/** Numeric sort value; parses "mm:ss" minutes (e.g. "34:12") to decimal minutes. */
+function toSortNumber(value: string | number): number {
+  if (typeof value === 'number') return value
+  const clock = /^(\d+):(\d{1,2})$/.exec(value.trim())
+  if (clock) return parseInt(clock[1], 10) + parseInt(clock[2], 10) / 60
+  return Number(value)
+}
+
 export function BoxScoreTable({
   columns,
   rows,
@@ -51,16 +63,19 @@ export function BoxScoreTable({
   }
 
   const sortedRows = useMemo(() => {
-    if (!sortKey) return rows
-    return [...rows].sort((a, b) => {
+    // Totals rows (id "totals-<ABBR>") stay pinned to the bottom regardless of sort
+    const body = rows.filter((r) => !isTotalsRow(r))
+    const totals = rows.filter(isTotalsRow)
+    if (!sortKey) return [...body, ...totals]
+    const sorted = [...body].sort((a, b) => {
       const av = a[sortKey]
       const bv = b[sortKey]
       // Nulls last
       if (av == null && bv == null) return 0
       if (av == null) return 1
       if (bv == null) return -1
-      const numA = Number(av)
-      const numB = Number(bv)
+      const numA = toSortNumber(av)
+      const numB = toSortNumber(bv)
       const isNumeric = !isNaN(numA) && !isNaN(numB)
       if (isNumeric) {
         return sortDir === 'asc' ? numA - numB : numB - numA
@@ -69,6 +84,7 @@ export function BoxScoreTable({
       const sb = String(bv)
       return sortDir === 'asc' ? sa.localeCompare(sb) : sb.localeCompare(sa)
     })
+    return [...sorted, ...totals]
   }, [rows, sortKey, sortDir])
 
   return (
@@ -87,19 +103,30 @@ export function BoxScoreTable({
             {columns.map((col) => (
               <th
                 key={col.key}
-                onClick={() => handleSort(col.key)}
+                scope="col"
+                aria-sort={
+                  sortKey === col.key
+                    ? sortDir === 'asc' ? 'ascending' : 'descending'
+                    : 'none'
+                }
                 className={cn(
-                  'ccc-table-meta px-3 py-2.5 cursor-pointer select-none whitespace-nowrap hover:text-foreground transition-colors duration-150',
+                  'ccc-table-meta px-3 py-2.5 whitespace-nowrap',
                   col.numeric ? 'text-right' : 'text-left',
                   col.width
                 )}
               >
-                {col.label}
-                {sortKey === col.key && (
-                  <span className="ml-1 opacity-60">
-                    {sortDir === 'asc' ? '↑' : '↓'}
-                  </span>
-                )}
+                <button
+                  type="button"
+                  onClick={() => handleSort(col.key)}
+                  className="cursor-pointer select-none uppercase hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:underline transition-colors duration-150"
+                >
+                  {col.label}
+                  {sortKey === col.key && (
+                    <span className="ml-1 opacity-60" aria-hidden>
+                      {sortDir === 'asc' ? '↑' : '↓'}
+                    </span>
+                  )}
+                </button>
               </th>
             ))}
           </tr>

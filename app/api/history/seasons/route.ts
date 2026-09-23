@@ -1,9 +1,9 @@
-// src/app/api/history/seasons/route.ts
-// GET /api/history/seasons — Available season IDs derived from the games table.
+// app/api/history/seasons/route.ts
+// GET /api/history/seasons — Seasons with at least one final LAC game, derived from the games table.
 // No hardcoding — always reflects actual data in DB.
 
 import { NextResponse } from 'next/server';
-import { sql } from '@/src/lib/db';
+import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 
 interface SeasonRow {
@@ -22,10 +22,18 @@ function seasonLabel(seasonId: number): string {
 
 export async function GET() {
   try {
+    // Only seasons with at least one final LAC game — a freshly synced
+    // schedule for an upcoming season must not become the (empty) default.
     const rows = await sql<SeasonRow[]>`
-      SELECT DISTINCT season_id
-      FROM games
-      ORDER BY season_id ASC
+      SELECT DISTINCT g.season_id
+      FROM games g
+      WHERE (
+        g.home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+        OR g.away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+      )
+        AND lower(g.status) = 'final'
+        AND g.season_id IS NOT NULL
+      ORDER BY g.season_id ASC
     `;
 
     const seasons = rows.map((r) => ({

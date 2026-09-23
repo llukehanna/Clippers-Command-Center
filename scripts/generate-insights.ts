@@ -9,6 +9,11 @@
 //   Step 5: League comparison insights (Clippers off/net rating rank)
 //
 // All steps write to the insights table idempotently (ON CONFLICT on proof_hash).
+// proof_hash is a stable identity key (category + entity ids + season + metric
+// key — see makeInsightKey), so re-runs update rows instead of duplicating them.
+// After a category is regenerated, its previously-active batch insights that
+// were NOT re-emitted this run are deactivated (is_active = false): the claim
+// no longer holds (streak ended, rank dropped out of the top 5, ...).
 // Insights without valid proof are never stored (proof_result must be non-empty).
 //
 // Run via: npm run generate-insights
@@ -42,12 +47,32 @@ async function upsertInsight(row: InsightRow): Promise<void> {
       ${sql.json(row.proof_result as unknown as Json)}, ${row.proof_hash}
     )
     ON CONFLICT (proof_hash) WHERE proof_hash IS NOT NULL DO UPDATE SET
+      scope        = EXCLUDED.scope,
       headline     = EXCLUDED.headline,
       detail       = EXCLUDED.detail,
       importance   = EXCLUDED.importance,
+      proof_sql    = EXCLUDED.proof_sql,
+      proof_params = EXCLUDED.proof_params,
       proof_result = EXCLUDED.proof_result,
+      is_active    = TRUE,          -- re-emitted → eligible again
       updated_at   = now()
   `;
+}
+
+/**
+ * Deactivate batch insights of `category` that this run did not re-emit.
+ * Scoped to batch scopes so live insights (scope 'live') are never touched.
+ * Returns the number of rows deactivated.
+ */
+async function deactivateStale(category: InsightRow['category'], keptHashes: string[]): Promise<number> {
+  const result = await sql`
+    UPDATE insights SET is_active = FALSE, updated_at = now()
+    WHERE category = ${category}
+      AND scope IN ('between_games', 'historical')
+      AND is_active = TRUE
+      AND (proof_hash IS NULL OR proof_hash <> ALL(${keptHashes}::text[]))
+  `;
+  return result.count;
 }
 
 // ---- Main ----
@@ -66,11 +91,17 @@ async function main() {
 
   for (const step of steps) {
     process.stdout.write(`  ${step.name}... `);
+    // If a generator throws, main() fails before deactivation runs, so a
+    // partial run never wipes out a category.
     const rows = await step.fn();
     for (const row of rows) {
       await upsertInsight(row);
     }
-    console.log(`${rows.length} insights upserted`);
+    const deactivated = await deactivateStale(
+      step.category as InsightRow['category'],
+      rows.map((r) => r.proof_hash)
+    );
+    console.log(`${rows.length} insights upserted, ${deactivated} stale deactivated`);
     totals[step.category] = rows.length;
   }
 
@@ -84,7 +115,8 @@ async function main() {
   await sql.end();
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error('generate-insights failed:', err);
+  await sql.end({ timeout: 5 }).catch(() => {});
   process.exit(1);
 });

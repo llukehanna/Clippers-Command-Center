@@ -5,13 +5,18 @@ on:
     - cron: '*/5 * * * *'   # every 5 minutes
   workflow_dispatch:         # manual trigger for testing
 
+permissions:
+  contents: read
+
 jobs:
   poll-live:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
+      # The endpoint returns 2xx when there is simply no live game, so a
+      # non-2xx here is a real failure (bad secret, deploy down) and should fail the run.
       - name: Trigger cron endpoint
         run: |
-          curl -sf -X GET "${{ secrets.VERCEL_APP_URL }}/api/cron/poll-live" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            || echo "No live games or endpoint returned non-2xx"
+          curl -fsS -X GET "${{ secrets.VERCEL_APP_URL }}/api/cron/poll-live" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

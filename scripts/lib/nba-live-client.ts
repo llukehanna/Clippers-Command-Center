@@ -9,7 +9,6 @@ import type {
   BoxscoreGame,
   BoxscoreTeam,
   BoxscorePlayer,
-  PlayerStatistics,
   TeamStatistics,
 } from '../../src/lib/types/live.js';
 
@@ -206,7 +205,7 @@ async function statsNbaGetDebug(path: string): Promise<StatsNbaDebugResult> {
           `[nba-live] stats.nba.com DEBUG ${path.split('?')[0]} | URL: ${url} | HTTP ${res.status} | content-type: ${contentType} | response appears to be HTML/challenge, body (first ${STATS_DEBUG_BODY_SNIP} chars): ${bodyPreview}`
         );
       }
-    } catch (_) {
+    } catch {
       console.warn(
         `[nba-live] stats.nba.com DEBUG ${path.split('?')[0]} | URL: ${url} | HTTP ${res.status} | content-type: ${contentType} | body not JSON, first ${STATS_DEBUG_BODY_SNIP} chars: ${bodyPreview}`
       );
@@ -335,8 +334,7 @@ async function fetchBoxscoreStatsNba(statsNbaGameId: string): Promise<NBABoxscor
   function buildBoxscoreTeam(
     teamId: number,
     teamName: string,
-    teamTricode: string,
-    isHome: boolean
+    teamTricode: string
   ): BoxscoreTeam {
     const tsRow = teamStatsByTeamId.get(teamId);
     const stats = tsRow ? buildTeamStatistics(tsRow) : emptyTeamStatistics();
@@ -427,20 +425,35 @@ async function fetchBoxscoreStatsNba(statsNbaGameId: string): Promise<NBABoxscor
     };
   }
 
-  const homeTsRow = teamStatsByTeamId.get(homeTeamId);
-  const awayTsRow = teamStatsByTeamId.get(visitorTeamId);
-  const homeName = homeTsRow ? String(homeTsRow.TEAM_NAME ?? '') : 'Home';
-  const homeTricode = homeTsRow ? String(homeTsRow.TEAM_ABBREVIATION ?? '') : 'HOM';
-  const awayName = awayTsRow ? String(awayTsRow.TEAM_NAME ?? '') : 'Away';
-  const awayTricode = awayTsRow ? String(awayTsRow.TEAM_ABBREVIATION ?? '') : 'AWY';
+  // Team name/tricode: TeamStats when present, else LineScore or any PlayerStats
+  // row (both carry TEAM_ABBREVIATION) — finalization resolves teams by tricode.
+  const lineScoreByTeamId = new Map(lineScoreRows.map((r) => [Number(r.TEAM_ID), r]));
+  function teamIdentity(teamId: number, fallbackName: string, fallbackTricode: string) {
+    const ts = teamStatsByTeamId.get(teamId);
+    const ls = lineScoreByTeamId.get(teamId);
+    const psRow = (ps.rowSet as (string | number)[][])
+      .map((row) => rowToMap(ps, row))
+      .find((m) => Number(m.TEAM_ID) === teamId);
+    const tricode = String(
+      ts?.TEAM_ABBREVIATION ?? ls?.TEAM_ABBREVIATION ?? psRow?.TEAM_ABBREVIATION ?? fallbackTricode
+    );
+    const name = String(ts?.TEAM_NAME ?? ls?.TEAM_NICKNAME ?? fallbackName);
+    return { name, tricode };
+  }
+  const home = teamIdentity(homeTeamId, 'Home', 'HOM');
+  const away = teamIdentity(visitorTeamId, 'Away', 'AWY');
 
-  const homeTeam = buildBoxscoreTeam(homeTeamId, homeName, homeTricode, true);
-  const awayTeam = buildBoxscoreTeam(visitorTeamId, awayName, awayTricode, false);
+  const homeTeam = buildBoxscoreTeam(homeTeamId, home.name, home.tricode);
+  const awayTeam = buildBoxscoreTeam(visitorTeamId, away.name, away.tricode);
+
+  // GAME_STATUS_ID: 1 = scheduled, 2 = live, 3 = final. Finalization requires 3,
+  // so default to 2 (not final) if the field is ever missing.
+  const statusId = Number(summaryRow.GAME_STATUS_ID ?? 2) || 2;
 
   const game: BoxscoreGame = {
     gameId: gid,
-    gameStatus: 2,
-    gameStatusText: 'In Progress',
+    gameStatus: statusId,
+    gameStatusText: String(summaryRow.GAME_STATUS_TEXT ?? (statusId === 3 ? 'Final' : 'In Progress')),
     period: 1,
     gameClock: '',
     gameTimeUTC: '',

@@ -2,6 +2,10 @@
 import { sql } from './db.js';
 import type { BDLTeam, BDLPlayer, BDLGame, BDLStat } from '../types/bdl.js';
 import type { BoxscorePlayer, TeamStatistics } from '../../src/lib/types/live.js';
+import { isNbaFormatGameId, normalizeGameStatus } from './schedule-utils.js';
+
+/** A postgres client or transaction handle. Lets callers run upserts inside sql.begin(). */
+export type Db = typeof sql;
 
 // --- Helpers ---
 
@@ -106,6 +110,31 @@ export async function upsertStints(
   `;
 }
 
+/**
+ * Record that a player (internal ids) was on a team's roster in a season.
+ * Used by finalization, which knows internal ids but not balldontlie ids.
+ * Same INSERT ... WHERE NOT EXISTS pattern as upsertStints (no UNIQUE constraint).
+ */
+export async function upsertStintForPlayer(
+  playerId: string,          // internal players.player_id
+  teamId: string,            // internal teams.team_id
+  seasonId: number,
+  opts: { startDate?: string | null; jerseyNumber?: string | null } = {},
+  db: Db = sql
+): Promise<void> {
+  await db`
+    INSERT INTO player_team_stints (player_id, team_id, season_id, start_date, jersey_number)
+    SELECT ${playerId}::bigint, ${teamId}::bigint, ${seasonId},
+           ${opts.startDate ?? null}::date, ${opts.jerseyNumber || null}
+    WHERE NOT EXISTS (
+      SELECT 1 FROM player_team_stints
+      WHERE player_id = ${playerId}::bigint
+        AND team_id   = ${teamId}::bigint
+        AND season_id = ${seasonId}
+    )
+  `;
+}
+
 // --- Games ---
 
 /**
@@ -125,7 +154,7 @@ function normalizeBDLStatus(raw: string | null | undefined): {
   startTimeUtc: string | null;
 } {
   if (!raw) return { status: 'scheduled', startTimeUtc: null };
-  if (raw === 'Final') return { status: 'final', startTimeUtc: null };
+  if (raw.trim().toLowerCase() === 'final') return { status: 'final', startTimeUtc: null };
   // ISO timestamp = scheduled game; use it as start_time_utc
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) {
     return { status: 'scheduled', startTimeUtc: raw };
@@ -134,6 +163,105 @@ function normalizeBDLStatus(raw: string | null | undefined): {
   return { status: 'in_progress', startTimeUtc: null };
 }
 
+/** One games row, provider-agnostic. Team ids are internal teams.team_id values. */
+export interface GameRowInput {
+  nbaGameId: number | string;   // provider game id (NBA-format or balldontlie)
+  seasonId: number;
+  gameDate: string;             // YYYY-MM-DD, Eastern date
+  status: string;               // normalized to lowercase before writing
+  startTimeUtc: string | null;
+  homeTeamId: string;
+  awayTeamId: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  period: number | null;
+  clock: string | null;
+  isPlayoffs: boolean;
+}
+
+/**
+ * Insert or update one games row without ever creating a second row for the
+ * same real game.
+ *
+ * Two providers write the schedule: sync-schedule (balldontlie ids) and
+ * backfill-schedule-nba (official NBA ids). Their ids never collide, so a plain
+ * ON CONFLICT (nba_game_id) produced duplicate rows. Resolution order:
+ *   1. existing row with the same nba_game_id            → update it
+ *   2. existing row with the same (game_date, home, away) → update it; if the
+ *      incoming id is NBA-format and the stored one is not, adopt the NBA id
+ *      (finalization needs it for cdn.nba.com), otherwise keep the stored id
+ *   3. otherwise insert
+ * The natural key is also enforced by uq_games_date_home_away (see
+ * Docs/migrations/2026-09-audit.sql); this pre-check works with or without it.
+ *
+ * Updates never regress a 'final' game (a lagging provider can still report
+ * it as scheduled with 0-0 scores) and never null out known values.
+ */
+export async function upsertGameRow(
+  g: GameRowInput,
+  db: Db = sql
+): Promise<'inserted' | 'updated'> {
+  const status = normalizeGameStatus(g.status);
+  const incomingIsNba = isNbaFormatGameId(g.nbaGameId, g.seasonId);
+
+  let [existing] = await db<{ game_id: string; nba_game_id: string }[]>`
+    SELECT game_id::text, nba_game_id::text FROM games WHERE nba_game_id = ${g.nbaGameId}
+  `;
+  let adoptId = false;
+  if (!existing) {
+    [existing] = await db<{ game_id: string; nba_game_id: string }[]>`
+      SELECT game_id::text, nba_game_id::text FROM games
+      WHERE game_date = ${g.gameDate}::date
+        AND home_team_id = ${g.homeTeamId}::bigint
+        AND away_team_id = ${g.awayTeamId}::bigint
+      LIMIT 1
+    `;
+    adoptId = !!existing && incomingIsNba && !isNbaFormatGameId(existing.nba_game_id);
+  }
+
+  if (!existing) {
+    await db`
+      INSERT INTO games (
+        nba_game_id, season_id, game_date, status, start_time_utc,
+        home_team_id, away_team_id,
+        home_score, away_score,
+        period, clock, is_playoffs
+      )
+      VALUES (
+        ${g.nbaGameId}, ${g.seasonId}, ${g.gameDate}::date, ${status}, ${g.startTimeUtc},
+        ${g.homeTeamId}::bigint, ${g.awayTeamId}::bigint,
+        ${g.homeScore}, ${g.awayScore},
+        ${g.period}, ${g.clock}, ${g.isPlayoffs}
+      )
+    `;
+    return 'inserted';
+  }
+
+  // A lagging provider must not downgrade a final game or wipe its scores,
+  // so when the stored row is final and the incoming status is not, keep
+  // status and scores as stored.
+  const regress = status !== 'final';
+  await db`
+    UPDATE games SET
+      nba_game_id    = ${adoptId ? g.nbaGameId : existing.nba_game_id}::bigint,
+      season_id      = ${g.seasonId},
+      game_date      = ${g.gameDate}::date,
+      start_time_utc = COALESCE(${g.startTimeUtc}::timestamptz, games.start_time_utc),
+      status         = CASE WHEN lower(games.status) = 'final' AND ${regress} THEN 'final' ELSE ${status} END,
+      home_score     = CASE WHEN lower(games.status) = 'final' AND ${regress} THEN games.home_score
+                            ELSE COALESCE(${g.homeScore}::smallint, games.home_score) END,
+      away_score     = CASE WHEN lower(games.status) = 'final' AND ${regress} THEN games.away_score
+                            ELSE COALESCE(${g.awayScore}::smallint, games.away_score) END,
+      period         = COALESCE(${g.period}::smallint, games.period),
+      clock          = COALESCE(${g.clock}, games.clock),
+      is_playoffs    = games.is_playoffs OR ${g.isPlayoffs},
+      updated_at     = now()
+    WHERE game_id = ${existing.game_id}::bigint
+  `;
+  return 'updated';
+}
+
+/** Upsert balldontlie games (see upsertGameRow for duplicate handling). */
 export async function upsertGames(games: BDLGame[], seasonId: number): Promise<void> {
   for (const g of games) {
     // Resolve internal team IDs
@@ -147,31 +275,27 @@ export async function upsertGames(games: BDLGame[], seasonId: number): Promise<v
       console.warn(`  Skipping game ${g.id}: team IDs not found (home=${g.home_team.id}, away=${g.visitor_team.id})`);
       continue;
     }
+    if (!g.date) {
+      console.warn(`  Skipping game ${g.id}: no date`);
+      continue;
+    }
 
     const { status, startTimeUtc } = normalizeBDLStatus(g.status);
 
-    await sql`
-      INSERT INTO games (
-        nba_game_id, season_id, game_date, status, start_time_utc,
-        home_team_id, away_team_id,
-        home_score, away_score,
-        period, clock, is_playoffs
-      )
-      VALUES (
-        ${g.id}, ${seasonId}, ${nn(g.date)}, ${status}, ${startTimeUtc},
-        ${homeTeam.team_id}::bigint, ${awayTeam.team_id}::bigint,
-        ${nn(g.home_team_score)}, ${nn(g.visitor_team_score)},
-        ${nn(g.period)}, ${nn(g.time)}, ${nn(g.postseason) ?? false}
-      )
-      ON CONFLICT (nba_game_id) DO UPDATE SET
-        status         = EXCLUDED.status,
-        start_time_utc = EXCLUDED.start_time_utc,
-        home_score     = EXCLUDED.home_score,
-        away_score     = EXCLUDED.away_score,
-        period         = EXCLUDED.period,
-        clock          = EXCLUDED.clock,
-        updated_at     = now()
-    `;
+    await upsertGameRow({
+      nbaGameId: g.id,
+      seasonId,
+      gameDate: g.date.slice(0, 10),
+      status,
+      startTimeUtc,
+      homeTeamId: homeTeam.team_id,
+      awayTeamId: awayTeam.team_id,
+      homeScore: nn(g.home_team_score),
+      awayScore: nn(g.visitor_team_score),
+      period: nn(g.period),
+      clock: nn(g.time),
+      isPlayoffs: nn(g.postseason) ?? false,
+    });
   }
 }
 
@@ -310,9 +434,10 @@ export async function upsertTeamBoxScore(
   teamId: string,      // internal bigint as string
   isHome: boolean,
   stats: TeamStatistics,
-  rawPayload: string
+  rawPayload: string,
+  db: Db = sql         // optional: pass a transaction handle to write atomically
 ): Promise<void> {
-  await sql`
+  await db`
     INSERT INTO game_team_box_scores (
       game_id, team_id, is_home,
       points, fg_made, fg_attempted, fg3_made, fg3_attempted,
@@ -357,10 +482,11 @@ export async function upsertPlayerBoxScore(
   playerId: string,    // internal players.player_id as string
   teamId: string,
   starter: boolean,
-  player: BoxscorePlayer
+  player: BoxscorePlayer,
+  db: Db = sql         // optional: pass a transaction handle to write atomically
 ): Promise<void> {
   const s = player.statistics;
-  await sql`
+  await db`
     INSERT INTO game_player_box_scores (
       game_id, player_id, team_id, starter, minutes,
       points, rebounds, offensive_reb, defensive_reb, assists,

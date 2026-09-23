@@ -7,15 +7,16 @@ import { formatClock } from '@/src/lib/format'
 
 interface LiveScoreboardProps {
   game: {
-    period: number
-    clock: string
-    home: { abbreviation: string | null; score: number }
-    away: { abbreviation: string | null; score: number }
+    period: number | null
+    clock: string | null
+    home: { abbreviation: string | null; score: number | null }
+    away: { abbreviation: string | null; score: number | null }
   }
   className?: string
 }
 
-function formatPeriod(period: number): string {
+function formatPeriod(period: number | null): string {
+  if (period == null || period <= 0) return 'Pregame'
   if (period <= 4) return `Q${period}`
   if (period === 5) return 'OT'
   return `${period - 4}OT`
@@ -35,13 +36,13 @@ export function LiveScoreboard({ game, className }: LiveScoreboardProps) {
         {/* Away: logo + abbr below, then score */}
         <div className="flex items-center gap-6">
           <TeamLogoWithAbbr abbr={awayAbbr} slug={logoSlug(game.away.abbreviation)} />
-          <span className="ccc-hero-stat">{game.away.score}</span>
+          <span className="ccc-hero-stat">{game.away.score ?? '—'}</span>
         </div>
 
         {/* Center: clock, period, LIVE */}
         <div className="flex flex-col items-center gap-2 rounded-xl border border-border-subtle bg-white/[0.04] px-5 py-3 backdrop-blur-md shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]">
           <span className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
-            {formatClock(game.clock)}
+            {game.clock ? formatClock(game.clock) : '—'}
           </span>
           <span className="ccc-section-title">{formatPeriod(game.period)}</span>
           <span className="flex items-center gap-1.5 text-[0.6875rem] font-medium uppercase tracking-wider text-primary">
@@ -52,7 +53,7 @@ export function LiveScoreboard({ game, className }: LiveScoreboardProps) {
 
         {/* Home: score, then logo + abbr below */}
         <div className="flex items-center gap-6">
-          <span className="ccc-hero-stat">{game.home.score}</span>
+          <span className="ccc-hero-stat">{game.home.score ?? '—'}</span>
           <TeamLogoWithAbbr abbr={homeAbbr} slug={logoSlug(game.home.abbreviation)} />
         </div>
       </div>
