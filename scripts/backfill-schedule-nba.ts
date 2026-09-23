@@ -305,6 +305,23 @@ async function main(): Promise<void> {
     const status = gameStatusToInternal(g.gameStatus);
     const isFinal = status === 'final';
 
+    // Play-in / playoff games are rare and easy to mis-key; log what they match.
+    if (!g.gameId.startsWith('002')) {
+      const matches = await sql<{ game_id: string; nba_game_id: string; game_date: string; home_team_id: string; away_team_id: string }[]>`
+        SELECT game_id::text, nba_game_id::text, game_date::text AS game_date,
+               home_team_id::text, away_team_id::text
+        FROM games
+        WHERE nba_game_id = ${g.gameId}
+           OR (game_date = ${g.gameDateEst.slice(0, 10)}::date
+               AND home_team_id = ${homeTeamRow.team_id}::bigint
+               AND away_team_id = ${awayTeamRow.team_id}::bigint)
+      `;
+      console.log(
+        `  ${g.gameId} ${g.gameDateEst.slice(0, 10)} ${g.awayTeam.teamTricode} @ ${g.homeTeam.teamTricode} ` +
+          `(team_ids ${awayTeamRow.team_id} @ ${homeTeamRow.team_id}) → existing rows: ${JSON.stringify(matches)}`
+      );
+    }
+
     const result = await upsertGameRow({
       nbaGameId: g.gameId,                    // "0022601199" → stored as 22601199
       seasonId,
