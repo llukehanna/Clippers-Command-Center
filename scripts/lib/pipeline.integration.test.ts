@@ -106,6 +106,16 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     expect(headlines).toContainEqual(expect.stringMatching(/^Up next: the Golden State Warriors had the \d+(st|nd|rd|th)-ranked defense in 2025-26$/));
     expect(headlines.some((h) => h.includes('this season'))).toBe(false);
 
+    // Traded away before season's end → not a Clippers player for season insights.
+    const seasonCats = new Set(['streak', 'milestone', 'league_comparison']);
+    expect(rows.filter((r) => seasonCats.has(r.category) && r.headline.includes('LAC Player 3'))).toEqual([]);
+
+    // Milestones count the regular season only (60 games, not the play-in).
+    const [pts] = await sql<{ detail: string }[]>`
+      SELECT detail FROM insights WHERE is_active AND headline LIKE 'Star Clipper reached % points in 2025-26'
+    `;
+    expect(pts.detail).toMatch(/ in 60 games$/);
+
     // Play-in excluded from the standings: 60 regular-season games.
     const [standing] = await sql<{ proof_result: { wins: number; losses: number }[] }[]>`
       SELECT proof_result FROM insights WHERE is_active AND headline LIKE 'Clippers finished%'

@@ -8,15 +8,16 @@
 //   3. season_threes  — 150 / 200 / 250 / 300 made threes
 // Bigger thresholds rank higher (importance + 2 per step).
 //
-// "Clippers players" = anyone with a Clippers box score in the season; totals
-// count all their games that season (a traded player's full season).
+// Clippers players = clippersSeasonPlayers() (last game of the season was for
+// LAC). Totals are regular-season only, across both teams for a player
+// acquired mid-season — the usual season stat line.
 import {
   InsightRow,
   withInsightKey,
   computeImportance,
   highestThreshold,
 } from './proof-utils.js';
-import { InsightContext, runProof } from './context.js';
+import { clippersSeasonPlayers, InsightContext, REGULAR_SEASON, runProof } from './context.js';
 
 interface Milestone {
   key: string;
@@ -48,11 +49,8 @@ function milestoneSql(m: Milestone): string {
     JOIN games g ON g.game_id = pb.game_id
     JOIN players p ON p.player_id = pb.player_id
     WHERE g.season_id = $1::int
-      AND pb.player_id IN (
-        SELECT lac.player_id FROM game_player_box_scores lac
-        JOIN games lg ON lg.game_id = lac.game_id
-        WHERE lac.team_id = $2::bigint AND lg.season_id = $1::int
-      )
+      AND ${REGULAR_SEASON}
+      AND pb.player_id IN ${clippersSeasonPlayers('$1', '$2')}
     GROUP BY pb.player_id, p.display_name
     HAVING (${m.expr}) >= $3::int
     ORDER BY total DESC

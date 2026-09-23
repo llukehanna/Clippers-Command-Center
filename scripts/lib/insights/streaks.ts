@@ -16,7 +16,7 @@ import {
   withInsightKey,
   computeImportance,
 } from './proof-utils.js';
-import { InsightContext, runProof } from './context.js';
+import { clippersSeasonPlayers, InsightContext, runProof } from './context.js';
 
 interface StreakDef {
   key: string;
@@ -56,11 +56,7 @@ function playerStreakSql(def: StreakDef): string {
       FROM game_player_box_scores pb
       JOIN games g ON g.game_id = pb.game_id
       WHERE g.season_id = $1::int
-        AND pb.player_id IN (
-          SELECT lac.player_id FROM game_player_box_scores lac
-          JOIN games lg ON lg.game_id = lac.game_id
-          WHERE lac.team_id = $2::bigint AND lg.season_id = $1::int
-        )
+        AND pb.player_id IN ${clippersSeasonPlayers('$1', '$2')}
     ), first_miss AS (
       SELECT player_id, MIN(recency) FILTER (WHERE NOT qualifies) AS recency
       FROM season_games

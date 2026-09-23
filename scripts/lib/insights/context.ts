@@ -19,6 +19,25 @@ export const MIN_SEASON_GAMES = 10;
  */
 export const REGULAR_SEASON = `(NOT g.is_playoffs AND g.nba_game_id NOT BETWEEN 50000000 AND 59999999)`;
 
+/**
+ * SQL subquery selecting the season's Clippers players: players whose most
+ * recent game of the season was for the Clippers. A player traded away
+ * mid-season is excluded; one acquired mid-season is included. `season` and
+ * `team` are the proof query's placeholders (e.g. '$1', '$2').
+ */
+export function clippersSeasonPlayers(season: string, team: string): string {
+  return `(
+  SELECT last_game.player_id FROM (
+    SELECT DISTINCT ON (cp.player_id) cp.player_id, cp.team_id
+    FROM game_player_box_scores cp
+    JOIN games cg ON cg.game_id = cp.game_id
+    WHERE cg.season_id = ${season}::int
+    ORDER BY cp.player_id, cg.game_date DESC, cg.game_id DESC
+  ) last_game
+  WHERE last_game.team_id = ${team}::bigint
+)`;
+}
+
 export interface TeamInfo {
   teamId: string;
   abbreviation: string;
