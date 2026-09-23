@@ -36,6 +36,14 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # Every NBA game from the last few days, not just the Clippers' — league
+      # ranks, opponent context and percentile insights need the whole league.
+      - name: Sync league games (last 3 days)
+        run: npm run sync-league-games
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Clippers catch-all (older misses); usually finds nothing after the sync.
       - name: Finalize games
         run: npm run finalize-games
         env:
@@ -48,5 +56,10 @@ jobs:
 
       - name: Generate insights
         run: npm run generate-insights
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Verify insight proofs
+        run: npm run verify-insights
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

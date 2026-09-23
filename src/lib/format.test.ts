@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatClock } from './format'
+import { formatClock, insightCategoryLabel } from './format'
 
 describe('formatClock', () => {
   it('converts PT05M30.00S to 5:30', () => {
@@ -28,5 +28,16 @@ describe('formatClock', () => {
 
   it('returns garbage input unchanged', () => {
     expect(formatClock('garbage')).toBe('garbage')
+  })
+})
+
+describe('insightCategoryLabel', () => {
+  it('maps known categories', () => {
+    expect(insightCategoryLabel('league_comparison')).toBe('League Rank')
+    expect(insightCategoryLabel('rare_event')).toBe('Rare Performance')
+  })
+  it('title-cases unknown categories', () => {
+    expect(insightCategoryLabel('new_thing')).toBe('New Thing')
+    expect(insightCategoryLabel('')).toBe('')
   })
 })

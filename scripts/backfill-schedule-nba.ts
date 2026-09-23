@@ -31,53 +31,17 @@ import {
   seasonIdFromSeasonYear,
   seasonLabel,
 } from './lib/schedule-utils.js';
+import {
+  candidateGameIds,
+  fetchCdnBoxscore,
+  fetchCurrentSchedule,
+  mapPool,
+  type NBAScheduleGame,
+  type NBAScheduleResponse,
+  type NBATeamSchedule,
+} from './lib/nba-season.js';
 
 const LAC_TRICODE = 'LAC';
-
-// Both CDN files hold the current season's full league schedule. _1 is tried
-// first; _2 is the file this script originally used (known to work) and is
-// kept as a fallback. Override with NBA_SCHEDULE_URL if the CDN moves.
-const SCHEDULE_URLS = process.env.NBA_SCHEDULE_URL
-  ? [process.env.NBA_SCHEDULE_URL]
-  : [
-      'https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json',
-      'https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_2.json',
-    ];
-
-interface NBATeamSchedule {
-  teamId: number;
-  teamCity: string;
-  teamName: string;
-  teamTricode: string;
-  teamSlug: string;
-  wins?: number;
-  losses?: number;
-  score?: number;
-}
-
-interface NBAScheduleGame {
-  gameId: string;
-  gameCode: string;
-  gameStatus: number; // 1=scheduled, 2=in_progress, 3=final
-  gameStatusText: string;
-  gameLabel?: string;
-  gameDateEst: string;
-  gameDateTimeUTC: string;
-  homeTeam: NBATeamSchedule;
-  awayTeam: NBATeamSchedule;
-}
-
-interface NBAScheduleDay {
-  gameDate: string;
-  games: NBAScheduleGame[];
-}
-
-interface NBAScheduleResponse {
-  leagueSchedule: {
-    seasonYear: string;
-    gameDates: NBAScheduleDay[];
-  };
-}
 
 function gameStatusToInternal(status: number): string {
   if (status === 3) return 'final';
@@ -108,83 +72,38 @@ async function fetchSeasonSchedule(seasonYear: string): Promise<NBAScheduleRespo
   return data;
 }
 
-const REGULAR_SEASON_GAMES = 1230;
 const CDN_SCAN_CONCURRENCY = 8;
-
-interface CdnBoxscoreTeam { teamId: number; teamCity: string; teamName: string; teamTricode: string; score: number }
-interface CdnBoxscore {
-  game: { gameId: string; gameStatus: number; gameStatusText: string; gameTimeUTC: string; homeTeam: CdnBoxscoreTeam; awayTeam: CdnBoxscoreTeam };
-}
-
-/** All game ids that can exist in a season: regular season, play-in, playoffs. */
-function candidateGameIds(seasonId: number): string[] {
-  const yy = String(seasonId % 100).padStart(2, '0');
-  const ids: string[] = [];
-  for (let n = 1; n <= REGULAR_SEASON_GAMES; n++) ids.push(`002${yy}${String(n).padStart(5, '0')}`);
-  // Play-in uses the playoff layout 005 YY 00 R S G: round 1 has 4 games
-  // (series 0..3), round 2 has 2 (series 0..1), always game 1.
-  for (const [round, count] of [[1, 4], [2, 2]] as const) {
-    for (let series = 0; series < count; series++) ids.push(`005${yy}00${round}${series}1`);
-  }
-  // Playoffs: 004 YY 00 R S G — round 1..4, series index (8/4/2/1 per round), game 1..7
-  const seriesPerRound = [8, 4, 2, 1];
-  seriesPerRound.forEach((count, i) => {
-    for (let series = 0; series < count; series++) {
-      for (let game = 1; game <= 7; game++) ids.push(`004${yy}00${i + 1}${series}${game}`);
-    }
-  });
-  return ids;
-}
 
 /** Rebuild a season's LAC schedule from cdn.nba.com box scores (see header). */
 async function scanCdnSeason(seasonId: number): Promise<NBAScheduleResponse> {
   const ids = candidateGameIds(seasonId);
-  const games: NBAScheduleGame[] = [];
   const statusCounts = new Map<string, number>();
-  let next = 0;
+  console.log(`[backfill-schedule-nba] Scanning ${ids.length} cdn.nba.com box scores for ${seasonLabel(seasonId)}...`);
 
-  async function worker(): Promise<void> {
-    while (next < ids.length) {
-      const id = ids[next++];
-      let status = 'error';
-      try {
-        const res = await fetch(`https://cdn.nba.com/static/json/liveData/boxscore/boxscore_${id}.json`, {
-          headers: {
-            Accept: 'application/json',
-            Referer: 'https://www.nba.com/',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          },
-          signal: AbortSignal.timeout(20_000),
-        });
-        status = String(res.status);
-        if (res.ok) {
-          const { game: g } = (await res.json()) as CdnBoxscore;
-          if (g.homeTeam.teamTricode === LAC_TRICODE || g.awayTeam.teamTricode === LAC_TRICODE) {
-            const toTeam = (t: CdnBoxscoreTeam): NBATeamSchedule => ({
-              teamId: t.teamId, teamCity: t.teamCity, teamName: t.teamName,
-              teamTricode: t.teamTricode, teamSlug: '', score: t.score,
-            });
-            games.push({
-              gameId: g.gameId,
-              gameCode: '',
-              gameStatus: g.gameStatus,
-              gameStatusText: g.gameStatusText,
-              gameDateEst: easternDateOf(g.gameTimeUTC) ?? g.gameTimeUTC.slice(0, 10),
-              gameDateTimeUTC: g.gameTimeUTC,
-              homeTeam: toTeam(g.homeTeam),
-              awayTeam: toTeam(g.awayTeam),
-            });
-          }
-        }
-      } catch {
-        // counted as 'error' below
-      }
-      statusCounts.set(status, (statusCounts.get(status) ?? 0) + 1);
-    }
+  const results = await mapPool(ids, CDN_SCAN_CONCURRENCY, fetchCdnBoxscore);
+  const games: NBAScheduleGame[] = [];
+  for (const r of results) {
+    const key = r.status === 'ok' ? '200' : r.status === 'missing' ? String(r.http) : 'error';
+    statusCounts.set(key, (statusCounts.get(key) ?? 0) + 1);
+    if (r.status !== 'ok') continue;
+    const g = r.boxscore.game;
+    if (g.homeTeam.teamTricode !== LAC_TRICODE && g.awayTeam.teamTricode !== LAC_TRICODE) continue;
+    const toTeam = (t: typeof g.homeTeam): NBATeamSchedule => ({
+      teamId: t.teamId, teamCity: t.teamCity, teamName: t.teamName,
+      teamTricode: t.teamTricode, teamSlug: '', score: t.score,
+    });
+    games.push({
+      gameId: g.gameId,
+      gameCode: '',
+      gameStatus: g.gameStatus,
+      gameStatusText: g.gameStatusText,
+      gameDateEst: easternDateOf(g.gameTimeUTC) ?? g.gameTimeUTC.slice(0, 10),
+      gameDateTimeUTC: g.gameTimeUTC,
+      homeTeam: toTeam(g.homeTeam),
+      awayTeam: toTeam(g.awayTeam),
+    });
   }
 
-  console.log(`[backfill-schedule-nba] Scanning ${ids.length} cdn.nba.com box scores for ${seasonLabel(seasonId)}...`);
-  await Promise.all(Array.from({ length: CDN_SCAN_CONCURRENCY }, worker));
   console.log(`[backfill-schedule-nba] CDN scan HTTP statuses: ${JSON.stringify(Object.fromEntries(statusCounts))}`);
   if (!statusCounts.get('200')) throw new Error('cdn.nba.com returned no box scores — cannot rebuild the season');
 
@@ -202,43 +121,6 @@ async function fetchPastSeason(seasonYear: string): Promise<NBAScheduleResponse>
   }
 }
 
-/**
- * Fetch every candidate schedule file and keep the one for the latest season
- * (around the October rollover the files may not flip on the same day).
- */
-async function fetchSchedule(): Promise<NBAScheduleResponse> {
-  const errors: string[] = [];
-  let best: { data: NBAScheduleResponse; seasonId: number; url: string } | null = null;
-  for (const url of SCHEDULE_URLS) {
-    try {
-      const res = await fetch(url, {
-        headers: {
-          Accept: 'application/json',
-          Referer: 'https://www.nba.com/',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-      });
-      if (!res.ok) {
-        errors.push(`${url} → HTTP ${res.status}`);
-        continue;
-      }
-      const data = (await res.json()) as NBAScheduleResponse;
-      const seasonId = seasonIdFromSeasonYear(data?.leagueSchedule?.seasonYear);
-      if (seasonId === null) {
-        errors.push(`${url} → unrecognized seasonYear ${JSON.stringify(data?.leagueSchedule?.seasonYear)}`);
-        continue;
-      }
-      if (!best || seasonId > best.seasonId) best = { data, seasonId, url };
-    } catch (err) {
-      errors.push(`${url} → ${(err as Error).message}`);
-    }
-  }
-  if (!best) throw new Error(`NBA CDN schedule unavailable: ${errors.join('; ')}`);
-  if (errors.length > 0) console.warn(`[backfill-schedule-nba] WARN: ${errors.join('; ')}`);
-  console.log(`[backfill-schedule-nba] Source: ${best.url}`);
-  return best.data;
-}
-
 async function main(): Promise<void> {
   const seasonArg = process.argv.slice(2).find((a) => a.startsWith('--season='))?.split('=')[1] ?? null;
   if (seasonArg !== null && seasonIdFromSeasonYear(seasonArg) === null) {
@@ -246,7 +128,7 @@ async function main(): Promise<void> {
   }
 
   console.log(`[backfill-schedule-nba] Fetching ${seasonArg ? `${seasonArg} schedule` : 'NBA CDN schedule'}...`);
-  const data = seasonArg ? await fetchPastSeason(seasonArg) : await fetchSchedule();
+  const data = seasonArg ? await fetchPastSeason(seasonArg) : await fetchCurrentSchedule((m) => console.log(`[backfill-schedule-nba] ${m}`));
 
   // Determine season_id from the schedule (e.g., "2026-27" → 2026)
   const seasonYear = data.leagueSchedule.seasonYear;

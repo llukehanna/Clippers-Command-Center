@@ -1,356 +1,158 @@
 // scripts/lib/insights/streaks.ts
-// Batch insight category: player streaks.
-// Exports generateStreakInsights() — returns InsightRow[] for:
-//   1. scoring_streak: player scored >= 20pts in 3+ consecutive games
-//   2. hot_shooting_streak: player shot >= 50% FG in 3+ consecutive games
+// Batch insight category: streaks, over the stats season (context.ts).
 //
-// Only ACTIVE streaks are emitted: the streak must end at the player's most
-// recent game, otherwise "has scored 20+ in N straight games" is false.
-// Streaks that end are not re-emitted and generate-insights deactivates them.
-import { sql } from '../db.js';
+// Player streaks are ACTIVE streaks: consecutive qualifying games counted back
+// from the player's most recent game of the season (a streak that already
+// ended is not a fact worth showing; generate-insights deactivates it). In the
+// offseason the same query describes how the player closed the season.
+//
+//   scoring_20 / scoring_30  20+ / 30+ points
+//   rebounding_10            10+ rebounds
+//   threes_3                 3+ made threes
+//   hot_shooting             50%+ FG on 8+ attempts
+//   team_streak              Clippers win / losing streak (current season only)
 import {
   InsightRow,
   withInsightKey,
-  guardProofResult,
   computeImportance,
 } from './proof-utils.js';
+import { InsightContext, runProof } from './context.js';
 
-const SCORING_THRESHOLD = 20;
-const SHOOTING_THRESHOLD = 0.5;
-const MIN_FG_ATTEMPTED = 8;
-const MIN_STREAK_GAMES = 3;
-const ACTIVE_STREAK_DAYS = 14;
-
-/** Most recent game date (YYYY-MM-DD) the player has a box score row for. */
-async function latestGameDate(playerId: string): Promise<string | null> {
-  const [row] = await sql<{ latest: string | null }[]>`
-    SELECT MAX(g.game_date)::text AS latest
-    FROM game_player_box_scores pb
-    JOIN games g ON g.game_id = pb.game_id
-    WHERE pb.player_id = ${playerId}::bigint
-  `;
-  return row?.latest ?? null;
+interface StreakDef {
+  key: string;
+  /** Boolean SQL over game_player_box_scores `pb` for a qualifying game. */
+  qualifies: string;
+  minGames: number;
+  /** "has scored 20+ in 5 straight games" / "closed 2025-26 with 20+ points in 5 straight games" */
+  current: (n: number) => string;
+  closed: (n: number, season: string) => string;
 }
 
-export async function generateStreakInsights(): Promise<InsightRow[]> {
+const STREAKS: StreakDef[] = [
+  { key: 'scoring_20', qualifies: 'pb.points >= 20', minGames: 3,
+    current: (n) => `has scored 20+ in ${n} straight games`,
+    closed: (n, s) => `closed ${s} with 20+ points in ${n} straight games` },
+  { key: 'scoring_30', qualifies: 'pb.points >= 30', minGames: 3,
+    current: (n) => `has scored 30+ in ${n} straight games`,
+    closed: (n, s) => `closed ${s} with 30+ points in ${n} straight games` },
+  { key: 'rebounding_10', qualifies: 'pb.rebounds >= 10', minGames: 4,
+    current: (n) => `has 10+ rebounds in ${n} straight games`,
+    closed: (n, s) => `closed ${s} with 10+ rebounds in ${n} straight games` },
+  { key: 'threes_3', qualifies: 'pb.fg3_made >= 3', minGames: 4,
+    current: (n) => `has made 3+ threes in ${n} straight games`,
+    closed: (n, s) => `closed ${s} making 3+ threes in ${n} straight games` },
+  { key: 'hot_shooting', qualifies: 'pb.fg_attempted >= 8 AND pb.fg_made * 2 >= pb.fg_attempted', minGames: 4,
+    current: (n) => `is shooting 50%+ from the field in ${n} straight games`,
+    closed: (n, s) => `closed ${s} shooting 50%+ from the field in ${n} straight games` },
+];
+
+function playerStreakSql(def: StreakDef): string {
+  return `
+    WITH season_games AS (
+      SELECT pb.player_id, g.game_id, g.game_date,
+             pb.points, pb.rebounds, pb.fg3_made, pb.fg_made, pb.fg_attempted,
+             (${def.qualifies}) AS qualifies,
+             ROW_NUMBER() OVER (PARTITION BY pb.player_id ORDER BY g.game_date DESC, g.game_id DESC) AS recency
+      FROM game_player_box_scores pb
+      JOIN games g ON g.game_id = pb.game_id
+      WHERE g.season_id = $1::int
+        AND pb.player_id IN (
+          SELECT lac.player_id FROM game_player_box_scores lac
+          JOIN games lg ON lg.game_id = lac.game_id
+          WHERE lac.team_id = $2::bigint AND lg.season_id = $1::int
+        )
+    ), first_miss AS (
+      SELECT player_id, MIN(recency) FILTER (WHERE NOT qualifies) AS recency
+      FROM season_games
+      GROUP BY player_id
+    )
+    SELECT s.player_id::text AS player_id, p.display_name,
+           COUNT(*)::int AS streak,
+           MIN(s.game_date)::text AS streak_start,
+           MAX(s.game_date)::text AS streak_end,
+           json_agg(json_build_object(
+             'game_date', s.game_date, 'points', s.points, 'rebounds', s.rebounds,
+             'fg3_made', s.fg3_made, 'fg_made', s.fg_made, 'fg_attempted', s.fg_attempted
+           ) ORDER BY s.game_date) AS games
+    FROM season_games s
+    JOIN first_miss f ON f.player_id = s.player_id
+    JOIN players p ON p.player_id = s.player_id
+    WHERE s.recency < COALESCE(f.recency, 2147483647)
+    GROUP BY s.player_id, p.display_name
+    HAVING COUNT(*) >= $3::int
+    ORDER BY streak DESC
+  `.trim();
+}
+
+const TEAM_STREAK_SQL = `
+  WITH lac_games AS (
+    SELECT g.game_id, g.game_date,
+           ((g.home_team_id = $2::bigint) = (g.home_score > g.away_score)) AS won,
+           ROW_NUMBER() OVER (ORDER BY g.game_date DESC, g.game_id DESC) AS recency
+    FROM games g
+    WHERE g.season_id = $1::int
+      AND $2::bigint IN (g.home_team_id, g.away_team_id)
+      AND g.status = 'final'
+      AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
+  ), latest AS (
+    SELECT won FROM lac_games WHERE recency = 1
+  ), first_change AS (
+    SELECT MIN(recency) AS recency FROM lac_games WHERE won <> (SELECT won FROM latest)
+  )
+  SELECT (SELECT won FROM latest) AS winning,
+         COUNT(*)::int AS streak,
+         MIN(game_date)::text AS streak_start,
+         MAX(game_date)::text AS streak_end
+  FROM lac_games
+  WHERE recency < COALESCE((SELECT recency FROM first_change), 2147483647)
+  HAVING COUNT(*) > 0
+`.trim();
+
+export async function generateStreakInsights(ctx: InsightContext): Promise<InsightRow[]> {
   const results: InsightRow[] = [];
+  const { lac, season } = ctx;
 
-  // Look up LAC team_id dynamically
-  const [lacTeam] = await sql<{ team_id: string }[]>`
-    SELECT team_id::text AS team_id FROM teams WHERE abbreviation = 'LAC'
-  `;
-  if (!lacTeam) return [];
-  const lacTeamId = lacTeam.team_id;
+  for (const def of STREAKS) {
+    const proofSql = playerStreakSql(def);
+    const { rows, proof_params } = await runProof<{
+      player_id: string; display_name: string; streak: number;
+      streak_start: string; streak_end: string; games: unknown[];
+    }>(proofSql, [season.id, lac.teamId, def.minGames]);
 
-  // -------------------------------------------------------------------------
-  // 1. Scoring streak: player scored >= 20pts in 3+ consecutive games
-  // -------------------------------------------------------------------------
-  // Get all Clippers players who have at least MIN_STREAK_GAMES box score rows
-  const lacPlayers = await sql<{ player_id: string; display_name: string }[]>`
-    SELECT player_id, display_name FROM (
-      SELECT DISTINCT p.player_id::text AS player_id, p.display_name
-      FROM players p
-      JOIN game_player_box_scores pb ON pb.player_id = p.player_id
-      WHERE pb.team_id = ${lacTeamId}::bigint
-    ) sub
-    ORDER BY player_id
-  `;
-
-  const latestByPlayer = new Map<string, string | null>();
-  for (const player of lacPlayers) {
-    latestByPlayer.set(player.player_id, await latestGameDate(player.player_id));
+    for (const r of rows) {
+      const endMs = new Date(r.streak_end).getTime();
+      results.push(withInsightKey({
+        scope: 'between_games',
+        team_id: lac.teamId, game_id: null, player_id: r.player_id, season_id: season.id,
+        category: 'streak',
+        headline: `${r.display_name} ${season.isCurrent ? def.current(r.streak) : def.closed(r.streak, season.label)}`,
+        detail: `${r.streak_start} to ${r.streak_end}`,
+        // Longer streaks rank higher; closed (offseason) streaks rank lower.
+        importance: computeImportance('streak', null, endMs) + Math.min(10, (r.streak - def.minGames) * 2) - (season.isCurrent ? 0 : 10),
+        // Proof lists every active Clippers streak of this kind; this row is its own line.
+        proof_sql: proofSql, proof_params, proof_result: [r],
+      }, def.key)); // no length in the key: an extending streak updates the same row
+    }
   }
 
-  for (const player of lacPlayers) {
-    const latest = latestByPlayer.get(player.player_id);
-    if (!latest) continue;
-    const streakRows = await sql<{
-      streak_start: string;
-      streak_end: string;
-      streak_length: string;
-    }[]>`
-      WITH player_games AS (
-        SELECT
-          pb.player_id,
-          pb.game_id,
-          g.game_date,
-          pb.points,
-          (pb.points >= ${SCORING_THRESHOLD}) AS qualifies,
-          ROW_NUMBER() OVER (PARTITION BY pb.player_id ORDER BY g.game_date) AS rn,
-          ROW_NUMBER() OVER (
-            PARTITION BY pb.player_id, (pb.points >= ${SCORING_THRESHOLD})::int
-            ORDER BY g.game_date
-          ) AS rn2
-        FROM game_player_box_scores pb
-        JOIN games g ON g.game_id = pb.game_id
-        WHERE pb.player_id = ${player.player_id}::bigint
-      )
-      SELECT
-        MIN(game_date)::text AS streak_start,
-        MAX(game_date)::text AS streak_end,
-        COUNT(*)::text AS streak_length
-      FROM player_games
-      WHERE qualifies = TRUE
-      GROUP BY player_id, rn - rn2
-      HAVING COUNT(*) >= ${MIN_STREAK_GAMES}
-         AND MAX(game_date) = ${latest}::date  -- streak is still active
-      ORDER BY streak_end DESC
-      LIMIT 1
-    `;
-
-    if (streakRows.length === 0) continue;
-    const streak = streakRows[0];
-    const streakLength = parseInt(streak.streak_length, 10);
-
-    // Run proof query: games in this streak with dates and points
-    const proofSql = `
-      WITH player_games AS (
-        SELECT
-          pb.player_id,
-          pb.game_id,
-          g.game_date,
-          pb.points,
-          (pb.points >= $2) AS qualifies,
-          ROW_NUMBER() OVER (PARTITION BY pb.player_id ORDER BY g.game_date) AS rn,
-          ROW_NUMBER() OVER (
-            PARTITION BY pb.player_id, (pb.points >= $2)::int
-            ORDER BY g.game_date
-          ) AS rn2
-        FROM game_player_box_scores pb
-        JOIN games g ON g.game_id = pb.game_id
-        WHERE pb.player_id = $1::bigint
-      )
-      SELECT game_date, points
-      FROM player_games
-      WHERE qualifies = TRUE
-        AND game_date >= $3
-        AND game_date <= $4
-      ORDER BY game_date DESC
-      LIMIT $5
-    `.trim();
-
-    const proofParams = {
-      player_id: player.player_id,
-      threshold: SCORING_THRESHOLD,
-      streak_start: streak.streak_start,
-      streak_end: streak.streak_end,
-      min_games: MIN_STREAK_GAMES,
-      latest_game_date: latest,   // streak_end must equal this (active streak)
-    };
-
-    const proofResult = await sql<{ game_date: string; points: number }[]>`
-      WITH player_games AS (
-        SELECT
-          pb.player_id,
-          pb.game_id,
-          g.game_date,
-          pb.points,
-          (pb.points >= ${SCORING_THRESHOLD}) AS qualifies,
-          ROW_NUMBER() OVER (PARTITION BY pb.player_id ORDER BY g.game_date) AS rn,
-          ROW_NUMBER() OVER (
-            PARTITION BY pb.player_id, (pb.points >= ${SCORING_THRESHOLD})::int
-            ORDER BY g.game_date
-          ) AS rn2
-        FROM game_player_box_scores pb
-        JOIN games g ON g.game_id = pb.game_id
-        WHERE pb.player_id = ${player.player_id}::bigint
-      )
-      SELECT game_date::text AS game_date, points
-      FROM player_games
-      WHERE qualifies = TRUE
-        AND game_date >= ${streak.streak_start}::date
-        AND game_date <= ${streak.streak_end}::date
-      ORDER BY game_date DESC
-      LIMIT ${streakLength}
-    `;
-
-    if (!guardProofResult(proofResult)) continue;
-
-    // One live streak insight per player: the length is NOT part of the key, so
-    // an extending streak updates the same row instead of adding a new one.
-    const metricKey = `scoring_streak_${SCORING_THRESHOLD}`;
-
-    // Determine scope: active if streak ended in last 14 days
-    const streakEndMs = new Date(streak.streak_end).getTime();
-    const ageDays = (Date.now() - streakEndMs) / 86_400_000;
-    const scope: InsightRow['scope'] =
-      ageDays <= ACTIVE_STREAK_DAYS ? 'between_games' : 'historical';
-
-    const importance = computeImportance('streak', null, streakEndMs);
-
-    results.push(withInsightKey({
-      scope,
-      team_id: lacTeamId,
-      game_id: null,
-      player_id: player.player_id,
-      season_id: null,
-      category: 'streak',
-      headline: `${player.display_name} has scored ${SCORING_THRESHOLD}+ in ${streakLength} straight games`,
-      detail: `Scoring streak from ${streak.streak_start} to ${streak.streak_end}`,
-      importance,
-      proof_sql: proofSql,
-      proof_params: proofParams,
-      proof_result: proofResult,
-    }, metricKey));
-  }
-
-  // -------------------------------------------------------------------------
-  // 2. Hot shooting streak: player shot >= 50% FG in 3+ consecutive games
-  //    Filter on fg_attempted >= MIN_FG_ATTEMPTED to avoid low-volume noise
-  // -------------------------------------------------------------------------
-  for (const player of lacPlayers) {
-    const latest = latestByPlayer.get(player.player_id);
-    if (!latest) continue;
-    const streakRows = await sql<{
-      streak_start: string;
-      streak_end: string;
-      streak_length: string;
-    }[]>`
-      WITH player_games AS (
-        SELECT
-          pb.player_id,
-          pb.game_id,
-          g.game_date,
-          pb.fg_made,
-          pb.fg_attempted,
-          (pb.fg_attempted >= ${MIN_FG_ATTEMPTED}
-            AND (pb.fg_made::float / pb.fg_attempted) >= ${SHOOTING_THRESHOLD}) AS qualifies,
-          ROW_NUMBER() OVER (PARTITION BY pb.player_id ORDER BY g.game_date) AS rn,
-          ROW_NUMBER() OVER (
-            PARTITION BY pb.player_id,
-              (pb.fg_attempted >= ${MIN_FG_ATTEMPTED}
-                AND (pb.fg_made::float / pb.fg_attempted) >= ${SHOOTING_THRESHOLD})::int
-            ORDER BY g.game_date
-          ) AS rn2
-        FROM game_player_box_scores pb
-        JOIN games g ON g.game_id = pb.game_id
-        WHERE pb.player_id = ${player.player_id}::bigint
-          AND pb.fg_attempted > 0
-      )
-      SELECT
-        MIN(game_date)::text AS streak_start,
-        MAX(game_date)::text AS streak_end,
-        COUNT(*)::text AS streak_length
-      FROM player_games
-      WHERE qualifies = TRUE
-      GROUP BY player_id, rn - rn2
-      HAVING COUNT(*) >= ${MIN_STREAK_GAMES}
-         AND MAX(game_date) = ${latest}::date  -- streak is still active
-      ORDER BY streak_end DESC
-      LIMIT 1
-    `;
-
-    if (streakRows.length === 0) continue;
-    const streak = streakRows[0];
-    const streakLength = parseInt(streak.streak_length, 10);
-
-    const proofSql = `
-      WITH player_games AS (
-        SELECT
-          pb.player_id,
-          pb.game_id,
-          g.game_date,
-          pb.fg_made,
-          pb.fg_attempted,
-          (pb.fg_attempted >= $2
-            AND (pb.fg_made::float / pb.fg_attempted) >= $3) AS qualifies,
-          ROW_NUMBER() OVER (PARTITION BY pb.player_id ORDER BY g.game_date) AS rn,
-          ROW_NUMBER() OVER (
-            PARTITION BY pb.player_id,
-              (pb.fg_attempted >= $2
-                AND (pb.fg_made::float / pb.fg_attempted) >= $3)::int
-            ORDER BY g.game_date
-          ) AS rn2
-        FROM game_player_box_scores pb
-        JOIN games g ON g.game_id = pb.game_id
-        WHERE pb.player_id = $1::bigint
-          AND pb.fg_attempted > 0
-      )
-      SELECT game_date, fg_made, fg_attempted,
-             ROUND((fg_made::float / fg_attempted * 100)::numeric, 1) AS fg_pct
-      FROM player_games
-      WHERE qualifies = TRUE
-        AND game_date >= $4
-        AND game_date <= $5
-      ORDER BY game_date DESC
-      LIMIT $6
-    `.trim();
-
-    const proofParams = {
-      player_id: player.player_id,
-      min_fg_attempted: MIN_FG_ATTEMPTED,
-      shooting_threshold: SHOOTING_THRESHOLD,
-      streak_start: streak.streak_start,
-      streak_end: streak.streak_end,
-      min_games: MIN_STREAK_GAMES,
-      latest_game_date: latest,   // streak_end must equal this (active streak)
-    };
-
-    const proofResult = await sql<{
-      game_date: string;
-      fg_made: number;
-      fg_attempted: number;
-      fg_pct: string;
-    }[]>`
-      WITH player_games AS (
-        SELECT
-          pb.player_id,
-          pb.game_id,
-          g.game_date,
-          pb.fg_made,
-          pb.fg_attempted,
-          (pb.fg_attempted >= ${MIN_FG_ATTEMPTED}
-            AND (pb.fg_made::float / pb.fg_attempted) >= ${SHOOTING_THRESHOLD}) AS qualifies,
-          ROW_NUMBER() OVER (PARTITION BY pb.player_id ORDER BY g.game_date) AS rn,
-          ROW_NUMBER() OVER (
-            PARTITION BY pb.player_id,
-              (pb.fg_attempted >= ${MIN_FG_ATTEMPTED}
-                AND (pb.fg_made::float / pb.fg_attempted) >= ${SHOOTING_THRESHOLD})::int
-            ORDER BY g.game_date
-          ) AS rn2
-        FROM game_player_box_scores pb
-        JOIN games g ON g.game_id = pb.game_id
-        WHERE pb.player_id = ${player.player_id}::bigint
-          AND pb.fg_attempted > 0
-      )
-      SELECT
-        game_date::text AS game_date,
-        fg_made,
-        fg_attempted,
-        ROUND((fg_made::float / fg_attempted * 100)::numeric, 1)::text AS fg_pct
-      FROM player_games
-      WHERE qualifies = TRUE
-        AND game_date >= ${streak.streak_start}::date
-        AND game_date <= ${streak.streak_end}::date
-      ORDER BY game_date DESC
-      LIMIT ${streakLength}
-    `;
-
-    if (!guardProofResult(proofResult)) continue;
-
-    const metricKey = 'hot_shooting_streak'; // length excluded — see scoring streak
-
-    const streakEndMs = new Date(streak.streak_end).getTime();
-    const ageDays = (Date.now() - streakEndMs) / 86_400_000;
-    const scope: InsightRow['scope'] =
-      ageDays <= ACTIVE_STREAK_DAYS ? 'between_games' : 'historical';
-
-    const importance = computeImportance('streak', null, streakEndMs);
-
-    results.push(withInsightKey({
-      scope,
-      team_id: lacTeamId,
-      game_id: null,
-      player_id: player.player_id,
-      season_id: null,
-      category: 'streak',
-      headline: `${player.display_name} is shooting 50%+ in ${streakLength} straight games`,
-      detail: `Hot shooting streak from ${streak.streak_start} to ${streak.streak_end}`,
-      importance,
-      proof_sql: proofSql,
-      proof_params: proofParams,
-      proof_result: proofResult,
-    }, metricKey));
+  if (season.isCurrent) {
+    const { rows, proof_params } = await runProof<{
+      winning: boolean; streak: number; streak_start: string; streak_end: string;
+    }>(TEAM_STREAK_SQL, [season.id, lac.teamId]);
+    const r = rows[0];
+    if (r && ((r.winning && r.streak >= 3) || (!r.winning && r.streak >= 4))) {
+      results.push(withInsightKey({
+        scope: 'between_games',
+        team_id: lac.teamId, game_id: null, player_id: null, season_id: season.id,
+        category: 'streak',
+        headline: r.winning
+          ? `Clippers have won ${r.streak} straight`
+          : `Clippers have lost ${r.streak} straight`,
+        detail: `${r.streak_start} to ${r.streak_end}`,
+        importance: computeImportance('streak', null, new Date(r.streak_end).getTime()) + (r.winning ? r.streak : -10),
+        proof_sql: TEAM_STREAK_SQL, proof_params, proof_result: rows,
+      }, 'team_streak'));
+    }
   }
 
   return results;

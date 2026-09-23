@@ -11,6 +11,10 @@
  */
 export function parseMinutes(s: string | null | undefined): number {
   if (!s) return 0;
+  // NBA live box scores use ISO-8601 durations: "PT34M12.00S", "PT05M", "PT45.00S".
+  const iso = /^PT(?:(\d+)M)?(?:([\d.]+)S)?$/.exec(s.trim());
+  if (iso) return Number(iso[1] ?? 0) + Number(iso[2] ?? 0) / 60;
+  // balldontlie / legacy: "34:12" or "34"
   const [min, sec] = s.split(':').map(Number);
   if (isNaN(min)) return 0;
   return min + (isNaN(sec) ? 0 : sec / 60);
