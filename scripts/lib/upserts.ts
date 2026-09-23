@@ -192,7 +192,7 @@ export interface GameRowInput {
  *      (finalization needs it for cdn.nba.com), otherwise keep the stored id
  *   3. otherwise insert
  * The natural key is also enforced by uq_games_date_home_away (see
- * docs/migrations/2026-09-audit.sql); this pre-check works with or without it.
+ * Docs/migrations/2026-09-audit.sql); this pre-check works with or without it.
  *
  * Updates never regress a 'final' game (a lagging provider can still report
  * it as scheduled with 0-0 scores) and never null out known values.
