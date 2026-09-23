@@ -12,6 +12,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored / non-app directories:
+    "get-shit-done-1.22.4/**",
+    ".claude/**",
+    ".planning/**",
+    "ui-prototype/**",
+    "full logo packs/**",
+    "design-system/**",
   ]),
 ]);
 

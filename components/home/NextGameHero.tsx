@@ -35,7 +35,7 @@ export function NextGameHero({ game }: NextGameProps) {
         Next Game
       </p>
       <p className="mt-1 text-2xl font-bold text-foreground">
-        vs {game.opponent_abbr}
+        {game.home_away === 'away' ? '@' : 'vs'} {game.opponent_abbr}
       </p>
       <p className="mt-1 text-sm text-muted-foreground">
         {formatGameDate(game.game_date)} · {formatGameTime(game.start_time_utc)} ·{' '}

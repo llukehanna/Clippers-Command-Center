@@ -7,36 +7,47 @@ interface NoGameIdleStateProps {
   className?: string
 }
 
-interface HomePayload {
-  schedule?: Array<{
-    opponent?: string
-    home_team?: string
-    game_date?: string
-    game_time?: string
-    home_or_away?: string
-  }>
+interface NextGame {
+  game_date?: string | null
+  start_time_utc?: string | null
+  opponent_abbr?: string | null
+  home_away?: 'home' | 'away' | string | null
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+interface HomePayload {
+  next_game?: NextGame | null
+}
 
-function formatNextGame(game: NonNullable<HomePayload['schedule']>[0]): string {
-  const opponent = game.opponent ?? game.home_team ?? '?'
-  const isHome = game.home_or_away === 'home'
+const fetcher = (url: string) =>
+  fetch(url).then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  })
+
+function formatNextGame(game: NextGame): string {
+  const opponent = game.opponent_abbr ?? 'TBD'
+  const isHome = game.home_away === 'home'
 
   let dateStr = ''
-  if (game.game_date) {
-    const d = new Date(game.game_date + (game.game_time ? 'T' + game.game_time : ''))
+  if (game.start_time_utc) {
+    const d = new Date(game.start_time_utc)
     if (!isNaN(d.getTime())) {
+      // Always Pacific time so SSR (UTC) and client render identically
       dateStr = d.toLocaleString('en-US', {
         month: 'short',
         day: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
+        timeZone: 'America/Los_Angeles',
         timeZoneName: 'short',
       })
-    } else {
-      dateStr = game.game_date
     }
+  }
+  if (!dateStr && game.game_date) {
+    const d = new Date(game.game_date + 'T12:00:00')
+    dateStr = isNaN(d.getTime())
+      ? game.game_date
+      : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
 
   const matchup = isHome ? `${opponent} @ LAC` : `LAC @ ${opponent}`
@@ -49,7 +60,9 @@ export function NoGameIdleState({ className }: NoGameIdleStateProps) {
     revalidateOnFocus: false,
   })
 
-  const nextGame = data?.schedule?.[0] ?? null
+  const nextGame = data?.next_game ?? null
+  // Only claim offseason once /api/home has answered with no next game
+  const isOffseason = data !== undefined && nextGame === null
 
   return (
     <div
@@ -65,6 +78,12 @@ export function NoGameIdleState({ className }: NoGameIdleStateProps) {
       {nextGame && (
         <p className="ccc-body mt-3 text-muted-foreground">
           {formatNextGame(nextGame)}
+        </p>
+      )}
+
+      {isOffseason && (
+        <p className="ccc-body mt-3 text-muted-foreground">
+          No upcoming games scheduled — the regular season tips off in October.
         </p>
       )}
 

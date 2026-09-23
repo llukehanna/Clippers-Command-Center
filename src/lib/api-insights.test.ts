@@ -52,7 +52,7 @@ const mockSqlImpl = (...args: unknown[]) => {
 
 const mockSqlTag = vi.fn(mockSqlImpl);
 
-vi.mock('../lib/db.js', () => ({
+vi.mock('@/src/lib/db', () => ({
   sql: mockSqlTag,
   LAC_NBA_TEAM_ID: 1610612746,
 }));
@@ -70,7 +70,7 @@ describe('GET /api/insights', () => {
   });
 
   it('returns 400 when scope param is missing', async () => {
-    const { GET } = await import('../app/api/insights/route.js');
+    const { GET } = await import('@/app/api/insights/route');
     const req = new Request('http://localhost/api/insights');
     const res = await GET(req);
     expect(res.status).toBe(400);
@@ -80,7 +80,7 @@ describe('GET /api/insights', () => {
   });
 
   it('returns 400 when scope param is invalid', async () => {
-    const { GET } = await import('../app/api/insights/route.js');
+    const { GET } = await import('@/app/api/insights/route');
     const req = new Request('http://localhost/api/insights?scope=invalid');
     const res = await GET(req);
     expect(res.status).toBe(400);
@@ -101,7 +101,7 @@ describe('GET /api/insights', () => {
         proof_result: { wins: 5, losses: 0 },
       },
     ];
-    const { GET } = await import('../app/api/insights/route.js');
+    const { GET } = await import('@/app/api/insights/route');
     const req = new Request('http://localhost/api/insights?scope=live');
     const res = await GET(req);
     expect(res.status).toBe(200);
@@ -123,7 +123,7 @@ describe('GET /api/insights', () => {
         proof_result: { value: 42 },
       },
     ];
-    const { GET } = await import('../app/api/insights/route.js');
+    const { GET } = await import('@/app/api/insights/route');
     const req = new Request('http://localhost/api/insights?scope=between_games');
     const res = await GET(req);
     const body = await res.json();
@@ -142,7 +142,7 @@ describe('GET /api/insights', () => {
         proof_result: { games: 3, triple_doubles: 2 },
       },
     ];
-    const { GET } = await import('../app/api/insights/route.js');
+    const { GET } = await import('@/app/api/insights/route');
     const req = new Request('http://localhost/api/insights?scope=historical');
     const res = await GET(req);
     const body = await res.json();
@@ -154,7 +154,7 @@ describe('GET /api/insights', () => {
 
   it('returns empty array when no insights exist (not null, not error)', async () => {
     mockRows = [];
-    const { GET } = await import('../app/api/insights/route.js');
+    const { GET } = await import('@/app/api/insights/route');
     const req = new Request('http://localhost/api/insights?scope=live');
     const res = await GET(req);
     expect(res.status).toBe(200);
@@ -165,7 +165,7 @@ describe('GET /api/insights', () => {
 
   it('meta has all required fields: generated_at, source, stale, stale_reason, ttl_seconds', async () => {
     mockRows = [];
-    const { GET } = await import('../app/api/insights/route.js');
+    const { GET } = await import('@/app/api/insights/route');
     const req = new Request('http://localhost/api/insights?scope=live');
     const res = await GET(req);
     const body = await res.json();
@@ -179,7 +179,7 @@ describe('GET /api/insights', () => {
   it('returns 500 on unexpected database error', async () => {
     shouldReject = true;
     rejectError = new Error('DB connection failed');
-    const { GET } = await import('../app/api/insights/route.js');
+    const { GET } = await import('@/app/api/insights/route');
     const req = new Request('http://localhost/api/insights?scope=live');
     const res = await GET(req);
     expect(res.status).toBe(500);
@@ -189,7 +189,7 @@ describe('GET /api/insights', () => {
 
   it('sets Cache-Control: public, max-age=30 header', async () => {
     mockRows = [];
-    const { GET } = await import('../app/api/insights/route.js');
+    const { GET } = await import('@/app/api/insights/route');
     const req = new Request('http://localhost/api/insights?scope=live');
     const res = await GET(req);
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=30');
@@ -197,21 +197,52 @@ describe('GET /api/insights', () => {
 
   it('scope param "live" is accepted as valid', async () => {
     mockRows = [];
-    const { GET } = await import('../app/api/insights/route.js');
+    const { GET } = await import('@/app/api/insights/route');
     const res = await GET(new Request('http://localhost/api/insights?scope=live'));
     expect(res.status).toBe(200);
   });
 
   it('scope param "between_games" is accepted as valid', async () => {
     mockRows = [];
-    const { GET } = await import('../app/api/insights/route.js');
+    const { GET } = await import('@/app/api/insights/route');
     const res = await GET(new Request('http://localhost/api/insights?scope=between_games'));
     expect(res.status).toBe(200);
   });
 
+  it('returns 400 when game_id is not numeric (no DB call)', async () => {
+    const { GET } = await import('@/app/api/insights/route');
+    const res = await GET(new Request('http://localhost/api/insights?scope=live&game_id=abc'));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('BAD_REQUEST');
+    expect(mockSqlTag).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when player_id is not numeric (no DB call)', async () => {
+    const { GET } = await import('@/app/api/insights/route');
+    const res = await GET(new Request('http://localhost/api/insights?scope=live&player_id=1;drop'));
+    expect(res.status).toBe(400);
+    expect(mockSqlTag).not.toHaveBeenCalled();
+  });
+
+  it('clamps limit to the range 1..50', async () => {
+    const { GET } = await import('@/app/api/insights/route');
+    const lastQueryLimit = () => {
+      const calls = mockSqlTag.mock.calls;
+      const main = calls[calls.length - 1];
+      return main[main.length - 1];
+    };
+
+    await GET(new Request('http://localhost/api/insights?scope=live&limit=-5'));
+    expect(lastQueryLimit()).toBe(1);
+
+    await GET(new Request('http://localhost/api/insights?scope=live&limit=9999'));
+    expect(lastQueryLimit()).toBe(50);
+  });
+
   it('scope param "historical" is accepted as valid', async () => {
     mockRows = [];
-    const { GET } = await import('../app/api/insights/route.js');
+    const { GET } = await import('@/app/api/insights/route');
     const res = await GET(new Request('http://localhost/api/insights?scope=historical'));
     expect(res.status).toBe(200);
   });

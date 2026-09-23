@@ -1,4 +1,4 @@
-// src/app/api/schedule/route.ts
+// app/api/schedule/route.ts
 // GET /api/schedule — Upcoming LAC games with odds (when available).
 // Powers the Schedule page.
 
@@ -52,7 +52,9 @@ export async function GET(request: Request) {
 
     const lacTeamId = lacTeamRow.team_id;
 
-    // Query upcoming LAC games (game_date >= today, not yet final)
+    // Query upcoming LAC games (game_date >= today in US Eastern, not yet final).
+    // game_date is the ET calendar date, so compare against ET "today" rather than
+    // CURRENT_DATE (UTC), which would drop tonight's game after 5pm PT.
     const games = await sql<GameRow[]>`
       SELECT
         g.game_id::text        AS game_id,
@@ -74,8 +76,8 @@ export async function GET(request: Request) {
       JOIN teams ht ON g.home_team_id = ht.team_id
       JOIN teams at ON g.away_team_id = at.team_id
       WHERE (g.home_team_id = ${lacTeamId}::bigint OR g.away_team_id = ${lacTeamId}::bigint)
-        AND g.game_date >= CURRENT_DATE
-        AND g.status != 'final'
+        AND g.game_date >= (now() AT TIME ZONE 'America/New_York')::date
+        AND lower(g.status) <> 'final'
       ORDER BY g.game_date ASC, g.game_id ASC
       LIMIT 20
     `;
@@ -95,6 +97,13 @@ export async function GET(request: Request) {
       const opponentAbbr = isHome ? g.away_abbr : g.home_abbr;
       const homeAway: 'home' | 'away' = isHome ? 'home' : 'away';
       const odds = includeOdds ? (oddsResults[i] ?? null) : null;
+      // Present odds from LAC's perspective (shape consumed by ScheduleTable)
+      const oddsDisplay = odds ? {
+        spread: isHome ? odds.spread_home : odds.spread_away,
+        moneyline: isHome ? odds.moneyline_home : odds.moneyline_away,
+        over_under: odds.total_points,
+        captured_at: odds.captured_at,
+      } : null;
 
       return {
         game_id: g.game_id,
@@ -115,7 +124,7 @@ export async function GET(request: Request) {
         opponent_abbr: opponentAbbr,
         home_away: homeAway,
         status: g.status,
-        odds,
+        odds: oddsDisplay,
       };
     });
 

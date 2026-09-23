@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { GameItem } from '@/src/lib/history-utils'
 import { detectOT } from '@/src/lib/history-utils'
@@ -58,11 +59,18 @@ export function GameListTable({ games }: GameListTableProps) {
               onClick={() => router.push('/history/' + g.game_id)}
             >
               <td className="text-[0.8125rem] text-foreground px-4 tabular-nums">
-                {new Date(g.game_date + 'T12:00:00').toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
+                {/* Real link for keyboard / screen-reader users; row click remains a mouse shortcut */}
+                <Link
+                  href={`/history/${g.game_id}`}
+                  className="hover:underline focus-visible:underline focus-visible:outline-none"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {new Date(g.game_date + 'T12:00:00').toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </Link>
               </td>
               <td className="text-[0.8125rem] text-foreground px-4 font-medium">
                 {g.home_away === 'away' ? '@ ' : 'vs '}{g.opponent_abbr}

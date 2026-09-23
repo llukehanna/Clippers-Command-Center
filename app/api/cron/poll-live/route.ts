@@ -1,8 +1,14 @@
 // app/api/cron/poll-live/route.ts
-// Stateless Vercel Cron route: one NBA CDN fetch + DB write per invocation.
-// No while-loop. No backoff state. Returns 200 on all paths (prevents Vercel
-// retry storm on CDN outage). Scheduled every 60s via vercel.json crons.
+// Stateless live-poll route: one NBA CDN fetch + DB write per invocation.
+// Triggered every 5 minutes by GitHub Actions (.github/workflows/poll-live.yml)
+// with `Authorization: Bearer $CRON_SECRET`. No while-loop, no backoff state,
+// no in-request sleeps.
+//
+// When the scoreboard reports the game Final, this route only marks the games
+// row 'final'. Box scores are written by the nightly post-game pipeline
+// (`npm run finalize-games`, which picks up final games with no box scores).
 
+import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { sql } from '@/src/lib/db';
 import {
@@ -31,18 +37,29 @@ type Json = Parameters<typeof sql.json>[0];
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const RECENT_SCORING_LOOKBACK_SECONDS = 120; // last 2 minutes of play-by-play
-const MAX_FINALIZE_RETRIES = 3;
-const FINALIZE_RETRY_DELAY_MS = 60_000;
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+/** Constant-time comparison of the Authorization header against the secret. */
+function isAuthorized(authHeader: string | null, cronSecret: string): boolean {
+  if (!authHeader) return false;
+  const provided = Buffer.from(authHeader);
+  const expected = Buffer.from(`Bearer ${cronSecret}`);
+  if (provided.length !== expected.length) return false;
+  return timingSafeEqual(provided, expected);
+}
 
 // ── GET handler ───────────────────────────────────────────────────────────────
 
 export async function GET(request: Request): Promise<NextResponse> {
+  // Fail closed: without a configured secret nobody may trigger DB writes.
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = request.headers.get('authorization');
-    if (auth !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  if (!cronSecret) {
+    console.error('[cron/poll-live] CRON_SECRET is not configured — refusing request');
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
+  }
+  if (!isAuthorized(request.headers.get('authorization'), cronSecret)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
@@ -60,10 +77,14 @@ export async function GET(request: Request): Promise<NextResponse> {
       return NextResponse.json({ state: 'NO_ACTIVE_GAME' }, { status: 200 });
     }
 
-    // 3. Fetch boxscore and play-by-play in parallel (non-fatal if either fails)
+    // 3. Fetch boxscore and play-by-play in parallel (non-fatal if either fails).
+    //    The CDN is keyed by the 10-char NBA game id (e.g. "0022500123") from the
+    //    scoreboard — games.nba_game_id is a BIGINT that may be a BDL id or an
+    //    NBA id with its leading zeros stripped, so it must not be used here.
+    const nbaCdnGameId = game.gameId;
     const [boxscoreResult, pbpResult] = await Promise.allSettled([
-      fetchBoxscore(candidate.nba_game_id, game.gameId),
-      fetchPlayByPlay(candidate.nba_game_id),
+      fetchBoxscore(nbaCdnGameId, nbaCdnGameId),
+      fetchPlayByPlay(nbaCdnGameId),
     ]);
 
     let homeBox: BoxscoreTeam | null = null;
@@ -94,23 +115,21 @@ export async function GET(request: Request): Promise<NextResponse> {
     // 5. INSERT into live_snapshots (append-only)
     await insertSnapshot(candidate.game_id, game, payload);
 
-    // 6. UPDATE games table row
+    // 6. UPDATE games table row (status/period/clock/scores from the scoreboard).
+    //    gameStatus 3 (Final) marks the row 'final'; the nightly finalize-games
+    //    job then writes box scores for final games that have none.
     await updateGamesRow(candidate.game_id, game);
-
-    // 7. Finalize if game is Final (gameStatus === 3)
     if (game.gameStatus === 3) {
-      console.log('[cron/poll-live] Game reached Final status. Running finalization...');
-      await finalizeGame(candidate.game_id, candidate.nba_game_id);
-      console.log('[cron/poll-live] Finalization complete.');
+      console.log(
+        `[cron/poll-live] Game ${nbaCdnGameId} is Final — marked final; box scores deferred to nightly finalize-games.`
+      );
     }
 
     return NextResponse.json({ state: 'OK', snapshot_written: true }, { status: 200 });
   } catch (err) {
+    // Log details server-side only; return a generic non-2xx so failures are visible.
     console.error('[cron/poll-live] Unhandled error:', err);
-    return NextResponse.json(
-      { state: 'ERROR', message: (err as Error).message },
-      { status: 200 } // 200 to prevent Vercel Cron retry storm on CDN outage
-    );
+    return NextResponse.json({ state: 'ERROR', message: 'Poll cycle failed' }, { status: 500 });
   }
 }
 
@@ -118,7 +137,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
 /**
  * Query the games table for a Clippers game with status 'in_progress'
- * OR scheduled today within a 30-minute window.
+ * (dated today or yesterday, ET) OR scheduled today within a 30-minute window.
  * Inlined from scripts/poll-live.ts findActiveClippersGameInDB().
  */
 async function findActiveClippersGameInDB(): Promise<{
@@ -135,11 +154,17 @@ async function findActiveClippersGameInDB(): Promise<{
     JOIN teams t ON (t.team_id = g.home_team_id OR t.team_id = g.away_team_id)
     WHERE t.abbreviation = 'LAC'
       AND (
-        g.status = 'in_progress'
+        -- in_progress rows older than yesterday (ET) are stale rows that were
+        -- never marked final; don't let them hijack today's poll.
+        (
+          g.status = 'in_progress'
+          AND g.game_date >= (now() AT TIME ZONE 'America/New_York')::date - 1
+        )
         OR (
           g.status = 'scheduled'
           AND (
-            g.start_time_utc IS NULL AND g.game_date = CURRENT_DATE
+            -- game_date is the US Eastern calendar date
+            g.start_time_utc IS NULL AND g.game_date = (now() AT TIME ZONE 'America/New_York')::date
             OR g.start_time_utc BETWEEN now() - INTERVAL '30 minutes' AND now() + INTERVAL '30 minutes'
           )
         )
@@ -196,202 +221,6 @@ async function updateGamesRow(gameDbId: string, game: ScoreboardGame): Promise<v
   `;
 }
 
-// ── Finalization ──────────────────────────────────────────────────────────────
-
-/**
- * Writes final box scores to DB. Inlined from scripts/lib/finalize.ts but
- * uses src/lib/db sql (Next.js-safe) instead of scripts/lib/db sql.
- * Retries up to MAX_FINALIZE_RETRIES times to handle NBA API lag after game ends.
- */
-async function finalizeGame(gameDbId: string, nbaGameId: string): Promise<void> {
-  for (let attempt = 1; attempt <= MAX_FINALIZE_RETRIES; attempt++) {
-    try {
-      const boxscore = await fetchBoxscore(nbaGameId);
-      const { homeTeam, awayTeam } = boxscore.game;
-
-      // Guard: check if player data is ready (NBA API lag after game ends)
-      const hasPlayerData =
-        homeTeam.players.some((p) => p.played === '1') ||
-        awayTeam.players.some((p) => p.played === '1');
-
-      if (!hasPlayerData) {
-        console.warn(
-          `[cron/poll-live] finalizeGame attempt ${attempt}/${MAX_FINALIZE_RETRIES}: No player data yet — NBA API lag.`
-        );
-        if (attempt < MAX_FINALIZE_RETRIES) {
-          await sleep(FINALIZE_RETRY_DELAY_MS);
-        }
-        continue;
-      }
-
-      // Resolve internal DB IDs for each team
-      const homeTeamDbId = await resolveTeamDbId(homeTeam.teamId);
-      const awayTeamDbId = await resolveTeamDbId(awayTeam.teamId);
-
-      // Write team box scores
-      for (const [team, teamDbId, isHome] of [
-        [homeTeam, homeTeamDbId, true],
-        [awayTeam, awayTeamDbId, false],
-      ] as const) {
-        if (!teamDbId) continue;
-        await sql`
-          INSERT INTO game_team_box_scores (
-            game_id, team_id, is_home,
-            points, rebounds_total, assists, steals, blocks,
-            field_goals_made, field_goals_attempted, field_goals_pct,
-            three_pointers_made, three_pointers_attempted, three_pointers_pct,
-            free_throws_made, free_throws_attempted, free_throws_pct,
-            rebounds_offensive, rebounds_defensive, turnovers, fouls_personal,
-            raw_json
-          ) VALUES (
-            ${gameDbId}::bigint,
-            ${teamDbId}::bigint,
-            ${isHome},
-            ${team.statistics.points},
-            ${team.statistics.reboundsTotal},
-            ${team.statistics.assists},
-            ${team.statistics.steals},
-            ${team.statistics.blocks},
-            ${team.statistics.fieldGoalsMade},
-            ${team.statistics.fieldGoalsAttempted},
-            ${team.statistics.fieldGoalsPercentage},
-            ${team.statistics.threePointersMade},
-            ${team.statistics.threePointersAttempted},
-            ${team.statistics.threePointersPercentage},
-            ${team.statistics.freeThrowsMade},
-            ${team.statistics.freeThrowsAttempted},
-            ${team.statistics.freeThrowsPercentage},
-            ${team.statistics.reboundsOffensive},
-            ${team.statistics.reboundsDefensive},
-            ${team.statistics.turnovers},
-            ${team.statistics.foulsPersonal},
-            ${sql.json(team.statistics as unknown as Json)}
-          )
-          ON CONFLICT (game_id, team_id) DO UPDATE SET
-            points = EXCLUDED.points,
-            rebounds_total = EXCLUDED.rebounds_total,
-            assists = EXCLUDED.assists,
-            steals = EXCLUDED.steals,
-            blocks = EXCLUDED.blocks,
-            field_goals_made = EXCLUDED.field_goals_made,
-            field_goals_attempted = EXCLUDED.field_goals_attempted,
-            field_goals_pct = EXCLUDED.field_goals_pct,
-            three_pointers_made = EXCLUDED.three_pointers_made,
-            three_pointers_attempted = EXCLUDED.three_pointers_attempted,
-            three_pointers_pct = EXCLUDED.three_pointers_pct,
-            free_throws_made = EXCLUDED.free_throws_made,
-            free_throws_attempted = EXCLUDED.free_throws_attempted,
-            free_throws_pct = EXCLUDED.free_throws_pct,
-            rebounds_offensive = EXCLUDED.rebounds_offensive,
-            rebounds_defensive = EXCLUDED.rebounds_defensive,
-            turnovers = EXCLUDED.turnovers,
-            fouls_personal = EXCLUDED.fouls_personal,
-            raw_json = EXCLUDED.raw_json
-        `;
-      }
-      console.log(`[cron/poll-live] Team box scores written for game ${nbaGameId}`);
-
-      // Write player box scores
-      let playerCount = 0;
-      for (const [team, teamDbId] of [
-        [homeTeam, homeTeamDbId],
-        [awayTeam, awayTeamDbId],
-      ] as const) {
-        if (!teamDbId) continue;
-        for (const player of team.players) {
-          if (player.played !== '1') continue; // skip DNPs
-          const playerDbId = await resolvePlayerDbId(player.personId);
-          if (!playerDbId) continue;
-          await sql`
-            INSERT INTO game_player_box_scores (
-              game_id, player_id, team_id, is_starter,
-              minutes, points, rebounds_total, assists, steals, blocks,
-              field_goals_made, field_goals_attempted,
-              three_pointers_made, three_pointers_attempted,
-              free_throws_made, free_throws_attempted,
-              rebounds_offensive, rebounds_defensive, turnovers, fouls_personal,
-              plus_minus
-            ) VALUES (
-              ${gameDbId}::bigint,
-              ${playerDbId}::bigint,
-              ${teamDbId}::bigint,
-              ${player.starter === '1'},
-              ${player.statistics.minutes},
-              ${player.statistics.points},
-              ${player.statistics.reboundsTotal},
-              ${player.statistics.assists},
-              ${player.statistics.steals},
-              ${player.statistics.blocks},
-              ${player.statistics.fieldGoalsMade},
-              ${player.statistics.fieldGoalsAttempted},
-              ${player.statistics.threePointersMade},
-              ${player.statistics.threePointersAttempted},
-              ${player.statistics.freeThrowsMade},
-              ${player.statistics.freeThrowsAttempted},
-              ${player.statistics.reboundsOffensive},
-              ${player.statistics.reboundsDefensive},
-              ${player.statistics.turnovers},
-              ${player.statistics.foulsPersonal},
-              ${player.statistics.plusMinusPoints}
-            )
-            ON CONFLICT (game_id, player_id) DO UPDATE SET
-              minutes = EXCLUDED.minutes,
-              points = EXCLUDED.points,
-              rebounds_total = EXCLUDED.rebounds_total,
-              assists = EXCLUDED.assists,
-              steals = EXCLUDED.steals,
-              blocks = EXCLUDED.blocks,
-              field_goals_made = EXCLUDED.field_goals_made,
-              field_goals_attempted = EXCLUDED.field_goals_attempted,
-              three_pointers_made = EXCLUDED.three_pointers_made,
-              three_pointers_attempted = EXCLUDED.three_pointers_attempted,
-              free_throws_made = EXCLUDED.free_throws_made,
-              free_throws_attempted = EXCLUDED.free_throws_attempted,
-              rebounds_offensive = EXCLUDED.rebounds_offensive,
-              rebounds_defensive = EXCLUDED.rebounds_defensive,
-              turnovers = EXCLUDED.turnovers,
-              fouls_personal = EXCLUDED.fouls_personal,
-              plus_minus = EXCLUDED.plus_minus
-          `;
-          playerCount++;
-        }
-      }
-      console.log(
-        `[cron/poll-live] Player box scores written: ${playerCount} rows for game ${nbaGameId}`
-      );
-
-      // Mark game as finalized
-      await sql`
-        UPDATE games SET status = 'final', updated_at = now()
-        WHERE game_id = ${gameDbId}::bigint
-      `;
-      return; // success
-    } catch (err) {
-      console.error(`[cron/poll-live] finalizeGame attempt ${attempt} error: ${(err as Error).message}`);
-      if (attempt < MAX_FINALIZE_RETRIES) {
-        await sleep(FINALIZE_RETRY_DELAY_MS);
-      }
-    }
-  }
-  console.error(
-    `[cron/poll-live] finalizeGame FAILED after ${MAX_FINALIZE_RETRIES} attempts for game ${nbaGameId}. Run npm run finalize-games to retry.`
-  );
-}
-
-async function resolveTeamDbId(nbaTeamId: number): Promise<string | null> {
-  const [row] = await sql<{ team_id: string }[]>`
-    SELECT team_id::text FROM teams WHERE nba_team_id = ${nbaTeamId} LIMIT 1
-  `;
-  return row?.team_id ?? null;
-}
-
-async function resolvePlayerDbId(nbaPersonId: number): Promise<string | null> {
-  const [row] = await sql<{ player_id: string }[]>`
-    SELECT player_id::text FROM players WHERE nba_player_id = ${nbaPersonId} LIMIT 1
-  `;
-  return row?.player_id ?? null;
-}
-
 // ── Pure helpers ──────────────────────────────────────────────────────────────
 
 /**
@@ -417,10 +246,6 @@ function extractRecentScoring(
         periodElapsed + (quarterDurationSeconds - clockToSecondsRemaining(a.clock)),
     }))
     .filter((e) => e.team_id !== '0' && e.points > 0 && e.event_time_seconds >= cutoffSeconds);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // Suppress unused import warning — LAC_TEAM_ID used for type-checking the
