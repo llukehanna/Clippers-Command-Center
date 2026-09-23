@@ -9,7 +9,11 @@
 // by sync-schedule (balldontlie ids) are matched on (game_date, home, away)
 // and adopt the NBA id — see upsertGameRow() in lib/upserts.ts.
 //
-// Run via: npx tsx scripts/backfill-schedule-nba.ts
+// Past seasons: --season=2025-26 reads that season's schedule from
+// stats.nba.com (scheduleleaguev2, same leagueSchedule shape) — the CDN files
+// only carry the current season. stats.nba.com may block some cloud IPs.
+//
+// Run via: npm run backfill-schedule-nba [-- --season=2025-26]
 //
 // Safe to re-run — idempotent upserts, never creates duplicate game rows.
 
@@ -76,6 +80,29 @@ function gameStatusToInternal(status: number): string {
   return 'scheduled';
 }
 
+const STATS_HEADERS = {
+  Accept: 'application/json',
+  Referer: 'https://www.nba.com/',
+  Origin: 'https://www.nba.com',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'x-nba-stats-origin': 'stats',
+  'x-nba-stats-token': 'true',
+};
+
+/** A specific (usually past) season's schedule from stats.nba.com. */
+async function fetchSeasonSchedule(seasonYear: string): Promise<NBAScheduleResponse> {
+  const url = `https://stats.nba.com/stats/scheduleleaguev2?Season=${encodeURIComponent(seasonYear)}&LeagueID=00`;
+  const res = await fetch(url, { headers: STATS_HEADERS, signal: AbortSignal.timeout(60_000) });
+  if (!res.ok) throw new Error(`stats.nba.com schedule ${seasonYear} → HTTP ${res.status}`);
+  const data = (await res.json()) as NBAScheduleResponse;
+  const got = data?.leagueSchedule?.seasonYear;
+  if (seasonIdFromSeasonYear(got) !== seasonIdFromSeasonYear(seasonYear)) {
+    throw new Error(`stats.nba.com returned season ${JSON.stringify(got)}, expected ${seasonYear}`);
+  }
+  console.log(`[backfill-schedule-nba] Source: ${url}`);
+  return data;
+}
+
 /**
  * Fetch every candidate schedule file and keep the one for the latest season
  * (around the October rollover the files may not flip on the same day).
@@ -114,14 +141,19 @@ async function fetchSchedule(): Promise<NBAScheduleResponse> {
 }
 
 async function main(): Promise<void> {
-  console.log('[backfill-schedule-nba] Fetching NBA CDN schedule...');
-  const data = await fetchSchedule();
+  const seasonArg = process.argv.slice(2).find((a) => a.startsWith('--season='))?.split('=')[1] ?? null;
+  if (seasonArg !== null && seasonIdFromSeasonYear(seasonArg) === null) {
+    throw new Error(`Invalid --season value "${seasonArg}" (expected e.g. 2025-26)`);
+  }
+
+  console.log(`[backfill-schedule-nba] Fetching ${seasonArg ? `${seasonArg} schedule` : 'NBA CDN schedule'}...`);
+  const data = seasonArg ? await fetchSeasonSchedule(seasonArg) : await fetchSchedule();
 
   // Determine season_id from the schedule (e.g., "2026-27" → 2026)
   const seasonYear = data.leagueSchedule.seasonYear;
-  const seasonId = seasonIdFromSeasonYear(seasonYear)!; // validated in fetchSchedule()
+  const seasonId = seasonIdFromSeasonYear(seasonYear)!; // validated by the fetchers
   console.log(`[backfill-schedule-nba] Season: ${seasonLabel(seasonId)} (season_id ${seasonId})`);
-  if (seasonId < currentSeasonId()) {
+  if (!seasonArg && seasonId < currentSeasonId()) {
     // CDN has not rolled over to the new season yet — still safe to upsert.
     console.warn(
       `[backfill-schedule-nba] WARN: CDN schedule is for ${seasonLabel(seasonId)}, ` +
