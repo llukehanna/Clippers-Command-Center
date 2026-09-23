@@ -1,0 +1,49 @@
+name: DB Migrate (manual)
+
+# Applies Docs/migrations/2026-09-audit.sql to the production database.
+# Takes an in-database snapshot (schema backup_2026_09) first. The migration
+# is idempotent and runs in one transaction, so a re-run is safe.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "migrate" to apply Docs/migrations/2026-09-audit.sql to production'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-write
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: inputs.confirm == 'migrate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Snapshot affected tables
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f Docs/migrations/2026-09-audit-backup.sql
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Apply migration
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f Docs/migrations/2026-09-audit.sql
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Verify
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT conname FROM pg_constraint
+           WHERE conname IN ('uq_games_date_home_away', 'players_nba_person_id_key');
+          SELECT status, COUNT(*) FROM games GROUP BY status ORDER BY 1;
+          SELECT season_id, COUNT(*) AS games FROM games GROUP BY season_id ORDER BY 1;
+          SQL
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
