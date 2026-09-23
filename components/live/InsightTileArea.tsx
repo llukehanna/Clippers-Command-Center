@@ -3,6 +3,7 @@
 import { Surface } from '@/components/ui/surface'
 import { cn } from '@/lib/utils'
 import { useInsightRotation } from '@/hooks/useInsightRotation'
+import { insightCategoryLabel } from '@/src/lib/format'
 
 interface Insight {
   insight_id: string
@@ -36,7 +37,7 @@ export function InsightTileArea({ insights, className }: InsightTileAreaProps) {
         <Surface variant="card" hover className="h-full flex flex-col justify-between px-5 py-4">
           <div>
             <span className="ccc-section-title block text-primary">
-              {current.category}
+              {insightCategoryLabel(current.category)}
             </span>
             <p className="mt-1 text-[0.9375rem] font-semibold leading-snug text-foreground">
               {current.headline}
