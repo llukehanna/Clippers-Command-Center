@@ -36,6 +36,7 @@ export function SeasonControls({ seasons, currentSeasonId }: SeasonControlsProps
     <div className="sticky top-14 z-20 flex items-center gap-3 py-3 px-0 bg-background/80 backdrop-blur-md border-b border-white/[0.06]">
       {/* Season dropdown */}
       <select
+        aria-label="Season"
         value={currentSeasonId}
         onChange={(e) => onSeasonChange(e.target.value)}
         className="bg-surface border border-white/[0.08] text-foreground text-sm rounded-lg px-3 py-1.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-white/20"
@@ -48,13 +49,15 @@ export function SeasonControls({ seasons, currentSeasonId }: SeasonControlsProps
       </select>
 
       {/* H/A segmented buttons */}
-      <div className="inline-flex rounded-lg border border-white/[0.08] overflow-hidden">
+      <div role="group" aria-label="Home or away" className="inline-flex rounded-lg border border-white/[0.08] overflow-hidden">
         {(['all', 'home', 'away'] as const).map((opt) => {
           const value = opt === 'all' ? null : opt
           const isActive = (currentHomeAway ?? null) === value
           return (
             <button
               key={opt}
+              type="button"
+              aria-pressed={isActive}
               onClick={() => navigate('home_away', value)}
               className={[
                 'px-3 py-1.5 text-sm transition-colors duration-150',
@@ -70,13 +73,15 @@ export function SeasonControls({ seasons, currentSeasonId }: SeasonControlsProps
       </div>
 
       {/* W/L segmented buttons */}
-      <div className="inline-flex rounded-lg border border-white/[0.08] overflow-hidden">
+      <div role="group" aria-label="Result" className="inline-flex rounded-lg border border-white/[0.08] overflow-hidden">
         {(['all', 'W', 'L'] as const).map((opt) => {
           const value = opt === 'all' ? null : opt
           const isActive = (currentResult ?? null) === value
           return (
             <button
               key={opt}
+              type="button"
+              aria-pressed={isActive}
               onClick={() => navigate('result', value)}
               className={[
                 'px-3 py-1.5 text-sm transition-colors duration-150',

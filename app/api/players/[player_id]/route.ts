@@ -1,9 +1,17 @@
-// src/app/api/players/[player_id]/route.ts
+// app/api/players/[player_id]/route.ts
 // GET /api/players/{player_id} — Player detail with trend summary, charts, splits, and game log.
+//
+// All sections are scoped to one season: `season_id` query param (season start
+// year, e.g. 2025 = 2025-26), defaulting to the DB-derived display season.
+// season_averages and splits cover every final game the player logged that
+// season; game_log is the most recent GAME_LOG_LIMIT of those games.
 
 import { NextResponse } from 'next/server';
 import { sql } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
+import { getDisplaySeasonId, parseSeasonIdParam } from '@/src/lib/season';
+
+const GAME_LOG_LIMIT = 25;
 
 type RollingRow = {
   window_games: number;
@@ -112,7 +120,7 @@ function computeTs(row: BoxScoreRow): number | null {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ player_id: string }> }
 ): Promise<NextResponse> {
   try {
@@ -121,6 +129,15 @@ export async function GET(
     if (!/^\d+$/.test(player_id)) {
       return NextResponse.json(buildError('NOT_FOUND', 'Player not found'), { status: 404 });
     }
+
+    const seasonParam = parseSeasonIdParam(new URL(request.url).searchParams.get('season_id'));
+    if (seasonParam === null) {
+      return NextResponse.json(
+        buildError('BAD_REQUEST', 'season_id must be a 4-digit season start year'),
+        { status: 400 }
+      );
+    }
+    const seasonId = seasonParam ?? (await getDisplaySeasonId());
 
     // 1. Fetch the player
     const playerRows = await sql<
@@ -142,7 +159,7 @@ export async function GET(
 
     // 2. Run parallel queries
     const [trendRows, chartRows, boxScoreRows] = await Promise.all([
-      // A: Latest rolling stats (window=10) for trend summary
+      // A: Latest rolling stats (window=10) in the season for trend summary
       sql<Array<RollingRow>>`
         SELECT
           window_games,
@@ -155,12 +172,13 @@ export async function GET(
           minutes::float8   AS minutes
         FROM rolling_player_stats
         WHERE player_id = ${player_id}::bigint
+          AND season_id = ${seasonId}
           AND window_games = 10
         ORDER BY as_of_game_date DESC
         LIMIT 1
       `,
 
-      // B: All rolling stats for charts (ascending date)
+      // B: All rolling stats in the season for charts (ascending date)
       sql<Array<RollingRow>>`
         SELECT
           window_games,
@@ -173,10 +191,12 @@ export async function GET(
           minutes::float8   AS minutes
         FROM rolling_player_stats
         WHERE player_id = ${player_id}::bigint
+          AND season_id = ${seasonId}
         ORDER BY as_of_game_date ASC
       `,
 
-      // C: Last 25 game log rows with game/team context
+      // C: Every final game the player logged in the season (newest first),
+      //    for season averages + splits; game_log is sliced from this below.
       sql<Array<BoxScoreRow>>`
         SELECT
           gpbs.game_id::text,
@@ -210,8 +230,9 @@ export async function GET(
           END
         )
         WHERE gpbs.player_id = ${player_id}::bigint
-        ORDER BY g.game_date DESC
-        LIMIT 25
+          AND g.season_id = ${seasonId}
+          AND lower(g.status) = 'final'
+        ORDER BY g.game_date DESC, g.game_id DESC
       `,
     ]);
 
@@ -251,7 +272,7 @@ export async function GET(
     }));
     const splits = computeSplits(boxScoreRowsWithTs);
 
-    // 5b. Compute season averages from all box score rows
+    // 5b. Compute season averages from all of the season's box score rows
     function avg(vals: (number | null)[]): number | null {
       const nums = vals.filter((v): v is number => v !== null);
       if (nums.length === 0) return null;
@@ -269,7 +290,7 @@ export async function GET(
           };
 
     // 6. Build game log
-    const gameLog = boxScoreRowsWithTs.map((r) => {
+    const gameLog = boxScoreRowsWithTs.slice(0, GAME_LOG_LIMIT).map((r) => {
       const isHome = r.player_team_id === r.home_team_id;
       return {
         game_id: r.game_id,
@@ -291,6 +312,7 @@ export async function GET(
     return NextResponse.json(
       {
         meta: buildMeta('mixed', 600),
+        season_id: seasonId,
         player,
         trend_summary: trendSummary,
         season_averages,

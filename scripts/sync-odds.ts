@@ -1,10 +1,12 @@
 // scripts/sync-odds.ts
 // Orchestrator: fetch NBA odds, filter to Clippers games, insert into odds_snapshots.
-// Provider failure causes a logged warning and clean exit (exit 0) — non-fatal.
+// Provider (fetch) failure causes a logged warning and clean exit (exit 0) — non-fatal.
+// Database failures exit non-zero so the workflow surfaces them.
 
 import { sql } from './lib/db.js';
 import { TheOddsApiAdapter } from './lib/odds-client.js';
 import { setCheckpoint } from './lib/upserts.js';
+import { easternDateOf } from './lib/schedule-utils.js';
 import type { OddsEvent } from '../src/lib/types/odds.js';
 
 async function main(): Promise<void> {
@@ -34,8 +36,13 @@ async function main(): Promise<void> {
 
   for (const event of clippersEvents) {
     try {
-      // Parse game date from commence_time (first 10 chars: "2026-03-08")
-      const gameDate = event.commence_time.slice(0, 10);
+      // games.game_date is the Eastern date; commence_time is UTC, so a 7:30pm PT
+      // tipoff would otherwise match the next day's (wrong or missing) game.
+      const gameDate = easternDateOf(event.commence_time);
+      if (!gameDate) {
+        console.warn(`Unparseable commence_time ${event.commence_time} — skipping`);
+        continue;
+      }
 
       // Look up the Clippers team id in teams table
       // Then find the matching game by date and team participation
@@ -91,8 +98,10 @@ async function main(): Promise<void> {
       console.log(`[${gameDate}] Clippers odds inserted (game_id: ${gameId})`);
       inserted++;
     } catch (err) {
-      console.warn('Odds sync failed — skipping:', err);
-      process.exit(0);
+      // Everything in this block is a DB read/write — fail loudly.
+      console.error('Odds sync DB write failed:', err);
+      await sql.end({ timeout: 5 }).catch(() => {});
+      process.exit(1);
     }
   }
 
@@ -100,6 +109,11 @@ async function main(): Promise<void> {
   await setCheckpoint('odds_sync:last_success_at', Date.now());
 
   console.log(`sync-odds complete: ${inserted} rows inserted`);
+  await sql.end();
 }
 
-main();
+main().catch(async (err) => {
+  console.error('sync-odds failed:', err);
+  await sql.end({ timeout: 5 }).catch(() => {});
+  process.exit(1);
+});

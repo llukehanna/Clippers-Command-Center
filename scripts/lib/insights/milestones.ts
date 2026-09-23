@@ -6,7 +6,7 @@
 import { sql } from '../db.js';
 import {
   InsightRow,
-  makeProofHash,
+  withInsightKey,
   guardProofResult,
   computeImportance,
 } from './proof-utils.js';
@@ -92,11 +92,10 @@ export async function generateMilestoneInsights(): Promise<InsightRow[]> {
     if (!guardProofResult(proofResult)) continue;
 
     const metricKey = `season_points_${highestCrossed}_${currentSeasonId}`;
-    const proofHash = makeProofHash(seasonPointsProofSql, proofParams, proofResult);
 
     const importance = computeImportance('milestone', null, Date.now());
 
-    results.push({
+    results.push(withInsightKey({
       scope: 'between_games',
       team_id: lacTeamId,
       game_id: null,
@@ -109,8 +108,7 @@ export async function generateMilestoneInsights(): Promise<InsightRow[]> {
       proof_sql: seasonPointsProofSql,
       proof_params: proofParams,
       proof_result: proofResult,
-      proof_hash: proofHash,
-    });
+    }, metricKey));
   }
 
   // -------------------------------------------------------------------------
@@ -156,11 +154,10 @@ export async function generateMilestoneInsights(): Promise<InsightRow[]> {
     if (!guardProofResult(proofResult)) continue;
 
     const metricKey = `games_played_${highestCrossed}`;
-    const proofHash = makeProofHash(gamesPlayedProofSql, proofParams, proofResult);
 
     const importance = computeImportance('milestone', null, Date.now());
 
-    results.push({
+    results.push(withInsightKey({
       scope: 'between_games',
       team_id: lacTeamId,
       game_id: null,
@@ -173,8 +170,7 @@ export async function generateMilestoneInsights(): Promise<InsightRow[]> {
       proof_sql: gamesPlayedProofSql,
       proof_params: proofParams,
       proof_result: proofResult,
-      proof_hash: proofHash,
-    });
+    }, metricKey));
   }
 
   return results;

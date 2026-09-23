@@ -34,7 +34,9 @@ interface Game {
 export function PointDiffChart({ games }: { games: Game[] }) {
   if (!games?.length) return null
 
-  const data: ChartEntry[] = games.map((g) => ({
+  // API returns newest-first; chart reads left-to-right oldest → newest
+  const ordered = [...games].sort((a, b) => a.game_date.localeCompare(b.game_date))
+  const data: ChartEntry[] = ordered.map((g) => ({
     label: g.opponent_abbr,
     margin: g.margin,
   }))

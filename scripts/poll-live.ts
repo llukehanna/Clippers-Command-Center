@@ -154,8 +154,9 @@ async function pollLoop(candidate: {
 
   while (true) {
     try {
-      // Scoreboard first so we have the official NBA gameId for box score fallback (stats.nba.com
-      // requires it; games.nba_game_id is BDL id and must not be used for stats.nba.com).
+      // Scoreboard first so we have the official 10-char NBA gameId. All NBA CDN /
+      // stats.nba.com calls use it — games.nba_game_id may be a balldontlie id, and
+      // even NBA-format rows are stored without leading zeros (BIGINT).
       const scoreboard = await fetchScoreboard();
       const game = findClippersGame(scoreboard.scoreboard.games);
 
@@ -165,8 +166,8 @@ async function pollLoop(candidate: {
       }
 
       const [boxscoreResult, pbpResult] = await Promise.allSettled([
-        fetchBoxscore(candidate.nba_game_id, game.gameId),
-        fetchPlayByPlay(candidate.nba_game_id),
+        fetchBoxscore(game.gameId, game.gameId),
+        fetchPlayByPlay(game.gameId),
       ]);
 
       let homeBox: BoxscoreTeam | null = null;
@@ -240,8 +241,15 @@ async function pollLoop(candidate: {
       // Finalization check
       if (game.gameStatus === 3) {
         console.log('[poll-live] Game reached Final status. Triggering finalization...');
-        await finalizeGame(candidate.game_id, candidate.nba_game_id);
-        console.log('[poll-live] Finalization complete. Exiting.');
+        try {
+          await finalizeGame(candidate.game_id, game.gameId);
+          console.log('[poll-live] Finalization complete. Exiting.');
+        } catch (err) {
+          // Don't loop on a failing finalization; the nightly finalize-games job
+          // retries any game without box scores. Exit non-zero so it's visible.
+          console.error(`[poll-live] Finalization failed: ${(err as Error).message}`);
+          process.exitCode = 1;
+        }
         break;
       }
     } catch (err) {
@@ -333,4 +341,8 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-main().catch(console.error);
+main().catch(async (err) => {
+  console.error('[poll-live] Failed:', err);
+  await sql.end({ timeout: 5 }).catch(() => {});
+  process.exit(1);
+});

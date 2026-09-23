@@ -62,6 +62,15 @@ function formatDelta(key: string, delta: number | null): string | undefined {
   }
 }
 
+/**
+ * Whether a metric's delta is good for LAC. tov_margin is LAC TO − opp TO,
+ * so a positive delta (more turnovers) is bad.
+ */
+function isPositiveDelta(key: string, delta: number | null): boolean | undefined {
+  if (delta == null) return undefined
+  return key === 'tov_margin' ? delta < 0 : delta > 0
+}
+
 const gridLayoutClass = 'grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6'
 const flexLayoutClass = 'flex flex-wrap gap-3'
 
@@ -93,7 +102,7 @@ export function KeyMetricsRow({ metrics, lacFt, oppFt, className, useGridLayout 
           label={metric.label}
           value={formatMetricValue(metric.key, metric.value)}
           delta={formatDelta(metric.key, metric.delta_vs_opp)}
-          positive={metric.delta_vs_opp != null ? metric.delta_vs_opp > 0 : undefined}
+          positive={isPositiveDelta(metric.key, metric.delta_vs_opp)}
         />
       ))}
 

@@ -1,0 +1,72 @@
+name: Backfill Box Scores (manual)
+
+# One-off catch-up for a past season: attach official NBA game ids to that
+# season's LAC games, finalize every finished game without box scores, then
+# recompute derived stats and insights. Requires the 2026-09 migration.
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: 'Season to attach NBA game ids for (e.g. 2025-26); blank = current CDN season only'
+        required: false
+        default: '2025-26'
+      since:
+        description: 'Finalize games on/after this date (YYYY-MM-DD)'
+        required: true
+        default: '2025-10-01'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-write
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Attach NBA game ids (requested season)
+        if: inputs.season != ''
+        run: npm run backfill-schedule-nba -- "--season=${SEASON}"
+        env:
+          SEASON: ${{ inputs.season }}
+
+      - name: Attach NBA game ids (current season)
+        run: npm run backfill-schedule-nba
+
+      # Keep going if some games fail so stats/insights still reflect every
+      # game that did finalize; the job is marked failed at the end.
+      - name: Finalize games
+        id: finalize
+        continue-on-error: true
+        run: npm run finalize-games -- "--since=${SINCE}"
+        env:
+          SINCE: ${{ inputs.since }}
+
+      - name: Compute stats
+        run: npm run compute-stats
+
+      - name: Generate insights
+        run: npm run generate-insights
+
+      - name: Report finalize failures
+        if: steps.finalize.outcome == 'failure'
+        run: |
+          echo "::error::Some games were not finalized — see the 'Finalize games' step log"
+          exit 1

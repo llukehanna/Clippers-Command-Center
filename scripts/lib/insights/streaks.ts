@@ -3,10 +3,14 @@
 // Exports generateStreakInsights() — returns InsightRow[] for:
 //   1. scoring_streak: player scored >= 20pts in 3+ consecutive games
 //   2. hot_shooting_streak: player shot >= 50% FG in 3+ consecutive games
+//
+// Only ACTIVE streaks are emitted: the streak must end at the player's most
+// recent game, otherwise "has scored 20+ in N straight games" is false.
+// Streaks that end are not re-emitted and generate-insights deactivates them.
 import { sql } from '../db.js';
 import {
   InsightRow,
-  makeProofHash,
+  withInsightKey,
   guardProofResult,
   computeImportance,
 } from './proof-utils.js';
@@ -16,6 +20,17 @@ const SHOOTING_THRESHOLD = 0.5;
 const MIN_FG_ATTEMPTED = 8;
 const MIN_STREAK_GAMES = 3;
 const ACTIVE_STREAK_DAYS = 14;
+
+/** Most recent game date (YYYY-MM-DD) the player has a box score row for. */
+async function latestGameDate(playerId: string): Promise<string | null> {
+  const [row] = await sql<{ latest: string | null }[]>`
+    SELECT MAX(g.game_date)::text AS latest
+    FROM game_player_box_scores pb
+    JOIN games g ON g.game_id = pb.game_id
+    WHERE pb.player_id = ${playerId}::bigint
+  `;
+  return row?.latest ?? null;
+}
 
 export async function generateStreakInsights(): Promise<InsightRow[]> {
   const results: InsightRow[] = [];
@@ -41,7 +56,14 @@ export async function generateStreakInsights(): Promise<InsightRow[]> {
     ORDER BY player_id
   `;
 
+  const latestByPlayer = new Map<string, string | null>();
   for (const player of lacPlayers) {
+    latestByPlayer.set(player.player_id, await latestGameDate(player.player_id));
+  }
+
+  for (const player of lacPlayers) {
+    const latest = latestByPlayer.get(player.player_id);
+    if (!latest) continue;
     const streakRows = await sql<{
       streak_start: string;
       streak_end: string;
@@ -71,6 +93,7 @@ export async function generateStreakInsights(): Promise<InsightRow[]> {
       WHERE qualifies = TRUE
       GROUP BY player_id, rn - rn2
       HAVING COUNT(*) >= ${MIN_STREAK_GAMES}
+         AND MAX(game_date) = ${latest}::date  -- streak is still active
       ORDER BY streak_end DESC
       LIMIT 1
     `;
@@ -112,6 +135,7 @@ export async function generateStreakInsights(): Promise<InsightRow[]> {
       streak_start: streak.streak_start,
       streak_end: streak.streak_end,
       min_games: MIN_STREAK_GAMES,
+      latest_game_date: latest,   // streak_end must equal this (active streak)
     };
 
     const proofResult = await sql<{ game_date: string; points: number }[]>`
@@ -142,8 +166,9 @@ export async function generateStreakInsights(): Promise<InsightRow[]> {
 
     if (!guardProofResult(proofResult)) continue;
 
-    const metricKey = `scoring_streak_20_${streakLength}`;
-    const proofHash = makeProofHash(proofSql, proofParams, proofResult);
+    // One live streak insight per player: the length is NOT part of the key, so
+    // an extending streak updates the same row instead of adding a new one.
+    const metricKey = `scoring_streak_${SCORING_THRESHOLD}`;
 
     // Determine scope: active if streak ended in last 14 days
     const streakEndMs = new Date(streak.streak_end).getTime();
@@ -153,7 +178,7 @@ export async function generateStreakInsights(): Promise<InsightRow[]> {
 
     const importance = computeImportance('streak', null, streakEndMs);
 
-    results.push({
+    results.push(withInsightKey({
       scope,
       team_id: lacTeamId,
       game_id: null,
@@ -166,8 +191,7 @@ export async function generateStreakInsights(): Promise<InsightRow[]> {
       proof_sql: proofSql,
       proof_params: proofParams,
       proof_result: proofResult,
-      proof_hash: proofHash,
-    });
+    }, metricKey));
   }
 
   // -------------------------------------------------------------------------
@@ -175,6 +199,8 @@ export async function generateStreakInsights(): Promise<InsightRow[]> {
   //    Filter on fg_attempted >= MIN_FG_ATTEMPTED to avoid low-volume noise
   // -------------------------------------------------------------------------
   for (const player of lacPlayers) {
+    const latest = latestByPlayer.get(player.player_id);
+    if (!latest) continue;
     const streakRows = await sql<{
       streak_start: string;
       streak_end: string;
@@ -209,6 +235,7 @@ export async function generateStreakInsights(): Promise<InsightRow[]> {
       WHERE qualifies = TRUE
       GROUP BY player_id, rn - rn2
       HAVING COUNT(*) >= ${MIN_STREAK_GAMES}
+         AND MAX(game_date) = ${latest}::date  -- streak is still active
       ORDER BY streak_end DESC
       LIMIT 1
     `;
@@ -256,6 +283,7 @@ export async function generateStreakInsights(): Promise<InsightRow[]> {
       streak_start: streak.streak_start,
       streak_end: streak.streak_end,
       min_games: MIN_STREAK_GAMES,
+      latest_game_date: latest,   // streak_end must equal this (active streak)
     };
 
     const proofResult = await sql<{
@@ -300,8 +328,7 @@ export async function generateStreakInsights(): Promise<InsightRow[]> {
 
     if (!guardProofResult(proofResult)) continue;
 
-    const metricKey = `hot_shooting_streak_${streakLength}`;
-    const proofHash = makeProofHash(proofSql, proofParams, proofResult);
+    const metricKey = 'hot_shooting_streak'; // length excluded — see scoring streak
 
     const streakEndMs = new Date(streak.streak_end).getTime();
     const ageDays = (Date.now() - streakEndMs) / 86_400_000;
@@ -310,7 +337,7 @@ export async function generateStreakInsights(): Promise<InsightRow[]> {
 
     const importance = computeImportance('streak', null, streakEndMs);
 
-    results.push({
+    results.push(withInsightKey({
       scope,
       team_id: lacTeamId,
       game_id: null,
@@ -323,8 +350,7 @@ export async function generateStreakInsights(): Promise<InsightRow[]> {
       proof_sql: proofSql,
       proof_params: proofParams,
       proof_result: proofResult,
-      proof_hash: proofHash,
-    });
+    }, metricKey));
   }
 
   return results;

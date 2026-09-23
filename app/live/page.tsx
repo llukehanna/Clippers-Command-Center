@@ -1,7 +1,7 @@
 'use client'
 
 import { Surface } from '@/components/ui/surface'
-import { useLiveData } from '@/hooks/useLiveData'
+import { useLiveData, type LiveDashboardPayload } from '@/hooks/useLiveData'
 import { LiveScoreboard } from '@/components/live/LiveScoreboard'
 import { KeyMetricsRow } from '@/components/live/KeyMetricsRow'
 import { BoxScoreModule } from '@/components/live/BoxScoreModule'
@@ -11,14 +11,43 @@ import { StaleBanner } from '@/components/stale-banner/StaleBanner'
 import { BoxScoreSkeleton } from '@/components/skeletons/BoxScoreSkeleton'
 import { StatCardSkeleton } from '@/components/skeletons/StatCardSkeleton'
 
-export default function LivePage() {
-  const { data, error, isLoading } = useLiveData()
+// A DATA_DELAYED snapshot older than this (vs. server time) is a leftover from a
+// finished game, not a delayed live one — show the idle state instead.
+const STALE_SNAPSHOT_IDLE_MS = 6 * 60 * 60 * 1000
 
-  // Initial load skeleton — before first data arrives
-  if (isLoading && !data) {
+function resolveState(data: LiveDashboardPayload | undefined): 'LIVE' | 'DATA_DELAYED' | 'NO_ACTIVE_GAME' {
+  const state = data?.state
+  if ((state !== 'LIVE' && state !== 'DATA_DELAYED') || !data?.game) return 'NO_ACTIVE_GAME'
+  if (state === 'DATA_DELAYED' && data.snapshot_captured_at && data.meta?.generated_at) {
+    const age = new Date(data.meta.generated_at).getTime() - new Date(data.snapshot_captured_at).getTime()
+    if (age > STALE_SNAPSHOT_IDLE_MS) return 'NO_ACTIVE_GAME'
+  }
+  return state
+}
+
+export default function LivePage() {
+  const { data, error } = useLiveData()
+
+  // Error with no cached data. Checked before the loading state: SWR reports
+  // isLoading=true during every error retry, which would otherwise flip the
+  // page back to the skeleton indefinitely while the API is failing.
+  if (error && !data) {
     return (
       <div className="min-h-screen bg-background text-foreground">
-        <main className="mx-auto max-w-[1440px] px-6 pb-12">
+        <div className="mx-auto max-w-[1440px] px-6 pb-12">
+          <p className="ccc-body mt-6 text-muted-foreground">
+            Unable to load live data. Retrying…
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Initial load skeleton — before first data arrives
+  if (!data) {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <div className="mx-auto max-w-[1440px] px-6 pb-12">
           <section className="mt-6">
             <Surface variant="scoreboard" className="h-[120px] animate-pulse" />
           </section>
@@ -32,32 +61,19 @@ export default function LivePage() {
           <div className="mt-8">
             <BoxScoreSkeleton />
           </div>
-        </main>
+        </div>
       </div>
     )
   }
 
-  // Error with no cached data
-  if (error && !data) {
-    return (
-      <div className="min-h-screen bg-background text-foreground">
-        <main className="mx-auto max-w-[1440px] px-6 pb-12">
-          <p className="ccc-body mt-6 text-muted-foreground">
-            Unable to load live data. Retrying…
-          </p>
-        </main>
-      </div>
-    )
-  }
-
-  const state = data?.state ?? 'NO_ACTIVE_GAME'
+  const state = resolveState(data)
 
   if (state === 'NO_ACTIVE_GAME') {
     return (
       <div className="min-h-screen bg-background text-foreground">
-        <main className="mx-auto max-w-[1440px] px-6 pb-12">
+        <div className="mx-auto max-w-[1440px] px-6 pb-12">
           <NoGameIdleState className="mt-6" />
-        </main>
+        </div>
       </div>
     )
   }
@@ -72,7 +88,7 @@ export default function LivePage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <main className="mx-auto max-w-[1440px] px-6 pb-12">
+      <div className="mx-auto max-w-[1440px] px-6 pb-12">
         {/* Scoreboard hero */}
         {data?.game && (
           <section className="mt-6" aria-label="Scoreboard">
@@ -81,7 +97,7 @@ export default function LivePage() {
         )}
 
         <StaleBanner
-          stale={data?.meta?.stale ?? false}
+          stale={Boolean(data?.meta?.stale) || !!error}
           generatedAt={data?.meta?.generated_at}
           capturedAt={data?.snapshot_captured_at}
         />
@@ -89,7 +105,7 @@ export default function LivePage() {
         {/* Analytics metrics row */}
         <section className="mt-6">
           <KeyMetricsRow
-            metrics={data?.key_metrics}
+            metrics={data?.key_metrics ?? []}
             lacFt={lacFt}
             oppFt={oppFt}
             useGridLayout
@@ -103,7 +119,13 @@ export default function LivePage() {
             <h2 className="ccc-section-title mb-3">
               Box score
             </h2>
-            <BoxScoreModule boxScore={data?.box_score} />
+            {data?.box_score ? (
+              <BoxScoreModule boxScore={data.box_score} />
+            ) : (
+              <Surface variant="card" className="p-5">
+                <p className="ccc-body text-muted-foreground">Box score not available yet.</p>
+              </Surface>
+            )}
           </div>
 
           {/* Insights feed */}
@@ -142,7 +164,7 @@ export default function LivePage() {
             )}
           </div>
         </div>
-      </main>
+      </div>
     </div>
   )
 }

@@ -2,28 +2,44 @@ name: Post-Game Pipeline
 
 on:
   schedule:
-    - cron: '0 10 * * *'   # nightly at 2am PT
+    - cron: '0 10 * * *'   # nightly at 10:00 UTC (3am PDT / 2am PST)
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   post-game:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - run: npm ci
+
+      # Refresh the schedule first so last night's games exist and carry the
+      # official NBA game id that finalization needs for cdn.nba.com.
+      - name: Sync schedule (balldontlie)
+        run: npm run sync-schedule
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BALLDONTLIE_API_KEY: ${{ secrets.BALLDONTLIE_API_KEY }}
+
+      - name: Attach NBA game ids (NBA CDN schedule)
+        run: npm run backfill-schedule-nba
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Finalize games
         run: npm run finalize-games
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          BALLDONTLIE_API_KEY: ${{ secrets.BALLDONTLIE_API_KEY }}
 
       - name: Compute stats
         run: npm run compute-stats
