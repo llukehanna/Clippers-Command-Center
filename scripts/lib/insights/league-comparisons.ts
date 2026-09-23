@@ -21,7 +21,7 @@ import {
   fmt,
   pct,
 } from './proof-utils.js';
-import { InsightContext, REGULAR_SEASON, runProof } from './context.js';
+import { clippersSeasonPlayers, InsightContext, REGULAR_SEASON, runProof } from './context.js';
 
 /** Team must have played this many regular-season games to be ranked. */
 const MIN_TEAM_GAMES = 5;
@@ -176,11 +176,7 @@ function playerRanksSql(m: PlayerMetric): string {
     FROM ranked r
     JOIN players p ON p.player_id = r.player_id
     WHERE r.rank <= $3::int
-      AND EXISTS (
-        SELECT 1 FROM game_player_box_scores lac
-        JOIN games lg ON lg.game_id = lac.game_id
-        WHERE lac.player_id = r.player_id AND lac.team_id = $4::bigint AND lg.season_id = $1::int
-      )
+      AND r.player_id IN ${clippersSeasonPlayers('$1', '$4')}
     ORDER BY r.rank
   `.trim();
 }
