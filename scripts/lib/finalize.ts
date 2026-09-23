@@ -48,6 +48,11 @@ export interface FinalizeOptions {
   maxRetries?: number;
   /** Delay between fetch attempts. Default 60s. */
   retryDelayMs?: number;
+  /**
+   * An already-fetched final box score (league ingest fetches in bulk). Must
+   * be final (gameStatus 3) with player rows; no fetch or retry happens.
+   */
+  boxscore?: NBABoxscoreResponse;
 }
 
 /**
@@ -65,9 +70,13 @@ export interface FinalizeOptions {
  * Team totals are taken from NBA-provided homeTeam.statistics / awayTeam.statistics
  * directly — never aggregated from player rows.
  *
- * Players with played === '0' (DNPs) get no box score row, but LAC players
- * listed in the box score (active or not) get a player_team_stints row for the
- * season — this is what keeps the Clippers roster current.
+ * Players with played === '0' (DNPs) get no box score row. Every player who
+ * played gets a player_team_stints row for the season, and so does every LAC
+ * player listed (active or not) — this keeps rosters current, the Clippers'
+ * including inactive players.
+ *
+ * Derived advanced stats for the game are deleted in the same transaction so
+ * compute-stats (incremental: games without advanced rows) recomputes them.
  *
  * Throws on failure. Running this on an already-finalized game is safe
  * (ON CONFLICT DO UPDATE).
@@ -101,7 +110,10 @@ export async function finalizeGame(
     );
   }
 
-  const boxscore = await fetchFinalBoxscore(gid, maxRetries, retryDelayMs);
+  const boxscore = opts.boxscore ?? (await fetchFinalBoxscore(gid, maxRetries, retryDelayMs));
+  if (boxscore.game.gameStatus !== 3) {
+    throw new Error(`[finalize] ${gid}: box score is not final (gameStatus=${boxscore.game.gameStatus})`);
+  }
   const { homeTeam, awayTeam } = boxscore.game;
 
   const playerCount = await db.begin(async (txRaw) => {
@@ -130,7 +142,7 @@ export async function finalizeGame(
         const playerDbId = await resolver.resolve(player);
         if (!playerDbId) continue;
 
-        if (isLac && game.season_id !== null) {
+        if (game.season_id !== null) {
           await upsertStintForPlayer(
             playerDbId,
             teamDbId,
@@ -145,6 +157,10 @@ export async function finalizeGame(
         written++;
       }
     }
+
+    // Box score (re)written → derived rows are stale; compute-stats rebuilds them.
+    await tx`DELETE FROM advanced_team_game_stats WHERE game_id = ${gameDbId}::bigint`;
+    await tx`DELETE FROM advanced_player_game_stats WHERE game_id = ${gameDbId}::bigint`;
 
     if (written === 0) {
       // Rolls back the team rows too, so finalize-games retries this game.
@@ -261,12 +277,15 @@ class PlayerResolver {
     `;
     const match = pickUniqueNameMatch(player.name, this.candidates);
     if (match) {
-      await this.tx`
+      this.candidates = this.candidates.filter(c => c.player_id !== match.player_id);
+      // Only claim the row if it is still unclaimed; otherwise it belongs to
+      // another NBA person and this player gets their own row below.
+      const claimed = await this.tx<{ player_id: string }[]>`
         UPDATE players SET nba_person_id = ${personId}, is_active = true, updated_at = now()
         WHERE player_id = ${match.player_id}::bigint AND nba_person_id IS NULL
+        RETURNING player_id::text
       `;
-      this.candidates = this.candidates.filter(c => c.player_id !== match.player_id);
-      return match.player_id;
+      if (claimed.length > 0) return match.player_id;
     }
 
     // Unknown to the balldontlie-seeded table (rookie, two-way, name mismatch,
