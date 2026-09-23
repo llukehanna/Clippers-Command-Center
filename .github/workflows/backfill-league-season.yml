@@ -1,0 +1,52 @@
+name: Backfill League Season (manual)
+
+# Loads every NBA game of a past season (games rows + team/player box scores)
+# from cdn.nba.com, then recomputes derived stats and insights. Idempotent:
+# games already loaded are skipped, so an interrupted run can simply be re-run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: 'Season to load (e.g. 2025-26)'
+        required: true
+        default: '2025-26'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-write
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Load league games
+        run: npm run sync-league-games -- "--season=${SEASON}"
+        env:
+          SEASON: ${{ inputs.season }}
+
+      - name: Compute stats
+        run: npm run compute-stats
+
+      - name: Generate insights
+        run: npm run generate-insights -- --verbose
+
+      - name: Verify insight proofs
+        run: npm run verify-insights

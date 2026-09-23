@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
+import { formatClock } from '@/src/lib/format';
 
 // Box score stat columns as defined by API_SPEC.md
 const BOX_SCORE_COLUMNS = ['MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', 'FG', '3PT', 'FT', '+/-'];
@@ -89,7 +90,7 @@ function mapPlayerRow(p: PlayerBoxRow) {
     id: p.player_id,          // Required by BoxScoreRow interface (used as React key)
     player_id: p.player_id,
     name: p.display_name,
-    MIN: p.minutes ?? null,
+    MIN: p.minutes ? formatClock(p.minutes) : null, // NBA box scores store "PT34M12.00S"
     PTS: p.points ?? null,
     REB: p.rebounds ?? null,
     AST: p.assists ?? null,

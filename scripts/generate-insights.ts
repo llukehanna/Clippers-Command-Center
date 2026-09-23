@@ -24,6 +24,7 @@ import { generateMilestoneInsights } from './lib/insights/milestones.js';
 import { generateRareEventInsights } from './lib/insights/rare-events.js';
 import { generateOpponentContextInsights } from './lib/insights/opponent-context.js';
 import { generateLeagueComparisonInsights } from './lib/insights/league-comparisons.js';
+import { loadInsightContext, type InsightContext } from './lib/insights/context.js';
 import type { InsightRow } from './lib/insights/proof-utils.js';
 
 type Json = Parameters<typeof sql.json>[0];
@@ -80,6 +81,24 @@ async function deactivateStale(category: InsightRow['category'], keptHashes: str
 async function main() {
   console.log('\n=== Insight Engine ===\n');
   const totals: Record<string, number> = {};
+  const verbose = process.argv.slice(2).includes('--verbose');
+
+  // INSIGHTS_NOW (ISO date) pins "now" for tests: it decides whether the stats
+  // season is the current one ("this season") or a completed one ("in 2025-26").
+  const now = process.env.INSIGHTS_NOW ? new Date(process.env.INSIGHTS_NOW) : new Date();
+  if (Number.isNaN(now.getTime())) throw new Error(`Invalid INSIGHTS_NOW "${process.env.INSIGHTS_NOW}"`);
+  const ctx: InsightContext | null = await loadInsightContext(now);
+  if (!ctx) {
+    // Nothing to talk about yet (no teams / no Clippers box scores). Leave the
+    // existing insights alone rather than deactivating everything.
+    console.log('No Clippers box scores found — skipping.');
+    await sql.end();
+    return;
+  }
+  console.log(
+    `Stats season: ${ctx.season.label} (${ctx.season.isCurrent ? 'current' : 'completed'}, ` +
+      `last Clippers game ${ctx.season.lastGameDate}); qualified players: ${ctx.minPlayerGames}+ games\n`
+  );
 
   const steps = [
     { name: 'Streak insights',           fn: generateStreakInsights,          category: 'streak' },
@@ -93,7 +112,7 @@ async function main() {
     process.stdout.write(`  ${step.name}... `);
     // If a generator throws, main() fails before deactivation runs, so a
     // partial run never wipes out a category.
-    const rows = await step.fn();
+    const rows = await step.fn(ctx);
     for (const row of rows) {
       await upsertInsight(row);
     }
@@ -102,6 +121,11 @@ async function main() {
       rows.map((r) => r.proof_hash)
     );
     console.log(`${rows.length} insights upserted, ${deactivated} stale deactivated`);
+    if (verbose) {
+      for (const r of [...rows].sort((a, b) => b.importance - a.importance)) {
+        console.log(`      [${r.importance}] ${r.headline} — ${r.detail ?? ''}`);
+      }
+    }
     totals[step.category] = rows.length;
   }
 

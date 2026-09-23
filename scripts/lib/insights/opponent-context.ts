@@ -1,254 +1,174 @@
 // scripts/lib/insights/opponent-context.ts
-// Batch insight category: opponent context.
-// Exports generateOpponentContextInsights() — returns InsightRow[] for:
-//   1. opp_def_rating: opponent defensive rating and league rank (rolling last 10)
-//   2. h2h_record: head-to-head record between LAC and the opponent this season
+// Batch insight category: opponent context for the NEXT Clippers game.
 //
-// "Upcoming game": next game where status != 'final' and LAC is involved.
-// Falls back to most recently completed game if no upcoming game found.
-import { sql } from '../db.js';
+//   1. opp_rank_{off,def}: the opponent's offensive / defensive rating rank in
+//      the stats season (league-wide, possession-weighted).
+//   2. h2h: Clippers vs opponent record in the stats season.
+//   3. last_meeting: result of the most recent completed meeting.
+//
+// Stats come from the stats season (context.ts), so before the opener the
+// preview uses last season's numbers and says so ("in 2025-26"). With no
+// upcoming game on the schedule, nothing is emitted.
 import {
   InsightRow,
   withInsightKey,
   guardProofResult,
   computeImportance,
   isReportableLeagueRank,
+  ordinal,
+  rankPercentile,
+  fmt,
 } from './proof-utils.js';
+import { InsightContext, REGULAR_SEASON, runProof } from './context.js';
+import { sql } from '../db.js';
 
-const ROLLING_WINDOW = 10;
+const MIN_TEAM_GAMES = 5;
 
-export async function generateOpponentContextInsights(): Promise<InsightRow[]> {
+function oppRankSql(metric: 'off_rating' | 'def_rating'): string {
+  const order = metric === 'off_rating' ? 'DESC' : 'ASC';
+  return `
+    WITH team_values AS (
+      SELECT a.team_id,
+             (SUM(a.${metric} * a.possessions) / NULLIF(SUM(a.possessions), 0))::float8 AS value
+      FROM advanced_team_game_stats a
+      JOIN games g ON g.game_id = a.game_id
+      WHERE g.season_id = $1::int AND ${REGULAR_SEASON}
+      GROUP BY a.team_id
+      HAVING COUNT(*) >= $2::int
+    ), ranked AS (
+      SELECT team_id, value,
+             RANK() OVER (ORDER BY value ${order})::int AS rank,
+             COUNT(*) OVER ()::int AS total_teams
+      FROM team_values
+      WHERE value IS NOT NULL
+    )
+    SELECT value, rank, total_teams FROM ranked WHERE team_id = $3::bigint
+  `.trim();
+}
+
+const H2H_SQL = `
+  SELECT
+    COUNT(*) FILTER (WHERE (g.home_team_id = $1::bigint) = (g.home_score > g.away_score))::int AS clippers_wins,
+    COUNT(*) FILTER (WHERE (g.home_team_id = $1::bigint) <> (g.home_score > g.away_score))::int AS opp_wins,
+    COUNT(*)::int AS total_games
+  FROM games g
+  WHERE ((g.home_team_id = $1::bigint AND g.away_team_id = $2::bigint)
+      OR (g.home_team_id = $2::bigint AND g.away_team_id = $1::bigint))
+    AND g.season_id = $3::int
+    AND g.status = 'final'
+    AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
+`.trim();
+
+const LAST_MEETING_SQL = `
+  SELECT g.game_id::text AS game_id, g.game_date::text AS game_date,
+         (g.home_team_id = $1::bigint) AS clippers_home,
+         g.home_score, g.away_score
+  FROM games g
+  WHERE ((g.home_team_id = $1::bigint AND g.away_team_id = $2::bigint)
+      OR (g.home_team_id = $2::bigint AND g.away_team_id = $1::bigint))
+    AND g.status = 'final'
+    AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
+    AND g.game_date < $3::date
+  ORDER BY g.game_date DESC
+  LIMIT 1
+`.trim();
+
+function shortDate(isoDate: string): string {
+  return new Date(`${isoDate}T12:00:00Z`).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+  });
+}
+
+export async function generateOpponentContextInsights(ctx: InsightContext): Promise<InsightRow[]> {
   const results: InsightRow[] = [];
+  const { lac, season } = ctx;
 
-  // Look up LAC team_id dynamically
-  const [lacTeam] = await sql<{ team_id: string }[]>`
-    SELECT team_id::text AS team_id FROM teams WHERE abbreviation = 'LAC'
-  `;
-  if (!lacTeam) return [];
-  const lacTeamId = lacTeam.team_id;
-
-  // Find upcoming game (status != 'final') or fall back to most recent completed
-  const [upcomingGame] = await sql<{
-    game_id: string;
-    home_team_id: string;
-    away_team_id: string;
-    game_date: string;
-    season_id: number;
+  const [next] = await sql<{
+    game_id: string; home_team_id: string; away_team_id: string; game_date: string; season_id: number;
   }[]>`
-    SELECT game_id::text AS game_id,
-           home_team_id::text AS home_team_id,
-           away_team_id::text AS away_team_id,
-           game_date::text AS game_date,
-           season_id
+    SELECT game_id::text, home_team_id::text, away_team_id::text, game_date::text AS game_date, season_id
     FROM games
-    WHERE (home_team_id = ${lacTeamId}::bigint OR away_team_id = ${lacTeamId}::bigint)
-      AND lower(status) != 'final'
-      AND game_date >= CURRENT_DATE  -- never target a stale, never-finalized past game
-    ORDER BY game_date ASC
+    WHERE ${lac.teamId}::bigint IN (home_team_id, away_team_id)
+      AND status <> 'final'
+      AND game_date >= CURRENT_DATE
+    ORDER BY game_date, start_time_utc NULLS LAST
     LIMIT 1
   `;
+  if (!next) return results;
 
-  let targetGame: {
-    game_id: string;
-    home_team_id: string;
-    away_team_id: string;
-    game_date: string;
-    season_id: number;
-  } | undefined = upcomingGame;
-
-  if (!targetGame) {
-    // Fall back to most recent completed game
-    const [recentGame] = await sql<{
-      game_id: string;
-      home_team_id: string;
-      away_team_id: string;
-      game_date: string;
-      season_id: number;
-    }[]>`
-      SELECT game_id::text AS game_id,
-             home_team_id::text AS home_team_id,
-             away_team_id::text AS away_team_id,
-             game_date::text AS game_date,
-             season_id
-      FROM games
-      WHERE (home_team_id = ${lacTeamId}::bigint OR away_team_id = ${lacTeamId}::bigint)
-        AND lower(status) = 'final'
-      ORDER BY game_date DESC
-      LIMIT 1
-    `;
-    targetGame = recentGame;
-  }
-
-  if (!targetGame) return [];
-
-  // Determine opponent
-  const oppTeamId =
-    targetGame.home_team_id === lacTeamId
-      ? targetGame.away_team_id
-      : targetGame.home_team_id;
-
-  const [oppTeam] = await sql<{ full_name: string }[]>`
-    SELECT (city || ' ' || name) AS full_name FROM teams WHERE team_id = ${oppTeamId}::bigint
-  `;
-  const oppName = oppTeam?.full_name ?? 'Opponent';
-  const gameDateMs = new Date(targetGame.game_date).getTime();
-
-  // -------------------------------------------------------------------------
-  // 1. opp_def_rating: opponent defensive rating + league rank (rolling 10)
-  // -------------------------------------------------------------------------
-  // Rank among each team's LATEST rolling row in the latest season with rolling
-  // stats (previously ranked across every season/as_of row → bogus "rank N/0").
-  const [rollingSeason] = await sql<{ season_id: number | null }[]>`
-    SELECT MAX(season_id) AS season_id FROM rolling_team_stats WHERE window_games = ${ROLLING_WINDOW}
-  `;
-  const rollingSeasonId = rollingSeason?.season_id ?? null;
-
-  const defRatingProofSql = `
-    WITH latest AS (
-      SELECT DISTINCT ON (team_id) team_id, def_rating, as_of_game_date
-      FROM rolling_team_stats
-      WHERE season_id = $2 AND window_games = $3 AND def_rating IS NOT NULL
-      ORDER BY team_id, as_of_game_date DESC
-    )
-    SELECT opp.def_rating,
-           (SELECT COUNT(*) + 1 FROM latest l WHERE l.def_rating < opp.def_rating) AS def_rank,
-           (SELECT COUNT(*) FROM latest) AS total_teams,
-           opp.as_of_game_date
-    FROM latest opp
-    WHERE opp.team_id = $1::bigint
-  `.trim();
-
-  const defProofParams = {
-    opp_team_id: oppTeamId,
-    season_id: rollingSeasonId,
-    window_games: ROLLING_WINDOW,
+  const oppId = next.home_team_id === lac.teamId ? next.away_team_id : next.home_team_id;
+  const opp = ctx.teams.get(oppId);
+  if (!opp) return results;
+  const gameDateMs = new Date(next.game_date).getTime();
+  const base = {
+    scope: 'between_games' as const,
+    team_id: lac.teamId,
+    game_id: next.game_id,
+    player_id: null,
+    category: 'opponent_context' as const,
   };
 
-  const defProofResult = rollingSeasonId === null ? [] : await sql<{
-    def_rating: string;
-    def_rank: string;
-    total_teams: string;
-    as_of_game_date: string;
-  }[]>`
-    WITH latest AS (
-      SELECT DISTINCT ON (team_id) team_id, def_rating, as_of_game_date
-      FROM rolling_team_stats
-      WHERE season_id = ${rollingSeasonId} AND window_games = ${ROLLING_WINDOW} AND def_rating IS NOT NULL
-      ORDER BY team_id, as_of_game_date DESC
-    )
-    SELECT opp.def_rating::text AS def_rating,
-           (SELECT COUNT(*) + 1 FROM latest l WHERE l.def_rating < opp.def_rating)::text AS def_rank,
-           (SELECT COUNT(*) FROM latest)::text AS total_teams,
-           opp.as_of_game_date::text AS as_of_game_date
-    FROM latest opp
-    WHERE opp.team_id = ${oppTeamId}::bigint
-  `;
-
-  const defRow = defProofResult[0];
-  if (
-    guardProofResult(defProofResult) &&
-    isReportableLeagueRank(parseInt(defRow.def_rank, 10), parseInt(defRow.total_teams, 10))
-  ) {
-    const defRank = parseInt(defRow.def_rank, 10);
-    const totalTeams = parseInt(defRow.total_teams, 10);
-    const avgDefRating = parseFloat(defRow.def_rating);
-
-    const ordinal = (n: number) => {
-      const s = ['th', 'st', 'nd', 'rd'];
-      const v = n % 100;
-      return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
-    };
-
-    const metricKey = `opp_def_rating_${oppTeamId}_${targetGame.game_id}`;
-    const importance = computeImportance('opponent_context', null, gameDateMs);
-
+  // 1. Opponent offense / defense rank
+  for (const metric of ['def_rating', 'off_rating'] as const) {
+    const proofSql = oppRankSql(metric);
+    const { rows, proof_params } = await runProof<{ value: number; rank: number; total_teams: number }>(
+      proofSql, [season.id, MIN_TEAM_GAMES, oppId]
+    );
+    if (!guardProofResult(rows)) continue;
+    const { value, rank, total_teams } = rows[0];
+    if (!isReportableLeagueRank(rank, total_teams)) continue;
+    const side = metric === 'def_rating' ? 'defense' : 'offense';
+    const verb = season.isCurrent ? 'have' : 'had'; // team names take plural verbs: "the Warriors have"
     results.push(withInsightKey({
-      scope: 'between_games',
-      team_id: lacTeamId,
-      game_id: targetGame.game_id,
-      player_id: null,
-      season_id: targetGame.season_id,
-      category: 'opponent_context',
-      headline: `${oppName} has the ${ordinal(defRank)}-best defense in the league (last ${ROLLING_WINDOW} games)`,
-      detail: `Def rating: ${avgDefRating.toFixed(1)} (rank ${defRank}/${totalTeams} — lower is better)`,
-      importance,
-      proof_sql: defRatingProofSql,
-      proof_params: defProofParams,
-      proof_result: defProofResult,
-    }, metricKey));
+      ...base,
+      season_id: season.id,
+      headline: `Up next: the ${opp.fullName} ${verb} the ${ordinal(rank)}-ranked ${side} ${season.phrase}`,
+      detail: `${metric === 'def_rating' ? 'Defensive' : 'Offensive'} rating ${fmt(value)} — ${ordinal(rank)} of ${total_teams}${metric === 'def_rating' ? ' (lower is better)' : ''}`,
+      // A top-5 or bottom-5 unit is the notable case.
+      importance: computeImportance('opponent_context', rankPercentile(Math.min(rank, total_teams - rank + 1), total_teams), gameDateMs),
+      proof_sql: proofSql, proof_params, proof_result: rows,
+    }, `opp_rank_${metric}_${oppId}_${next.game_id}`));
   }
 
-  // -------------------------------------------------------------------------
-  // 2. h2h_record: head-to-head record between LAC and the opponent this season
-  // -------------------------------------------------------------------------
-  const h2hProofSql = `
-    SELECT
-      COUNT(*) FILTER (WHERE
-        (g.home_team_id = $1::bigint AND g.home_score > g.away_score)
-        OR (g.away_team_id = $1::bigint AND g.away_score > g.home_score)
-      )::int AS clippers_wins,
-      COUNT(*) FILTER (WHERE
-        (g.home_team_id = $2::bigint AND g.home_score > g.away_score)
-        OR (g.away_team_id = $2::bigint AND g.away_score > g.home_score)
-      )::int AS opp_wins,
-      COUNT(*)::int AS total_games
-    FROM games g
-    WHERE ((g.home_team_id = $1::bigint AND g.away_team_id = $2::bigint)
-        OR (g.home_team_id = $2::bigint AND g.away_team_id = $1::bigint))
-      AND g.season_id = $3
-      AND g.status = 'final'
-  `.trim();
-
-  const h2hProofParams = {
-    lac_team_id: lacTeamId,
-    opp_team_id: oppTeamId,
-    season_id: targetGame.season_id,
-  };
-
-  const h2hProofResult = await sql<{
-    clippers_wins: number;
-    opp_wins: number;
-    total_games: number;
-  }[]>`
-    SELECT
-      COUNT(*) FILTER (WHERE
-        (g.home_team_id = ${lacTeamId}::bigint AND g.home_score > g.away_score)
-        OR (g.away_team_id = ${lacTeamId}::bigint AND g.away_score > g.home_score)
-      )::int AS clippers_wins,
-      COUNT(*) FILTER (WHERE
-        (g.home_team_id = ${oppTeamId}::bigint AND g.home_score > g.away_score)
-        OR (g.away_team_id = ${oppTeamId}::bigint AND g.away_score > g.home_score)
-      )::int AS opp_wins,
-      COUNT(*)::int AS total_games
-    FROM games g
-    WHERE ((g.home_team_id = ${lacTeamId}::bigint AND g.away_team_id = ${oppTeamId}::bigint)
-        OR (g.home_team_id = ${oppTeamId}::bigint AND g.away_team_id = ${lacTeamId}::bigint))
-      AND g.season_id = ${targetGame.season_id}
-      AND g.status = 'final'
-  `;
-
-  if (guardProofResult(h2hProofResult)) {
-    const h2hRow = h2hProofResult[0];
-
-    // Only generate if there are completed H2H games
-    if (h2hRow.total_games > 0) {
-      const metricKey = `h2h_${lacTeamId}_${oppTeamId}_${targetGame.season_id}`;
-      const importance = computeImportance('opponent_context', null, gameDateMs);
-
+  // 2. Head-to-head in the stats season
+  {
+    const { rows, proof_params } = await runProof<{ clippers_wins: number; opp_wins: number; total_games: number }>(
+      H2H_SQL, [lac.teamId, oppId, season.id]
+    );
+    if (guardProofResult(rows) && rows[0].total_games > 0) {
+      const r = rows[0];
+      const headline = season.isCurrent
+        ? `Clippers are ${r.clippers_wins}-${r.opp_wins} vs the ${opp.fullName} this season`
+        : `Clippers went ${r.clippers_wins}-${r.opp_wins} vs the ${opp.fullName} in ${season.label}`;
       results.push(withInsightKey({
-        scope: 'between_games',
-        team_id: lacTeamId,
-        game_id: targetGame.game_id,
-        player_id: null,
-        season_id: targetGame.season_id,
-        category: 'opponent_context',
-        headline: `Clippers are ${h2hRow.clippers_wins}-${h2hRow.opp_wins} vs ${oppName} this season`,
-        detail: `Head-to-head in ${targetGame.season_id} season: ${h2hRow.total_games} game(s) played`,
-        importance,
-        proof_sql: h2hProofSql,
-        proof_params: h2hProofParams,
-        proof_result: h2hProofResult,
-      }, metricKey));
+        ...base,
+        season_id: season.id,
+        headline,
+        detail: `${r.total_games} meeting${r.total_games === 1 ? '' : 's'} (incl. postseason)`,
+        importance: computeImportance('opponent_context', null, gameDateMs),
+        proof_sql: H2H_SQL, proof_params, proof_result: rows,
+      }, `h2h_${oppId}_${season.id}_${next.game_id}`));
+    }
+  }
+
+  // 3. Last meeting
+  {
+    const { rows, proof_params } = await runProof<{
+      game_id: string; game_date: string; clippers_home: boolean; home_score: number; away_score: number;
+    }>(LAST_MEETING_SQL, [lac.teamId, oppId, next.game_date]);
+    if (guardProofResult(rows)) {
+      const m = rows[0];
+      const lacScore = m.clippers_home ? m.home_score : m.away_score;
+      const oppScore = m.clippers_home ? m.away_score : m.home_score;
+      const result = lacScore > oppScore ? 'won' : 'lost';
+      results.push(withInsightKey({
+        ...base,
+        season_id: null,
+        headline: `Last meeting: Clippers ${result} ${Math.max(lacScore, oppScore)}-${Math.min(lacScore, oppScore)} vs the ${opp.fullName}`,
+        detail: `${m.clippers_home ? 'Home' : 'Away'}, ${shortDate(m.game_date)}`,
+        importance: computeImportance('opponent_context', null, gameDateMs) - 5,
+        proof_sql: LAST_MEETING_SQL, proof_params, proof_result: rows,
+      }, `last_meeting_${oppId}_${next.game_id}`));
     }
   }
 
