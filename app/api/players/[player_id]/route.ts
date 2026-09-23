@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
+import { formatClock } from '@/src/lib/format';
 import { getDisplaySeasonId, parseSeasonIdParam } from '@/src/lib/season';
 
 const GAME_LOG_LIMIT = 25;
@@ -297,7 +298,7 @@ export async function GET(
         game_date: r.game_date,
         opp: r.opp_abbreviation,
         home_away: isHome ? 'home' : 'away',
-        MIN: r.minutes ?? '',
+        MIN: r.minutes ? formatClock(r.minutes) : '', // NBA box scores store "PT34M12.00S"
         PTS: r.points ?? 0,
         REB: r.rebounds ?? 0,
         AST: r.assists ?? 0,
