@@ -1,4 +1,5 @@
--- docs/DB_SCHEMA.sql
+-- Docs/DB_SCHEMA.sql
+-- Existing databases: apply Docs/migrations/2026-09-audit.sql to reach this shape.
 -- Clippers Command Center (CCC)
 -- PostgreSQL schema (MVP)
 --
@@ -44,7 +45,8 @@ CREATE INDEX IF NOT EXISTS idx_teams_abbrev ON teams (abbreviation);
 
 CREATE TABLE IF NOT EXISTS players (
   player_id        BIGSERIAL PRIMARY KEY,
-  nba_player_id    INTEGER UNIQUE NOT NULL,      -- canonical NBA player id from provider
+  nba_player_id    INTEGER UNIQUE,               -- balldontlie player id (NULL for players first seen in NBA box scores)
+  nba_person_id    INTEGER UNIQUE,               -- official NBA personId (cdn.nba.com / stats.nba.com); set by finalization
   first_name       TEXT NOT NULL,
   last_name        TEXT NOT NULL,
   display_name     TEXT NOT NULL,                -- "Kawhi Leonard"
@@ -82,11 +84,11 @@ CREATE INDEX IF NOT EXISTS idx_stints_season ON player_team_stints (season_id);
 -- We store all league games for ingested seasons so Clippers context can use league comparisons.
 CREATE TABLE IF NOT EXISTS games (
   game_id          BIGSERIAL PRIMARY KEY,
-  nba_game_id      BIGINT UNIQUE NOT NULL,       -- provider's game id
+  nba_game_id      BIGINT UNIQUE NOT NULL,       -- official NBA game id without leading zeros (22501199), or a legacy balldontlie id
   season_id        SMALLINT REFERENCES seasons(season_id),
   game_date        DATE NOT NULL,                -- local date (arena time). time stored separately.
   start_time_utc   TIMESTAMPTZ,                  -- scheduled tipoff if known
-  status           TEXT NOT NULL,                -- "scheduled" | "in_progress" | "final" | provider-specific
+  status           TEXT NOT NULL,                -- always lowercase: "scheduled" | "in_progress" | "final"
   home_team_id     BIGINT NOT NULL REFERENCES teams(team_id),
   away_team_id     BIGINT NOT NULL REFERENCES teams(team_id),
 
@@ -101,7 +103,10 @@ CREATE TABLE IF NOT EXISTS games (
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-  CONSTRAINT chk_games_teams_distinct CHECK (home_team_id <> away_team_id)
+  CONSTRAINT chk_games_teams_distinct CHECK (home_team_id <> away_team_id),
+  -- One row per real game: two providers (balldontlie + NBA CDN) write the
+  -- schedule with different ids, so the natural key is enforced here.
+  CONSTRAINT uq_games_date_home_away UNIQUE (game_date, home_team_id, away_team_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_games_date ON games (game_date);

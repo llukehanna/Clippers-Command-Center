@@ -10,7 +10,7 @@
 //   - Players: players.nba_person_id = boxscore personId; else a unique
 //              name match (nba_person_id is then backfilled); else a new
 //              players row (nba_player_id NULL). Requires the columns from
-//              docs/migrations/2026-09-audit.sql.
+//              Docs/migrations/2026-09-audit.sql.
 //
 // Failure semantics: finalizeGame THROWS if it cannot write a complete box
 // score. All writes happen in one transaction, and the game is only marked
