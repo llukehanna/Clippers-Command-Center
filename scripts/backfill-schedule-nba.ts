@@ -14,7 +14,7 @@
 // only carry the current season. stats.nba.com blocks many cloud IPs (it
 // times out from GitHub Actions), so on failure the season is rebuilt from
 // cdn.nba.com box scores instead: regular-season ids are sequential
-// (00 2 YY 00001..01230), play-in and playoff ids follow fixed patterns, so
+// (00 2 YY 00001..01230), play-in and playoff ids follow 00{5,4} YY 00 R S G, so
 // every id is fetched and the LAC games kept (~1,350 small requests).
 //
 // Run via: npm run backfill-schedule-nba [-- --season=2025-26]
@@ -121,7 +121,11 @@ function candidateGameIds(seasonId: number): string[] {
   const yy = String(seasonId % 100).padStart(2, '0');
   const ids: string[] = [];
   for (let n = 1; n <= REGULAR_SEASON_GAMES; n++) ids.push(`002${yy}${String(n).padStart(5, '0')}`);
-  for (let n = 1; n <= 6; n++) ids.push(`005${yy}${String(n).padStart(5, '0')}`); // play-in (00525000NN)
+  // Play-in uses the playoff layout 005 YY 00 R S G: round 1 has 4 games
+  // (series 0..3), round 2 has 2 (series 0..1), always game 1.
+  for (const [round, count] of [[1, 4], [2, 2]] as const) {
+    for (let series = 0; series < count; series++) ids.push(`005${yy}00${round}${series}1`);
+  }
   // Playoffs: 004 YY 00 R S G — round 1..4, series index (8/4/2/1 per round), game 1..7
   const seriesPerRound = [8, 4, 2, 1];
   seriesPerRound.forEach((count, i) => {
