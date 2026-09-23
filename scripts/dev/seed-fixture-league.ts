@@ -14,6 +14,8 @@
 //   - "Star Clipper" closes the season with 30+ in 5 straight and has a
 //     55-point game (top-1% scoring night)
 //   - "Big Clipper" closes the season with 10+ rebounds in 6 straight
+//   - "LAC Player 3" is traded to Boston for the last TRADE_DAYS game days,
+//     so he must not appear in Clippers season insights
 // Minutes are stored in the NBA ISO format ("PT34M12.00S").
 //
 // Run via: FIXTURE_DATABASE_URL=postgres://… npx tsx scripts/dev/seed-fixture-league.ts
@@ -68,6 +70,9 @@ const PLAYERS_PER_TEAM = 12;
 const GAME_DAYS = 60;
 const SEASON = 2025;
 const SEASON_START = Date.UTC(2025, 9, 21); // Oct 21 2025
+const TRADED_PLAYER_ID = 3;   // "LAC Player 3"
+const TRADE_TO = 15;          // BOS (team index)
+const TRADE_DAYS = 10;
 
 interface Player { id: number; teamIdx: number; name: string; talent: number; big: boolean }
 
@@ -154,11 +159,14 @@ async function main(): Promise<void> {
   let lacGamesPlayed = 0;
   const LAC_GAMES = GAME_DAYS;
 
-  function playGame(home: number, away: number, dateMs: number, nbaGameId: number, isPlayoffs: boolean) {
+  const teamOf = (p: Player, day: number) =>
+    p.id === TRADED_PLAYER_ID && day >= GAME_DAYS - TRADE_DAYS ? TRADE_TO : p.teamIdx;
+
+  function playGame(home: number, away: number, dateMs: number, nbaGameId: number, isPlayoffs: boolean, day: number) {
     gameId++;
     const lines: Line[][] = [home, away].map((teamIdx) => {
-      const roster = players.filter((p) => p.teamIdx === teamIdx).slice(0, 10);
-      return roster.map((p, k) => playerLine(p, boost[teamIdx], k < 5));
+      const roster = players.filter((p) => teamOf(p, day) === teamIdx).slice(0, 10);
+      return roster.map((p, k) => ({ ...playerLine(p, boost[teamIdx], k < 5), team_id: teamIdx + 1 }));
     });
 
     // Scripted Clippers storylines (by LAC game number in the season).
@@ -210,11 +218,11 @@ async function main(): Promise<void> {
       const a = rotated[k];
       const b = rotated[29 - k];
       const [home, away] = day % 2 === 0 ? [a, b] : [b, a];
-      playGame(home, away, SEASON_START + day * 2 * 86_400_000, 22_500_000 + gameId + 1, false);
+      playGame(home, away, SEASON_START + day * 2 * 86_400_000, 22_500_000 + gameId + 1, false, day);
     }
   }
   // A Clippers play-in game (must be excluded from regular-season ranks/standings).
-  playGame(0, 1, SEASON_START + (GAME_DAYS * 2 + 3) * 86_400_000, 52_500_101, false);
+  playGame(0, 1, SEASON_START + (GAME_DAYS * 2 + 3) * 86_400_000, 52_500_101, false, GAME_DAYS);
 
   for (const batch of chunk(games, 500)) await sql`INSERT INTO games ${sql(batch)}`;
   for (const batch of chunk(teamBoxes, 500)) await sql`INSERT INTO game_team_box_scores ${sql(batch)}`;
