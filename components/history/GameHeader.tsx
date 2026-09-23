@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 interface GameHeaderProps {
   homeAbbr: string
   awayAbbr: string
@@ -43,12 +45,12 @@ export function GameHeader({
 
   return (
     <div className="rounded-xl border border-white/[0.06] bg-surface px-6 py-5">
-      <a
+      <Link
         href="/history"
         className="text-xs text-muted-foreground hover:text-foreground transition-colors mb-4 block"
       >
         &larr; History
-      </a>
+      </Link>
 
       {/* Score row */}
       <div className="flex items-center justify-between">

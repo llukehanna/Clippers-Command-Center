@@ -7,11 +7,19 @@
 // Flags:
 //   --full-season   Fetch the entire current season (Oct 1 – Jun 30) instead of the rolling window.
 //
+// Also upserts the seasons row first (games.season_id FKs seasons), so the
+// first sync of a new season (e.g. 2026-27) doesn't fail on the FK.
+//
+// Duplicate safety: upsertGames() matches existing rows by nba_game_id OR by
+// (game_date, home_team_id, away_team_id), so a game already inserted by
+// backfill-schedule-nba under its NBA id is updated, not duplicated.
+//
 // Run via: npm run sync-schedule
-// Run via: npm run sync:schedule -- --full-season
+// Run via: npm run sync-schedule -- --full-season
 import { sql } from './lib/db.js';
 import { fetchAll } from './lib/bdl-client.js';
-import { upsertGames } from './lib/upserts.js';
+import { upsertGames, upsertSeasons } from './lib/upserts.js';
+import { currentSeasonId, seasonLabel } from './lib/schedule-utils.js';
 import type { BDLGame } from './types/bdl.js';
 
 // Build date string YYYY-MM-DD from a Date object
@@ -35,10 +43,9 @@ async function main(): Promise<void> {
 
   // Determine current NBA season ID.
   // NBA seasons are labeled by their start year (2025 = 2025-26 season).
-  // If current month < 6 (July), season started last year; otherwise started this year.
+  // Before July the season started last year; otherwise it starts this year.
   const now = new Date();
-  const currentYear = now.getFullYear();
-  const seasonId = now.getMonth() < 6 ? currentYear - 1 : currentYear;
+  const seasonId = currentSeasonId(now);
 
   // Build date window
   let startDateStr: string;
@@ -66,6 +73,11 @@ async function main(): Promise<void> {
   });
 
   console.log(`[sync-schedule] Found ${games.length} games. Upserting...`);
+
+  // games.season_id REFERENCES seasons — ensure the row exists before inserting
+  // games (no-op after the first run of a season).
+  await upsertSeasons([seasonId]);
+  console.log(`[sync-schedule] Season ${seasonLabel(seasonId)} ensured.`);
 
   await upsertGames(games, seasonId);
 

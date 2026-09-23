@@ -32,9 +32,6 @@ function ListView({ players }: { players: Player[] }) {
       <div className="flex items-center gap-4 px-2 pb-1 border-b border-white/[0.06]">
         <span className="text-xs text-muted-foreground uppercase tracking-wide flex-1 min-w-0">Name</span>
         <span className="text-xs text-muted-foreground uppercase tracking-wide w-8 shrink-0">Pos</span>
-        <span className="text-xs text-muted-foreground uppercase tracking-wide text-right w-14 shrink-0">PPG L10</span>
-        <span className="text-xs text-muted-foreground uppercase tracking-wide text-right w-14 shrink-0">RPG L10</span>
-        <span className="text-xs text-muted-foreground uppercase tracking-wide text-right w-14 shrink-0">APG L10</span>
       </div>
       <div className="divide-y divide-white/[0.06]">
         {players.map((player) => (
@@ -48,9 +45,6 @@ function ListView({ players }: { players: Player[] }) {
               {player.is_traded && <TradedBadge />}
             </div>
             <span className="text-muted-foreground text-sm w-8 shrink-0">{player.position}</span>
-            <span className="text-right tabular-nums text-sm text-foreground w-14 shrink-0">—</span>
-            <span className="text-right tabular-nums text-sm text-foreground w-14 shrink-0">—</span>
-            <span className="text-right tabular-nums text-sm text-foreground w-14 shrink-0">—</span>
           </Link>
         ))}
       </div>
@@ -71,21 +65,7 @@ function CardsView({ players }: { players: Player[] }) {
             <span className="text-foreground font-medium truncate">{player.display_name}</span>
             {player.is_traded && <TradedBadge />}
           </div>
-          <p className="text-sm text-muted-foreground mb-3">{player.position}</p>
-          <div className="flex gap-2">
-            <div className="flex-1 bg-surface-alt rounded-lg px-2 py-1.5 text-center">
-              <p className="text-[0.625rem] text-muted-foreground uppercase tracking-wide">PPG L10</p>
-              <p className="text-sm font-medium tabular-nums text-foreground">—</p>
-            </div>
-            <div className="flex-1 bg-surface-alt rounded-lg px-2 py-1.5 text-center">
-              <p className="text-[0.625rem] text-muted-foreground uppercase tracking-wide">RPG L10</p>
-              <p className="text-sm font-medium tabular-nums text-foreground">—</p>
-            </div>
-            <div className="flex-1 bg-surface-alt rounded-lg px-2 py-1.5 text-center">
-              <p className="text-[0.625rem] text-muted-foreground uppercase tracking-wide">APG L10</p>
-              <p className="text-sm font-medium tabular-nums text-foreground">—</p>
-            </div>
-          </div>
+          <p className="text-sm text-muted-foreground">{player.position}</p>
         </Link>
       ))}
     </div>
@@ -105,9 +85,7 @@ function GridView({ players }: { players: Player[] }) {
             <span className="text-foreground font-medium text-sm truncate">{player.display_name}</span>
             {player.is_traded && <TradedBadge />}
           </div>
-          <p className="text-xs text-muted-foreground mb-2">{player.position}</p>
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">PPG L10</p>
-          <p className="text-sm font-medium tabular-nums text-foreground">—</p>
+          <p className="text-xs text-muted-foreground">{player.position}</p>
         </Link>
       ))}
     </div>
@@ -130,6 +108,8 @@ export function RosterViewToggle({ players }: RosterViewToggleProps) {
         {VIEW_MODES.map(({ id, label }) => (
           <button
             key={id}
+            type="button"
+            aria-pressed={viewMode === id}
             onClick={() => setViewMode(id)}
             className={[
               'px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer',

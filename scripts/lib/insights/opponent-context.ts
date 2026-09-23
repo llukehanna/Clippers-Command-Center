@@ -9,9 +9,10 @@
 import { sql } from '../db.js';
 import {
   InsightRow,
-  makeProofHash,
+  withInsightKey,
   guardProofResult,
   computeImportance,
+  isReportableLeagueRank,
 } from './proof-utils.js';
 
 const ROLLING_WINDOW = 10;
@@ -41,7 +42,8 @@ export async function generateOpponentContextInsights(): Promise<InsightRow[]> {
            season_id
     FROM games
     WHERE (home_team_id = ${lacTeamId}::bigint OR away_team_id = ${lacTeamId}::bigint)
-      AND status != 'final'
+      AND lower(status) != 'final'
+      AND game_date >= CURRENT_DATE  -- never target a stale, never-finalized past game
     ORDER BY game_date ASC
     LIMIT 1
   `;
@@ -70,7 +72,7 @@ export async function generateOpponentContextInsights(): Promise<InsightRow[]> {
              season_id
       FROM games
       WHERE (home_team_id = ${lacTeamId}::bigint OR away_team_id = ${lacTeamId}::bigint)
-        AND status = 'final'
+        AND lower(status) = 'final'
       ORDER BY game_date DESC
       LIMIT 1
     `;
@@ -94,41 +96,59 @@ export async function generateOpponentContextInsights(): Promise<InsightRow[]> {
   // -------------------------------------------------------------------------
   // 1. opp_def_rating: opponent defensive rating + league rank (rolling 10)
   // -------------------------------------------------------------------------
+  // Rank among each team's LATEST rolling row in the latest season with rolling
+  // stats (previously ranked across every season/as_of row → bogus "rank N/0").
+  const [rollingSeason] = await sql<{ season_id: number | null }[]>`
+    SELECT MAX(season_id) AS season_id FROM rolling_team_stats WHERE window_games = ${ROLLING_WINDOW}
+  `;
+  const rollingSeasonId = rollingSeason?.season_id ?? null;
+
   const defRatingProofSql = `
-    SELECT rts.def_rating,
-           (SELECT COUNT(*) + 1
-            FROM rolling_team_stats r2
-            WHERE r2.window_games = $2
-              AND r2.def_rating < rts.def_rating) AS def_rank,
-           (SELECT COUNT(DISTINCT team_id) FROM rolling_team_stats WHERE window_games = $2) AS total_teams
-    FROM rolling_team_stats rts
-    WHERE rts.team_id = $1::bigint
-      AND rts.window_games = $2
+    WITH latest AS (
+      SELECT DISTINCT ON (team_id) team_id, def_rating, as_of_game_date
+      FROM rolling_team_stats
+      WHERE season_id = $2 AND window_games = $3 AND def_rating IS NOT NULL
+      ORDER BY team_id, as_of_game_date DESC
+    )
+    SELECT opp.def_rating,
+           (SELECT COUNT(*) + 1 FROM latest l WHERE l.def_rating < opp.def_rating) AS def_rank,
+           (SELECT COUNT(*) FROM latest) AS total_teams,
+           opp.as_of_game_date
+    FROM latest opp
+    WHERE opp.team_id = $1::bigint
   `.trim();
 
   const defProofParams = {
     opp_team_id: oppTeamId,
+    season_id: rollingSeasonId,
     window_games: ROLLING_WINDOW,
   };
 
-  const defProofResult = await sql<{
+  const defProofResult = rollingSeasonId === null ? [] : await sql<{
     def_rating: string;
     def_rank: string;
     total_teams: string;
+    as_of_game_date: string;
   }[]>`
-    SELECT rts.def_rating::text AS def_rating,
-           (SELECT COUNT(*) + 1
-            FROM rolling_team_stats r2
-            WHERE r2.window_games = ${ROLLING_WINDOW}
-              AND r2.def_rating < rts.def_rating)::text AS def_rank,
-           (SELECT COUNT(DISTINCT team_id) FROM rolling_team_stats WHERE window_games = ${ROLLING_WINDOW})::text AS total_teams
-    FROM rolling_team_stats rts
-    WHERE rts.team_id = ${oppTeamId}::bigint
-      AND rts.window_games = ${ROLLING_WINDOW}
+    WITH latest AS (
+      SELECT DISTINCT ON (team_id) team_id, def_rating, as_of_game_date
+      FROM rolling_team_stats
+      WHERE season_id = ${rollingSeasonId} AND window_games = ${ROLLING_WINDOW} AND def_rating IS NOT NULL
+      ORDER BY team_id, as_of_game_date DESC
+    )
+    SELECT opp.def_rating::text AS def_rating,
+           (SELECT COUNT(*) + 1 FROM latest l WHERE l.def_rating < opp.def_rating)::text AS def_rank,
+           (SELECT COUNT(*) FROM latest)::text AS total_teams,
+           opp.as_of_game_date::text AS as_of_game_date
+    FROM latest opp
+    WHERE opp.team_id = ${oppTeamId}::bigint
   `;
 
-  if (guardProofResult(defProofResult)) {
-    const defRow = defProofResult[0];
+  const defRow = defProofResult[0];
+  if (
+    guardProofResult(defProofResult) &&
+    isReportableLeagueRank(parseInt(defRow.def_rank, 10), parseInt(defRow.total_teams, 10))
+  ) {
     const defRank = parseInt(defRow.def_rank, 10);
     const totalTeams = parseInt(defRow.total_teams, 10);
     const avgDefRating = parseFloat(defRow.def_rating);
@@ -140,10 +160,9 @@ export async function generateOpponentContextInsights(): Promise<InsightRow[]> {
     };
 
     const metricKey = `opp_def_rating_${oppTeamId}_${targetGame.game_id}`;
-    const proofHash = makeProofHash(defRatingProofSql, defProofParams, defProofResult);
     const importance = computeImportance('opponent_context', null, gameDateMs);
 
-    results.push({
+    results.push(withInsightKey({
       scope: 'between_games',
       team_id: lacTeamId,
       game_id: targetGame.game_id,
@@ -156,8 +175,7 @@ export async function generateOpponentContextInsights(): Promise<InsightRow[]> {
       proof_sql: defRatingProofSql,
       proof_params: defProofParams,
       proof_result: defProofResult,
-      proof_hash: proofHash,
-    });
+    }, metricKey));
   }
 
   // -------------------------------------------------------------------------
@@ -215,10 +233,9 @@ export async function generateOpponentContextInsights(): Promise<InsightRow[]> {
     // Only generate if there are completed H2H games
     if (h2hRow.total_games > 0) {
       const metricKey = `h2h_${lacTeamId}_${oppTeamId}_${targetGame.season_id}`;
-      const proofHash = makeProofHash(h2hProofSql, h2hProofParams, h2hProofResult);
       const importance = computeImportance('opponent_context', null, gameDateMs);
 
-      results.push({
+      results.push(withInsightKey({
         scope: 'between_games',
         team_id: lacTeamId,
         game_id: targetGame.game_id,
@@ -231,8 +248,7 @@ export async function generateOpponentContextInsights(): Promise<InsightRow[]> {
         proof_sql: h2hProofSql,
         proof_params: h2hProofParams,
         proof_result: h2hProofResult,
-        proof_hash: proofHash,
-      });
+      }, metricKey));
     }
   }
 

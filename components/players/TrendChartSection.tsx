@@ -44,6 +44,8 @@ export function TrendChartSection({ charts }: TrendChartSectionProps) {
         {METRICS.map((m) => (
           <button
             key={m}
+            type="button"
+            aria-pressed={activeMetric === m}
             onClick={() => setActiveMetric(m)}
             className={cn(
               'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',

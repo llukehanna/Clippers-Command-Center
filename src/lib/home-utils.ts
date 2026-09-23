@@ -18,16 +18,20 @@ export function formatGameDate(dateStr: string): string {
 }
 
 /**
- * Format a UTC datetime string as a locale time with timezone short name.
+ * Format a UTC datetime string as Pacific time with timezone short name.
  * Returns "TBD" when utcStr is null.
  *
- * Example: "2026-03-14T23:30:00Z" → "3:30 PM PST"
+ * Always formats in America/Los_Angeles so server-rendered output (UTC on
+ * Vercel) matches client hydration and fans see Clippers local tip-off time.
+ *
+ * Example: "2026-03-14T23:30:00Z" → "4:30 PM PDT"
  */
 export function formatGameTime(utcStr: string | null): string {
   if (utcStr === null) return 'TBD'
   return new Date(utcStr).toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
+    timeZone: 'America/Los_Angeles',
     timeZoneName: 'short',
   })
 }
@@ -38,4 +42,20 @@ export function formatGameTime(utcStr: string | null): string {
  */
 export function hasAnyOdds(games: Array<{ odds: unknown | null }>): boolean {
   return games.some((g) => g.odds !== null)
+}
+
+/**
+ * NBA season start year for a given date. Seasons roll over on July 1:
+ * Jul 2026–Jun 2027 → 2026 (the 2026-27 season).
+ */
+export function seasonStartYear(date: Date = new Date()): number {
+  const year = date.getUTCFullYear()
+  return date.getUTCMonth() >= 6 ? year : year - 1
+}
+
+/**
+ * Human season label from a season start year, e.g. 2025 → "2025-26".
+ */
+export function formatSeasonLabel(startYear: number): string {
+  return `${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`
 }

@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 interface StaleBannerProps {
@@ -9,12 +10,29 @@ interface StaleBannerProps {
   className?: string
 }
 
+const TICK_MS = 30_000
+
 export function StaleBanner({ stale, generatedAt, capturedAt, className }: StaleBannerProps) {
+  // Current time lives in state (ticked every 30s) so render stays pure.
+  // null until mounted to avoid server/client hydration mismatch.
+  const [now, setNow] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!stale) return
+    const tick = () => setNow(Date.now())
+    const initial = setTimeout(tick, 0)
+    const id = setInterval(tick, TICK_MS)
+    return () => {
+      clearTimeout(initial)
+      clearInterval(id)
+    }
+  }, [stale])
+
   if (!stale) return null
 
   const timeRef = capturedAt ?? generatedAt
-  const minutesAgo = timeRef
-    ? Math.floor((Date.now() - new Date(timeRef).getTime()) / 60_000)
+  const minutesAgo = timeRef && now !== null
+    ? Math.floor((now - new Date(timeRef).getTime()) / 60_000)
     : null
 
   return (

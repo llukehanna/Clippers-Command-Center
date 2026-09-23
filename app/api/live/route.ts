@@ -1,4 +1,4 @@
-// src/app/api/live/route.ts
+// app/api/live/route.ts
 // GET /api/live — Live Game Dashboard endpoint.
 // Returns current Clippers game state: NO_ACTIVE_GAME, DATA_DELAYED, or LIVE.
 // All data comes from live_snapshots table (no CDN calls from this route).
@@ -31,6 +31,7 @@ interface SnapRow {
   home_team_id: string;
   away_team_id: string;
   captured_at: string;
+  lac_team_id: string | null;
   payload: SnapshotPayload;
 }
 
@@ -248,9 +249,22 @@ function buildBoxScore(
 
 const NO_STORE = { headers: { 'Cache-Control': 'no-store' } };
 
+/**
+ * A snapshot older than this is treated as DATA_DELAYED. The poller runs every
+ * 5 minutes (GitHub Actions cron → /api/cron/poll-live), so allow one missed
+ * beat plus jitter before flagging the feed as stale.
+ */
+const STALE_THRESHOLD_MS = 7 * 60_000;
+
 export async function GET(): Promise<NextResponse> {
   try {
-    // ── Step 1: Fetch most recent LAC snapshot ─────────────────────────────
+    // ── Step 1: Fetch most recent snapshot for an actually-live LAC game ───
+    // Only consider snapshots whose game is still in progress, or that were
+    // captured in the last 30 minutes (covers the final snapshot right after
+    // the buzzer). The in_progress branch is capped at 12h so a game row that
+    // was never marked final can't pin the page to an old game forever.
+    // Anything else falls through to NO_ACTIVE_GAME.
+    // The LAC internal team_id rides along so we don't need a second lookup.
 
     const [snap] = await sql<SnapRow[]>`
       SELECT
@@ -263,11 +277,16 @@ export async function GET(): Promise<NextResponse> {
         g.home_team_id::text      AS home_team_id,
         g.away_team_id::text      AS away_team_id,
         ls.captured_at::text      AS captured_at,
+        lac.team_id::text         AS lac_team_id,
         ls.payload
       FROM live_snapshots ls
       JOIN games g ON g.game_id = ls.game_id
-      WHERE g.home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
-         OR g.away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+      JOIN teams lac ON lac.nba_team_id = ${LAC_NBA_TEAM_ID}
+      WHERE (g.home_team_id = lac.team_id OR g.away_team_id = lac.team_id)
+        AND (
+          (lower(g.status) = 'in_progress' AND ls.captured_at > now() - interval '12 hours')
+          OR ls.captured_at > now() - interval '30 minutes'
+        )
       ORDER BY ls.captured_at DESC
       LIMIT 1
     `;
@@ -294,36 +313,31 @@ export async function GET(): Promise<NextResponse> {
 
     const payload = snap.payload as SnapshotPayload;
 
-    // Time-based stale check: if the newest snapshot is >60s old, the poll
-    // daemon is offline regardless of what the payload flag says.
+    // Time-based stale check: if the newest snapshot is older than the poll
+    // interval allows, the poller is offline regardless of the payload flag.
     const snapshotAgeMs = Date.now() - new Date(snap.captured_at).getTime();
-    const isStale = payload.is_stale || snapshotAgeMs > 60_000;
+    const isAgeStale = snapshotAgeMs > STALE_THRESHOLD_MS;
+    const isStale = payload.is_stale || isAgeStale;
     const staleReason = isStale
-      ? (payload.stale_reason ?? (snapshotAgeMs > 60_000 ? 'poll daemon offline' : null))
+      ? (payload.stale_reason ?? (isAgeStale ? 'poll daemon offline' : null))
       : null;
 
+    // Fetch game details (teams table join) — shared by DATA_DELAYED and LIVE
+    const gameData = await fetchGameDetails(snap.game_id, snap);
+
+    // Determine which box is LAC and which is opponent
+    const lacIsHome = snap.home_team_id === snap.lac_team_id;
+
     if (isStale) {
-      const gameData = await fetchGameDetails(snap.game_id, snap);
-
       // Build box score and key metrics from stale snapshot — show last-known stats
-      const lacTeamRowStale = await sql<{ team_id: string; abbreviation: string }[]>`
-        SELECT team_id::text AS team_id, abbreviation
-        FROM teams
-        WHERE nba_team_id = ${LAC_NBA_TEAM_ID}
-        LIMIT 1
-      `;
-      const lacStale = lacTeamRowStale[0];
-      const lacInternalIdStale = lacStale?.team_id;
-
-      const lacIsHomeStale = snap.home_team_id === lacInternalIdStale;
-      const lacBoxStale = lacIsHomeStale ? payload.home_box : payload.away_box;
-      const oppBoxStale = lacIsHomeStale ? payload.away_box : payload.home_box;
+      const lacBoxStale = lacIsHome ? payload.home_box : payload.away_box;
+      const oppBoxStale = lacIsHome ? payload.away_box : payload.home_box;
 
       const lacAbbrStale = gameData
-        ? (lacIsHomeStale ? gameData.home.abbreviation : gameData.away.abbreviation) ?? 'LAC'
+        ? (lacIsHome ? gameData.home.abbreviation : gameData.away.abbreviation) ?? 'LAC'
         : 'LAC';
       const oppAbbrStale = gameData
-        ? (lacIsHomeStale ? gameData.away.abbreviation : gameData.home.abbreviation) ?? 'OPP'
+        ? (lacIsHome ? gameData.away.abbreviation : gameData.home.abbreviation) ?? 'OPP'
         : 'OPP';
 
       const staleKeyMetrics = lacBoxStale && oppBoxStale
@@ -362,20 +376,6 @@ export async function GET(): Promise<NextResponse> {
 
     // ── Step 4: LIVE ───────────────────────────────────────────────────────
 
-    // Fetch game details (teams table join)
-    const gameData = await fetchGameDetails(snap.game_id, snap);
-
-    // Determine which box is LAC and which is opponent
-    const lacTeamRow = await sql<{ team_id: string; abbreviation: string; name: string }[]>`
-      SELECT team_id::text AS team_id, abbreviation, name
-      FROM teams
-      WHERE nba_team_id = ${LAC_NBA_TEAM_ID}
-      LIMIT 1
-    `;
-    const lacTeam = lacTeamRow[0];
-    const lacInternalId = lacTeam?.team_id;
-
-    const lacIsHome = snap.home_team_id === lacInternalId;
     const lacBox = lacIsHome ? payload.home_box : payload.away_box;
     const oppBox = lacIsHome ? payload.away_box : payload.home_box;
 
@@ -447,11 +447,10 @@ export async function GET(): Promise<NextResponse> {
       NO_STORE
     );
   } catch (err) {
+    // Log details server-side only — never echo internal error text to clients.
     console.error('[GET /api/live] Unexpected error:', err);
     return NextResponse.json(
-      buildError('INTERNAL_ERROR', 'Failed to fetch live game data', {
-        message: err instanceof Error ? err.message : String(err),
-      }),
+      buildError('INTERNAL_ERROR', 'Failed to fetch live game data'),
       { status: 500, ...NO_STORE }
     );
   }

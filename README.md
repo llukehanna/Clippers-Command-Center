@@ -1,6 +1,6 @@
 # Clippers Command Center
 
-**Live:** [clippers-command-center.vercel.app](https://clippers-command-center.vercel.app)
+**Live:** [clippers.lukeghanna.com](https://clippers.lukeghanna.com)
 
 A desktop analytics dashboard for avid LA Clippers fans. Three modes that blend into one continuous experience:
 

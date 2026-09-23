@@ -24,7 +24,7 @@ const mockHistorySqlFn = vi.fn();
 vi.mock('./db.js', () => ({
   sql: new Proxy(mockHistorySqlFn, {
     apply(target: typeof mockHistorySqlFn, thisArg: unknown, args: unknown[]) {
-      return (target as Function).apply(thisArg, args);
+      return Reflect.apply(target, thisArg, args);
     },
     get(target: typeof mockHistorySqlFn, prop: string | symbol) {
       return (target as unknown as Record<string | symbol, unknown>)[prop];
@@ -36,12 +36,9 @@ vi.mock('./db.js', () => ({
 describe('GET /api/history/games', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    let callCount = 0;
-    // First call: team lookup — return a fake internal team_id row
-    // Subsequent calls: games query — return empty arrays
-    mockHistorySqlFn.mockImplementation(async () => {
-      callCount++;
-      if (callCount === 1) {
+    // Team lookup → fake internal team_id row; games query + fragments → []
+    mockHistorySqlFn.mockImplementation(async (strings: readonly string[]) => {
+      if (strings.join('?').includes('FROM teams')) {
         return [{ team_id: '42' }];
       }
       return [];
@@ -67,6 +64,60 @@ describe('GET /api/history/games', () => {
     const body = await res.json();
     expect(body.meta).toHaveProperty('generated_at');
     expect(body.meta).toHaveProperty('stale');
+  });
+
+  it('derives result/final_score from lowercase "final" status (legacy "Final" too); null for scheduled', async () => {
+    mockHistorySqlFn.mockImplementation(async (strings: readonly string[]) => {
+      const q = strings.join('?');
+      if (q.includes('FROM teams')) return [{ team_id: '42' }];
+      if (q.includes('FROM games g')) {
+        return [
+          { game_id: '3', game_date: '2026-04-12', home_team_id: '42', away_team_id: '7',
+            status: 'final', home_score: 110, away_score: 102, home_abbr: 'LAC', away_abbr: 'DEN' },
+          { game_id: '2', game_date: '2026-04-10', home_team_id: '9', away_team_id: '42',
+            status: 'Final', home_score: 101, away_score: 96, home_abbr: 'GSW', away_abbr: 'LAC' },
+          { game_id: '1', game_date: '2026-04-08', home_team_id: '42', away_team_id: '5',
+            status: 'scheduled', home_score: 0, away_score: 0, home_abbr: 'LAC', away_abbr: 'PHX' },
+        ];
+      }
+      return []; // SQL fragments
+    });
+    const { GET } = await import('../../app/api/history/games/route.js');
+    const res = await GET(new Request('http://localhost/api/history/games?season_id=2025'));
+    const body = await res.json();
+    expect(body.games.map((g: { result: string | null }) => g.result)).toEqual(['W', 'L', null]);
+    expect(body.games[0].final_score).toEqual({ team: 110, opp: 102 });
+    expect(body.games[2].final_score).toBeNull();
+  });
+
+  it('applies the result filter in SQL (before LIMIT) and clamps limit to >= 1', async () => {
+    const { GET } = await import('../../app/api/history/games/route.js');
+    const res = await GET(new Request('http://localhost/api/history/games?season_id=2025&result=W&limit=0'));
+    expect(res.status).toBe(200);
+    const texts = mockHistorySqlFn.mock.calls.map((c) => (c[0] as string[]).join('?'));
+    expect(texts.some((t) => t.includes('g.home_score > g.away_score'))).toBe(true);
+    const mainCall = mockHistorySqlFn.mock.calls.find((c) => (c[0] as string[]).join('?').includes('FROM games g'))!;
+    expect(mainCall[mainCall.length - 1]).toBe(2); // clamped limit 1 + 1 look-ahead row
+  });
+
+  it('returns 400 for an invalid result filter or malformed cursor', async () => {
+    const { GET } = await import('../../app/api/history/games/route.js');
+    const badResult = await GET(new Request('http://localhost/api/history/games?season_id=2025&result=X'));
+    expect(badResult.status).toBe(400);
+    const cursor = Buffer.from(JSON.stringify({ game_date: "x'; --", game_id: '1' })).toString('base64');
+    const badCursor = await GET(new Request(`http://localhost/api/history/games?season_id=2025&cursor=${cursor}`));
+    expect(badCursor.status).toBe(400);
+  });
+
+  it('caches past seasons for 24h and the current season for 5 min', async () => {
+    const { GET } = await import('../../app/api/history/games/route.js');
+    const { calendarSeasonId } = await import('./season.js');
+    const past = await GET(new Request('http://localhost/api/history/games?season_id=2015'));
+    expect(past.headers.get('Cache-Control')).toBe('public, max-age=86400');
+    const current = await GET(
+      new Request(`http://localhost/api/history/games?season_id=${calendarSeasonId()}`)
+    );
+    expect(current.headers.get('Cache-Control')).toBe('public, max-age=300');
   });
 
   it.todo('returns paginated list of completed LAC games ordered by game_date DESC');
