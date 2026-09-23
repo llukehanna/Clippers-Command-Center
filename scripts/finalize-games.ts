@@ -78,6 +78,7 @@ async function main() {
       // Balldontlie-keyed row: no NBA id to fetch with. Re-running
       // backfill-schedule-nba attaches the NBA id to this row.
       console.error(`[finalize-games] SKIP ${label}: not an NBA-format game id — run backfill-schedule-nba`);
+      await logNearbyGames(game.game_id, game.game_date);
       failures.push(label);
       continue;
     }
@@ -96,6 +97,36 @@ async function main() {
 
   if (failures.length > 0) {
     throw new Error(`${failures.length} game(s) not finalized:\n  ${failures.join('\n  ')}`);
+  }
+}
+
+/**
+ * Diagnostics for a row backfill-schedule-nba could not match: the row itself
+ * plus LAC games within 2 days. A neighbour with an NBA id and the same teams
+ * usually means the row is a duplicate stored under a shifted date; no
+ * neighbour usually means a provider placeholder for a game never played.
+ */
+async function logNearbyGames(gameId: string, gameDate: string): Promise<void> {
+  const rows = await sql<{
+    game_id: string; nba_game_id: string; game_date: string; status: string;
+    home: string; away: string; home_score: number | null; away_score: number | null; player_rows: number;
+  }[]>`
+    SELECT g.game_id::text, g.nba_game_id::text, g.game_date::text AS game_date, g.status,
+           h.abbreviation AS home, a.abbreviation AS away, g.home_score, g.away_score,
+           (SELECT COUNT(*)::int FROM game_player_box_scores pb WHERE pb.game_id = g.game_id) AS player_rows
+    FROM games g
+    JOIN teams h ON h.team_id = g.home_team_id
+    JOIN teams a ON a.team_id = g.away_team_id
+    WHERE 'LAC' IN (h.abbreviation, a.abbreviation)
+      AND g.game_date BETWEEN ${gameDate}::date - 2 AND ${gameDate}::date + 2
+    ORDER BY g.game_date, g.game_id
+  `;
+  for (const r of rows) {
+    const mark = r.game_id === gameId ? '>>' : '  ';
+    console.error(
+      `[finalize-games]   ${mark} ${r.game_date} game_id=${r.game_id} nba_game_id=${r.nba_game_id} ` +
+        `${r.away} ${r.away_score ?? '-'} @ ${r.home} ${r.home_score ?? '-'} status=${r.status} player_rows=${r.player_rows}`
+    );
   }
 }
 
