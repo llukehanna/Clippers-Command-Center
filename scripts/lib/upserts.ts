@@ -216,7 +216,9 @@ export async function upsertGameRow(
         AND away_team_id = ${g.awayTeamId}::bigint
       LIMIT 1
     `;
-    adoptId = !!existing && incomingIsNba && !isNbaFormatGameId(existing.nba_game_id);
+    // Season-checked: some balldontlie ids (e.g. 21681584) fall inside the NBA
+    // numeric range and would otherwise pass as NBA ids.
+    adoptId = !!existing && incomingIsNba && !isNbaFormatGameId(existing.nba_game_id, g.seasonId);
   }
 
   if (!existing) {
