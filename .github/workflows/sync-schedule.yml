@@ -2,19 +2,23 @@ name: Sync Schedule
 
 on:
   schedule:
-    - cron: '0 14 * * *'   # daily at 6am PT
+    - cron: '0 14 * * *'   # daily at 14:00 UTC (7am PDT / 6am PST)
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   sync-schedule:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - run: npm ci
@@ -23,3 +27,8 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BALLDONTLIE_API_KEY: ${{ secrets.BALLDONTLIE_API_KEY }}
+
+      - name: Attach NBA game ids (NBA CDN schedule)
+        run: npm run backfill-schedule-nba
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
