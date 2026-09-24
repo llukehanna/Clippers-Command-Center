@@ -79,7 +79,7 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
 
   it('computes advanced stats and rolling windows for every game', () => {
     const out = run('scripts/compute-stats.ts');
-    expect(out).toContain('for 901 game(s)');
+    expect(out).toContain('for 1801 game(s)'); // 2024-25 + 2025-26 (+ play-in)
     // Incremental: a second run has nothing to do.
     expect(run('scripts/compute-stats.ts')).toContain('Nothing new to compute');
   }, TIMEOUT);
@@ -96,7 +96,7 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     const rows = await activeInsights();
     const categories = new Set(rows.map((r) => r.category));
     expect([...categories].sort()).toEqual(
-      ['league_comparison', 'milestone', 'opponent_context', 'rare_event', 'streak']
+      ['league_comparison', 'milestone', 'opponent_context', 'rare_event', 'streak', 'year_over_year']
     );
     const headlines = rows.map((r) => r.headline);
     expect(headlines).toContainEqual(expect.stringMatching(/^Clippers finished 2025-26 at \d+-\d+, \d+(st|nd|rd|th) in the West$/));
@@ -105,6 +105,13 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     expect(headlines).toContain("Star Clipper's 55-point game was the best scoring night in the NBA in 2025-26");
     expect(headlines).toContainEqual(expect.stringMatching(/^Up next: the Golden State Warriors had the \d+(st|nd|rd|th)-ranked defense in 2025-26$/));
     expect(headlines.some((h) => h.includes('this season'))).toBe(false);
+
+    // Year over year vs 2024-25 (the fixture's Clippers and Star Clipper improve).
+    expect(headlines).toContainEqual(expect.stringMatching(/^Clippers won \d+ games in 2025-26, up from \d+ in 2024-25$/));
+    expect(headlines).toContainEqual(
+      expect.stringMatching(/^Star Clipper's scoring rose from \d+\.\d PPG in 2024-25 to \d+\.\d PPG in 2025-26$/)
+    );
+    expect(headlines).toContainEqual(expect.stringMatching(/^Clippers' net rating improved from \d+(st|nd|rd|th) in 2024-25 to \d+(st|nd|rd|th) in 2025-26$/));
 
     // Traded away before season's end → not a Clippers player for season insights.
     const seasonCats = new Set(['streak', 'milestone', 'league_comparison']);
@@ -139,6 +146,10 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     expect(headlines).toContainEqual(expect.stringMatching(/^Clippers have (won|lost) \d+ straight$/));
     expect(headlines).toContain('Star Clipper has scored 30+ in 5 straight games');
     expect(headlines).toContainEqual(expect.stringMatching(/^Star Clipper ranks \d+(st|nd|rd|th) in the NBA in scoring this season$/));
+    expect(headlines).toContainEqual(expect.stringMatching(/^Clippers are winning \d+% of their games, up from \d+% last season$/));
+    expect(headlines).toContainEqual(
+      expect.stringMatching(/^Star Clipper's scoring rose from \d+\.\d PPG last season to \d+\.\d PPG this season$/)
+    );
     // Completed-season phrasings were replaced, not left active alongside.
     expect(headlines.some((h) => h.startsWith('Clippers finished'))).toBe(false);
     expect(run('scripts/verify-insights.ts')).toMatch(/0 failed/);

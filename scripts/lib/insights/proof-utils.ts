@@ -11,7 +11,7 @@ export interface InsightRow {
   game_id: string | null;
   player_id: string | null;
   season_id: number | null;
-  category: 'milestone' | 'rare_event' | 'streak' | 'league_comparison' | 'opponent_context';
+  category: 'milestone' | 'rare_event' | 'streak' | 'league_comparison' | 'opponent_context' | 'year_over_year';
   headline: string;
   detail: string | null;
   importance: number;           // 0–100
@@ -83,7 +83,7 @@ export function guardProofResult(proof_result: unknown[]): boolean {
  * computeImportance — pure formula: base + rarity_boost + recency_boost, capped at 100.
  *
  * Base scores:
- *   milestone=80, rare_event=78, streak=72, league_comparison=65, opponent_context=60
+ *   milestone=80, rare_event=78, streak=72, year_over_year=68, league_comparison=65, opponent_context=60
  *
  * Rarity boost (percentileRank 0–100):
  *   >= 99 → +15;  >= 95 → +5;  null → +0
@@ -102,6 +102,7 @@ export function computeImportance(
     streak: 72,
     league_comparison: 65,
     opponent_context: 60,
+    year_over_year: 68,
   };
 
   let score = base[category] ?? 50;
