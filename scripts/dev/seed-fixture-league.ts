@@ -6,8 +6,10 @@
 // DESTRUCTIVE: drops and recreates the public schema. Refuses to run unless
 // FIXTURE_DATABASE_URL points at localhost / 127.0.0.1 / a unix socket.
 //
-// League: 30 teams (15 West, 15 East), 12 players each. Season 2025-26: 60
-// game days × 15 games (60 games per team) plus one Clippers play-in game.
+// League: 30 teams (15 West, 15 East), 12 players each. Seasons 2024-25 and
+// 2025-26: 60 game days × 15 games each (60 games per team); 2025-26 adds one
+// Clippers play-in game. In 2024-25 the Clippers are average and Star Clipper
+// less productive, so 2025-26 shows year-over-year improvement.
 // 2026-27: the seasons row and three upcoming Clippers games (first vs GSW).
 // Scripted Clippers facts the tests look for:
 //   - the team is strong (top of the West, top-5 offense)
@@ -68,8 +70,10 @@ const TEAMS: [string, string, string, 'West' | 'East'][] = [
 ];
 const PLAYERS_PER_TEAM = 12;
 const GAME_DAYS = 60;
-const SEASON = 2025;
-const SEASON_START = Date.UTC(2025, 9, 21); // Oct 21 2025
+const SEASONS = [
+  { id: 2024, start: Date.UTC(2024, 9, 22), lacBoost: 0.95, starScale: 0.75 },
+  { id: 2025, start: Date.UTC(2025, 9, 21), lacBoost: 1.25, starScale: 1 },
+] as const;
 const TRADED_PLAYER_ID = 3;   // "LAC Player 3"
 const TRADE_TO = 15;          // BOS (team index)
 const TRADE_DAYS = 10;
@@ -149,8 +153,10 @@ async function main(): Promise<void> {
     }))}
   `;
 
-  // Team strength: LAC is strong; the rest spread out.
-  const boost = TEAMS.map(([abbr], i) => (abbr === 'LAC' ? 1.25 : 0.8 + ((i * 7) % 30) / 60));
+  // Team strength per season: the rest of the league spreads out; LAC varies.
+  let season: (typeof SEASONS)[number] = SEASONS[0];
+  const boostOf = (teamIdx: number) =>
+    teamIdx === 0 ? season.lacBoost : 0.8 + ((teamIdx * 7) % 30) / 60;
 
   const games: Record<string, unknown>[] = [];
   const teamBoxes: Record<string, unknown>[] = [];
@@ -160,18 +166,20 @@ async function main(): Promise<void> {
   const LAC_GAMES = GAME_DAYS;
 
   const teamOf = (p: Player, day: number) =>
-    p.id === TRADED_PLAYER_ID && day >= GAME_DAYS - TRADE_DAYS ? TRADE_TO : p.teamIdx;
+    season.id === 2025 && p.id === TRADED_PLAYER_ID && day >= GAME_DAYS - TRADE_DAYS ? TRADE_TO : p.teamIdx;
+  // Star Clipper's talent scales by season (players[0] is Star Clipper).
+  const talentOf = (p: Player) => (p.id === 1 ? { ...p, talent: p.talent * season.starScale } : p);
 
   function playGame(home: number, away: number, dateMs: number, nbaGameId: number, isPlayoffs: boolean, day: number) {
     gameId++;
     const lines: Line[][] = [home, away].map((teamIdx) => {
       const roster = players.filter((p) => teamOf(p, day) === teamIdx).slice(0, 10);
-      return roster.map((p, k) => ({ ...playerLine(p, boost[teamIdx], k < 5), team_id: teamIdx + 1 }));
+      return roster.map((p, k) => ({ ...playerLine(talentOf(p), boostOf(teamIdx), k < 5), team_id: teamIdx + 1 }));
     });
 
     // Scripted Clippers storylines (by LAC game number in the season).
     const lacSide = home === 0 ? 0 : away === 0 ? 1 : -1;
-    if (lacSide >= 0) {
+    if (lacSide >= 0 && season.id === 2025) {
       // The play-in counts as the latest game, so closing streaks run through it.
       if (nbaGameId < 50_000_000) lacGamesPlayed++;
       const closing = (n: number) => nbaGameId >= 50_000_000 || lacGamesPlayed > LAC_GAMES - n;
@@ -199,7 +207,7 @@ async function main(): Promise<void> {
 
     const date = new Date(dateMs).toISOString().slice(0, 10);
     games.push({
-      game_id: gameId, nba_game_id: nbaGameId, season_id: SEASON, game_date: date,
+      game_id: gameId, nba_game_id: nbaGameId, season_id: season.id, game_date: date,
       start_time_utc: new Date(dateMs + 3 * 3600_000).toISOString(), status: 'final',
       home_team_id: home + 1, away_team_id: away + 1,
       home_score: totals[0].points, away_score: totals[1].points, is_playoffs: isPlayoffs,
@@ -210,19 +218,24 @@ async function main(): Promise<void> {
     });
   }
 
-  for (let day = 0; day < GAME_DAYS; day++) {
-    // Circle-method round robin: 15 pairings per day, every team plays daily.
-    const order = Array.from({ length: 30 }, (_, i) => i);
-    const rotated = [order[0], ...order.slice(1).map((_, i) => order[1 + ((i + day) % 29)])];
-    for (let k = 0; k < 15; k++) {
-      const a = rotated[k];
-      const b = rotated[29 - k];
-      const [home, away] = day % 2 === 0 ? [a, b] : [b, a];
-      playGame(home, away, SEASON_START + day * 2 * 86_400_000, 22_500_000 + gameId + 1, false, day);
+  for (season of SEASONS) {
+    const yy = season.id % 100;
+    let n = 0;
+    for (let day = 0; day < GAME_DAYS; day++) {
+      // Circle-method round robin: 15 pairings per day, every team plays daily.
+      const order = Array.from({ length: 30 }, (_, i) => i);
+      const rotated = [order[0], ...order.slice(1).map((_, i) => order[1 + ((i + day) % 29)])];
+      for (let k = 0; k < 15; k++) {
+        const a = rotated[k];
+        const b = rotated[29 - k];
+        const [home, away] = day % 2 === 0 ? [a, b] : [b, a];
+        playGame(home, away, season.start + day * 2 * 86_400_000, 20_000_000 + yy * 100_000 + ++n, false, day);
+      }
     }
   }
-  // A Clippers play-in game (must be excluded from regular-season ranks/standings).
-  playGame(0, 1, SEASON_START + (GAME_DAYS * 2 + 3) * 86_400_000, 52_500_101, false, GAME_DAYS);
+  // A 2025-26 Clippers play-in game (must be excluded from regular-season ranks/standings).
+  season = SEASONS[1];
+  playGame(0, 1, season.start + (GAME_DAYS * 2 + 3) * 86_400_000, 52_500_101, false, GAME_DAYS);
 
   for (const batch of chunk(games, 500)) await sql`INSERT INTO games ${sql(batch)}`;
   for (const batch of chunk(teamBoxes, 500)) await sql`INSERT INTO game_team_box_scores ${sql(batch)}`;
@@ -230,13 +243,6 @@ async function main(): Promise<void> {
   await sql`SELECT setval('games_game_id_seq', ${gameId})`;
   await sql`SELECT setval('players_player_id_seq', ${players.length})`;
   await sql`SELECT setval('teams_team_id_seq', ${TEAMS.length})`;
-
-  // 2024-25: a Clippers game row without box scores (like production), which
-  // must not become the stats season.
-  await sql`
-    INSERT INTO games (nba_game_id, season_id, game_date, status, home_team_id, away_team_id, home_score, away_score)
-    VALUES (18000001, 2024, '2025-03-01', 'final', 1, 3, 101, 99)
-  `;
 
   // 2026-27: upcoming Clippers games, the first against GSW.
   const today = Date.now();

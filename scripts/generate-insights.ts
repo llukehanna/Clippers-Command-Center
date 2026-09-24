@@ -6,7 +6,8 @@
 //   Step 2: Milestone insights (season points, games played)
 //   Step 3: Rare event insights (top 5% percentile performances)
 //   Step 4: Opponent context insights (def rating, H2H record)
-//   Step 5: League comparison insights (Clippers off/net rating rank)
+//   Step 5: League comparison insights (team/player league ranks, standings)
+//   Step 6: Year-over-year insights (vs the previous season)
 //
 // All steps write to the insights table idempotently (ON CONFLICT on proof_hash).
 // proof_hash is a stable identity key (category + entity ids + season + metric
@@ -24,6 +25,7 @@ import { generateMilestoneInsights } from './lib/insights/milestones.js';
 import { generateRareEventInsights } from './lib/insights/rare-events.js';
 import { generateOpponentContextInsights } from './lib/insights/opponent-context.js';
 import { generateLeagueComparisonInsights } from './lib/insights/league-comparisons.js';
+import { generateYearOverYearInsights } from './lib/insights/year-over-year.js';
 import { loadInsightContext, type InsightContext } from './lib/insights/context.js';
 import type { InsightRow } from './lib/insights/proof-utils.js';
 
@@ -106,6 +108,7 @@ async function main() {
     { name: 'Rare event insights',        fn: generateRareEventInsights,       category: 'rare_event' },
     { name: 'Opponent context insights',  fn: generateOpponentContextInsights,  category: 'opponent_context' },
     { name: 'League comparison insights', fn: generateLeagueComparisonInsights, category: 'league_comparison' },
+    { name: 'Year-over-year insights',    fn: generateYearOverYearInsights,    category: 'year_over_year' },
   ];
 
   for (const step of steps) {

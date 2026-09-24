@@ -24,11 +24,11 @@ import {
 import { clippersSeasonPlayers, InsightContext, REGULAR_SEASON, runProof } from './context.js';
 
 /** Team must have played this many regular-season games to be ranked. */
-const MIN_TEAM_GAMES = 5;
+export const MIN_TEAM_GAMES = 5;
 
 // ── 1. Team season ranks ─────────────────────────────────────────────────────
 
-interface TeamMetric {
+export interface TeamMetric {
   key: string;
   label: string;          // "offensive rating"
   /** SQL aggregate over advanced_team_game_stats `a` (per team, per season). */
@@ -39,7 +39,7 @@ interface TeamMetric {
 
 // Ratings are possession-weighted (points per 100 possessions over the whole
 // season), not averages of per-game ratings.
-const TEAM_METRICS: TeamMetric[] = [
+export const TEAM_METRICS: TeamMetric[] = [
   { key: 'off_rating', label: 'offensive rating', higherIsBetter: true,
     aggregate: 'SUM(a.off_rating * a.possessions) / NULLIF(SUM(a.possessions), 0)', format: (v) => fmt(v) },
   { key: 'def_rating', label: 'defensive rating', higherIsBetter: false,
@@ -131,7 +131,7 @@ function rollingRankSql(metric: 'off_rating' | 'net_rating'): string {
 
 // ── 4. Player league ranks ───────────────────────────────────────────────────
 
-interface PlayerMetric {
+export interface PlayerMetric {
   key: string;
   label: string;          // "scoring"
   /** SQL over game_player_box_scores `pb`, grouped per player. NULL = unqualified. */
@@ -140,7 +140,7 @@ interface PlayerMetric {
   topN: number;
 }
 
-const PLAYER_METRICS: PlayerMetric[] = [
+export const PLAYER_METRICS: PlayerMetric[] = [
   { key: 'ppg', label: 'scoring', expr: 'AVG(pb.points)', format: (v) => `${fmt(v)} PPG`, topN: 25 },
   { key: 'rpg', label: 'rebounding', expr: 'AVG(pb.rebounds)', format: (v) => `${fmt(v)} RPG`, topN: 20 },
   { key: 'apg', label: 'assists', expr: 'AVG(pb.assists)', format: (v) => `${fmt(v)} APG`, topN: 20 },
