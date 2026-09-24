@@ -13,6 +13,8 @@
 //                      blocks cloud IPs. Games that already have player box
 //                      scores are skipped unless --force.
 //   --force            Re-write box scores even when present.
+//   --repair-duplicates  Delete stale duplicate rows the guard finds, when safe
+//                      (see removeStaleDuplicate); otherwise they fail the run.
 //
 // Box scores are fetched in parallel and written one game per transaction,
 // sequentially (finalizeGame). Idempotent — safe to re-run; an interrupted
@@ -22,7 +24,7 @@
 
 import { sql } from './lib/db.js';
 import { upsertSeasons } from './lib/upserts.js';
-import { ingestBoxscore } from './lib/league-ingest.js';
+import { findLikelyDuplicates, ingestBoxscore, removeStaleDuplicate } from './lib/league-ingest.js';
 import {
   easternDateOf,
   isNbaFormatGameId,
@@ -46,6 +48,7 @@ interface Args {
   seasonId: number | null;
   days: number;
   force: boolean;
+  repairDuplicates: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -55,7 +58,7 @@ function parseArgs(argv: string[]): Args {
   if (season && seasonId === null) throw new Error(`Invalid --season "${season}" (expected e.g. 2025-26)`);
   const days = Number(get('days') ?? 3);
   if (!Number.isInteger(days) || days < 1) throw new Error(`Invalid --days "${get('days')}"`);
-  return { seasonId, days, force: argv.includes('--force') };
+  return { seasonId, days, force: argv.includes('--force'), repairDuplicates: argv.includes('--repair-duplicates') };
 }
 
 /** Game ids to process, and the season they belong to. */
@@ -134,31 +137,27 @@ async function main(): Promise<void> {
 
   log(`Done: ${ingested} ingested, ${missing} not found (unplayed ids), ${notFinal} not final, ${failures.length} failed`);
 
-  // Duplicate guard: a final game WITHOUT box scores next to the same matchup
-  // WITH box scores (±1 day) means an older provider row was not matched
-  // (e.g. its date was off by a day) and the ingest created a second row.
-  // Scheduled games are ignored so two-game series don't trip this.
-  const dupes = await sql<{ stale_id: string; stale_date: string; real_id: string; real_date: string; matchup: string }[]>`
-    SELECT s.game_id::text AS stale_id, s.game_date::text AS stale_date,
-           r.game_id::text AS real_id, r.game_date::text AS real_date,
-           a.abbreviation || ' @ ' || h.abbreviation AS matchup
-    FROM games s
-    JOIN games r ON r.home_team_id = s.home_team_id AND r.away_team_id = s.away_team_id
-                AND r.game_id <> s.game_id AND abs(r.game_date - s.game_date) <= 1
-    JOIN teams h ON h.team_id = s.home_team_id
-    JOIN teams a ON a.team_id = s.away_team_id
-    WHERE s.season_id = ${seasonId} AND r.season_id = ${seasonId}
-      AND s.status = 'final'
-      AND NOT EXISTS (SELECT 1 FROM game_team_box_scores b WHERE b.game_id = s.game_id)
-      AND EXISTS (SELECT 1 FROM game_team_box_scores b WHERE b.game_id = r.game_id)
-    ORDER BY s.game_date
-  `;
-  await sql.end();
-  if (dupes.length > 0) {
-    for (const d of dupes.slice(0, 20)) {
-      console.error(`  duplicate? ${d.matchup}: game_id ${d.stale_id} (${d.stale_date}, no box score) vs ${d.real_id} (${d.real_date})`);
+  // Duplicate guard (see findLikelyDuplicates). With --repair-duplicates, safe
+  // cases are deleted; anything else fails the run.
+  const dupes = await findLikelyDuplicates(seasonId);
+  let kept = 0;
+  for (const d of dupes) {
+    const label = `${d.matchup}: game_id ${d.stale_id} (${d.stale_date}, no box score) vs ${d.real_id} (${d.real_date})`;
+    if (args.repairDuplicates) {
+      const reason = await removeStaleDuplicate(d, seasonId);
+      if (reason === null) {
+        log(`removed stale duplicate ${label}`);
+        continue;
+      }
+      console.error(`  duplicate kept (${reason}): ${label}`);
+    } else {
+      console.error(`  duplicate? ${label}`);
     }
-    failures.push(`${dupes.length} likely duplicate game row(s) — see above`);
+    kept++;
+  }
+  await sql.end();
+  if (kept > 0) {
+    failures.push(`${kept} likely duplicate game row(s) — see above${args.repairDuplicates ? '' : ' (re-run with --repair-duplicates)'}`);
   }
 
   if (failures.length > 0) {

@@ -219,4 +219,35 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     expect(dupes.n).toBe(1);
     expect(run('scripts/compute-stats.ts')).toContain('for 1 game(s)');
   }, TIMEOUT);
+
+  it('finds stale duplicate rows and removes only the safe ones', async () => {
+    const { findLikelyDuplicates, removeStaleDuplicate } = await import('./league-ingest');
+    // Two older-provider rows dated a day after real fixture games (like 2022-23 in production).
+    const real = await sql<{ game_id: string; game_date: string; home_team_id: string; away_team_id: string }[]>`
+      SELECT game_id::text, game_date::text, home_team_id::text, away_team_id::text
+      FROM games WHERE season_id = 2024 ORDER BY game_id LIMIT 2
+    `;
+    const stale = await sql<{ game_id: string }[]>`
+      INSERT INTO games ${sql(real.map((g, i) => ({
+        nba_game_id: 15_000_001 + i, season_id: 2024, status: 'final',
+        game_date: new Date(new Date(g.game_date).getTime() + 86_400_000).toISOString().slice(0, 10),
+        home_team_id: g.home_team_id, away_team_id: g.away_team_id,
+      })))}
+      RETURNING game_id::text
+    `;
+    // The second one is referenced elsewhere, so it must be kept.
+    await sql`
+      INSERT INTO odds_snapshots (game_id, provider, captured_at, raw_payload)
+      VALUES (${stale[1].game_id}::bigint, 'test', now(), '{}')
+    `;
+
+    const dupes = await findLikelyDuplicates(2024);
+    expect(dupes.map((d) => d.stale_id).sort()).toEqual(stale.map((s) => s.game_id).sort());
+
+    const reasons = await Promise.all(dupes.map((d) => removeStaleDuplicate(d, 2024)));
+    const byId = Object.fromEntries(dupes.map((d, i) => [d.stale_id, reasons[i]]));
+    expect(byId[stale[0].game_id]).toBeNull();
+    expect(byId[stale[1].game_id]).toBe('referenced by odds_snapshots.game_id');
+    expect((await findLikelyDuplicates(2024)).map((d) => d.stale_id)).toEqual([stale[1].game_id]);
+  }, TIMEOUT);
 });
