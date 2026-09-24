@@ -133,7 +133,33 @@ async function main(): Promise<void> {
   }
 
   log(`Done: ${ingested} ingested, ${missing} not found (unplayed ids), ${notFinal} not final, ${failures.length} failed`);
+
+  // Duplicate guard: a final game WITHOUT box scores next to the same matchup
+  // WITH box scores (±1 day) means an older provider row was not matched
+  // (e.g. its date was off by a day) and the ingest created a second row.
+  // Scheduled games are ignored so two-game series don't trip this.
+  const dupes = await sql<{ stale_id: string; stale_date: string; real_id: string; real_date: string; matchup: string }[]>`
+    SELECT s.game_id::text AS stale_id, s.game_date::text AS stale_date,
+           r.game_id::text AS real_id, r.game_date::text AS real_date,
+           a.abbreviation || ' @ ' || h.abbreviation AS matchup
+    FROM games s
+    JOIN games r ON r.home_team_id = s.home_team_id AND r.away_team_id = s.away_team_id
+                AND r.game_id <> s.game_id AND abs(r.game_date - s.game_date) <= 1
+    JOIN teams h ON h.team_id = s.home_team_id
+    JOIN teams a ON a.team_id = s.away_team_id
+    WHERE s.season_id = ${seasonId} AND r.season_id = ${seasonId}
+      AND s.status = 'final'
+      AND NOT EXISTS (SELECT 1 FROM game_team_box_scores b WHERE b.game_id = s.game_id)
+      AND EXISTS (SELECT 1 FROM game_team_box_scores b WHERE b.game_id = r.game_id)
+    ORDER BY s.game_date
+  `;
   await sql.end();
+  if (dupes.length > 0) {
+    for (const d of dupes.slice(0, 20)) {
+      console.error(`  duplicate? ${d.matchup}: game_id ${d.stale_id} (${d.stale_date}, no box score) vs ${d.real_id} (${d.real_date})`);
+    }
+    failures.push(`${dupes.length} likely duplicate game row(s) — see above`);
+  }
 
   if (failures.length > 0) {
     throw new Error(`${failures.length} game(s) failed:\n  ${failures.slice(0, 50).join('\n  ')}`);
