@@ -11,6 +11,10 @@ on:
         description: 'Season to load (e.g. 2025-26)'
         required: true
         default: '2025-26'
+      repair_duplicates:
+        description: 'Delete stale duplicate game rows (older provider rows a day off) when safe'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -38,9 +42,10 @@ jobs:
       - run: npm ci
 
       - name: Load league games
-        run: npm run sync-league-games -- "--season=${SEASON}"
+        run: npm run sync-league-games -- "--season=${SEASON}" ${REPAIR:+--repair-duplicates}
         env:
           SEASON: ${{ inputs.season }}
+          REPAIR: ${{ inputs.repair_duplicates && '1' || '' }}
 
       - name: Compute stats
         run: npm run compute-stats
