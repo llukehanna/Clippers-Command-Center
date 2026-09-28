@@ -12,6 +12,11 @@
 //                      past-season schedule is only on stats.nba.com, which
 //                      blocks cloud IPs. Games that already have player box
 //                      scores are skipped unless --force.
+//                      Seasons before 2019-20 are not in the cdn.nba.com archive
+//                      and come from stats.nba.com instead (see lib/stats-nba.ts):
+//                      season game logs for every game, full per-game box
+//                      scores for Clippers games. stats.nba.com blocks most
+//                      cloud IPs — run those seasons from a home network.
 //   --force            Re-write box scores even when present.
 //   --repair-duplicates  Delete stale duplicate rows the guard finds, when safe
 //                      (see removeStaleDuplicate); otherwise they fail the run.
@@ -38,9 +43,15 @@ import {
   mapPool,
   scheduleGames,
 } from './lib/nba-season.js';
+import { boxscoresFromSeasonLogs, fetchSeasonLogs, fetchStatsBoxscore } from './lib/stats-nba.js';
 
 const FETCH_CONCURRENCY = 8;
 const CHUNK_SIZE = 64; // fetch a chunk in parallel, then write it sequentially
+/** First season whose box scores cdn.nba.com still serves. */
+const CDN_FIRST_SEASON = 2019;
+const LAC_TRICODE = 'LAC';
+/** Concurrent game writes (one transaction each) for stats.nba.com seasons; needs DB_POOL_MAX above it. */
+const WRITE_CONCURRENCY = Number(process.env.WRITE_CONCURRENCY ?? 6);
 
 const log = (msg: string) => console.log(`[sync-league-games] ${msg}`);
 
@@ -91,21 +102,59 @@ async function alreadyIngested(seasonId: number): Promise<Set<string>> {
   return new Set(rows.map((r) => r.nba_game_id.padStart(10, '0')));
 }
 
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-  const { seasonId, ids } = await selectGameIds(args);
-  log(`Season ${seasonLabel(seasonId)}: ${ids.length} candidate game id(s)`);
+/**
+ * A pre-CDN season from stats.nba.com: every game from the season game logs,
+ * except Clippers games, which get the full per-game box score.
+ */
+async function ingestStatsSeason(seasonId: number, done: Set<string>, failures: string[]): Promise<number> {
+  const { teamRows, playerRows } = await fetchSeasonLogs(seasonId, log);
+  const games = boxscoresFromSeasonLogs(teamRows, playerRows);
+  const todo = games.filter((g) => !done.has(g.gameId));
+  log(`${games.length} game(s) in the season logs, ${games.length - todo.length} already ingested, ${todo.length} to write`);
 
-  await upsertSeasons([seasonId]);
+  // Games on one date never share a team, so their writes (stints, rosters)
+  // can't collide: each date is written concurrently, dates in order.
+  const byDate = new Map<string, typeof todo>();
+  for (const g of todo) byDate.set(g.gameDate, [...(byDate.get(g.gameDate) ?? []), g]);
 
-  const done = args.force ? new Set<string>() : await alreadyIngested(seasonId);
+  let ingested = 0;
+  let processed = 0;
+  let nextReport = 100;
+  for (const dayGames of [...byDate.keys()].sort().map((d) => byDate.get(d)!)) {
+    await mapPool(dayGames, WRITE_CONCURRENCY, async (g) => {
+      try {
+        if (g.homeTricode === LAC_TRICODE || g.awayTricode === LAC_TRICODE) {
+          const r = await fetchStatsBoxscore(g.gameId, log);
+          if (r.status !== 'ok') {
+            failures.push(`${g.gameId}: stats.nba.com box score ${r.status === 'error' ? r.message : 'missing'}`);
+            return;
+          }
+          await ingestBoxscore(seasonId, r.boxscore);
+        } else {
+          await ingestBoxscore(seasonId, g.box, { gameDate: g.gameDate });
+        }
+        ingested++;
+      } catch (err) {
+        failures.push(`${g.gameId}: ${(err as Error).message}`);
+      }
+    });
+    processed += dayGames.length;
+    if (processed >= nextReport || processed === todo.length) {
+      log(`progress ${processed}/${todo.length} — ${ingested} ingested, ${failures.length} failed`);
+      nextReport = processed + 100;
+    }
+  }
+  return ingested;
+}
+
+/** A CDN season: fetch every candidate id in parallel chunks, write sequentially. */
+async function ingestCdnSeason(seasonId: number, ids: string[], done: Set<string>, failures: string[]): Promise<number> {
   const todo = ids.filter((id) => !done.has(id));
   log(`${ids.length - todo.length} already ingested, ${todo.length} to fetch`);
 
   let ingested = 0;
   let missing = 0;
   let notFinal = 0;
-  const failures: string[] = [];
 
   for (let i = 0; i < todo.length; i += CHUNK_SIZE) {
     const chunk = todo.slice(i, i + CHUNK_SIZE);
@@ -136,6 +185,31 @@ async function main(): Promise<void> {
   }
 
   log(`Done: ${ingested} ingested, ${missing} not found (unplayed ids), ${notFinal} not final, ${failures.length} failed`);
+  return ingested;
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  const fromStats = args.seasonId !== null && args.seasonId < CDN_FIRST_SEASON;
+  const { seasonId, ids } = fromStats
+    ? { seasonId: args.seasonId!, ids: [] }
+    : await selectGameIds(args);
+  log(
+    fromStats
+      ? `Season ${seasonLabel(seasonId)}: from stats.nba.com (pre-${seasonLabel(CDN_FIRST_SEASON)}, not in the CDN archive)`
+      : `Season ${seasonLabel(seasonId)}: ${ids.length} candidate game id(s)`
+  );
+
+  await upsertSeasons([seasonId]);
+
+  const done = args.force ? new Set<string>() : await alreadyIngested(seasonId);
+  const failures: string[] = [];
+  if (fromStats) {
+    const ingested = await ingestStatsSeason(seasonId, done, failures);
+    log(`Done: ${ingested} ingested, ${failures.length} failed`);
+  } else {
+    await ingestCdnSeason(seasonId, ids, done, failures);
+  }
 
   // Duplicate guard (see findLikelyDuplicates). With --repair-duplicates, safe
   // cases are deleted; anything else fails the run.

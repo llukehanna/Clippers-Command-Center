@@ -232,7 +232,7 @@ async function resolveTeamDbId(
   gid: string
 ): Promise<string> {
   const [row] = await tx<{ team_id: string }[]>`
-    SELECT team_id::text FROM teams WHERE abbreviation = ${team.teamTricode} LIMIT 1
+    SELECT team_id::text FROM teams WHERE abbreviation = ${team.teamTricode} ORDER BY team_id LIMIT 1
   `;
   if (!row) {
     console.warn(
