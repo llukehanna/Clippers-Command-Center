@@ -1,37 +1,62 @@
-import { NextGameHero } from '@/components/home/NextGameHero'
-import { ScheduleTable } from '@/components/home/ScheduleTable'
+import type { Metadata } from 'next'
+import { NextGamePanel } from '@/components/game/NextGamePanel'
+import { ScheduleChips } from '@/components/game/ScheduleChips'
+import { ScheduleMonth } from '@/components/schedule/ScheduleList'
+import { PageHeader } from '@/components/shell/PageHeader'
+import { EmptyState } from '@/components/ui/empty-state'
+import { getJson } from '@/src/lib/ui/api'
+import { annotateSchedule, groupByMonth } from '@/src/lib/ui/schedule'
+import type { SchedulePayload } from '@/src/lib/ui/types'
 
-async function getSchedule() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-  const res = await fetch(`${baseUrl}/api/schedule`, { cache: 'no-store' })
-  if (!res.ok) return null
-  return res.json()
-}
+export const metadata: Metadata = { title: 'Schedule' }
 
 export default async function SchedulePage() {
-  const data = await getSchedule()
+  const data = await getJson<SchedulePayload>('/api/schedule')
 
-  const nextGame = data?.next_game ?? null
-  // ScheduleTable shows the remaining games after the hero (or all if no next game)
-  const remainingGames = (data?.games ?? []).slice(nextGame ? 1 : 0)
+  if (!data) {
+    return (
+      <div className="page">
+        <PageHeader title="Schedule" />
+        <EmptyState title="The schedule couldn't load" body="The data service didn't respond. Refresh in a moment." />
+      </div>
+    )
+  }
+
+  const games = annotateSchedule(data.games ?? [])
+  const [next, ...rest] = games
+  const homeCount = games.filter((g) => g.home_away === 'home').length
+  const b2bCount = games.filter((g) => g.annotation.b2b).length
 
   return (
-    <div className="px-6 py-6 max-w-[1440px] mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Schedule</h1>
-        <p className="text-sm text-muted-foreground mt-1">Upcoming Clippers games</p>
+    <div className="page">
+      <PageHeader
+        title="Schedule"
+        subtitle={
+          games.length > 0
+            ? `Next ${games.length} games · ${homeCount} home, ${games.length - homeCount} away${b2bCount ? ` · ${b2bCount} back-to-back${b2bCount === 1 ? '' : 's'}` : ''} · times PT`
+            : 'Upcoming Clippers games'
+        }
+      />
+
+      <div className="enter" style={{ ['--i' as string]: 0 }}>
+        <NextGamePanel
+          game={next ?? null}
+          context={
+            next ? (
+              <span className="flex flex-wrap justify-end gap-1.5">
+                <ScheduleChips annotation={next.annotation} />
+              </span>
+            ) : null
+          }
+        />
       </div>
 
-      <NextGameHero game={nextGame} />
-
-      {remainingGames.length > 0 && (
-        <div className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-            Remaining Schedule
-          </h2>
-          <ScheduleTable games={remainingGames} />
-        </div>
-      )}
+      {rest.length > 0 &&
+        groupByMonth(rest).map((m, i) => (
+          <div key={m.key} className="enter" style={{ ['--i' as string]: i + 1 }}>
+            <ScheduleMonth label={m.label} games={m.games} />
+          </div>
+        ))}
     </div>
   )
 }
