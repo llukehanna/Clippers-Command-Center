@@ -24,7 +24,7 @@ import {
   NOT_LISTED_DELAY_MS,
   SCOREBOARD_EVERY_MS,
 } from './live-cadence';
-import { buildLiveState, fingerprint } from './live-state';
+import { buildLiveState, fingerprint, type ModelContext } from './live-state';
 
 export interface PollerDeps {
   fetchScoreboard(): Promise<NBAScoreboardResponse>;
@@ -50,7 +50,13 @@ export interface Poller {
   tick(): Promise<TickResult>;
 }
 
-export function createPoller(nbaGameId: string, tipAt: number | null, deps: PollerDeps, initialSeq = 0): Poller {
+export function createPoller(
+  nbaGameId: string,
+  tipAt: number | null,
+  deps: PollerDeps,
+  initialSeq = 0,
+  model?: ModelContext
+): Poller {
   const log = deps.log ?? (() => {});
   let seq = initialSeq;
   let savedFp = '';
@@ -168,7 +174,7 @@ export function createPoller(nbaGameId: string, tipAt: number | null, deps: Poll
     }
     const delayMs = nextDelayMs({ phase, phaseSince, now, failures: 0, notBeforeMs: notBefore, random: deps.random });
 
-    const body = buildLiveState({ sbGame, sbGames, box, actions, phase, nextMs: delayMs, now });
+    const body = buildLiveState({ sbGame, sbGames, box, actions, phase, nextMs: delayMs, now, model });
     const fp = fingerprint(body);
     let saved = false;
     if (fp !== savedFp || now - savedAt >= HEARTBEAT_MS) {

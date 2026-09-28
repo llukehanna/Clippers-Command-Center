@@ -7,9 +7,12 @@
 
 import { createHash } from 'node:crypto';
 import type { BoxscoreGame, BoxscoreTeam, PlayByPlayAction, ScoreboardGame } from '../../src/lib/types/live';
-import type { LivePhase, LivePlay, LiveStateDoc } from '../../src/lib/types/live-state';
-import { parseNBAClock } from './nba-live-client';
-import { extractRecentScoring, lineScore, summarizeOtherGames } from './poll-live-logic';
+import type { LivePhase, LivePlay, LiveStateDoc, LiveWinProb, WpCalibration } from '../../src/lib/types/live-state';
+import { DEFAULT_SIGMA, expectedLacMargin, PERIOD_SECS, winProbability } from '../../src/lib/live/win-prob';
+import { buildFlow } from './live-flow';
+import { buildLineups } from './live-lineups';
+import { clockToSecondsRemaining, parseNBAClock } from './nba-live-client';
+import { extractRecentScoring, LAC_TEAM_ID, lineScore, summarizeOtherGames } from './poll-live-logic';
 
 export const LAST_PLAYS = 15;
 export const RECENT_SCORING_LOOKBACK_SECONDS = 120;
@@ -24,6 +27,45 @@ export interface StateInputs {
   phase: LivePhase;
   nextMs: number;
   now: number;
+  model?: ModelContext;
+}
+
+/** What the runner knows before the game: the model's inputs (loaded once per game by loadModelContext). */
+export interface ModelContext {
+  expected: number;                          // pregame expected LAC margin
+  expectedSource: 'spread' | 'home_court';
+  sigma: number;
+  calibration: WpCalibration | null;
+  usualMin: Record<string, number>;          // NBA personId → last-10-game average minutes
+}
+
+export function defaultModel(lacIsHome: boolean): ModelContext {
+  const e = expectedLacMargin(null, lacIsHome);
+  return { expected: e.expected, expectedSource: e.source, sigma: DEFAULT_SIGMA, calibration: null, usualMin: {} };
+}
+
+function liveWinProb(
+  status: LiveStateDoc['status'],
+  period: number,
+  clockSec: number,
+  lacMargin: number,
+  model: ModelContext
+): LiveWinProb {
+  const { expected, sigma } = model;
+  const lac =
+    status === 'scheduled'
+      ? winProbability({ margin: 0, period: 1, clockSec: PERIOD_SECS, expected, sigma })
+      : status === 'final'
+        ? lacMargin > 0 ? 1 : lacMargin < 0 ? 0 : 0.5
+        : winProbability({ margin: lacMargin, period, clockSec, expected, sigma });
+  return {
+    lac: Math.round(lac * 1000) / 1000,
+    model: 'stern-v1',
+    sigma,
+    expected_margin: expected,
+    expected_source: model.expectedSource,
+    calibration: model.calibration,
+  };
 }
 
 export function toLivePlay(a: PlayByPlayAction): LivePlay {
@@ -70,16 +112,24 @@ export function buildLiveState(i: StateInputs): LiveStateBody {
   const period = head?.period ?? i.sbGame.period;
   const isoClock = head?.gameClock ?? i.sbGame.gameClock;
   const observed = [...i.actions].reverse().find((a) => a.timeActual)?.timeActual ?? null;
+  const lacIsHome = i.sbGame.homeTeam.teamId === LAC_TEAM_ID;
+  const model = i.model ?? defaultModel(lacIsHome);
+  const status = statusOf(Math.max(i.sbGame.gameStatus, b?.gameStatus ?? 0));
+  const homeScore = head?.homeTeam.score ?? i.sbGame.homeTeam.score;
+  const awayScore = head?.awayTeam.score ?? i.sbGame.awayTeam.score;
+  const clockSec = clockToSecondsRemaining(isoClock);
+  const sbLac = lacIsHome ? i.sbGame.homeTeam : i.sbGame.awayTeam;
+  const sbOpp = lacIsHome ? i.sbGame.awayTeam : i.sbGame.homeTeam;
   return {
     v: 1,
     source: 'nba',
     nba_game_id: i.sbGame.gameId,
-    status: statusOf(Math.max(i.sbGame.gameStatus, b?.gameStatus ?? 0)),
+    status,
     status_text: head?.gameStatusText ?? i.sbGame.gameStatusText,
     period,
     clock: parseNBAClock(isoClock),
-    home_score: head?.homeTeam.score ?? i.sbGame.homeTeam.score,
-    away_score: head?.awayTeam.score ?? i.sbGame.awayTeam.score,
+    home_score: homeScore,
+    away_score: awayScore,
     periods: head ? boxPeriods(head.homeTeam, head.awayTeam) : lineScore(i.sbGame),
     home_box: b?.homeTeam ?? null,
     away_box: b?.awayTeam ?? null,
@@ -103,6 +153,24 @@ export function buildLiveState(i: StateInputs): LiveStateBody {
     cadence: { phase: i.phase, next_ms: i.nextMs },
     is_stale: false,
     stale_reason: null,
+    wp: liveWinProb(status, period, clockSec, lacIsHome ? homeScore - awayScore : awayScore - homeScore, model),
+    flow: status === 'scheduled' ? null : buildFlow(i.actions, lacIsHome, model),
+    lineups:
+      status !== 'scheduled' && b
+        ? buildLineups({
+            actions: i.actions,
+            lacBox: lacIsHome ? b.homeTeam : b.awayTeam,
+            oppBox: lacIsHome ? b.awayTeam : b.homeTeam,
+            lacIsHome,
+            period,
+            clockSec,
+            usualMin: model.usualMin,
+            fallback: {
+              timeouts: { lac: sbLac.timeoutsRemaining ?? null, opp: sbOpp.timeoutsRemaining ?? null },
+              bonus: { lac: sbLac.inBonus === '1', opp: sbOpp.inBonus === '1' },
+            },
+          })
+        : null,
   };
 }
 
