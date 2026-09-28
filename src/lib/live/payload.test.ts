@@ -57,4 +57,18 @@ describe('overlayLiveDoc', () => {
     expect(out.insights.some((i) => i.category === 'clutch')).toBe(true);
     expect(out.insights.every((i) => i.insight_id.startsWith('live-9999-'))).toBe(true);
   });
+
+  it('carries flow, win probability, lineups and observed_at', () => {
+    const flow = { points: [{ t: 0, m: 0, wp: 0.6, a: 0, d: '' }], markers: [] };
+    const wp = { lac: 0.62, model: 'stern-v1' as const, sigma: 12, expected_margin: 3, expected_source: 'spread' as const, calibration: null };
+    const lineups = {
+      on_court: { lac: [], opp: [] }, current_unit: { lac_plus_minus: 0, secs_together: 0 },
+      units_tonight: [], timeouts: { lac: 7, opp: 7 }, bonus: { lac: false, opp: false },
+    };
+    const out = overlayLiveDoc(base(), liveDoc(9, { flow, wp, lineups, observed_at: '2026-10-22T02:41:00.000Z' }));
+    expect(out.flow).toEqual(flow);
+    expect(out.wp).toEqual(wp);
+    expect(out.lineups).toEqual(lineups);
+    expect(out.observed_at).toBe('2026-10-22T02:41:00.000Z');
+  });
 });

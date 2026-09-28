@@ -274,5 +274,9 @@ export function overlayLiveDoc(base: LivePayload, doc: LiveStateDoc): LivePayloa
     }),
     other_games: doc.other_games,
     cadence: doc.cadence,
+    flow: doc.flow ?? null,
+    wp: doc.wp ?? null,
+    lineups: doc.lineups ?? null,
+    observed_at: doc.observed_at,
   };
 }
