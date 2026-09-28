@@ -1,6 +1,8 @@
 // A LIVE /api/live payload (exact route shape) for designing and checking the
 // Live view without a real game. Sample numbers, not a real game.
 
+import { elapsedSecs, periodClockAt, winProbability } from '@/src/lib/live/win-prob'
+import type { FlowMarker, FlowPoint, LiveFlow, LiveWinProb } from '@/src/lib/types/live-state'
 import type { BoxScorePlayer, LivePayload } from '@/src/lib/ui/types'
 
 function p(
@@ -22,9 +24,64 @@ function p(
   return { player_id, name, starter, MIN, PTS, REB, AST, STL, BLK, TO, FG, '3PT': TPT, FT, '+/-': PM }
 }
 
+/** "PT07M42.00S" or "7:42" → seconds left in the period. */
+function clockSecs(clock: string | null): number {
+  const iso = /PT(\d+)M([\d.]+)S/.exec(clock ?? '')
+  if (iso) return Number(iso[1]) * 60 + Math.floor(Number(iso[2]))
+  const mmss = /^(\d+):(\d+)/.exec(clock ?? '')
+  return mmss ? Number(mmss[1]) * 60 + Number(mmss[2]) : 0
+}
+
+/** A plausible, deterministic margin path that ends at the fixture's score. */
+function sampleFlow(margin: number, tNow: number): { flow: LiveFlow; wp: LiveWinProb } {
+  const expected = 3.5
+  const sigma = 12.4
+  const at = (m: number, t: number) => {
+    const { period, clockSec } = periodClockAt(t)
+    return Math.round(winProbability({ margin: m, period, clockSec, expected, sigma }) * 1000) / 1000
+  }
+  const points: FlowPoint[] = [{ t: 0, m: 0, wp: at(0, 0), a: 0, d: '' }]
+  const markers: FlowMarker[] = []
+  const steps = 40
+  let prev = 0
+  let lastSign = 0
+  let best = { lac: { margin: 0, t: 0 }, opp: { margin: 0, t: 0 } }
+  for (let k = 1; k <= steps; k++) {
+    const t = Math.round((tNow * k) / steps)
+    const m = k === steps ? margin : Math.round((margin * k) / steps + 7 * Math.sin(k / 3))
+    if (m === prev) continue
+    const sign = Math.sign(m)
+    if (sign !== 0 && lastSign !== 0 && sign !== lastSign) markers.push({ kind: 'lead_change', t, side: sign > 0 ? 'lac' : 'opp' })
+    if (sign !== 0) lastSign = sign
+    if (m > best.lac.margin) best = { ...best, lac: { margin: m, t } }
+    if (-m > best.opp.margin) best = { ...best, opp: { margin: -m, t } }
+    points.push({ t, m, wp: at(m, t), a: k * 3, d: m > prev ? 'Clippers score' : 'Opponent scores' })
+    prev = m
+  }
+  for (const t of [720, 1440, 2160]) if (t < tNow) markers.push({ kind: 'period_end', t, period: t / 720 })
+  markers.push({ kind: 'timeout', t: Math.round(tNow * 0.45), side: 'opp' })
+  if (best.lac.margin > 0) markers.push({ kind: 'max_lead', t: best.lac.t, side: 'lac', margin: best.lac.margin })
+  if (best.opp.margin > 0) markers.push({ kind: 'max_lead', t: best.opp.t, side: 'opp', margin: best.opp.margin })
+  markers.sort((a, b) => a.t - b.t)
+  const wp: LiveWinProb = {
+    lac: at(margin, tNow),
+    model: 'stern-v1',
+    sigma,
+    expected_margin: expected,
+    expected_source: 'spread',
+    calibration: {
+      sigma, brier: 0.162, n_games: 1312, n_samples: 62976, fitted_at: new Date().toISOString(),
+      reliability: [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95].map((p, i) => ({
+        lo: i / 10, hi: (i + 1) / 10, n: 4000 + i * 150, mean_p: p, observed: Math.round((p + (i % 2 ? 0.01 : -0.01)) * 1000) / 1000,
+      })),
+    },
+  }
+  return { flow: { points, markers }, wp }
+}
+
 export function liveFixture(now = new Date()): LivePayload {
   const iso = now.toISOString()
-  return {
+  const payload: LivePayload = {
     meta: { generated_at: iso, source: 'mixed', stale: false, stale_reason: null, ttl_seconds: 5 },
     state: 'LIVE',
     game: {
@@ -111,4 +168,8 @@ export function liveFixture(now = new Date()): LivePayload {
       total_points: 231.5,
     },
   }
+  const g = payload.game!
+  const lacHome = g.home.abbreviation === 'LAC'
+  const margin = ((lacHome ? g.home.score : g.away.score) ?? 0) - ((lacHome ? g.away.score : g.home.score) ?? 0)
+  return { ...payload, ...sampleFlow(margin, elapsedSecs(g.period ?? 1, clockSecs(g.clock))) }
 }
