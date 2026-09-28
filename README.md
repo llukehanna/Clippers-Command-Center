@@ -14,7 +14,7 @@ A desktop analytics dashboard for avid LA Clippers fans. Three modes that blend 
 
 **Real-time without flicker.** The live page uses SWR over a Next.js API that merges a short-lived cache with snapshots written by a background poller. Stale reads surface a banner instead of silently serving old numbers.
 
-**One operator, full pipeline.** Schedule sync, odds sync, live polling, finalization, league ingest, stat computation, and insight generation all run as separate scripts, scheduled by GitHub Actions (live polling hits a Vercel cron endpoint) — no hosted workflow engine, no queue, no magic.
+**One operator, full pipeline.** Schedule sync, odds sync, live polling, finalization, league ingest, stat computation, and insight generation all run as separate scripts, all scheduled by GitHub Actions (live polling is a game-night runner that polls every 12s during Clippers games) — no hosted workflow engine, no queue, no magic.
 
 ## Stack
 
@@ -23,7 +23,7 @@ A desktop analytics dashboard for avid LA Clippers fans. Three modes that blend 
 - **shadcn/ui** + Tailwind v4, Recharts
 - **SWR** for client data, `tsx` for ops scripts
 - **Vitest** for unit tests
-- Hosted on **Vercel** with Vercel Cron triggering the data pipeline
+- Served at **clippers.lukeghanna.com** (Vercel project `clippers-command-center`; the `*.vercel.app` and `ccc.` hosts redirect there); every data job runs on GitHub Actions
 
 ## Data sources
 
@@ -69,7 +69,7 @@ Data-pipeline scripts:
 ```bash
 npm run sync-schedule        # schedule from BDL
 npm run sync-odds            # Vegas odds
-npm run poll-live            # NBA live polling (runs on Vercel Cron in prod)
+npm run poll-live            # game-night live poller (GitHub Actions: game-night.yml)
 npm run backfill-schedule-nba          # attach official NBA game ids to Clippers games
 npm run sync-league-games              # every NBA game from the last 3 days (nightly)
 npm run sync-league-games -- --season=2025-26   # load a whole past season, league-wide
