@@ -73,7 +73,8 @@ export function Td({
 }
 
 /**
- * Row that navigates on click. The row's primary cell should also contain a
+ * Row that navigates on click. Row links don't prefetch: tables list dozens
+ * of dynamic pages, and prefetching each would render them all server-side. The row's primary cell should also contain a
  * real <RowLink> so keyboard and screen-reader users get a link.
  */
 export function Tr({ href, className, children }: { href?: string; className?: string; children: React.ReactNode }) {
@@ -90,7 +91,7 @@ export function Tr({ href, className, children }: { href?: string; className?: s
 
 export function RowLink({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) {
   return (
-    <Link href={href} onClick={(e) => e.stopPropagation()} className={cn('outline-none hover:text-text focus-visible:underline', className)}>
+    <Link href={href} prefetch={false} onClick={(e) => e.stopPropagation()} className={cn('outline-none hover:text-text focus-visible:underline', className)}>
       {children}
     </Link>
   )
