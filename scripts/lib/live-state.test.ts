@@ -62,6 +62,17 @@ describe('buildLiveState', () => {
     const body = buildLiveState(inputs({ box: box({ status: 3, home: 110, away: 101 }), phase: 'FINAL', nextMs: 0 }));
     expect(body.status).toBe('final');
   });
+
+  it('uses stale box header if scoreboard is ahead', () => {
+    const body = buildLiveState(inputs({
+      sbGame: sbGame({ status: 3, home: 110, away: 101 }),
+      box: box({ status: 2, home: 106, away: 101 }),
+    }));
+    expect(body.status).toBe('final');
+    expect(body.home_score).toBe(110);
+    expect(body.away_score).toBe(101);
+    expect(body.home_box?.score).toBe(106);
+  });
 });
 
 describe('fingerprint', () => {
