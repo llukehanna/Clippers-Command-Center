@@ -51,7 +51,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const poller = createPoller(
       candidate.nba_game_id,
       candidate.start_time_utc?.getTime() ?? null,
-      nbaPollerDeps(sql, candidate.game_id),
+      nbaPollerDeps(sql, candidate.game_id, candidate.nba_game_id),
       initialSeq
     );
     const result = await poller.tick();

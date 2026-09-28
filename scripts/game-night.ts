@@ -56,7 +56,12 @@ async function main(): Promise<void> {
 
 async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<void> {
   const initialSeq = await loadLiveSeq(sql, candidate.game_id);
-  const poller = createPoller(candidate.nba_game_id, tip?.getTime() ?? null, nbaPollerDeps(sql, candidate.game_id), initialSeq);
+  const poller = createPoller(
+    candidate.nba_game_id,
+    tip?.getTime() ?? null,
+    nbaPollerDeps(sql, candidate.game_id, candidate.nba_game_id),
+    initialSeq
+  );
   let notListedSince: number | null = null;
   let saves = 0;
   let finalAttempts = 0;
