@@ -153,7 +153,9 @@ export function LiveView({
               />
             </div>
           )}
-          {data.wp && game.status !== 'scheduled' ? (
+          {/* On the ESPN backup the score is fresher than the runner's model value,
+              so the bar falls back to the moneyline (or hides) rather than pair them. */}
+          {data.wp && game.status !== 'scheduled' && !onBackup ? (
             <WinProbabilityBar lacProb={data.wp.lac} oppAbbr={oppAbbr} source="model" />
           ) : (
             probs && <WinProbabilityBar lacProb={probs.a} oppAbbr={oppAbbr} />
