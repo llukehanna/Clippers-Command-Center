@@ -19,6 +19,7 @@ const eslintConfig = defineConfig([
     "ui-prototype/**",
     "full logo packs/**",
     "design-system/**",
+    "workers/**",
   ]),
 ]);
 
