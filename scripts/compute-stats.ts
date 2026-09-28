@@ -35,6 +35,9 @@ import {
   computePlayerRollingWindows,
 } from './lib/rolling-windows.js';
 
+/** First season with player rolling windows for every player, not just Clippers. */
+const FULL_ROLLING_FIRST_SEASON = 2019;
+
 // ---- Types ----
 
 interface TeamBoxRow {
@@ -311,7 +314,10 @@ async function main(): Promise<void> {
   }
   console.log(`  Done.`);
 
-  // Step 4: Player rolling windows — (player_id, season_id) pairs touched by these games
+  // Step 4: Player rolling windows — (player_id, season_id) pairs touched by these games.
+  // Before FULL_ROLLING_FIRST_SEASON only Clippers players get them (their
+  // player pages chart them); league-wide rows for those seasons would cost
+  // storage nothing reads.
   const playerPairs = await sql<{ player_id: string; team_id: string; season_id: number }[]>`
     SELECT DISTINCT ON (apgs.player_id, g.season_id)
            apgs.player_id::text AS player_id, apgs.team_id::text AS team_id, g.season_id
@@ -319,6 +325,15 @@ async function main(): Promise<void> {
     JOIN games g ON g.game_id = apgs.game_id
     WHERE g.season_id IS NOT NULL
       ${all ? sql`` : sql`AND g.game_id = ANY(${gameIds}::bigint[])`}
+      AND (
+        g.season_id >= ${FULL_ROLLING_FIRST_SEASON}
+        OR EXISTS (
+          SELECT 1 FROM game_player_box_scores pb
+          JOIN games g2 ON g2.game_id = pb.game_id
+          JOIN teams t ON t.team_id = pb.team_id AND t.abbreviation = 'LAC'
+          WHERE pb.player_id = apgs.player_id AND g2.season_id = g.season_id
+        )
+      )
     ORDER BY apgs.player_id, g.season_id
   `;
 

@@ -507,7 +507,7 @@ export async function upsertPlayerBoxScore(
       ${s.fieldGoalsMade}, ${s.fieldGoalsAttempted},
       ${s.threePointersMade}, ${s.threePointersAttempted},
       ${s.freeThrowsMade}, ${s.freeThrowsAttempted},
-      ${JSON.stringify(player)}::text::jsonb
+      NULL -- raw_payload: every field used is a column above; the full player JSON cost ~1 KB/row
     )
     ON CONFLICT (game_id, player_id) DO UPDATE SET
       starter       = EXCLUDED.starter,
