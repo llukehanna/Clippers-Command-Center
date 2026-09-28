@@ -7,6 +7,18 @@ import type { MediaItemInput } from './types.js';
 
 export const BSKY_MIN_LIKES = 10;
 const MENTION = /\bclippers\b/i;
+// "clippers" alone mostly finds nail and hair clippers; a post must also carry
+// a basketball cue to count as Clippers news.
+const BASKETBALL = new RegExp(
+  [
+    'nba', 'basketball', 'hoops', 'l\\.?\\s?a\\.? clippers', 'los angeles clippers', '#?clipper ?nation', '#clippers',
+    'kawhi', 'leonard', 'harden', 'zubac', 'ballmer', 'intuit dome', 'ty lue', 'coach lue', 'lob city',
+    'lakers', 'warriors', 'nuggets', 'suns', 'kings', 'mavs', 'mavericks', 'thunder', 'rockets', 'spurs',
+    'playoffs?', 'play-in', 'preseason', 'training camp', 'scrimmage', 'starting (five|lineup)', 'tip-?off',
+    'trade[ds]?', 'roster', 'two-way', 'draft', 'free agen(t|cy)', 'rebounds?', 'assists?', 'three-pointers?',
+  ].map((w) => `\\b${w}\\b`).join('|'),
+  'i'
+);
 
 export interface BlueskyCredentials { handle: string; appPassword: string }
 
@@ -24,7 +36,7 @@ export function blueskyToItems(resp: unknown): MediaItemInput[] {
   for (const p of posts) {
     const text = (p.record?.text ?? '').trim();
     const created = new Date(p.record?.createdAt ?? '');
-    if (!text || !MENTION.test(text) || Number.isNaN(created.getTime())) continue;
+    if (!text || !MENTION.test(text) || !BASKETBALL.test(text) || Number.isNaN(created.getTime())) continue;
     if ((p.likeCount ?? 0) < BSKY_MIN_LIKES) continue;
     const rkey = p.uri.split('/').pop();
     items.push({
