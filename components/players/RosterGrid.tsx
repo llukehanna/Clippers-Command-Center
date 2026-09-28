@@ -21,7 +21,7 @@ export function RosterCards({ players }: { players: RosterPlayer[] }) {
     <ul className="m-0 grid list-none grid-cols-2 gap-2.5 p-0 sm:grid-cols-3 lg:grid-cols-4 lg:gap-3 xl:grid-cols-5">
       {players.map((p, i) => (
         <li key={p.player_id} className="enter" style={{ ['--i' as string]: Math.min(i, 12) }}>
-          <Link href={`/players/${p.player_id}`} className="panel group block overflow-hidden transition-colors duration-300 hover:border-line-2">
+          <Link href={`/players/${p.player_id}`} prefetch={false} className="panel group block overflow-hidden transition-colors duration-300 hover:border-line-2">
             <PlayerAvatar name={p.display_name} nbaPlayerId={p.nba_person_id} variant="card" className="border-b border-line" />
             <div className="flex items-start justify-between gap-2 p-3.5">
               <div className="min-w-0">

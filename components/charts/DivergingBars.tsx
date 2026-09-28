@@ -54,7 +54,7 @@ export function DivergingBars({ data, height = 150, className }: { data: Divergi
           return (
             <li key={d.key} className="h-full">
               {d.href ? (
-                <Link href={d.href} title={d.title} aria-label={d.title} className={cls}>
+                <Link href={d.href} prefetch={false} title={d.title} aria-label={d.title} className={cls}>
                   {bar}
                 </Link>
               ) : (
