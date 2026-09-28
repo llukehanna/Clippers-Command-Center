@@ -11,6 +11,8 @@ import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { getLatestOdds } from '@/src/lib/odds';
 import { getDisplaySeasonId } from '@/src/lib/season';
+import { REGULAR_SEASON_SQL } from '@/src/lib/game-type';
+import { MINUTES_SECONDS_SQL } from '@/src/lib/minutes';
 
 // ─── Minutes parsing helper ───────────────────────────────────────────────────
 // game_player_box_scores.minutes is stored as TEXT, e.g. "34:12" or "PT34M12.00S".
@@ -95,10 +97,9 @@ interface InsightRow {
 
 export async function loadHome(): Promise<ApiResult> {
   try {
-    // Display season is derived from the DB (next scheduled LAC game within
-    // the lookahead window, else the latest season with a final LAC game) so
-    // record, last_10 and ratings always describe the same season — including
-    // through the offseason, when the calendar season has no games yet.
+    // Display season = latest season with a completed LAC game (see
+    // getDisplaySeasonId), so record, last_10 and ratings always describe the
+    // same season — including through the offseason and preseason window.
     const seasonId = await getDisplaySeasonId();
 
     // ── Parallel queries (all run concurrently for < 300ms SLA) ─────────────
@@ -112,6 +113,7 @@ export async function loadHome(): Promise<ApiResult> {
       recordRows,
       upcomingRows,
       playerTrendRows,
+      seedRows,
       insightRows,
     ] = await Promise.all([
       // 0: LAC team record (need abbreviation and internal id for opponent lookup)
@@ -121,18 +123,20 @@ export async function loadHome(): Promise<ApiResult> {
         WHERE nba_team_id = ${LAC_NBA_TEAM_ID}
       ` as Promise<TeamRow[]>,
 
-      // A: Most recent 10-game rolling_team_stats row for LAC in the display season
+      // A: Regular-season ratings for LAC in the display season, possession-
+      //    weighted (points per 100 possessions over the season). Matches the
+      //    record next to it; the rolling tables include playoff games.
       sql`
         SELECT
-          net_rating::float8 AS net_rating,
-          off_rating::float8 AS off_rating,
-          def_rating::float8 AS def_rating
-        FROM rolling_team_stats
-        WHERE team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
-          AND season_id = ${seasonId}
-          AND window_games = 10
-        ORDER BY as_of_game_date DESC
-        LIMIT 1
+          (SUM(a.net_rating * a.possessions) / NULLIF(SUM(a.possessions), 0))::float8 AS net_rating,
+          (SUM(a.off_rating * a.possessions) / NULLIF(SUM(a.possessions), 0))::float8 AS off_rating,
+          (SUM(a.def_rating * a.possessions) / NULLIF(SUM(a.possessions), 0))::float8 AS def_rating
+        FROM advanced_team_game_stats a
+        JOIN games g ON g.game_id = a.game_id
+        WHERE a.team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+          AND g.season_id = ${seasonId}
+          AND ${sql.unsafe(REGULAR_SEASON_SQL)}
+        HAVING COUNT(*) > 0
       ` as Promise<RatingsRow[]>,
 
       // B: Last 10 LAC final games in the display season
@@ -159,22 +163,24 @@ export async function loadHome(): Promise<ApiResult> {
         LIMIT 10
       ` as Promise<Last10GameRow[]>,
 
-      // C: Season W/L record (regular-season final games in the display season)
+      // C: Season W/L record (regular-season final games in the display season;
+      //    excludes the play-in, which is not flagged is_playoffs)
       sql`
         SELECT
-          home_team_id::text AS home_team_id,
-          away_team_id::text AS away_team_id,
-          home_score,
-          away_score
-        FROM games
+          g.home_team_id::text AS home_team_id,
+          g.away_team_id::text AS away_team_id,
+          g.home_score,
+          g.away_score
+        FROM games g
         WHERE (
-          home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
-          OR away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+          g.home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+          OR g.away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
         )
-          AND lower(status) = 'final'
-          AND NOT is_playoffs
-          AND season_id = ${seasonId}
-        ORDER BY game_date DESC
+          AND lower(g.status) = 'final'
+          AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
+          AND ${sql.unsafe(REGULAR_SEASON_SQL)}
+          AND g.season_id = ${seasonId}
+        ORDER BY g.game_date DESC
       ` as Promise<GameRecordRow[]>,
 
       // D: Upcoming schedule (future LAC games, ordered by date)
@@ -228,27 +234,41 @@ export async function loadHome(): Promise<ApiResult> {
               OR away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
             )
               AND lower(status) = 'final'
+              AND season_id = ${seasonId}
             ORDER BY game_date DESC LIMIT 10
           )
         GROUP BY p.player_id, p.display_name
-        ORDER BY AVG(
-          CASE
-            WHEN gpbs.minutes ~ '^PT'
-              THEN COALESCE(
-                (regexp_match(gpbs.minutes, 'PT(\d+(?:\.\d+)?)M'))[1]::float8,
-                0
-              ) + COALESCE(
-                (regexp_match(gpbs.minutes, 'M(\d+(?:\.\d+)?)S'))[1]::float8,
-                0
-              ) / 60
-            WHEN gpbs.minutes ~ '^\d+:\d+$'
-              THEN split_part(gpbs.minutes, ':', 1)::float8
-                   + split_part(gpbs.minutes, ':', 2)::float8 / 60
-            ELSE gpbs.minutes::float8
-          END
+        ORDER BY AVG(${sql.unsafe(MINUTES_SECONDS_SQL.replaceAll('pb.', 'gpbs.'))}
         ) DESC NULLS LAST
         LIMIT 8
       ` as Promise<PlayerTrendRow[]>,
+
+      // G: Conference seed — regular-season win% rank within LAC's conference
+      //    (league-wide games are in the DB). Null until every team has played.
+      sql`
+        WITH results AS (
+          SELECT g.home_team_id AS team_id, (g.home_score > g.away_score) AS won
+          FROM games g
+          WHERE g.season_id = ${seasonId} AND lower(g.status) = 'final'
+            AND g.home_score IS NOT NULL AND ${sql.unsafe(REGULAR_SEASON_SQL)}
+          UNION ALL
+          SELECT g.away_team_id, (g.away_score > g.home_score)
+          FROM games g
+          WHERE g.season_id = ${seasonId} AND lower(g.status) = 'final'
+            AND g.home_score IS NOT NULL AND ${sql.unsafe(REGULAR_SEASON_SQL)}
+        ), records AS (
+          SELECT r.team_id, t.conference, COUNT(*) FILTER (WHERE r.won)::float8 / COUNT(*) AS pct
+          FROM results r JOIN teams t ON t.team_id = r.team_id
+          GROUP BY r.team_id, t.conference
+        ), ranked AS (
+          SELECT team_id,
+                 RANK() OVER (PARTITION BY conference ORDER BY pct DESC)::int AS seed,
+                 COUNT(*) OVER (PARTITION BY conference)::int AS conf_teams
+          FROM records
+        )
+        SELECT seed, conf_teams FROM ranked
+        WHERE team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+      ` as Promise<{ seed: number; conf_teams: number }[]>,
 
       // F: Between-games insights
       sql`
@@ -320,7 +340,8 @@ export async function loadHome(): Promise<ApiResult> {
       team_abbr: 'LAC',
       season_id: seasonId,
       record: { wins: seasonWins, losses: seasonLosses },
-      conference_seed: null, // No standings table — never fabricate
+      // Only when the whole conference has games (15 teams) — never fabricate.
+      conference_seed: seedRows[0] && seedRows[0].conf_teams >= 15 ? seedRows[0].seed : null,
       net_rating: ratingsRow?.net_rating ?? null,
       off_rating: ratingsRow?.off_rating ?? null,
       def_rating: ratingsRow?.def_rating ?? null,

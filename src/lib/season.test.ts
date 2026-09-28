@@ -42,7 +42,7 @@ describe('getDisplaySeasonId', () => {
     await expect(getDisplaySeasonId()).resolves.toBe(2025);
     const text = (mockSql.mock.calls[0][0] as string[]).join('?');
     expect(text).toContain("lower(g.status) = 'final'");
-    expect(text).toContain("AT TIME ZONE 'America/New_York'");
+    expect(text).toContain('game_team_box_scores'); // completed games with a box score only
   });
 
   it('falls back to the calendar season when the DB has no LAC games', async () => {

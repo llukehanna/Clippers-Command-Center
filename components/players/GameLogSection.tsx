@@ -1,9 +1,13 @@
 import { BoxScoreTable, BoxScoreColumn, BoxScoreRow } from '@/components/box-score/BoxScoreTable'
+import { gameTypeLabel } from '@/src/lib/game-type'
 
 interface GameLogRow {
   game_id: string
   game_date: string
   opp: string
+  /** Team the player played for (a mid-season trade shows both teams) */
+  team?: string
+  game_type?: 'regular' | 'play_in' | 'playoffs'
   home_away: 'home' | 'away'
   MIN: string
   PTS: number
@@ -37,8 +41,15 @@ const GAME_LOG_COLUMNS: BoxScoreColumn[] = [
 export function GameLogSection({ gameLog }: GameLogSectionProps) {
   const rows: BoxScoreRow[] = gameLog.map((r) => ({
     id: r.game_id,
-    date: r.game_date,
-    opp: r.opp,
+    date: new Date(`${r.game_date}T12:00:00Z`).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', timeZone: 'UTC',
+    }),
+    date__sort: r.game_date,
+    opp: [
+      r.opp,
+      r.team && r.team !== 'LAC' ? `(w/ ${r.team})` : null,
+      r.game_type ? gameTypeLabel(r.game_type) : null,
+    ].filter(Boolean).join(' '),
     ha: r.home_away === 'home' ? 'H' : 'A',
     MIN: r.MIN,
     PTS: r.PTS,
