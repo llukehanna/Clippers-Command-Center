@@ -16,4 +16,5 @@ export interface MediaItemInput {
   thumbnailUrl: string | null;
   embedUrl: string | null;
   priority: number;             // lower wins de-duplication
+  feedRank: number | null;      // 1-based position in the source's hot list (Reddit only)
 }

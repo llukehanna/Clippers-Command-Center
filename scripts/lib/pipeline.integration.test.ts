@@ -90,7 +90,7 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
 
   it('stores media items: priority wins duplicates, engagement refreshes, old items pruned', async () => {
     const { upsertMediaItems, pruneMedia } = await import('./media/store');
-    const base = { kind: 'article' as const, author: null, engagement: null, comments: null, thumbnailUrl: null, embedUrl: null };
+    const base = { kind: 'article' as const, author: null, engagement: null, comments: null, thumbnailUrl: null, embedUrl: null, feedRank: null };
     const now = new Date();
     await upsertMediaItems([
       { ...base, source: 'Google News', url: 'https://g/1', dedupKey: 'article:clippers win', title: 'Clippers win', publishedAt: now.toISOString(), priority: 2 },
@@ -116,7 +116,7 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
 
   it('stores only http(s) media URLs: bad item URLs are dropped, bad thumbnail/embed URLs nulled', async () => {
     const { upsertMediaItems } = await import('./media/store');
-    const base = { kind: 'tweet' as const, source: 'r/LAClippers', author: null, engagement: null, comments: null, priority: 1, publishedAt: new Date().toISOString() };
+    const base = { kind: 'tweet' as const, source: 'r/LAClippers', author: null, engagement: null, comments: null, priority: 1, publishedAt: new Date().toISOString(), feedRank: null };
     const written = await upsertMediaItems([
       { ...base, url: 'javascript:alert(1)', dedupKey: 'urltest:bad', title: 'Bad', thumbnailUrl: null, embedUrl: null },
       { ...base, url: 'https://www.reddit.com/r/LAClippers/comments/ok/', dedupKey: 'urltest:ok', title: 'OK',
@@ -133,6 +133,29 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     ]);
     expect(await upsertMediaItems([{ ...base, url: 'ftp://x', dedupKey: 'urltest:ftp', title: 'FTP', thumbnailUrl: null, embedUrl: null }])).toBe(0);
     await sql`DELETE FROM media_items WHERE dedup_key LIKE 'urltest:%'`;
+  });
+
+  it('clearFeedRanks nulls out stale ranks before the next Reddit upsert', async () => {
+    const { upsertMediaItems, clearFeedRanks } = await import('./media/store');
+    const base = {
+      kind: 'reddit' as const, source: 'r/LAClippers', author: null, engagement: null, comments: null,
+      thumbnailUrl: null, embedUrl: null, priority: 1, publishedAt: new Date().toISOString(),
+    };
+    await upsertMediaItems([
+      { ...base, url: 'https://www.reddit.com/r/LAClippers/comments/ranktest1/', dedupKey: 'ranktest:1', title: 'One', feedRank: 1 },
+      { ...base, url: 'https://www.reddit.com/r/LAClippers/comments/ranktest2/', dedupKey: 'ranktest:2', title: 'Two', feedRank: 2 },
+    ]);
+    await clearFeedRanks('r/LAClippers');
+    await upsertMediaItems([
+      { ...base, url: 'https://www.reddit.com/r/LAClippers/comments/ranktest1/', dedupKey: 'ranktest:1', title: 'One', feedRank: 1 },
+    ]);
+    const rows = await sql<{ dedup_key: string; feed_rank: number | null }[]>`
+      SELECT dedup_key, feed_rank FROM media_items WHERE dedup_key LIKE 'ranktest:%' ORDER BY dedup_key`;
+    expect(rows).toEqual([
+      { dedup_key: 'ranktest:1', feed_rank: 1 },
+      { dedup_key: 'ranktest:2', feed_rank: null },
+    ]);
+    await sql`DELETE FROM media_items WHERE dedup_key LIKE 'ranktest:%'`;
   });
 
   async function activeInsights() {

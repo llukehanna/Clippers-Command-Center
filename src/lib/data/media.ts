@@ -30,7 +30,7 @@ export async function loadMedia(url: URL): Promise<ApiResult> {
         ? Promise.resolve<Row[]>([])
         : sql<Row[]>`
             SELECT media_id::text AS media_id, kind, source, url, title, author, published_at,
-                   engagement, comments, thumbnail_url, embed_url
+                   engagement, comments, thumbnail_url, embed_url, feed_rank
             FROM media_items
             WHERE published_at > now() - interval '7 days'
               AND kind = 'article'
@@ -41,7 +41,7 @@ export async function loadMedia(url: URL): Promise<ApiResult> {
         ? Promise.resolve<Row[]>([])
         : sql<Row[]>`
             SELECT media_id::text AS media_id, kind, source, url, title, author, published_at,
-                   engagement, comments, thumbnail_url, embed_url
+                   engagement, comments, thumbnail_url, embed_url, feed_rank
             FROM media_items
             WHERE published_at > now() - interval '7 days'
               AND kind <> 'article'

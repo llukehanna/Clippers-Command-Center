@@ -36,7 +36,7 @@ export function blueskyToItems(resp: unknown): MediaItemInput[] {
       publishedAt: created.toISOString(),
       engagement: (p.likeCount ?? 0) + (p.repostCount ?? 0),
       comments: p.replyCount ?? null,
-      thumbnailUrl: null, embedUrl: null, priority: 1,
+      thumbnailUrl: null, embedUrl: null, priority: 1, feedRank: null,
     });
   }
   return items;

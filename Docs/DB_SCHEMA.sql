@@ -546,6 +546,7 @@ CREATE TABLE IF NOT EXISTS media_items (
   thumbnail_url TEXT,
   embed_url     TEXT,                      -- tweet URL for kind 'tweet'
   priority      SMALLINT NOT NULL DEFAULT 1, -- lower wins de-duplication (1 direct, 2 aggregator)
+  feed_rank     SMALLINT,                  -- 1 = top of the source's hot list at last fetch (Reddit only)
   fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_media_kind_published ON media_items (kind, published_at DESC);

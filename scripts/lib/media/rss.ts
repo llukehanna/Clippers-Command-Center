@@ -34,18 +34,20 @@ export const FEEDS: FeedConfig[] = [
 ];
 
 // parseTagValue: false keeps every value a string (a title "007" stays "007").
-const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', textNodeName: '#text', htmlEntities: true, parseTagValue: false });
+// Exported so reddit.ts's RSS path parses Atom the same way (same entity
+// handling, same attribute prefix) without a second XMLParser instance.
+export const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', textNodeName: '#text', htmlEntities: true, parseTagValue: false });
 const MENTION = /\bclippers\b/i;
 
-type Node = Record<string, unknown>;
-const list = <T>(v: T | T[] | undefined | null): T[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
-function text(v: unknown): string {
+export type Node = Record<string, unknown>;
+export const list = <T>(v: T | T[] | undefined | null): T[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
+export function text(v: unknown): string {
   if (v == null) return '';
   if (typeof v === 'object') return text((v as Node)['#text']);
   return String(v).trim();
 }
-const stripHtml = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-const attr = (v: unknown, name: string): string | null => {
+export const stripHtml = (s: string) => s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+export const attr = (v: unknown, name: string): string | null => {
   const n = list(v as Node | Node[])[0];
   const a = n?.[`@_${name}`];
   return typeof a === 'string' && a ? a : null;
@@ -115,7 +117,7 @@ export function parseFeed(xml: string, feed: FeedConfig): MediaItemInput[] {
     items.push({
       kind: 'article', source, url: e.link, dedupKey: key ? `article:${key}` : `article:url:${e.link}`, title,
       author: e.author, publishedAt: published.toISOString(), engagement: null, comments: null,
-      thumbnailUrl: e.thumb, embedUrl: null, priority: feed.priority,
+      thumbnailUrl: e.thumb, embedUrl: null, priority: feed.priority, feedRank: null,
     });
   }
   return items;
