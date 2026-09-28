@@ -42,3 +42,5 @@ jobs:
         run: node node_modules/.bin/tsx scripts/game-night.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LIVE_HUB_URL: ${{ vars.LIVE_HUB_URL }}
+          LIVE_HUB_SECRET: ${{ secrets.LIVE_HUB_SECRET }}
