@@ -100,4 +100,10 @@ describe('livePollInterval', () => {
       expect(livePollInterval(undefined, 'chip')).toBe(12_000)
     })
   })
+
+  it('polls every 30 s before tip when the runner is already watching a game', () => {
+    expect(livePollInterval({ state: 'NO_ACTIVE_GAME', upcoming: { nba_game_id: '22600093' } }, 'cadence')).toBe(30_000)
+    expect(livePollInterval({ state: 'NO_ACTIVE_GAME', upcoming: { nba_game_id: '22600093' } }, 'chip')).toBe(30_000)
+    expect(livePollInterval({ state: 'NO_ACTIVE_GAME', upcoming: null }, 'cadence')).toBe(300_000)
+  })
 })
