@@ -102,13 +102,57 @@ describe('buildLiveState', () => {
   });
 });
 
+describe('buildLiveState — observed_at never dates a basket early', () => {
+  it("is the newest play's time when the header score matches play-by-play", () => {
+    const actions = [action(1), action(2, { scoreHome: '4', scoreAway: '0' })];
+    const body = buildLiveState(inputs({ box: box({ home: 4, away: 0 }), actions }));
+    expect(body.observed_at).toBe(actions[1].timeActual);
+  });
+
+  it('is the fetch time when the box score is ahead of play-by-play', () => {
+    // The box already has the next basket (6–0); play-by-play still ends at 4–0.
+    // Dating the doc by action 2 would let a spoiler delay show the 6–0 early.
+    const actions = [action(1), action(2, { scoreHome: '4', scoreAway: '0' })];
+    const body = buildLiveState(inputs({ box: box({ home: 6, away: 0 }), actions }));
+    expect(body.home_score).toBe(6);
+    expect(body.observed_at).toBe(new Date(NOW).toISOString());
+  });
+
+  it('reads the newest play with readable scores, skipping ones without', () => {
+    const actions = [
+      action(1, { scoreHome: '4', scoreAway: '3' }),
+      action(2, { scoreHome: '', scoreAway: '' }),
+    ];
+    const body = buildLiveState(inputs({ box: box({ home: 4, away: 3 }), actions }));
+    expect(body.observed_at).toBe(actions[1].timeActual);
+  });
+
+  it('is the fetch time when the scoreboard shows points but play-by-play has none yet', () => {
+    const body = buildLiveState(inputs({ sbGame: sbGame({ status: 2, home: 2, away: 0 }) }));
+    expect(body.observed_at).toBe(new Date(NOW).toISOString());
+  });
+});
+
 describe('fingerprint', () => {
   it('ignores fetched_at and next_ms, but not phase or content', () => {
-    const a = buildLiveState(inputs({ actions: [action(1)] }));
+    // Header and play-by-play agree (2–0), so observed_at is the play's time.
+    const a = buildLiveState(inputs({ box: box({ home: 2, away: 0 }), actions: [action(1)] }));
+    expect(a.observed_at).toBe(action(1).timeActual);
     expect(fingerprint({ ...a, fetched_at: 'later', cadence: { phase: 'LIVE', next_ms: 5000 } })).toBe(fingerprint(a));
     expect(fingerprint({ ...a, cadence: { phase: 'STOPPAGE', next_ms: 3000 } })).not.toBe(fingerprint(a));
-    const b = buildLiveState(inputs({ actions: [action(1), action(2)] }));
+    const b = buildLiveState(inputs({ box: box({ home: 2, away: 0 }), actions: [action(1), action(2)] }));
     expect(fingerprint(b)).not.toBe(fingerprint(a));
+  });
+
+  it('does not change on every tick while the box score is ahead of play-by-play (observed_at = fetch time)', () => {
+    const over = { box: box({ home: 6, away: 0 }), actions: [action(1, { scoreHome: '4', scoreAway: '0' })] };
+    const a = buildLiveState(inputs(over));
+    const b = buildLiveState(inputs({ ...over, now: NOW + 3_000 }));
+    expect(b.observed_at).not.toBe(a.observed_at);
+    expect(fingerprint(b)).toBe(fingerprint(a));
+    // Once play-by-play catches up, the real play time is new content.
+    const c = buildLiveState(inputs({ ...over, actions: [...over.actions, action(2, { scoreHome: '6', scoreAway: '0' })] }));
+    expect(fingerprint(c)).not.toBe(fingerprint(a));
   });
 });
 
