@@ -14,9 +14,13 @@ import {
   DELAY_STORAGE_KEY,
   offsetSample,
   pageFramePlayed,
+  pageTotalScore,
   parseStoredDelay,
+  parseStoredOffset,
   pickFrame,
+  pickOffset,
   pushFramePlayed,
+  SYNC_OFFSET_STORAGE_KEY,
   syncDelay,
   type Frame,
 } from '@/src/lib/live/spoiler'
@@ -99,15 +103,30 @@ export function useLiveStream(): LiveStream {
       return 0
     }
   })
-  const setDelay = React.useCallback((ms: number) => {
-    const v = clampDelay(ms)
-    setDelayMs(v)
+  // The clock offset a synced delay was measured under (null for a preset or
+  // the slider): frames are picked with the larger of it and the current
+  // estimate, so a later, smaller estimate can't run the page early.
+  const [offsetAtSync, setOffsetAtSync] = React.useState<number | null>(() => {
+    if (typeof window === 'undefined') return null
     try {
-      window.localStorage.setItem(DELAY_STORAGE_KEY, String(v))
+      return parseStoredOffset(window.localStorage.getItem(SYNC_OFFSET_STORAGE_KEY))
+    } catch {
+      return null
+    }
+  })
+  const saveDelay = React.useCallback((ms: number, syncOffset: number | null) => {
+    setDelayMs(ms)
+    setOffsetAtSync(syncOffset)
+    try {
+      window.localStorage.setItem(DELAY_STORAGE_KEY, String(ms))
+      if (syncOffset === null) window.localStorage.removeItem(SYNC_OFFSET_STORAGE_KEY)
+      else window.localStorage.setItem(SYNC_OFFSET_STORAGE_KEY, String(syncOffset))
     } catch {
       // Private mode or blocked storage: the delay just won't persist.
     }
   }, [])
+  // A preset or the slider: whole seconds to the nearest, no synced offset.
+  const setDelay = React.useCallback((ms: number) => saveDelay(clampDelay(ms), null), [saveDelay])
   // A delayed page steps through its buffer once a second.
   const tickMs = delayMs > 0 ? 1_000 : 5_000
   const now = useNow(tickMs)?.getTime() ?? null
@@ -345,6 +364,8 @@ export function useLiveStream(): LiveStream {
   // the value as mutable once pickFrame receives it and can't keep `sync`
   // memoized (react-hooks/preserve-manual-memoization).
   const offset = Number(clockOffset([...hubSamples, ...pollSamples]))
+  // What frames are picked with: never less than the offset a synced delay was measured under.
+  const frameOffset = Number(pickOffset(offset, offsetAtSync))
 
   // Page frames are keyed by the on-screen game's own id: a game /api/live
   // serves without an NBA id (no push, gameId null) is still delayed.
@@ -378,11 +399,11 @@ export function useLiveStream(): LiveStream {
     if (now === null) {
       out = undefined
     } else if (pushLive && base && gameId && pushFrames?.key === gameId) {
-      const f = pickFrame(pushFrames.list, now, offset, delayMs)
+      const f = pickFrame(pushFrames.list, now, frameOffset, delayMs)
       if (f) out = overlayLiveDoc(base, f.value)
       else holding = true
     } else {
-      const f = pageFrames?.key === pageKey ? pickFrame(pageFrames.list, now, offset, delayMs) : null
+      const f = pageFrames?.key === pageKey ? pickFrame(pageFrames.list, now, frameOffset, delayMs) : null
       if (f) out = f.value
       else holding = true
     }
@@ -395,11 +416,12 @@ export function useLiveStream(): LiveStream {
       pushLive && gameId && pushFrames?.key === gameId
         ? syncDelay(pushFrames.list, tap, offset, (doc) => doc.home_score + doc.away_score)
         : pageKey && pageFrames?.key === pageKey
-          ? syncDelay(pageFrames.list, tap, offset, (p) => (p.game ? (p.game.home.score ?? 0) + (p.game.away.score ?? 0) : null))
+          ? syncDelay(pageFrames.list, tap, offset, pageTotalScore)
           : null
-    if (d !== null) setDelay(d)
+    // Already whole seconds (rounded up); kept with the offset it was measured under.
+    if (d !== null) saveDelay(d, offset)
     return d
-  }, [offset, pushLive, pushFrames, pageFrames, gameId, pageKey, setDelay])
+  }, [offset, pushLive, pushFrames, pageFrames, gameId, pageKey, saveDelay])
 
   return {
     data: out,
