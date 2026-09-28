@@ -3,6 +3,7 @@
   "name": "ccc-live-hub",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
+  "routes": [{ "pattern": "live.lukeghanna.com", "custom_domain": true }],
   "durable_objects": {
     "bindings": [{ "name": "GAME_ROOM", "class_name": "GameRoom" }]
   },
