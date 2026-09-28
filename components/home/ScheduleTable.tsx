@@ -6,7 +6,6 @@
 
 import { BoxScoreTable, BoxScoreColumn, BoxScoreRow } from '@/components/box-score/BoxScoreTable'
 import { formatGameDate, formatGameTime } from '@/src/lib/home-utils'
-import { formatSignedLine } from '@/src/lib/format'
 
 interface GameOdds {
   spread: string | null
@@ -53,8 +52,8 @@ export function ScheduleTable({ games }: ScheduleTableProps) {
       date: formatGameDate(g.game_date),
       time: formatGameTime(g.start_time_utc),
       location: g.home_away === 'home' ? 'Home' : 'Away',
-      spread: formatSignedLine(g.odds?.spread) ?? '—',
-      ml: formatSignedLine(g.odds?.moneyline) ?? '—',
+      spread: g.odds?.spread ?? '—',
+      ml: g.odds?.moneyline ?? '—',
       ou: g.odds?.over_under ?? '—',
     }
 

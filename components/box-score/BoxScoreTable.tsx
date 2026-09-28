@@ -68,10 +68,8 @@ export function BoxScoreTable({
     const totals = rows.filter(isTotalsRow)
     if (!sortKey) return [...body, ...totals]
     const sorted = [...body].sort((a, b) => {
-      // A row may carry `<key>__sort` to sort a display value by something else
-      // (e.g. "Feb 16" by its ISO date).
-      const av = a[`${sortKey}__sort`] ?? a[sortKey]
-      const bv = b[`${sortKey}__sort`] ?? b[sortKey]
+      const av = a[sortKey]
+      const bv = b[sortKey]
       // Nulls last
       if (av == null && bv == null) return 0
       if (av == null) return 1

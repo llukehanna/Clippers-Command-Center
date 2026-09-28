@@ -1,16 +1,21 @@
 import { RosterViewToggle } from '@/components/players/RosterViewToggle'
 import type { Player } from '@/components/players/RosterViewToggle'
 import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
-import { loadPlayers } from '@/src/lib/data/players'
-import { okBody } from '@/src/lib/data/result'
-
-// Rendered per request: data is read straight from the database.
-export const dynamic = 'force-dynamic'
 
 export default async function PlayersPage() {
-  const data = okBody(await loadPlayers(new URL('http://internal/api/players')))
-  const players: Player[] = data?.players ?? []
-  const seasonId: number | null = typeof data?.season_id === 'number' ? data.season_id : null
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
+  let players: Player[] = []
+  let seasonId: number | null = null
+  try {
+    const res = await fetch(`${baseUrl}/api/players`, { cache: 'no-store' })
+    if (res.ok) {
+      const data = await res.json()
+      players = data.players ?? []
+      seasonId = typeof data.season_id === 'number' ? data.season_id : null
+    }
+  } catch {
+    // Graceful degradation — render empty roster, don't throw
+  }
 
   // Prefer the season the API actually scoped the roster to; fall back to the
   // calendar (rolls over July 1) if the API didn't say.

@@ -2,12 +2,6 @@ import { SeasonControls } from '@/components/history/SeasonControls'
 import { SeasonSummaryBar } from '@/components/history/SeasonSummaryBar'
 import { GameListTable } from '@/components/history/GameListTable'
 import type { GameItem } from '@/src/lib/history-utils'
-import { loadHistorySeasons } from '@/src/lib/data/history-seasons'
-import { loadHistoryGames } from '@/src/lib/data/history-games'
-import { okBody } from '@/src/lib/data/result'
-
-// Rendered per request: data is read straight from the database.
-export const dynamic = 'force-dynamic'
 
 export default async function HistoryPage({
   searchParams,
@@ -15,23 +9,27 @@ export default async function HistoryPage({
   searchParams: Promise<{ season_id?: string; home_away?: string; result?: string }>
 }) {
   const params = await searchParams
-  // 1. Available seasons
-  const seasonsData = okBody(await loadHistorySeasons())
-  const seasons: Array<{ season_id: number; label: string }> = seasonsData?.seasons ?? []
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
+
+  // 1. Fetch available seasons
+  const seasonsRes = await fetch(`${baseUrl}/api/history/seasons`, { cache: 'no-store' })
+  const seasonsData = await seasonsRes.json()
+  const seasons: Array<{ season_id: number; label: string }> = seasonsData.seasons ?? []
 
   // 2. Default to most recent season (seasons are ordered ascending — last is newest)
   const seasonId = params.season_id ?? String(seasons.at(-1)?.season_id ?? '')
 
   // 3. Fetch ALL games for the season (unfiltered, limit=200) — used for W-L summary AND filtered list
   let allGames: GameItem[] = []
-  let netRating: number | null = null
   if (seasonId) {
-    const url = new URL('http://internal/api/history/games')
-    url.searchParams.set('season_id', seasonId)
-    url.searchParams.set('limit', '200')
-    const gamesData = okBody(await loadHistoryGames(url))
-    allGames = gamesData?.games ?? []
-    netRating = gamesData?.season_summary?.net_rating ?? null
+    const gamesRes = await fetch(
+      `${baseUrl}/api/history/games?season_id=${seasonId}&limit=200`,
+      { cache: 'no-store' }
+    )
+    if (gamesRes.ok) {
+      const gamesData = await gamesRes.json()
+      allGames = gamesData.games ?? []
+    }
   }
 
   // 4. Apply display filters in RSC (W-L summary always uses allGames)
@@ -45,17 +43,16 @@ export default async function HistoryPage({
 
   // Show a data gap notice when fewer than 30 games are in the DB for a season
   // (an NBA regular season has 82 games — low count indicates missing historical data)
-  const regularSeasonGames = allGames.filter((g) => (g.game_type ?? 'regular') === 'regular').length
-  const showDataGapNotice = regularSeasonGames > 0 && regularSeasonGames < 30
+  const showDataGapNotice = allGames.length > 0 && allGames.length < 30
 
   return (
     <div className="px-6 py-6 max-w-[1440px] mx-auto space-y-4">
       <h1 className="text-xl font-semibold text-foreground">Historical Games</h1>
       <SeasonControls seasons={seasons} currentSeasonId={seasonId} />
-      <SeasonSummaryBar games={allGames} netRating={netRating} />
+      <SeasonSummaryBar games={allGames} />
       {showDataGapNotice && (
         <p className="text-[0.8125rem] text-muted-foreground">
-          Showing {regularSeasonGames} of ~82 season games — historical game data not yet fully ingested.
+          Showing {allGames.length} of ~82 season games — historical game data not yet fully ingested.
         </p>
       )}
       <GameListTable games={filteredGames} />

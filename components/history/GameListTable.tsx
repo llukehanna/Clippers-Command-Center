@@ -3,8 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { GameItem } from '@/src/lib/history-utils'
-import { overtimeLabel } from '@/src/lib/history-utils'
-import { gameTypeLabel } from '@/src/lib/game-type'
+import { detectOT } from '@/src/lib/history-utils'
 
 export type { GameItem }
 
@@ -75,11 +74,6 @@ export function GameListTable({ games }: GameListTableProps) {
               </td>
               <td className="text-[0.8125rem] text-foreground px-4 font-medium">
                 {g.home_away === 'away' ? '@ ' : 'vs '}{g.opponent_abbr}
-                {g.game_type && gameTypeLabel(g.game_type) && (
-                  <span className="ml-2 inline-block text-[0.625rem] font-semibold text-muted-foreground tracking-wider px-1.5 py-0.5 rounded border border-white/[0.08]">
-                    {gameTypeLabel(g.game_type)}
-                  </span>
-                )}
               </td>
               <td className="text-[0.8125rem] text-muted-foreground px-4">
                 {g.home_away === 'home' ? 'Home' : 'Away'}
@@ -88,8 +82,8 @@ export function GameListTable({ games }: GameListTableProps) {
                 {g.final_score
                   ? `${g.final_score.team}\u2013${g.final_score.opp}`
                   : '\u2014'}
-                {g.final_score && overtimeLabel(g) && (
-                  <span className="ml-1 text-[0.625rem] text-muted-foreground font-medium">{overtimeLabel(g)}</span>
+                {g.final_score && detectOT(g.status) && (
+                  <span className="ml-1 text-[0.625rem] text-muted-foreground font-medium">OT</span>
                 )}
               </td>
               <td className="text-[0.8125rem] px-4 text-center">

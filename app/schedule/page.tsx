@@ -1,13 +1,11 @@
 import { NextGameHero } from '@/components/home/NextGameHero'
 import { ScheduleTable } from '@/components/home/ScheduleTable'
-import { loadSchedule } from '@/src/lib/data/schedule'
-import { okBody } from '@/src/lib/data/result'
-
-// Rendered per request: data is read straight from the database.
-export const dynamic = 'force-dynamic'
 
 async function getSchedule() {
-  return okBody(await loadSchedule(new URL('http://internal/api/schedule')))
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
+  const res = await fetch(`${baseUrl}/api/schedule`, { cache: 'no-store' })
+  if (!res.ok) return null
+  return res.json()
 }
 
 export default async function SchedulePage() {
