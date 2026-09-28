@@ -23,6 +23,19 @@ describe('blueskyToItems', () => {
   it('returns nothing for an unexpected payload', () => {
     expect(blueskyToItems({})).toEqual([]);
   });
+  it('keeps only basketball Clippers posts, not nail or hair clippers', () => {
+    const t = (text: string, i: number) =>
+      p({ uri: `at://did:plc:abc/app.bsky.feed.post/${i}`, record: { text, createdAt: '2026-10-20T01:00:00.000Z' } });
+    const items = blueskyToItems({ posts: [
+      t('I bought Japanese steel nail clippers and honestly why have I slummed it', 1),
+      t('My client had a barber fetish. The sound of the clippers could make him melt', 2),
+      t('Kawhi looked sharp in the Clippers scrimmage today', 3),
+      t('Big night for the LA Clippers', 4),
+      t('Clippers sign a two-way guard ahead of training camp #ClipperNation', 5),
+      t('Clippers vs Nuggets tonight, tip-off at 7:30', 6),
+    ] });
+    expect(items.map((i) => i.dedupKey.split('/').pop())).toEqual(['3', '4', '5', '6']);
+  });
 });
 
 describe('fetchBlueskyTop', () => {
