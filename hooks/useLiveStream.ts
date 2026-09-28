@@ -20,6 +20,7 @@ import {
   pickSource,
   pushIsCurrent,
   reconnectDelay,
+  socketIsSilent,
   streamGameId,
   type FeedSource,
 } from '@/src/lib/live/stream'
@@ -42,10 +43,13 @@ export interface LiveStream {
   latency: LatencySample | null
 }
 
+/** How often the push watchdog checks that the hub is still talking. */
+const WATCHDOG_CHECK_MS = 5_000
+
 /**
  * /live's connection manager (spec §6.2): WebSocket push from the live hub,
  * /api/live polling underneath (slowed to the 30 s chip budget while push is
- * fresh), and ESPN's public scoreboard if our runner goes stale.
+ * live), and ESPN's public scoreboard if our runner goes stale.
  */
 export function useLiveStream(): LiveStream {
   const now = useNow(5_000)?.getTime() ?? null
@@ -56,9 +60,13 @@ export function useLiveStream(): LiveStream {
   // replay can't roll the page back to older states.
   const lastDoc = React.useRef<{ gameId: string; doc: LiveStateDoc } | null>(null)
 
-  // Freshness comes from when the runner built the doc, never arrival time.
-  const pushFresh = now !== null && isPushFresh(pushed?.doc, now)
-  const { data: base, error, mutate } = useLiveData({ follow: pushFresh ? 'chip' : 'cadence' })
+  // True only while a hub socket is open and still answering.
+  const [connected, setConnected] = React.useState(false)
+  // The poll budget follows the gated "push is live" value below. It needs the
+  // polled payload to compute, so it's carried over from the previous render
+  // (React's "store information from previous renders" pattern).
+  const [followChip, setFollowChip] = React.useState(false)
+  const { data: base, error, mutate } = useLiveData({ follow: followChip ? 'chip' : 'cadence' })
   const gameId = streamGameId(base)
   const visible = useVisibleWithGrace(HIDDEN_CLOSE_MS)
   const pushDoc = pushed && pushed.gameId === gameId ? pushed.doc : null
@@ -71,6 +79,7 @@ export function useLiveStream(): LiveStream {
     let attempt = 0
     let stopped = false
     let retry: ReturnType<typeof setTimeout> | undefined
+    let lastHeard = Date.now()
     const drops: number[] = []
 
     const scheduleRetry = () => {
@@ -79,7 +88,25 @@ export function useLiveStream(): LiveStream {
       retry = setTimeout(connect, isFlapping(drops, Date.now()) ? FLAP_PAUSE_MS : reconnectDelay(attempt++))
     }
 
+    // One exit path for a closed, errored or silent socket: stop counting it
+    // as live, refresh the poll tier right away, and reconnect.
+    const drop = (socket: WebSocket) => {
+      if (socket !== ws) return
+      socket.onopen = socket.onmessage = socket.onclose = socket.onerror = null
+      ws = null
+      try {
+        socket.close()
+      } catch {
+        // Already closed.
+      }
+      setConnected(false)
+      if (stopped) return
+      void mutate()
+      scheduleRetry()
+    }
+
     const connect = () => {
+      lastHeard = Date.now()
       try {
         ws = new WebSocket(hubSocketUrl(HUB_URL, gameId))
       } catch {
@@ -91,8 +118,11 @@ export function useLiveStream(): LiveStream {
       const socket = ws
       socket.onopen = () => {
         attempt = 0
+        lastHeard = Date.now()
+        setConnected(true)
       }
       socket.onmessage = (event) => {
+        lastHeard = Date.now()
         if (typeof event.data !== 'string' || event.data === 'pong') return
         let msg: LiveMessage
         try {
@@ -113,20 +143,28 @@ export function useLiveStream(): LiveStream {
           received_at: Date.now(),
         })
       }
-      socket.onclose = scheduleRetry
+      socket.onclose = () => drop(socket)
+      socket.onerror = () => drop(socket)
     }
 
     connect()
     const ping = setInterval(() => {
       if (ws?.readyState === WebSocket.OPEN) ws.send('ping')
     }, PING_EVERY_MS)
+    // A half-open connection (sleeping laptop, dead NAT mapping) can stay
+    // "open" for minutes, and a connect attempt can hang. No message and no
+    // pong for two ping intervals: close it and take the normal reconnect path.
+    const watchdog = setInterval(() => {
+      if (ws && socketIsSilent(lastHeard, Date.now())) drop(ws)
+    }, WATCHDOG_CHECK_MS)
     return () => {
       stopped = true
       clearTimeout(retry)
       clearInterval(ping)
-      ws?.close()
+      clearInterval(watchdog)
+      if (ws) drop(ws)
     }
-  }, [gameId, visible])
+  }, [gameId, visible, mutate])
 
   // Pre-tip → tip: the hub knows the game started before /api/live does.
   // Refetch every few seconds (the pre-tip response is CDN-cached for only
@@ -139,8 +177,12 @@ export function useLiveStream(): LiveStream {
     return () => clearInterval(id)
   }, [tipped, mutate])
 
-  // Push is overlaid only while fresh and at least as new as the polled snapshot.
-  const pushLive = Boolean(base && pushDoc && now !== null && isPushFresh(pushDoc, now) && pushIsCurrent(pushDoc, base))
+  // Push is overlaid only while the socket is up, the doc is fresh, and it's
+  // at least as new as the polled snapshot (strictly newer while delayed).
+  const pushLive = Boolean(
+    connected && base && pushDoc && now !== null && isPushFresh(pushDoc, now) && pushIsCurrent(pushDoc, base),
+  )
+  if (pushLive !== followChip) setFollowChip(pushLive)
 
   // Tier 3: ESPN backup while our runner is stale.
   const backupWanted = needsBackup(base, pushLive)
