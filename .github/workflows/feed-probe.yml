@@ -1,0 +1,47 @@
+name: Feed probe (spike)
+
+# Live v2 spike (Docs/superpowers/specs/2026-09-27-live-v2-realtime-design.md §10).
+# Polls the NBA CDN and ESPN live feeds once a second during a live game and
+# uploads the raw records plus a summary. Triggered manually (needs this file on
+# main) or by pushing any probe/** branch (auto-discovers the first live game).
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: 'Minutes to probe'
+        default: '20'
+      nba_game:
+        description: 'NBA game id (10 chars) or auto'
+        default: 'auto'
+  push:
+    branches: ['probe/**']
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Probe feeds
+        run: node node_modules/.bin/tsx scripts/dev/feed-probe.ts --minutes="${MINUTES}" --nba-game="${GAME}" --out=feed-probe.ndjson
+        env:
+          MINUTES: ${{ inputs.minutes || '20' }}
+          GAME: ${{ inputs.nba_game || 'auto' }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: feed-probe
+          path: feed-probe.ndjson
