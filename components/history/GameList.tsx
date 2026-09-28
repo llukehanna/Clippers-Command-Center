@@ -28,7 +28,7 @@ function Row({ g }: { g: PlayedGame }) {
         <span className="hidden font-mono text-[11.5px] text-dim sm:block">{g.home_away === 'home' ? 'Home' : 'Away'}</span>
         <span className="flex items-center justify-end gap-2.5 sm:justify-start">
           <ResultBadge result={g.result} />
-          <span className="text-[15px] font-semibold tabular-nums">
+          <span className="min-w-[68px] text-right text-[15px] font-semibold tabular-nums sm:text-left">
             {g.final_score.team}–{g.final_score.opp}
           </span>
           {g.ot && <Chip>OT</Chip>}

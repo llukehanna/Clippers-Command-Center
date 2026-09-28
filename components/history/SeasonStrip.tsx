@@ -65,7 +65,7 @@ export function SeasonStrip({ games, streaks }: { games: PlayedGame[]; streaks: 
         <span>
           Longest losing streak <span className="text-neg">{streaks.longestLoss}</span>
         </span>
-        {streaks.current && (
+        {streaks.current && streaks.current.length >= 2 && (
           <span>
             Latest{' '}
             <span className={streaks.current.kind === 'W' ? 'text-pos' : 'text-neg'}>
