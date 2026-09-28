@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { cn } from '@/lib/utils'
+import { useLens } from '@/hooks/useLens'
 import { segmentedClasses } from './segmented-styles'
 
 interface Option<T extends string> {
@@ -18,11 +19,14 @@ interface SegmentedProps<T extends string> {
   className?: string
 }
 
-/** Pill segmented control (client state). For URL-driven state use SegmentedLinks. */
+/** Pill segmented control (client state) with a sliding glass lens. For URL state use SegmentedLinks. */
 export function Segmented<T extends string>({ value, options, ariaLabel, onChange, size = 'md', className }: SegmentedProps<T>) {
-  const { item, active, idle, group } = segmentedClasses(size)
+  const { item, active, idle, group, lens } = segmentedClasses(size)
+  const ref = React.useRef<HTMLDivElement>(null)
+  const lensStyle = useLens(ref, value)
   return (
-    <div role="group" aria-label={ariaLabel} className={cn(group, className)}>
+    <div ref={ref} role="group" aria-label={ariaLabel} className={cn(group, className)}>
+      <span aria-hidden className={lens} style={lensStyle} />
       {options.map((opt) => {
         const isActive = opt.value === value
         return (
@@ -30,6 +34,7 @@ export function Segmented<T extends string>({ value, options, ariaLabel, onChang
             key={opt.value}
             type="button"
             aria-pressed={isActive}
+            data-active={isActive}
             onClick={() => onChange?.(opt.value)}
             className={cn(item, isActive ? active : idle)}
           >
