@@ -13,15 +13,23 @@ const teamIdCache = new Map<string, string | null>();
 async function teamIdByTricode(tricode: string): Promise<string | null> {
   if (!teamIdCache.has(tricode)) {
     const [row] = await sql<{ team_id: string }[]>`
-      SELECT team_id::text FROM teams WHERE abbreviation = ${tricode} LIMIT 1
+      SELECT team_id::text FROM teams WHERE abbreviation = ${tricode} ORDER BY team_id LIMIT 1
     `;
     teamIdCache.set(tricode, row?.team_id ?? null);
   }
   return teamIdCache.get(tricode)!;
 }
 
-/** Upserts the games row for a final box score and writes its box scores. Returns games.game_id. */
-export async function ingestBoxscore(seasonId: number, box: NBABoxscoreResponse): Promise<string> {
+/**
+ * Upserts the games row for a final box score and writes its box scores. Returns games.game_id.
+ * `gameDate` (YYYY-MM-DD, Eastern) is required when the box score has no tip
+ * time (stats.nba.com season-log games); the start time is then left null.
+ */
+export async function ingestBoxscore(
+  seasonId: number,
+  box: NBABoxscoreResponse,
+  opts: { gameDate?: string } = {}
+): Promise<string> {
   const g = box.game;
   if (g.gameStatus !== 3) throw new Error(`game ${g.gameId} is not final (gameStatus=${g.gameStatus})`);
   const [homeTeamId, awayTeamId] = await Promise.all([
@@ -31,7 +39,7 @@ export async function ingestBoxscore(seasonId: number, box: NBABoxscoreResponse)
   if (!homeTeamId || !awayTeamId) {
     throw new Error(`team not in DB (${g.awayTeam.teamTricode} @ ${g.homeTeam.teamTricode})`);
   }
-  const gameDate = easternDateOf(g.gameTimeUTC);
+  const gameDate = opts.gameDate ?? easternDateOf(g.gameTimeUTC);
   if (!gameDate) throw new Error(`bad gameTimeUTC ${g.gameTimeUTC}`);
 
   await upsertGameRow({
@@ -39,7 +47,7 @@ export async function ingestBoxscore(seasonId: number, box: NBABoxscoreResponse)
     seasonId,
     gameDate,
     status: 'final',
-    startTimeUtc: g.gameTimeUTC,
+    startTimeUtc: g.gameTimeUTC || null,
     homeTeamId,
     awayTeamId,
     homeScore: g.homeTeam.score,

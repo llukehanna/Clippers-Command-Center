@@ -100,6 +100,14 @@ export function scheduleGames(schedule: NBAScheduleResponse): NBAScheduleGame[] 
 export const REGULAR_SEASON_GAMES = 1230;
 
 /**
+ * Highest regular-season game number in a season. 2019-20's bubble seeding
+ * games were numbered after the original 1,230 (01231..01307).
+ */
+function lastRegularSeasonNumber(seasonId: number): number {
+  return seasonId === 2019 ? 1320 : REGULAR_SEASON_GAMES;
+}
+
+/**
  * Every game id that can exist in a season: regular season (00 2 YY 00001..01230),
  * play-in (00 5 YY 00 R S 1 — round 1 series 0..3, round 2 series 0..1) and
  * playoffs (00 4 YY 00 R S G — rounds 1..4 with 8/4/2/1 series, games 1..7).
@@ -108,7 +116,8 @@ export const REGULAR_SEASON_GAMES = 1230;
 export function candidateGameIds(seasonId: number): string[] {
   const yy = String(seasonId % 100).padStart(2, '0');
   const ids: string[] = [];
-  for (let n = 1; n <= REGULAR_SEASON_GAMES; n++) ids.push(`002${yy}${String(n).padStart(5, '0')}`);
+  const last = lastRegularSeasonNumber(seasonId);
+  for (let n = 1; n <= last; n++) ids.push(`002${yy}${String(n).padStart(5, '0')}`);
   for (const [round, count] of [[1, 4], [2, 2]] as const) {
     for (let series = 0; series < count; series++) ids.push(`005${yy}00${round}${series}1`);
   }
