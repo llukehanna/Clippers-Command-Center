@@ -14,8 +14,8 @@ import type {
   ScoreboardGame,
 } from '../../src/lib/types/live';
 import type { LivePhase, LiveStateDoc } from '../../src/lib/types/live-state';
-import { clockToSecondsRemaining, type CondResult, type Validators } from './nba-live-client.js';
-import { matchScoreboardGame } from './poll-live-logic.js';
+import { clockToSecondsRemaining, type CondResult, type Validators } from './nba-live-client';
+import { matchScoreboardGame } from './poll-live-logic';
 import {
   classifyPhase,
   HEARTBEAT_MS,
@@ -23,8 +23,8 @@ import {
   nextDelayMs,
   NOT_LISTED_DELAY_MS,
   SCOREBOARD_EVERY_MS,
-} from './live-cadence.js';
-import { buildLiveState, fingerprint } from './live-state.js';
+} from './live-cadence';
+import { buildLiveState, fingerprint } from './live-state';
 
 export interface PollerDeps {
   fetchScoreboard(): Promise<NBAScoreboardResponse>;
