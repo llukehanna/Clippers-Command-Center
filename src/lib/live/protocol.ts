@@ -41,6 +41,8 @@ export interface ApplyResult {
   needKeyframe: boolean;
 }
 
+// Deep equality via JSON.stringify; relies on both docs coming from the same builder (key order),
+// so diffDocs must not be fed a client-rebuilt doc (which may reorder keys).
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 function diffTeam(prev: BoxscoreTeam | null, next: BoxscoreTeam | null): TeamPatch | null | undefined {
@@ -50,6 +52,11 @@ function diffTeam(prev: BoxscoreTeam | null, next: BoxscoreTeam | null): TeamPat
   const { players: prevPlayers, ...prevTeam } = prev;
   const nextIds = new Set(players.map((p) => p.personId));
   if (prevPlayers.some((p) => !nextIds.has(p.personId))) return { team, players, replace: true };
+  // Detect reordering or middle-insertion: send full list unless next preserves prev's order
+  // and only appends new ids at the end.
+  const prevIds = prevPlayers.map((p) => p.personId);
+  const nextFirstN = players.slice(0, prevPlayers.length).map((p) => p.personId);
+  if (!same(prevIds, nextFirstN)) return { team, players, replace: true };
   const prevRows = new Map(prevPlayers.map((p) => [p.personId, JSON.stringify(p)]));
   const changed = players.filter((p) => prevRows.get(p.personId) !== JSON.stringify(p));
   if (changed.length === 0 && same(prevTeam, team)) return undefined;
