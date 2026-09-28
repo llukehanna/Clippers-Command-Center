@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as protocol from '../../src/lib/live/protocol';
 import type { LiveMessage } from '../../src/lib/live/protocol';
 import { createPublisher, hubPublisherFromEnv, saveThenPublish, type Publisher } from './live-publish';
 import { liveDoc } from './live-fixtures';
@@ -108,6 +109,28 @@ describe('createPublisher', () => {
     second.resolve();
     await flushPromise;
     expect(flushed).toBe(true);
+  });
+
+  it('treats a throw while building the message like a failed post — never wedges', async () => {
+    const sent: LiveMessage[] = [];
+    const post = vi.fn(async (m: LiveMessage) => { sent.push(m); });
+    const p = createPublisher({ post, now: () => 0 });
+
+    await p.publish(liveDoc(1)); // establishes `last`, so the next publish would be a delta
+
+    const diffSpy = vi.spyOn(protocol, 'diffDocs').mockImplementationOnce(() => {
+      throw new Error('boom building the delta');
+    });
+    expect(await p.publish(liveDoc(2))).toBe(false); // construction threw → treated as a failed post
+    diffSpy.mockRestore();
+    expect(post).toHaveBeenCalledTimes(1); // doc2 never reached o.post at all
+
+    // The failure reset `last`, so the next publish resynchronizes with a keyframe.
+    expect(await p.publish(liveDoc(3))).toBe(true);
+    expect(sent.map((m) => m.kind)).toEqual(['keyframe', 'keyframe']);
+
+    // Nothing left in flight or queued after a construction-time throw.
+    await expect(p.flush()).resolves.toBeUndefined();
   });
 });
 
