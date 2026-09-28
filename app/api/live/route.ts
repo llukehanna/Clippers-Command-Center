@@ -389,7 +389,9 @@ async function fetchGameDetails(
 
 /**
  * A non-final Clippers game whose tip was 10 minutes to 4 hours ago. Only
- * consulted when no live_state row exists: the runner never started.
+ * consulted when no recent live_state row exists: the runner never started.
+ * A game the runner already took to final (its live_state says so, even if
+ * the games row lags) isn't missed.
  */
 async function fetchMissedGame(): Promise<LiveGame | null> {
   const [row] = await sql<GameRow[]>`
@@ -411,6 +413,7 @@ async function fetchMissedGame(): Promise<LiveGame | null> {
     JOIN teams lac ON lac.nba_team_id = ${LAC_NBA_TEAM_ID}
     WHERE (g.home_team_id = lac.team_id OR g.away_team_id = lac.team_id)
       AND lower(g.status) <> 'final'
+      AND NOT EXISTS (SELECT 1 FROM live_state ls WHERE ls.game_id = g.game_id AND ls.state->>'status' = 'final')
       AND g.start_time_utc BETWEEN now() - interval '4 hours' AND now() - interval '10 minutes'
     ORDER BY g.start_time_utc DESC
     LIMIT 1
