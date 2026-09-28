@@ -1,9 +1,14 @@
 // scripts/lib/media/bluesky.ts
-// Top Bluesky posts mentioning the Clippers in the last 24 hours (public AppView, no auth).
+// Top Bluesky posts mentioning the Clippers in the last 24 hours, via
+// authenticated search (a free app password) — the public AppView blocks
+// unauthenticated app.bsky.feed.searchPosts with a 403. Skipped by
+// sync-media when BSKY_HANDLE / BSKY_APP_PASSWORD are unset.
 import type { MediaItemInput } from './types.js';
 
 export const BSKY_MIN_LIKES = 10;
 const MENTION = /\bclippers\b/i;
+
+export interface BlueskyCredentials { handle: string; appPassword: string }
 
 interface BskyPost {
   uri: string;
@@ -37,11 +42,21 @@ export function blueskyToItems(resp: unknown): MediaItemInput[] {
   return items;
 }
 
-export async function fetchBlueskyTop(now: Date = new Date()): Promise<unknown> {
+export async function fetchBlueskyTop(creds: BlueskyCredentials, now: Date = new Date()): Promise<unknown> {
+  const sessionRes = await fetch('https://bsky.social/xrpc/com.atproto.server.createSession', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier: creds.handle, password: creds.appPassword }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!sessionRes.ok) throw new Error(`bluesky session HTTP ${sessionRes.status}`);
+  const { accessJwt } = (await sessionRes.json()) as { accessJwt?: string };
+  if (!accessJwt) throw new Error('bluesky session missing token');
+
   const since = new Date(now.getTime() - 24 * 3_600_000).toISOString();
   const q = new URLSearchParams({ q: 'clippers', sort: 'top', since, limit: '50' });
-  const res = await fetch(`https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?${q}`, {
-    headers: { Accept: 'application/json' },
+  const res = await fetch(`https://bsky.social/xrpc/app.bsky.feed.searchPosts?${q}`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${accessJwt}` },
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`bluesky search HTTP ${res.status}`);
