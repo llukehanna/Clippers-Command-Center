@@ -4,7 +4,7 @@
 
 **Goal:** Give the insights engine the history it needs: league-wide box scores back to 1996-97 (slim), play-by-play–derived tables for every Clippers game, and a nightly record book of game highs and streaks.
 
-**Architecture:** Reuse the existing ingest path (`sync-league-games` → `ingestBoxscore` → `finalizeGame`), which already reads pre-2019 seasons from stats.nba.com; make old seasons write slim rows and skip expensive derived stats. Add a `scripts/lib/pbp/` module (normalize both play-by-play formats → derive game flow / period / clutch stats → write) and a `scripts/lib/record-book/` module (SQL-built game highs, TS-computed streaks, `records_start`). A local orchestrator (`backfill-history`) walks seasons newest-first with a storage checkpoint.
+**Architecture:** Reuse the existing ingest path (`sync-league-games` → `ingestBoxscore` → `finalizeGame`), which already reads pre-2019 seasons from stats.nba.com and writes slim player rows (commits `c1e0fac`, `9d0f326`); keep old seasons' derived stats to Clippers players. Add a `scripts/lib/pbp/` module (normalize both play-by-play formats → derive game flow / period / clutch stats → write) and a `scripts/lib/record-book/` module (SQL-built game highs, TS-computed streaks, `records_start`). A local orchestrator (`backfill-history`) walks seasons newest-first with a storage checkpoint.
 
 **Tech Stack:** TypeScript (tsx scripts, ESM), postgres.js, Vitest, GitHub Actions, Neon Postgres.
 
@@ -16,8 +16,9 @@
 - Script imports use ESM `.js` suffixes (`import { sql } from './lib/db.js'`), matching every existing script.
 - New npm scripts follow the existing pattern: `node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/<name>.ts`.
 - Modules imported by unit tests must not import `scripts/lib/db.ts` (it calls `process.exit` without `DATABASE_URL`). Keep pure logic in DB-free files.
-- `FULL_STATS_START = 2022`: seasons before it get slim player box scores (`raw_payload` NULL), team advanced stats only, no rolling windows.
-- History begins no earlier than 1996-97 (`HISTORY_OLDEST_SEASON = 1996`). The backfill pauses at 2010-11 by default for a storage check.
+- **Neon's free tier caps the database at 0.5 GB.** Player box scores never store `raw_payload` (commit `9d0f326`). Before 2019-20 (`FULL_ROLLING_FIRST_SEASON` in `scripts/compute-stats.ts`), advanced player stats and player rolling windows are computed for Clippers players only.
+- History begins no earlier than 1996-97 (`HISTORY_OLDEST_SEASON = 1996`). The backfill pauses at 2010-11 by default for a storage check; going further back needs Luke's go-ahead after the size check.
+- Another session is working on this branch (Live v2 spec, `Docs/superpowers/specs/2026-09-27-live-v2-realtime-design.md`, which reuses this plan's `pbp_events` and parser). Pull/rebase before each task and keep the `pbp_events` columns exactly as defined in Task 1.
 - Record book and streaks are **regular season only** (`REGULAR_SEASON` predicate), matching NBA record-keeping.
 - Clutch = period ≥ 4, ≤ 5:00 left in the period, margin ≤ 5 **before** the event.
 - No new npm dependencies in this plan.
@@ -32,9 +33,7 @@
 | `Docs/DB_SCHEMA.sql` (modify) | Canonical schema: add play-by-play and record-book tables |
 | `Docs/migrations/2026-10-insights-v2-data.sql` (create) | Same DDL for the production DB |
 | `.github/workflows/db-migrate.yml` (modify) | Apply any migration file by name |
-| `scripts/lib/schedule-utils.ts` (modify) | `FULL_STATS_START`, `isFullStatsSeason` |
-| `scripts/lib/upserts.ts`, `scripts/lib/finalize.ts` (modify) | Slim player payloads for old seasons |
-| `scripts/compute-stats.ts` (modify) | Skip player advanced stats / rolling windows for old seasons |
+| `scripts/compute-stats.ts` (modify) | Clippers-only advanced player stats before 2019-20 |
 | `scripts/lib/stats-nba.ts` (modify) | Historical tricode aliases; `fetchStatsPlayByPlay` |
 | `scripts/lib/pbp/types.ts` | Raw + normalized play-by-play types |
 | `scripts/lib/pbp/normalize.ts` | CDN / stats v3 → `NormalizedPbp` |
@@ -291,107 +290,54 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 2: Slim historical box scores and scoped derived stats
+### Task 2: Leaner derived stats for pre-2019 seasons; historical tricodes
+
+Already on this branch (commits `c1e0fac`, `9d0f326` — do not redo): `sync-league-games` loads pre-2019 seasons from stats.nba.com; player box scores never store `raw_payload`; before `FULL_ROLLING_FIRST_SEASON` (2019, in `scripts/compute-stats.ts`) player rolling windows are computed for Clippers players only. This task applies the same Clippers-only rule to **advanced player stats** (≈5 MB per season league-wide) and adds the franchise aliases older seasons need.
 
 **Files:**
-- Modify: `scripts/lib/schedule-utils.ts`, `scripts/lib/schedule-utils.test.ts`
-- Modify: `scripts/lib/upserts.ts:485-534` (`upsertPlayerBoxScore`)
-- Modify: `scripts/lib/finalize.ts` (`FinalizeOptions`, the `upsertPlayerBoxScore` call)
-- Modify: `scripts/compute-stats.ts` (game selection, `computeGameStats`, team rolling pairs)
-- Modify: `scripts/lib/stats-nba.ts` (`TRICODE_ALIASES`)
-- Create: `scripts/lib/stats-nba.test.ts`
+- Modify: `scripts/compute-stats.ts` (`computeGameStats`, its call site, the game selection)
+- Modify: `scripts/lib/stats-nba.ts` (`TRICODE_ALIASES`), `scripts/lib/stats-nba.test.ts` (existing `normalizeTricode` describe)
 - Test: `scripts/lib/pipeline.integration.test.ts`
 
 **Interfaces:**
-- Produces: `FULL_STATS_START: number` (= 2022) and `isFullStatsSeason(seasonId: number | null): boolean` from `scripts/lib/schedule-utils.ts`.
-- Produces: `FinalizeOptions.slimPayload?: boolean` (default: `!isFullStatsSeason(season)`).
+- Consumes: `FULL_ROLLING_FIRST_SEASON` (existing constant in `scripts/compute-stats.ts`).
+- Produces: `normalizeTricode` maps `SEA→OKC`, `VAN→MEM`, `CHH→CHA` in addition to the existing aliases.
 
-- [ ] **Step 1: Write the failing unit tests**
+- [ ] **Step 1: Write the failing unit test**
 
-Append to `scripts/lib/schedule-utils.test.ts` (keep its existing imports; add `FULL_STATS_START, isFullStatsSeason` to the import from `./schedule-utils`):
-
-```ts
-describe('isFullStatsSeason', () => {
-  it('is true from FULL_STATS_START on', () => {
-    expect(FULL_STATS_START).toBe(2022);
-    expect(isFullStatsSeason(2022)).toBe(true);
-    expect(isFullStatsSeason(2026)).toBe(true);
-  });
-  it('is false for older seasons and unknown seasons', () => {
-    expect(isFullStatsSeason(2021)).toBe(false);
-    expect(isFullStatsSeason(1996)).toBe(false);
-    expect(isFullStatsSeason(null)).toBe(false);
-  });
-});
-```
-
-Create `scripts/lib/stats-nba.test.ts`:
+In `scripts/lib/stats-nba.test.ts`, add to the existing `describe('normalizeTricode', …)` block:
 
 ```ts
-import { describe, it, expect } from 'vitest';
-import { normalizeTricode } from './stats-nba';
-
-describe('normalizeTricode', () => {
-  it('maps relocated and renamed franchises to current abbreviations', () => {
-    expect(normalizeTricode('NJN')).toBe('BKN');
-    expect(normalizeTricode('NOH')).toBe('NOP');
-    expect(normalizeTricode('NOK')).toBe('NOP');
+  it('maps pre-2010 franchises to their current teams', () => {
     expect(normalizeTricode('SEA')).toBe('OKC');
     expect(normalizeTricode('VAN')).toBe('MEM');
     expect(normalizeTricode('CHH')).toBe('CHA');
   });
-  it('leaves current abbreviations alone', () => {
-    expect(normalizeTricode('LAC')).toBe('LAC');
-  });
-});
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run it to verify it fails**
 
-Run: `npx vitest run scripts/lib/schedule-utils.test.ts scripts/lib/stats-nba.test.ts`
-Expected: FAIL — `isFullStatsSeason` is not exported; `SEA`/`VAN`/`CHH` come back unchanged.
+Run: `npx vitest run scripts/lib/stats-nba.test.ts`
+Expected: FAIL — `SEA` comes back unchanged.
 
-- [ ] **Step 3: Implement the constants and aliases**
+- [ ] **Step 3: Add the aliases**
 
-Append to `scripts/lib/schedule-utils.ts` (after `seasonIdFromSeasonYear`):
-
-```ts
-/**
- * First season with full-fidelity stats: raw box score payloads, advanced
- * player stats and rolling windows. Older, backfilled seasons keep slim box
- * scores and team advanced stats only (insights engine spec §1.1).
- */
-export const FULL_STATS_START = 2022;
-
-export function isFullStatsSeason(seasonId: number | null): boolean {
-  return seasonId !== null && seasonId >= FULL_STATS_START;
-}
-```
-
-In `scripts/lib/stats-nba.ts`, extend `TRICODE_ALIASES`:
+In `scripts/lib/stats-nba.ts`, add three entries to `TRICODE_ALIASES` (keep the existing ones):
 
 ```ts
-const TRICODE_ALIASES: Record<string, string> = {
-  NJN: 'BKN', // New Jersey Nets (through 2011-12)
-  NOH: 'NOP', // New Orleans Hornets (through 2012-13)
-  NOK: 'NOP', // New Orleans/Oklahoma City Hornets (2005-07)
   SEA: 'OKC', // Seattle SuperSonics (through 2007-08)
   VAN: 'MEM', // Vancouver Grizzlies (through 2000-01)
   CHH: 'CHA', // Charlotte Hornets (1988-2002; history returned to Charlotte)
-};
 ```
 
-- [ ] **Step 4: Run unit tests to verify they pass**
+Run: `npx vitest run scripts/lib/stats-nba.test.ts` — expected: PASS.
 
-Run: `npx vitest run scripts/lib/schedule-utils.test.ts scripts/lib/stats-nba.test.ts`
-Expected: PASS.
-
-- [ ] **Step 5: Write the failing integration test**
+- [ ] **Step 4: Write the failing integration test**
 
 Add to `scripts/lib/pipeline.integration.test.ts`, after the `'ingests a league box score: …'` test:
 
 ```ts
-  it('writes old seasons slim: no player payloads, team advanced stats only', async () => {
+  it('pre-2019 seasons: advanced player stats for Clippers players only', async () => {
     const { ingestBoxscore } = await import('./league-ingest');
     await sql`INSERT INTO seasons (season_id, label) VALUES (2015, '2015-16') ON CONFLICT DO NOTHING`;
     const box: NBABoxscoreResponse = {
@@ -405,75 +351,29 @@ Add to `scripts/lib/pipeline.integration.test.ts`, after the `'ingests a league 
       },
     };
     const gameId = await ingestBoxscore(2015, box);
-
-    const [payloads] = await sql<{ player_payloads: number; team_payloads: number }[]>`
-      SELECT (SELECT COUNT(*)::int FROM game_player_box_scores WHERE game_id = ${gameId}::bigint AND raw_payload IS NOT NULL) AS player_payloads,
-             (SELECT COUNT(*)::int FROM game_team_box_scores WHERE game_id = ${gameId}::bigint AND raw_payload IS NOT NULL) AS team_payloads
-    `;
-    expect(payloads).toEqual({ player_payloads: 0, team_payloads: 2 });
-
     expect(run('scripts/compute-stats.ts')).toContain('for 1 game(s)');
-    const [derived] = await sql<{ team_adv: number; player_adv: number; rolling_team: number }[]>`
+
+    const [derived] = await sql<{ team_adv: number; lac_player_adv: number; other_player_adv: number }[]>`
       SELECT (SELECT COUNT(*)::int FROM advanced_team_game_stats WHERE game_id = ${gameId}::bigint) AS team_adv,
-             (SELECT COUNT(*)::int FROM advanced_player_game_stats WHERE game_id = ${gameId}::bigint) AS player_adv,
-             (SELECT COUNT(*)::int FROM rolling_team_stats WHERE season_id = 2015) AS rolling_team
+             (SELECT COUNT(*)::int FROM advanced_player_game_stats a JOIN teams t ON t.team_id = a.team_id
+               WHERE a.game_id = ${gameId}::bigint AND t.abbreviation = 'LAC') AS lac_player_adv,
+             (SELECT COUNT(*)::int FROM advanced_player_game_stats a JOIN teams t ON t.team_id = a.team_id
+               WHERE a.game_id = ${gameId}::bigint AND t.abbreviation <> 'LAC') AS other_player_adv
     `;
-    expect(derived).toEqual({ team_adv: 2, player_adv: 0, rolling_team: 0 });
+    expect(derived).toEqual({ team_adv: 2, lac_player_adv: 2, other_player_adv: 0 });
   }, TIMEOUT);
 ```
 
-- [ ] **Step 6: Run it to verify it fails**
+- [ ] **Step 5: Run it to verify it fails**
 
-Run: `FIXTURE_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/fixture npx vitest run scripts/lib/pipeline.integration.test.ts -t "slim"`
-Expected: FAIL — `player_payloads` is 3.
+Run: `FIXTURE_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/fixture npx vitest run scripts/lib/pipeline.integration.test.ts -t "pre-2019"`
+Expected: FAIL — `other_player_adv` is 1.
 
-- [ ] **Step 7: Implement slim payloads**
-
-In `scripts/lib/upserts.ts`, change `upsertPlayerBoxScore`'s signature and payload value:
-
-```ts
-export async function upsertPlayerBoxScore(
-  gameId: string,
-  playerId: string,    // internal players.player_id as string
-  teamId: string,
-  starter: boolean,
-  player: BoxscorePlayer,
-  db: Db = sql,        // optional: pass a transaction handle to write atomically
-  slim = false         // true: store no raw_payload (backfilled seasons, see FULL_STATS_START)
-): Promise<void> {
-```
-
-and in the `VALUES (...)` list replace `${JSON.stringify(player)}::text::jsonb` with:
-
-```ts
-      ${slim ? null : JSON.stringify(player)}::text::jsonb
-```
-
-In `scripts/lib/finalize.ts`:
-- add `isFullStatsSeason` to the import from `./schedule-utils.js`;
-- add to `FinalizeOptions`:
-
-```ts
-  /**
-   * Store player rows without raw_payload. Defaults to true for seasons before
-   * FULL_STATS_START (backfilled history), false otherwise.
-   */
-  slimPayload?: boolean;
-```
-
-- directly after the `if (!game) throw …not found in games table…` line (it follows the `const [game] = await db<…>` query), add:
-
-  ```ts
-  const slim = opts.slimPayload ?? !isFullStatsSeason(game.season_id);
-  ```
-
-- change the call to `await upsertPlayerBoxScore(gameDbId, playerDbId, teamDbId, player.starter === '1', player, tx, slim);`
-
-- [ ] **Step 8: Implement scoped derived stats**
+- [ ] **Step 6: Implement**
 
 In `scripts/compute-stats.ts`:
-- import `FULL_STATS_START, isFullStatsSeason` from `./lib/schedule-utils.js`;
-- change the game selection to also return `season_id`:
+
+- change the game selection to also return the season:
 
 ```ts
   const games = await sql<{ game_id: string; season_id: number | null }[]>`
@@ -486,44 +386,51 @@ In `scripts/compute-stats.ts`:
   const gameIds = games.map((g) => g.game_id);
 ```
 
-- change the loop body to `await computeGameStats(games[i].game_id, isFullStatsSeason(games[i].season_id));`
-- change `async function computeGameStats(gameId: string): Promise<void> {` to `async function computeGameStats(gameId: string, withPlayers: boolean): Promise<void> {`, and immediately before the `// Step 2: Player advanced stats` comment add:
+- change the loop body to:
 
 ```ts
-  // Backfilled seasons (before FULL_STATS_START) get team advanced stats only.
-  if (!withPlayers) return;
+    const { game_id, season_id } = games[i];
+    await computeGameStats(game_id, season_id !== null && season_id < FULL_ROLLING_FIRST_SEASON);
 ```
 
-- in the team rolling pairs query, replace
+- change `async function computeGameStats(gameId: string): Promise<void> {` to
 
 ```ts
-    FROM advanced_team_game_stats atgs
-    JOIN games g ON g.game_id = atgs.game_id
-    WHERE g.season_id IS NOT NULL
+/**
+ * @param clippersPlayersOnly before FULL_ROLLING_FIRST_SEASON, advanced player
+ *   stats are kept for Clippers players only (the same rule as their rolling
+ *   windows) — league-wide rows for old seasons cost storage nothing reads.
+ */
+async function computeGameStats(gameId: string, clippersPlayersOnly: boolean): Promise<void> {
 ```
 
-with
+- replace the `// Step 2: Player advanced stats` query with:
 
 ```ts
-    FROM advanced_team_game_stats atgs
-    JOIN games g ON g.game_id = atgs.game_id
-    WHERE g.season_id >= ${FULL_STATS_START}
+  // Step 2: Player advanced stats
+  const playerRows = await sql<PlayerBoxRow[]>`
+    SELECT
+      p.player_id::text, p.team_id::text,
+      p.minutes, p.points, p.rebounds, p.assists, p.turnovers,
+      p.fg_made, p.fg_attempted, p.fg3_made, p.fg3_attempted,
+      p.ft_made, p.ft_attempted,
+      p.offensive_reb, p.defensive_reb
+    FROM game_player_box_scores p
+    WHERE p.game_id = ${gameId}::bigint
+      ${clippersPlayersOnly ? sql`AND p.team_id IN (SELECT team_id FROM teams WHERE abbreviation = 'LAC')` : sql``}
+  `;
 ```
 
-(Player rolling pairs come from `advanced_player_game_stats`, which old seasons no longer have, so that query needs no change.)
+- [ ] **Step 7: Run tests to verify they pass**
 
-- [ ] **Step 9: Run tests to verify they pass**
+Run: `FIXTURE_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/fixture npx vitest run scripts/lib/pipeline.integration.test.ts && npx vitest run scripts/lib && npx tsc --noEmit`
+Expected: PASS (fixture seasons 2024+ are unaffected).
 
-Run: `FIXTURE_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/fixture npx vitest run scripts/lib/pipeline.integration.test.ts` and `npx vitest run scripts/lib`
-Expected: all PASS (existing pipeline tests unaffected: fixture seasons are 2024+).
-
-- [ ] **Step 10: Typecheck and commit**
-
-Run: `npx tsc --noEmit` — expected: no errors.
+- [ ] **Step 8: Commit**
 
 ```bash
-git add scripts/lib/schedule-utils.ts scripts/lib/schedule-utils.test.ts scripts/lib/upserts.ts scripts/lib/finalize.ts scripts/compute-stats.ts scripts/lib/stats-nba.ts scripts/lib/stats-nba.test.ts scripts/lib/pipeline.integration.test.ts
-git commit -m "feat(ingest): slim box scores and team-only derived stats for backfilled seasons
+git add scripts/compute-stats.ts scripts/lib/stats-nba.ts scripts/lib/stats-nba.test.ts scripts/lib/pipeline.integration.test.ts
+git commit -m "feat(stats): Clippers-only advanced player stats before 2019-20; SEA/VAN/CHH aliases
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -2195,8 +2102,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `package.json`
 
 **Interfaces:**
-- Consumes: `FULL_STATS_START`, `seasonLabel`, `seasonIdFromSeasonYear` (schedule-utils); CLIs `sync-league-games`, `ingest-pbp`, `compute-stats`, `build-record-book`.
-- Produces: `HISTORY_OLDEST_SEASON = 1996`, `planHistorySeasons(backfilledThrough: number | null, stopAt: number): number[]`; app_kv `history:backfilled_through` (number) after each clean season.
+- Consumes: `seasonLabel`, `seasonIdFromSeasonYear` (schedule-utils); `resolveRecordsStart`, `SeasonCoverage` (Task 6); CLIs `sync-league-games`, `ingest-pbp`, `compute-stats`, `build-record-book`.
+- Produces: `HISTORY_OLDEST_SEASON = 1996`, `planHistorySeasons(loadedThrough: number, stopAt: number): number[]`; app_kv `history:backfilled_through` (number) after each clean season.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2207,8 +2114,8 @@ import { describe, it, expect } from 'vitest';
 import { planHistorySeasons } from './backfill-plan';
 
 describe('planHistorySeasons', () => {
-  it('starts just before FULL_STATS_START and walks back to the stop season', () => {
-    expect(planHistorySeasons(null, 2010)).toEqual([2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011, 2010]);
+  it('starts just below the earliest loaded season and walks back to the stop season', () => {
+    expect(planHistorySeasons(2022, 2010)).toEqual([2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011, 2010]);
   });
   it('resumes below the last clean season', () => {
     expect(planHistorySeasons(2010, 1996)[0]).toBe(2009);
@@ -2236,17 +2143,17 @@ Create `scripts/lib/backfill-plan.ts`:
 ```ts
 // scripts/lib/backfill-plan.ts
 // Which seasons backfill-history should ingest next (newest first). Pure.
-import { FULL_STATS_START } from './schedule-utils.js';
 
 /** stats.nba.com league game logs are complete from 1996-97. */
 export const HISTORY_OLDEST_SEASON = 1996;
 
 /**
- * @param backfilledThrough earliest season already backfilled cleanly (null = none)
- * @param stopAt            oldest season to ingest in this run
+ * @param loadedThrough earliest season already fully loaded (app_kv
+ *                      'history:backfilled_through', else the start of complete records)
+ * @param stopAt        oldest season to ingest in this run
  */
-export function planHistorySeasons(backfilledThrough: number | null, stopAt: number): number[] {
-  const from = (backfilledThrough ?? FULL_STATS_START) - 1;
+export function planHistorySeasons(loadedThrough: number, stopAt: number): number[] {
+  const from = loadedThrough - 1;
   const to = Math.max(stopAt, HISTORY_OLDEST_SEASON);
   const seasons: number[] = [];
   for (let s = from; s >= to; s--) seasons.push(s);
@@ -2263,8 +2170,8 @@ Create `scripts/backfill-history.ts`:
 ```ts
 // scripts/backfill-history.ts
 // One-time history backfill, run LOCALLY (stats.nba.com blocks cloud IPs).
-// Walks seasons newest-first from just before FULL_STATS_START, one
-// sync-league-games run per season (slim rows, see finalize.ts), then Clippers
+// Walks seasons newest-first from just below the earliest complete season
+// already loaded, one sync-league-games run per season, then Clippers
 // play-by-play for that season (--pbp). After each clean season it records
 // app_kv 'history:backfilled_through' and prints the database size, so an
 // interrupted run resumes where it stopped. Stops at --stop-at (default
@@ -2275,7 +2182,9 @@ Create `scripts/backfill-history.ts`:
 import { execFileSync } from 'node:child_process';
 import { sql } from './lib/db.js';
 import { seasonIdFromSeasonYear, seasonLabel } from './lib/schedule-utils.js';
+import { REGULAR_SEASON } from './lib/sql-fragments.js';
 import { planHistorySeasons } from './lib/backfill-plan.js';
+import { resolveRecordsStart, type SeasonCoverage } from './lib/record-book/records-start.js';
 
 const log = (msg: string) => console.log(`[backfill-history] ${msg}`);
 const tsx = (script: string, args: string[] = []) =>
@@ -2294,7 +2203,15 @@ async function main() {
   const withPbp = argv.includes('--pbp');
 
   const [kv] = await sql<{ value: number }[]>`SELECT value::int AS value FROM app_kv WHERE key = 'history:backfilled_through'`;
-  const seasons = planHistorySeasons(kv?.value ?? null, stopAt);
+  const coverage = await sql<SeasonCoverage[]>`
+    SELECT g.season_id::int AS season_id, COUNT(*)::int AS games_with_box
+    FROM games g
+    WHERE g.status = 'final' AND g.season_id IS NOT NULL AND ${sql.unsafe(REGULAR_SEASON)}
+      AND EXISTS (SELECT 1 FROM game_player_box_scores pb WHERE pb.game_id = g.game_id)
+    GROUP BY g.season_id`;
+  const loadedThrough = kv?.value ?? resolveRecordsStart(coverage, null);
+  if (loadedThrough === null) throw new Error('No complete season loaded yet — run sync-league-games for the current era first');
+  const seasons = planHistorySeasons(loadedThrough, stopAt);
   log(`Database ${await dbSize()}. Seasons to backfill: ${seasons.length ? seasons.map(seasonLabel).join(', ') : 'none'}`);
 
   for (const season of seasons) {
@@ -2448,23 +2365,36 @@ Push `insights/espn-engine`, open a PR to `main`, and confirm `ci.yml` (typechec
 
 After merge: `gh workflow run db-migrate.yml -f file=2026-10-insights-v2-data.sql -f confirm=migrate`, then `gh run watch`. Expected: "Apply migration" succeeds. Verify: `psql "$DATABASE_URL" -c "\dt rb_*"` lists `rb_game_highs`, `rb_streaks`.
 
-- [ ] **Step 3: Current-era play-by-play and record book**
+- [ ] **Step 3: Reclaim the old player payloads (Luke approves; run off-hours)**
+
+Rows written before `9d0f326` still hold ~1 KB of raw JSON each (~100 MB). With Neon's 0.5 GB cap this is the cheapest headroom available:
+
+```bash
+psql "$DATABASE_URL" -c "SELECT pg_size_pretty(pg_database_size(current_database()))"
+psql "$DATABASE_URL" -c "UPDATE game_player_box_scores SET raw_payload = NULL WHERE raw_payload IS NOT NULL"
+psql "$DATABASE_URL" -c "VACUUM FULL game_player_box_scores"
+psql "$DATABASE_URL" -c "SELECT pg_size_pretty(pg_database_size(current_database()))"
+```
+
+`VACUUM FULL` locks the table for a minute or two (the site's player pages briefly wait). Expected: the database shrinks by roughly 80–100 MB.
+
+- [ ] **Step 4: Current-era play-by-play and record book**
 
 Run locally: `npm run ingest-pbp -- --season=2025-26 --keep-raw` (keeps last season's raw events, ≈40k rows, for live replay in Plan 6), then `npm run ingest-pbp -- --season=2024-25`, `-- --season=2023-24`, `-- --season=2022-23`, then `npm run build-record-book`. Expected: `records start 2022-23`; `SELECT COUNT(*) FROM pbp_events WHERE keep` > 30000.
 
-- [ ] **Step 4: Probe stats.nba.com from Luke's network**
+- [ ] **Step 5: Probe stats.nba.com from Luke's network**
 
-`npx tsx scripts/dev/capture-pbp-fixture.ts --stats=0020500010` (sandbox off — this needs the real network). Expected: `saved stats-0020500010.json`. HTTP 403 → history stops at 2019-20 (CDN seasons only); run Step 5 with `--stop-at=2019-20` and skip Step 6.
+`npx tsx scripts/dev/capture-pbp-fixture.ts --stats=0020500010` (sandbox off — this needs the real network). Expected: `saved stats-0020500010.json`. HTTP 403 → history stops at 2019-20 (CDN seasons only); run Step 6 with `--stop-at=2019-20` and skip Step 7.
 
-- [ ] **Step 5: Backfill to 2010-11 (Luke approves; long-running)**
+- [ ] **Step 6: Backfill to 2010-11 (Luke approves; long-running)**
 
-`npm run backfill-history -- --pbp` (defaults to `--stop-at=2010-11`). Takes several hours; safe to interrupt and re-run. Watch the printed database size after each season. Report the final size to Luke with the projection for 1996-97 (≈ size growth per season × 14).
+Check first whether the other session already loaded some of these seasons (`SELECT season_id, COUNT(*) FROM games WHERE status='final' GROUP BY 1 ORDER BY 1`); the orchestrator starts below the earliest complete one either way. Run `DB_POOL_MAX=10 npm run backfill-history -- --pbp` (defaults to `--stop-at=2010-11`). Takes several hours; safe to interrupt and re-run. Watch the printed database size after each season and **stop if it passes 450 MB**. Report the final size to Luke with the projection for 1996-97 (≈ size growth per season × 14) against the 0.5 GB cap.
 
-- [ ] **Step 6: Continue to 1996-97 (Luke approves after the size check)**
+- [ ] **Step 7: Continue further back (only if Luke approves after the size check)**
 
-`npm run backfill-history -- --stop-at=1996-97 --pbp`. Expected final line: `Finished. Database <size>`; `build-record-book` logs `records start 1996-97`.
+`npm run backfill-history -- --stop-at=<season Luke picks> --pbp`, stopping early if the database nears 450 MB. Expected final line: `Finished. Database <size>`; `build-record-book` logs `records start <that season>`.
 
-- [ ] **Step 7: Spot-check the data**
+- [ ] **Step 8: Spot-check the data**
 
 ```sql
 SELECT season_id, COUNT(*) FROM games WHERE status = 'final' GROUP BY 1 ORDER BY 1;   -- ~1189-1320 per season, 725 in 1998-99
