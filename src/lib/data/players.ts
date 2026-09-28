@@ -13,15 +13,23 @@
 //                     season (ignores active_only) and flag is_traded = true for
 //                     players whose most recent game/stint that season was with
 //                     another team.
+//
+// Default roster (no season_id, no include_traded): the current roster synced
+// nightly from ESPN (scripts/sync-roster.ts → app_kv 'roster:LAC') when that
+// snapshot is under ROSTER_MAX_AGE_DAYS old; otherwise box-score membership.
+// `roster_source` says which ('current' | 'season').
 
 import { json, type ApiResult } from './result';
 import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { getDisplaySeasonId, parseSeasonIdParam } from '@/src/lib/season';
 
+const ROSTER_MAX_AGE_DAYS = 10;
+
 interface PlayerRow {
   player_id: string;
   nba_player_id: string;
+  nba_person_id: number | null;
   display_name: string;
   position: string;
   is_active: boolean;
@@ -41,6 +49,22 @@ export async function loadPlayers(url: URL): Promise<ApiResult> {
       );
     }
     const seasonId = seasonParam ?? (await getDisplaySeasonId());
+
+    if (seasonParam === undefined && !includeTraded) {
+      const current = await loadCurrentRoster();
+      if (current) {
+        return json(
+          {
+            meta: buildMeta('db', 3600),
+            season_id: seasonId,
+            roster_source: 'current',
+            roster_synced_at: current.synced_at,
+            players: current.players,
+          },
+          { headers: { 'Cache-Control': 'public, max-age=3600' } }
+        );
+      }
+    }
 
     // Roster = players with any LAC association in the season (box score or
     // stint) whose MOST RECENT event that season — a game played, or a stint
@@ -78,6 +102,7 @@ export async function loadPlayers(url: URL): Promise<ApiResult> {
       SELECT
         p.player_id::text,
         p.nba_player_id::text,
+        p.nba_person_id,
         p.display_name,
         p.position,
         p.is_active,
@@ -97,6 +122,7 @@ export async function loadPlayers(url: URL): Promise<ApiResult> {
       {
         meta: buildMeta('db', 3600),
         season_id: seasonId,
+        roster_source: 'season',
         players: roster,
       },
       {
@@ -111,4 +137,37 @@ export async function loadPlayers(url: URL): Promise<ApiResult> {
       status: 500,
     });
   }
+}
+
+interface RosterSnapshot {
+  synced_at: string;
+  players: { player_id: string; jersey: string | null; position: string | null }[];
+}
+
+/** The synced current roster joined to players rows, or null when missing/stale. */
+async function loadCurrentRoster(): Promise<{ synced_at: string; players: (PlayerRow & { jersey: string | null })[] } | null> {
+  const [kv] = await sql<{ value: RosterSnapshot }[]>`
+    SELECT value FROM app_kv
+    WHERE key = 'roster:LAC' AND updated_at > now() - make_interval(days => ${ROSTER_MAX_AGE_DAYS})
+  `;
+  const snapshot = kv?.value;
+  if (!snapshot || !Array.isArray(snapshot.players) || snapshot.players.length === 0) return null;
+
+  const ids = snapshot.players.map((p) => p.player_id);
+  const rows = await sql<PlayerRow[]>`
+    SELECT p.player_id::text, p.nba_player_id::text, p.nba_person_id, p.display_name,
+           p.position, p.is_active
+    FROM players p
+    WHERE p.player_id::text IN ${sql(ids)}
+    ORDER BY p.display_name ASC
+  `;
+  const extra = new Map(snapshot.players.map((p) => [p.player_id, p]));
+  return {
+    synced_at: snapshot.synced_at,
+    players: rows.map((r) => ({
+      ...r,
+      position: r.position ?? extra.get(r.player_id)?.position ?? r.position,
+      jersey: extra.get(r.player_id)?.jersey ?? null,
+    })),
+  };
 }

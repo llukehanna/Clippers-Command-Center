@@ -64,7 +64,14 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      # Read by /api/home as meta.last_sync_at.
+      # Current roster (ESPN) → /api/players default. An ESPN outage keeps the
+      # previous snapshot, so it doesn't fail the pipeline.
+      - name: Sync current roster
+        continue-on-error: true
+        run: node node_modules/.bin/tsx scripts/sync-roster.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       # Line scores for Clippers games finalized before they were stored
       # (bounded per night; a no-op once the backlog is done).
       - name: Backfill line scores
@@ -72,6 +79,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # Read by /api/home as meta.last_sync_at.
       - name: Record last sync time
         run: node node_modules/.bin/tsx scripts/record-sync.ts
         env:

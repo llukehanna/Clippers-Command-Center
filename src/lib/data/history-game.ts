@@ -249,7 +249,10 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
     // Line score from the team box scores' raw_payload (stored at finalization;
     // older games are backfilled nightly by scripts/backfill-periods.ts).
     const periodRows = await sql<{ is_home: boolean; periods: unknown }[]>`
-      SELECT is_home, raw_payload -> 'periods' AS periods
+      -- Rows written before the raw_payload fix hold the JSON as a string scalar.
+      SELECT is_home,
+             (CASE WHEN jsonb_typeof(raw_payload) = 'string' THEN (raw_payload #>> '{}')::jsonb
+                   ELSE raw_payload END) -> 'periods' AS periods
       FROM game_team_box_scores
       WHERE game_id = ${gameIdParam}::bigint
     `;
