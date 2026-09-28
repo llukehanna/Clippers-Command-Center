@@ -71,6 +71,15 @@ export function flowSummary(flow: LiveFlow): FlowSummary {
   return out;
 }
 
+/** "Largest lead LAC +9 · SAC +4": labeled whichever side led; null when neither has. */
+export function largestLeadText(summary: FlowSummary, oppAbbr: string): string | null {
+  const leads = [
+    summary.lac ? `LAC +${summary.lac.margin}` : null,
+    summary.opp ? `${oppAbbr} +${summary.opp.margin}` : null,
+  ].filter((x): x is string => x !== null);
+  return leads.length ? `Largest lead ${leads.join(' · ')}` : null;
+}
+
 export function markersOf<K extends FlowMarker['kind']>(flow: LiveFlow, kind: K): Extract<FlowMarker, { kind: K }>[] {
   return flow.markers.filter((m): m is Extract<FlowMarker, { kind: K }> => m.kind === kind);
 }

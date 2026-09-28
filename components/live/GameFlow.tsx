@@ -19,6 +19,7 @@ import {
   flowDomainEnd,
   flowRows,
   flowSummary,
+  largestLeadText,
   marginDomain,
   marginText,
   markersOf,
@@ -139,16 +140,12 @@ export function GameFlow({
 
   const ticks = periodTicks(end)
   const summary = flowSummary(flow)
+  const leadText = largestLeadText(summary, oppAbbr)
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11.5px] text-mute tabular-nums">
         <span>Lead changes {summary.leadChanges}</span>
-        {summary.lac && <span>Largest lead LAC +{summary.lac.margin}</span>}
-        {summary.opp && (
-          <span>
-            {oppAbbr} +{summary.opp.margin}
-          </span>
-        )}
+        {leadText && <span>{leadText}</span>}
         {wp && <span className="ml-auto text-text">LAC win probability {Math.round(wp.lac * 100)}%</span>}
       </div>
       <div className="h-[230px] w-full sm:h-[260px]" role="img" aria-label={`Game flow. ${marginText(flow.points.at(-1)?.m ?? 0, oppAbbr)}.`}>

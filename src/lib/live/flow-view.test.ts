@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { flowDomainEnd, flowRows, flowSummary, marginDomain, marginText, markersOf, periodTicks, tickLabel } from './flow-view';
+import { flowDomainEnd, flowRows, flowSummary, largestLeadText, marginDomain, marginText, markersOf, periodTicks, tickLabel } from './flow-view';
 import type { LiveFlow } from '../types/live-state';
 
 const flow = (ts: [number, number][], markers: LiveFlow['markers'] = []): LiveFlow => ({
@@ -48,5 +48,14 @@ describe('flow-view', () => {
     ]);
     expect(flowSummary(f)).toEqual({ leadChanges: 2, lac: { margin: 9, t: 200 }, opp: { margin: 4, t: 150 } });
     expect(markersOf(f, 'lead_change').map((m) => m.t)).toEqual([100, 300]);
+  });
+
+  it('labels the largest leads whichever side led', () => {
+    const lac = { margin: 9, t: 200 };
+    const opp = { margin: 4, t: 150 };
+    expect(largestLeadText({ leadChanges: 1, lac, opp }, 'SAC')).toBe('Largest lead LAC +9 · SAC +4');
+    expect(largestLeadText({ leadChanges: 0, lac, opp: null }, 'SAC')).toBe('Largest lead LAC +9');
+    expect(largestLeadText({ leadChanges: 0, lac: null, opp }, 'SAC')).toBe('Largest lead SAC +4');
+    expect(largestLeadText({ leadChanges: 0, lac: null, opp: null }, 'SAC')).toBeNull();
   });
 });
