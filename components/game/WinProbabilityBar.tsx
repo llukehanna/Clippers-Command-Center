@@ -16,7 +16,13 @@ export function WinProbabilityBar({
       <div className="flex items-center justify-between gap-3 font-mono text-[11px] text-mute tabular-nums">
         <span className="flex items-center gap-2">
           <TeamLogo abbr="LAC" size="xs" />
-          LAC {lac}%<span className="hidden text-dim sm:inline"> · {source === 'model' ? 'model estimate' : 'implied by live moneyline'}</span>
+          LAC {lac}%
+          {/* The model's value is always labeled as one, at every width; the moneyline's longer note is desktop-only. */}
+          {source === 'model' ? (
+            <span className="text-dim"> · model estimate</span>
+          ) : (
+            <span className="hidden text-dim sm:inline"> · implied by live moneyline</span>
+          )}
         </span>
         <span className="flex items-center gap-2">
           {oppAbbr} {100 - lac}%
