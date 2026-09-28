@@ -3,7 +3,8 @@
 // game_flow margin series (Live v2 spec §7.1, §10) and stores it in app_kv
 // ('wp:model'); the game-night runner reads it at start. Refuses to store a fit
 // whose Brier score is worse than the stored one by more than 0.005 (exit 1),
-// which is what makes the nightly post-game run go red on a regression.
+// which is what makes the nightly post-game run go red on a regression. Too
+// few games to fit is a notice, not a failure (exit 0).
 //
 //   npm run calibrate-wp            fit, print, store
 //   npm run calibrate-wp -- --dry   fit and print only
@@ -54,8 +55,12 @@ async function main(): Promise<void> {
       expected: expectedLacMargin(r.lac_spread, r.lac_home).expected,
     }));
   if (games.length < MIN_GAMES) {
-    console.error(`[calibrate-wp] Only ${games.length} games with a margin series; need ${MIN_GAMES}. Not fitting.`);
-    process.exitCode = 1;
+    // Not a failure: game_flow fills in as play-by-play is ingested. The
+    // runner keeps the stored (or default) σ meanwhile.
+    console.log(
+      `[calibrate-wp] Notice: only ${games.length} games with a margin series (need ${MIN_GAMES}). ` +
+        'Skipping the fit; nothing stored.'
+    );
     return;
   }
 
