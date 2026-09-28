@@ -42,8 +42,40 @@ export function clampDelay(ms: number): number {
   return Math.min(MAX_DELAY_MS, Math.max(0, Math.round(ms / 1000) * 1000));
 }
 
+/**
+ * Whole seconds, 0–120 s, rounded up: a measured delay ("Sync to my screen")
+ * must never come out shorter than it measured.
+ */
+export function ceilDelay(ms: number): number {
+  if (!Number.isFinite(ms)) return 0;
+  return Math.min(MAX_DELAY_MS, Math.max(0, Math.ceil(ms / 1000) * 1000));
+}
+
 export function parseStoredDelay(raw: string | null): number {
   return raw === null ? 0 : clampDelay(Number(raw));
+}
+
+/**
+ * The clock offset a synced delay was measured under, stored next to the
+ * delay; null when the delay wasn't synced (a preset or the slider).
+ */
+export const SYNC_OFFSET_STORAGE_KEY = 'ccc:spoiler-sync-offset-ms';
+
+export function parseStoredOffset(raw: string | null): number | null {
+  if (raw === null || raw.trim() === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * The offset to pick frames with. A synced delay was measured as tap time
+ * minus (play time + the offset at sync), so offset + delay is what the fan
+ * measured. If the estimate later drops (a stale sample ages out), applying
+ * the smaller offset with the same delay would run the page early; the larger
+ * of the two keeps it at or behind the fan's screen.
+ */
+export function pickOffset(offsetNow: number, offsetAtSync: number | null): number {
+  return offsetAtSync === null ? offsetNow : Math.max(offsetNow, offsetAtSync);
 }
 
 /**
@@ -88,8 +120,9 @@ export function frameDeviceTime<T>(frame: Frame<T>, offset: number): number {
 /**
  * "Sync to my screen": the fan tapped (device time `tapAt`) as their screen
  * showed a basket. The newest frame at or before the tap whose total score
- * went up is that basket; the delay is how long ago it happened. Null when no
- * basket is buffered.
+ * went up is that basket; the delay is how long ago it happened, rounded up
+ * to whole seconds. Null when no basket is buffered. Store `offset` with the
+ * delay and pick with pickOffset (see there).
  */
 export function syncDelay<T>(
   frames: Frame<T>[],
@@ -102,9 +135,23 @@ export function syncDelay<T>(
     if (at > tapAt) continue;
     const after = totalScore(frames[i].value);
     const before = totalScore(frames[i - 1].value);
-    if (after !== null && before !== null && after > before) return clampDelay(tapAt - at);
+    if (after !== null && before !== null && after > before) return ceilDelay(tapAt - at);
   }
   return null;
+}
+
+interface ScoredSide {
+  score: number | null;
+}
+
+/**
+ * A page payload's total points for syncDelay; null when either score is
+ * unknown, so a score first appearing (null → points) isn't taken for a basket.
+ */
+export function pageTotalScore(p: { game?: { home: ScoredSide; away: ScoredSide } | null }): number | null {
+  const home = p.game?.home.score;
+  const away = p.game?.away.score;
+  return home == null || away == null ? null : home + away;
 }
 
 export function addOffsetSample(samples: number[], sample: number): number[] {

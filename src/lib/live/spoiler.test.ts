@@ -3,13 +3,17 @@ import {
   addFrame,
   addOffsetSample,
   clampDelay,
+  ceilDelay,
   clockOffset,
   frameDeviceTime,
   isOldEnough,
   OFFSET_SAMPLES,
   offsetSample,
   pageFramePlayed,
+  pageTotalScore,
   parseStoredDelay,
+  parseStoredOffset,
+  pickOffset,
   pickFrame,
   pushFramePlayed,
   syncDelay,
@@ -35,6 +39,34 @@ describe('clampDelay / parseStoredDelay', () => {
     expect(parseStoredDelay(null)).toBe(0);
     expect(parseStoredDelay('abc')).toBe(0);
     expect(parseStoredDelay('500000')).toBe(120_000);
+  });
+});
+
+describe('ceilDelay', () => {
+  it('rounds up to whole seconds, so a measured delay is never shorter than measured', () => {
+    expect(ceilDelay(7_001)).toBe(8_000);
+    expect(ceilDelay(7_000)).toBe(7_000);
+    expect(ceilDelay(-5)).toBe(0);
+    expect(ceilDelay(999_999)).toBe(120_000);
+    expect(ceilDelay(Number.NaN)).toBe(0);
+  });
+});
+
+describe('parseStoredOffset', () => {
+  it('reads a stored sync offset defensively (null when absent or unusable)', () => {
+    expect(parseStoredOffset('1500')).toBe(1_500);
+    expect(parseStoredOffset('-200')).toBe(-200);
+    expect(parseStoredOffset(null)).toBeNull();
+    expect(parseStoredOffset('')).toBeNull();
+    expect(parseStoredOffset('abc')).toBeNull();
+  });
+});
+
+describe('pickOffset', () => {
+  it('is the current offset, or the one the delay was synced under if that is larger', () => {
+    expect(pickOffset(300, null)).toBe(300);
+    expect(pickOffset(300, 10_000)).toBe(10_000);
+    expect(pickOffset(12_000, 10_000)).toBe(12_000);
   });
 });
 
@@ -118,7 +150,7 @@ describe('syncDelay', () => {
   const frames = [A(1_000, 10), A(3_000, 10), A(5_000, 12), A(8_000, 12), A(9_000, 15)];
   it('measures from the newest basket at or before the tap', () => {
     expect(syncDelay(frames, 29_000, 0, (v) => v)).toBe(20_000);
-    expect(syncDelay(frames, 8_500, 0, (v) => v)).toBe(4_000); // 3.5 s rounds to 4
+    expect(syncDelay(frames, 8_500, 0, (v) => v)).toBe(4_000); // 3.5 s rounds up to 4
   });
   it('uses the play time, shifted into the device clock, when it is earlier than the arrival', () => {
     // Played at server 2 000 (device 2 500 with offset 500), arrived 6 000.
@@ -127,7 +159,54 @@ describe('syncDelay', () => {
     expect(syncDelay(f, 12_500, 500, (v) => v)).toBe(10_000);
     // With an inflated offset the arrival is the tighter bound.
     expect(frameDeviceTime(f[1], 9_000)).toBe(6_000);
-    expect(syncDelay(f, 12_500, 9_000, (v) => v)).toBe(7_000); // 6.5 s rounds to 7
+    expect(syncDelay(f, 12_500, 9_000, (v) => v)).toBe(7_000); // 6.5 s rounds up to 7
+  });
+  it('rounds up, never down', () => {
+    expect(syncDelay(frames, 8_200, 0, (v) => v)).toBe(4_000); // 3.2 s → 4 s
+    expect(syncDelay(frames, 29_000, 0, (v) => v)).toBe(20_000);
+  });
+  it('never counts a score appearing (null → points) as a basket on the page path', () => {
+    type G = { game: { home: { score: number | null }; away: { score: number | null } } | null };
+    const g = (home: number | null, away: number | null): G => ({ game: { home: { score: home }, away: { score: away } } });
+    // The first poll had no score yet; the next one shows 40–38.
+    const f: Frame<G>[] = [
+      { played: null, arrived: 1_000, value: g(null, null) },
+      { played: null, arrived: 2_000, value: g(40, 38) },
+    ];
+    expect(pageTotalScore(g(null, 3))).toBeNull();
+    expect(pageTotalScore(g(40, null))).toBeNull();
+    expect(pageTotalScore({ game: null })).toBeNull();
+    expect(pageTotalScore(g(40, 38))).toBe(78);
+    expect(syncDelay(f, 5_000, 0, pageTotalScore)).toBeNull();
+    // A real basket after that still counts.
+    f.push({ played: null, arrived: 3_000, value: g(42, 38) });
+    expect(syncDelay(f, 5_000, 0, pageTotalScore)).toBe(2_000);
+  });
+  it('keeps a page synced under an inflated offset from running early once the offset drops', () => {
+    // Clocks in sync (true offset 0). The TV shows each play 20 s after it
+    // happens. Plays arrive 2 s after they happen.
+    const lag = 20_000;
+    const basket = (played: number, total: number) => P(played, played + 2_000, total);
+    const frames = [basket(0, 10), basket(10_000, 12), basket(40_000, 15)];
+    // A stale CDN copy inflated the offset estimate to 10 s when the fan synced:
+    // they tapped as their screen showed the 12, at 10 000 + 20 000.
+    const inflated = 10_000;
+    const tap = 10_000 + lag;
+    const delay = syncDelay(frames, tap, inflated, (v) => v)!;
+    // frameDeviceTime = min(10 000 + 10 000, 12 000) = 12 000 → delay 18 s (arrival bound).
+    expect(delay).toBe(18_000);
+    // A played-bound measurement (arrivals late): the offset is baked in.
+    const late = [P(0, 30_000, 10), P(10_000, 30_000, 12)];
+    const d2 = syncDelay(late, tap, inflated, (v) => v)!;
+    expect(d2).toBe(10_000); // tap − (10 000 + 10 000)
+    // The estimate then drops to the true 0. With the offset at sync kept, the
+    // next basket (played 40 000, on the TV at 60 000) doesn't show before 60 000…
+    const next = P(40_000, 60_000, 15);
+    const synced = pickOffset(0, inflated);
+    expect(isOldEnough(next, 59_999, synced, d2)).toBe(false);
+    expect(isOldEnough(next, 60_000, synced, d2)).toBe(true);
+    // …where the dropped offset alone would have shown it 10 s early.
+    expect(isOldEnough(next, 50_000, 0, d2)).toBe(true);
   });
   it('is null without a basket, or when scores are unknown', () => {
     expect(syncDelay([A(1_000, 10), A(2_000, 10)], 5_000, 0, (v) => v)).toBeNull();
