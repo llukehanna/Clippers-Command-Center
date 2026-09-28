@@ -54,6 +54,18 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # Clippers play-by-play → game flow / period / clutch tables (last 3 days).
+      - name: Ingest play-by-play
+        run: npm run ingest-pbp
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Game highs, streaks and records start for insight framing.
+      - name: Build record book
+        run: npm run build-record-book
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       - name: Generate insights
         run: npm run generate-insights
         env:
