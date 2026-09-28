@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { TopBar } from '@/components/shell/TopBar'
 import { CommandPalette } from '@/components/shell/CommandPalette'
+import { GlassPointer } from '@/components/shell/GlassPointer'
 
 const geist = Geist({
   subsets: ['latin'],
@@ -50,6 +51,7 @@ export default function RootLayout({
           <main>{children}</main>
         </ViewTransition>
         <CommandPalette />
+        <GlassPointer />
       </body>
     </html>
   )
