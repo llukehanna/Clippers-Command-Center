@@ -1,34 +1,77 @@
+import type { Metadata } from 'next'
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { PlayerHeader } from '@/components/players/PlayerHeader'
-import { RollingAveragesTable } from '@/components/players/RollingAveragesTable'
-import { TrendChartSection } from '@/components/players/TrendChartSection'
-import { SplitsDisplay } from '@/components/players/SplitsDisplay'
-import { GameLogSection } from '@/components/players/GameLogSection'
+import { PlayerHero } from '@/components/players/PlayerHero'
+import { TrendChart } from '@/components/players/TrendChart'
+import { SplitsPanel } from '@/components/players/SplitsPanel'
+import { GameLog, type GameLogRow } from '@/components/players/GameLog'
+import { Eyebrow } from '@/components/ui/eyebrow'
+import { getJson } from '@/src/lib/ui/api'
+import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
+import type { HistoryGame } from '@/src/lib/ui/season'
+import type { PlayerDetailPayload, PlayersPayload } from '@/src/lib/ui/types'
 
-export default async function PlayerDetailPage({
-  params,
-}: {
-  params: Promise<{ player_id: string }>
-}) {
+// Live data on every request (loaders read the database directly).
+export const dynamic = 'force-dynamic'
+
+type Params = { params: Promise<{ player_id: string }> }
+
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { player_id } = await params
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
+  const data = await getJson<PlayerDetailPayload>(`/api/players/${encodeURIComponent(player_id)}`)
+  return { title: data?.player.display_name ?? 'Player' }
+}
 
-  const res = await fetch(`${baseUrl}/api/players/${player_id}`, { cache: 'no-store' })
-  if (!res.ok) notFound()
+export default async function PlayerDetailPage({ params }: Params) {
+  const { player_id } = await params
+  const [data, roster] = await Promise.all([
+    getJson<PlayerDetailPayload>(`/api/players/${encodeURIComponent(player_id)}`),
+    getJson<PlayersPayload>('/api/players?include_traded=true'),
+  ])
+  if (!data) notFound()
 
-  const data = await res.json()
+  const log = data.game_log ?? []
+  const seasonId = log[0] ? seasonStartYear(new Date(`${log[0].game_date}T12:00:00Z`)) : null
+  const history = seasonId ? await getJson<{ games: HistoryGame[] }>(`/api/history/games?season_id=${seasonId}&limit=200`) : null
+  const byId = new Map((history?.games ?? []).map((g) => [String(g.game_id), g]))
+  const rows: GameLogRow[] = log.map((r) => {
+    const g = byId.get(String(r.game_id))
+    return {
+      ...r,
+      result: g?.result ?? null,
+      score: g?.final_score ? `${g.final_score.team}–${g.final_score.opp}` : null,
+    }
+  })
+  const nbaId: string | number | null = roster?.players.find((p) => String(p.player_id) === String(player_id))?.nba_person_id ?? null
 
   return (
-    <div className="px-6 py-6 max-w-[1440px] mx-auto space-y-6">
-      <PlayerHeader player={data.player} season_averages={data.season_averages} />
-      <RollingAveragesTable
-        trend_summary={data.trend_summary}
-        season_averages={data.season_averages}
-        game_log={data.game_log}
-      />
-      <TrendChartSection charts={data.charts} />
-      <SplitsDisplay splits={data.splits} />
-      <GameLogSection gameLog={data.game_log} />
+    <div className="page">
+      <Link href="/players" className="w-fit font-mono text-[12px] text-mute hover:text-text">
+        ← Players
+      </Link>
+      <div className="enter">
+        <PlayerHero
+          name={data.player.display_name}
+          position={data.player.position}
+          nbaPlayerId={nbaId}
+          seasonLabel={seasonId ? formatSeasonLabel(seasonId).replace('-', '–') : 'Season'}
+          gamesPlayed={log.length}
+          season={data.season_averages}
+          recent={data.trend_summary}
+        />
+      </div>
+
+      <section className="enter grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 1 }}>
+        <TrendChart charts={data.charts} />
+        {data.splits && <SplitsPanel splits={data.splits} />}
+      </section>
+
+      {rows.length > 0 && (
+        <section className="enter" style={{ ['--i' as string]: 2 }}>
+          <Eyebrow aside={`last ${rows.length} games`}>Game log</Eyebrow>
+          <GameLog rows={rows} />
+        </section>
+      )}
     </div>
   )
 }
