@@ -24,6 +24,7 @@ import type {
 } from '../../src/lib/types/live.js';
 import { easternDateOf, seasonLabel } from './schedule-utils.js';
 import type { CdnBoxscoreResult } from './nba-season.js';
+import type { RawAction, RawPlayByPlay } from './pbp/types.js';
 
 const STATS_BASE = 'https://stats.nba.com/stats';
 const STATS_HEADERS = {
@@ -420,4 +421,16 @@ export async function fetchStatsBoxscore(gameId10: string, log: (msg: string) =>
   } catch (err) {
     return { status: 'error', message: (err as Error).message };
   }
+}
+
+// ── Play-by-play (playbyplayv3) ──────────────────────────────────────────────
+
+/** One game's play-by-play from stats.nba.com, or null when it has none. */
+export async function fetchStatsPlayByPlay(gameId10: string, log: (msg: string) => void): Promise<RawPlayByPlay | null> {
+  const data = await statsGet<{ game?: { gameId: string; actions?: RawAction[] } }>(
+    `/playbyplayv3?GameID=${gameId10}&StartPeriod=0&EndPeriod=0`,
+    log
+  );
+  if (!data.game?.actions?.length) return null;
+  return { game: { gameId: data.game.gameId, actions: data.game.actions } };
 }
