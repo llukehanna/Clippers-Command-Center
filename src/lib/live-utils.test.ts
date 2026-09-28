@@ -58,19 +58,46 @@ describe('staleThresholdMs', () => {
 })
 
 describe('livePollInterval', () => {
-  it('polls every 5 minutes with no game and every minute after the final', () => {
+  it('polls every 5 minutes with no game and every minute after the final, in either mode', () => {
     expect(livePollInterval({ state: 'NO_ACTIVE_GAME' })).toBe(300_000)
     expect(livePollInterval({ state: 'LIVE', game: { status: 'final' } })).toBe(60_000)
+    expect(livePollInterval({ state: 'NO_ACTIVE_GAME' }, 'chip')).toBe(300_000)
+    expect(livePollInterval({ state: 'LIVE', game: { status: 'final' } }, 'chip')).toBe(60_000)
   })
 
-  it('follows the runner cadence, clamped to 4–30 s', () => {
-    expect(livePollInterval({ state: 'LIVE', cadence: { next_ms: 3_000 } })).toBe(4_000)
-    expect(livePollInterval({ state: 'LIVE', cadence: { next_ms: 8_000 } })).toBe(8_000)
-    expect(livePollInterval({ state: 'DATA_DELAYED', cadence: { next_ms: 60_000 } })).toBe(30_000)
+  describe("mode: 'cadence' (the /live page)", () => {
+    it('follows the runner cadence, clamped to 4–30 s', () => {
+      expect(livePollInterval({ state: 'LIVE', cadence: { next_ms: 3_000 } }, 'cadence')).toBe(4_000)
+      expect(livePollInterval({ state: 'LIVE', cadence: { next_ms: 8_000 } }, 'cadence')).toBe(8_000)
+      expect(livePollInterval({ state: 'LIVE', cadence: { next_ms: 60_000 } }, 'cadence')).toBe(30_000)
+    })
+
+    it('backs off DATA_DELAYED to 15 s regardless of the cadence hint', () => {
+      expect(livePollInterval({ state: 'DATA_DELAYED', cadence: { next_ms: 60_000 } }, 'cadence')).toBe(15_000)
+      expect(livePollInterval({ state: 'DATA_DELAYED', cadence: { next_ms: 3_000 } }, 'cadence')).toBe(15_000)
+      expect(livePollInterval({ state: 'DATA_DELAYED' }, 'cadence')).toBe(15_000)
+    })
+
+    it('falls back to 12 s while loading or without a cadence', () => {
+      expect(livePollInterval(undefined, 'cadence')).toBe(12_000)
+      expect(livePollInterval({ state: 'LIVE' }, 'cadence')).toBe(12_000)
+    })
+
+    it('defaults to cadence mode when no mode is passed (back-compat)', () => {
+      expect(livePollInterval({ state: 'LIVE', cadence: { next_ms: 8_000 } })).toBe(8_000)
+      expect(livePollInterval({ state: 'LIVE' })).toBe(12_000)
+    })
   })
 
-  it('falls back to 12 s while loading or without a cadence', () => {
-    expect(livePollInterval(undefined)).toBe(12_000)
-    expect(livePollInterval({ state: 'LIVE' })).toBe(12_000)
+  describe("mode: 'chip' (the TopBar, mounted on every page)", () => {
+    it('polls a flat 30 s while LIVE or DATA_DELAYED, ignoring the cadence hint', () => {
+      expect(livePollInterval({ state: 'LIVE', cadence: { next_ms: 3_000 } }, 'chip')).toBe(30_000)
+      expect(livePollInterval({ state: 'LIVE', cadence: { next_ms: 30_000 } }, 'chip')).toBe(30_000)
+      expect(livePollInterval({ state: 'DATA_DELAYED', cadence: { next_ms: 3_000 } }, 'chip')).toBe(30_000)
+    })
+
+    it('falls back to 12 s while loading or without a cadence', () => {
+      expect(livePollInterval(undefined, 'chip')).toBe(12_000)
+    })
   })
 })
