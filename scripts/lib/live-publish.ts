@@ -45,9 +45,24 @@ export function createPublisher(o: {
 
   function dispatch(doc: LiveStateDoc, resolve: (ok: boolean) => void): void {
     inFlight = true;
-    const now = o.now();
-    const keyframe = last === null || now - lastKeyframeAt >= every;
-    const msg: LiveMessage = keyframe ? { kind: 'keyframe', seq: doc.seq, doc } : diffDocs(last!, doc);
+    let now: number;
+    let keyframe: boolean;
+    let msg: LiveMessage;
+    try {
+      now = o.now();
+      keyframe = last === null || now - lastKeyframeAt >= every;
+      msg = keyframe ? { kind: 'keyframe', seq: doc.seq, doc } : diffDocs(last!, doc);
+    } catch (err) {
+      // A throw building the message (e.g. an unserializable doc reaching
+      // diffDocs) must not wedge the publisher forever — treat it exactly
+      // like a failed post so the next publish resynchronizes with a keyframe.
+      o.log?.(`hub publish failed (seq ${doc.seq}): ${(err as Error).message}`);
+      last = null;
+      inFlight = false;
+      resolve(false);
+      advance();
+      return;
+    }
     o.post(msg).then(
       () => {
         last = doc;
