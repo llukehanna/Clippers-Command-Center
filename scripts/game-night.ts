@@ -18,6 +18,7 @@ import { calculateBackoff } from './lib/poll-live-logic.js';
 import { findLiveCandidates, runLiveCycle, type LiveCandidate } from './lib/live-cycle.js';
 import { finalizeGame } from './lib/finalize.js';
 import { parseNBAClock } from './lib/nba-live-client.js';
+import { ingestGamePbp } from './lib/pbp/ingest.js';
 
 const POLL_INTERVAL_MS = 12_000;
 const LEAD_MINUTES = Number(process.env.GAME_NIGHT_LEAD_MINUTES ?? 75);
@@ -95,6 +96,15 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
               ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
             `;
             console.log('[game-night] Finalization complete.');
+            // Play-by-play → game flow / period / clutch tables, so postgame
+            // insights can run minutes after the buzzer. Non-fatal: the nightly
+            // pipeline picks up any game without a game_flow row.
+            try {
+              const r = await ingestGamePbp(candidate.game_id);
+              console.log(`[game-night] Play-by-play: ${r.status === 'ok' ? `${r.events} events` : 'not available yet'}`);
+            } catch (err) {
+              console.error(`[game-night] Play-by-play ingest failed: ${(err as Error).message}`);
+            }
           } catch (err) {
             // The nightly post-game pipeline retries games without box scores.
             console.error(`[game-night] Finalization failed: ${(err as Error).message}`);
