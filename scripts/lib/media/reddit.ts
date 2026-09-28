@@ -69,9 +69,15 @@ export function redditRssToItems(xml: string): MediaItemInput[] {
   try {
     doc = parser.parse(xml) as Node;
   } catch {
-    return [];
+    throw new Error('reddit rss: response is not an Atom feed');
   }
-  const entries = list((doc.feed as Node | undefined)?.entry as Node | Node[] | undefined);
+  const feed = doc.feed as Node | undefined;
+  // A block/consent/error page (or any non-Atom body) parses fine but has no
+  // <feed> root — that must not look like "zero posts right now" upstream:
+  // sync-media would otherwise treat it as a successful empty fetch and
+  // clear every stored feed_rank.
+  if (!feed) throw new Error('reddit rss: response is not an Atom feed');
+  const entries = list(feed.entry as Node | Node[] | undefined);
   const items: MediaItemInput[] = [];
   let rank = 0;
   for (const e of entries) {

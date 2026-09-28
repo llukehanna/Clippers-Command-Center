@@ -99,7 +99,23 @@ describe('redditRssToItems', () => {
       url: 'https://www.reddit.com/r/LAClippers/comments/xyz1/shams_report/', author: 'fan1', feedRank: 1,
     });
   });
-  it('returns nothing for malformed XML', () => {
-    expect(redditRssToItems('<not-a-feed>')).toEqual([]);
+  it('throws when the response has no Atom feed root (e.g. a block page)', () => {
+    expect(() => redditRssToItems('<html><body>blocked</body></html>')).toThrow('reddit rss: response is not an Atom feed');
+  });
+  it('throws for malformed XML with no feed root', () => {
+    expect(() => redditRssToItems('<not-a-feed>')).toThrow('reddit rss: response is not an Atom feed');
+  });
+  it('returns [] for a real feed whose only entries are discussion threads', () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">
+      <entry>
+        <author><name>/u/AutoModerator</name></author>
+        <content type="html">&lt;span&gt;&lt;a href=&quot;https://www.reddit.com/r/LAClippers/comments/abc/weekly_discussion_thread/&quot;&gt;[link]&lt;/a&gt;&lt;/span&gt;</content>
+        <id>t3_abc</id>
+        <link href="https://www.reddit.com/r/LAClippers/comments/abc/weekly_discussion_thread/" />
+        <published>2026-09-27T12:00:00+00:00</published>
+        <title>Weekly Discussion Thread- Sept 27, 2026</title>
+      </entry>
+    </feed>`;
+    expect(redditRssToItems(xml)).toEqual([]);
   });
 });

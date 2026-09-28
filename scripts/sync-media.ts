@@ -49,13 +49,17 @@ async function main() {
   for (const feed of FEEDS) await attempt(feed.source, async () => parseFeed(await fetchText(feed.url), feed));
 
   const { REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_AGENT } = process.env;
-  let redditOk: boolean;
+  let redditCount = 0;
+  const recordReddit = (redditItems: MediaItemInput[]) => {
+    redditCount = redditItems.length;
+    return redditItems;
+  };
   if (REDDIT_CLIENT_ID && REDDIT_CLIENT_SECRET) {
-    redditOk = await attempt(REDDIT_SOURCE, async () =>
-      redditToItems(await fetchRedditHot({ clientId: REDDIT_CLIENT_ID, clientSecret: REDDIT_CLIENT_SECRET, userAgent: REDDIT_USER_AGENT || USER_AGENT })));
+    await attempt(REDDIT_SOURCE, async () =>
+      recordReddit(redditToItems(await fetchRedditHot({ clientId: REDDIT_CLIENT_ID, clientSecret: REDDIT_CLIENT_SECRET, userAgent: REDDIT_USER_AGENT || USER_AGENT }))));
   } else {
-    redditOk = await attempt(`${REDDIT_SOURCE} (rss)`, async () =>
-      redditRssToItems(await fetchRedditRss(REDDIT_USER_AGENT || REDDIT_DEFAULT_USER_AGENT)));
+    await attempt(`${REDDIT_SOURCE} (rss)`, async () =>
+      recordReddit(redditRssToItems(await fetchRedditRss(REDDIT_USER_AGENT || REDDIT_DEFAULT_USER_AGENT))));
   }
 
   const { BSKY_HANDLE, BSKY_APP_PASSWORD } = process.env;
@@ -78,8 +82,10 @@ async function main() {
     for (const i of items.slice(0, 15)) log(`  [${i.kind}] ${i.source}: ${i.title}`);
   } else {
     // A post that fell out of the hot list this run shouldn't keep last
-    // run's rank, so clear before upserting this run's ranks.
-    if (redditOk) await clearFeedRanks(REDDIT_SOURCE);
+    // run's rank, so clear before upserting this run's ranks — but only when
+    // this run actually got Reddit posts back. An empty/failed batch (Reddit
+    // down, a block page) must not wipe every stored rank.
+    if (redditCount > 0) await clearFeedRanks(REDDIT_SOURCE);
     const written = await upsertMediaItems(items);
     const pruned = await pruneMedia();
     log(`upserted ${written}, pruned ${pruned}`);
