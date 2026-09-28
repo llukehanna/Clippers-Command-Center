@@ -139,7 +139,7 @@ Final (or near-final) per-player box score lines per game.
 - `minutes` stored as provider string (e.g., `"34:12"`) for MVP simplicity
 - Standard counting stats and shooting
 - `plus_minus`
-- `raw_payload`
+- `raw_payload` — no longer written (NULL); every field the app uses is a column
 
 ---
 
