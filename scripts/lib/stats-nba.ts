@@ -46,6 +46,9 @@ const TRICODE_ALIASES: Record<string, string> = {
   NJN: 'BKN', // New Jersey Nets (through 2011-12)
   NOH: 'NOP', // New Orleans Hornets (through 2012-13)
   NOK: 'NOP', // New Orleans/Oklahoma City Hornets (2005-07)
+  SEA: 'OKC', // Seattle SuperSonics (through 2007-08)
+  VAN: 'MEM', // Vancouver Grizzlies (through 2000-01)
+  CHH: 'CHA', // Charlotte Hornets (1988-2002; history returned to Charlotte)
 };
 
 export function normalizeTricode(tricode: string): string {
