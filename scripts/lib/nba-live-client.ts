@@ -478,6 +478,72 @@ export async function fetchPlayByPlay(gameId: string): Promise<NBAPlayByPlayResp
   return nbaGet(`/playbyplay/playbyplay_${gameId}.json`);
 }
 
+// ── Conditional fetches (Live v2 runner) ─────────────────────────────────────
+
+export interface Validators {
+  etag?: string | null;
+  lastModified?: string | null;
+}
+
+/** What the CDN says about how long this response stays fresh. */
+export interface Freshness {
+  maxAgeMs: number | null;
+  ageMs: number;
+}
+
+export type CondResult<T> =
+  | { status: 200; body: T; validators: Validators; freshness: Freshness }
+  | { status: 304; validators: Validators; freshness: Freshness };
+
+export class NbaHttpError extends Error {
+  constructor(public readonly status: number, path: string) {
+    super(`NBA CDN ${status}: ${path}`);
+    this.name = 'NbaHttpError';
+  }
+}
+
+export function parseFreshness(headers: Headers): Freshness {
+  const m = (headers.get('cache-control') ?? '').match(/(?:^|,)\s*max-age=(\d+)/i);
+  const age = Number(headers.get('age') ?? 0);
+  return { maxAgeMs: m ? Number(m[1]) * 1000 : null, ageMs: Number.isFinite(age) ? age * 1000 : 0 };
+}
+
+/**
+ * GET with If-None-Match / If-Modified-Since from the previous response.
+ * A 304 means nothing changed since `prev`. Non-2xx/304 throws NbaHttpError.
+ */
+export async function nbaGetConditional<T>(path: string, prev?: Validators): Promise<CondResult<T>> {
+  const headers: Record<string, string> = { ...(NBA_CDN_HEADERS as Record<string, string>) };
+  if (prev?.etag) headers['If-None-Match'] = prev.etag;
+  if (prev?.lastModified) headers['If-Modified-Since'] = prev.lastModified;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${NBA_CDN}${path}`, { signal: controller.signal, headers, cache: 'no-store' });
+    const validators: Validators = {
+      etag: res.headers.get('etag') ?? prev?.etag ?? null,
+      lastModified: res.headers.get('last-modified') ?? prev?.lastModified ?? null,
+    };
+    const freshness = parseFreshness(res.headers);
+    if (res.status === 304) return { status: 304, validators, freshness };
+    if (!res.ok) throw new NbaHttpError(res.status, path);
+    return { status: 200, body: (await res.json()) as T, validators, freshness };
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') throw new Error(`TIMEOUT after ${REQUEST_TIMEOUT_MS}ms: ${path}`);
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export function fetchPlayByPlayConditional(gameId: string, prev?: Validators): Promise<CondResult<NBAPlayByPlayResponse>> {
+  return nbaGetConditional<NBAPlayByPlayResponse>(`/playbyplay/playbyplay_${gameId}.json`, prev);
+}
+
+export function fetchBoxscoreConditional(gameId: string, prev?: Validators): Promise<CondResult<NBABoxscoreResponse>> {
+  return nbaGetConditional<NBABoxscoreResponse>(`/boxscore/boxscore_${gameId}.json`, prev);
+}
+
 async function nbaGet<T>(path: string): Promise<T> {
   const url = `${NBA_CDN}${path}`;
   const controller = new AbortController();
