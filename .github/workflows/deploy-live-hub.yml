@@ -2,7 +2,8 @@ name: Deploy live hub
 
 # Deploys workers/live-hub (the Live v2 push hub, live.lukeghanna.com) when it
 # changes on main. Needs repo secrets CLOUDFLARE_API_TOKEN (Workers Scripts:
-# Edit + Zone DNS: Edit on lukeghanna.com) and CLOUDFLARE_ACCOUNT_ID.
+# Edit + Zone DNS: Edit on lukeghanna.com) and CLOUDFLARE_ACCOUNT_ID. Until the
+# token is set, the job still runs the hub's tests and skips the deploy (green).
 on:
   push:
     branches: [main]
@@ -20,6 +21,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # Secrets can't be read in step `if:` conditions; this boolean can.
+      HAS_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
     defaults:
       run:
         working-directory: workers/live-hub
@@ -36,7 +40,12 @@ jobs:
 
       - run: npm test
 
+      - name: Skip deploy (no Cloudflare token)
+        if: env.HAS_CLOUDFLARE_TOKEN != 'true'
+        run: echo "::notice title=Live hub not deployed::CLOUDFLARE_API_TOKEN is not set; skipping wrangler deploy."
+
       - name: Deploy
+        if: env.HAS_CLOUDFLARE_TOKEN == 'true'
         run: npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
