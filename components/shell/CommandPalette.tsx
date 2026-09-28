@@ -17,6 +17,7 @@ const PAGES = [
   { href: '/live', label: 'Live', hint: 'Scoreboard and box score' },
   { href: '/players', label: 'Players', hint: 'Roster' },
   { href: '/schedule', label: 'Schedule', hint: 'Upcoming games' },
+  { href: '/news', label: 'News', hint: 'Articles and social' },
   { href: '/history', label: 'History', hint: 'Past seasons' },
 ]
 
