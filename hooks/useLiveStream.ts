@@ -22,6 +22,7 @@ import {
   reconnectDelay,
   socketIsSilent,
   streamGameId,
+  tipRefetchExpired,
   type FeedSource,
 } from '@/src/lib/live/stream'
 import type { LiveStateDoc } from '@/src/lib/types/live-state'
@@ -168,12 +169,17 @@ export function useLiveStream(): LiveStream {
 
   // Pre-tip → tip: the hub knows the game started before /api/live does.
   // Refetch every few seconds (the pre-tip response is CDN-cached for only
-  // 2 s) until the page has the game's identity to overlay.
+  // 2 s) until the page has the game's identity to overlay — for at most
+  // 2 minutes, after which the normal poll cadence takes over.
   const tipped = Boolean(pushDoc && pushDoc.status !== 'scheduled' && !base?.game)
   React.useEffect(() => {
     if (!tipped) return
+    const started = Date.now()
     void mutate()
-    const id = setInterval(() => void mutate(), TIP_REFETCH_MS)
+    const id = setInterval(() => {
+      if (tipRefetchExpired(started, Date.now())) clearInterval(id)
+      else void mutate()
+    }, TIP_REFETCH_MS)
     return () => clearInterval(id)
   }, [tipped, mutate])
 

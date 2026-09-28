@@ -21,6 +21,8 @@ export const SOCKET_SILENT_MS = 2 * PING_EVERY_MS;
 export const BACKUP_POLL_MS = 5_000;
 /** Pre-tip → tip: how often /live refetches /api/live until it has the game. */
 export const TIP_REFETCH_MS = 5_000;
+/** …and for how long, so a tip the runner never records can't refetch forever. */
+export const TIP_REFETCH_MAX_MS = 120_000;
 
 export function reconnectDelay(attempt: number): number {
   return RECONNECT_STEPS_MS[Math.min(Math.max(attempt, 0), RECONNECT_STEPS_MS.length - 1)];
@@ -32,6 +34,10 @@ export function isFlapping(drops: number[], now: number): boolean {
 
 export function socketIsSilent(lastHeardAt: number, now: number): boolean {
   return now - lastHeardAt >= SOCKET_SILENT_MS;
+}
+
+export function tipRefetchExpired(startedAt: number, now: number): boolean {
+  return now - startedAt >= TIP_REFETCH_MAX_MS;
 }
 
 export function hubSocketUrl(hub: string, nbaGameId: string): string {
