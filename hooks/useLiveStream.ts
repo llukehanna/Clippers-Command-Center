@@ -6,6 +6,18 @@ import { useNow } from '@/hooks/useNow'
 import { useVisibleWithGrace } from '@/hooks/useVisibleWithGrace'
 import { applyMessage, type LiveMessage } from '@/src/lib/live/protocol'
 import { overlayLiveDoc } from '@/src/lib/live/payload'
+import {
+  addFrame,
+  addOffsetSample,
+  clampDelay,
+  clockOffset,
+  DELAY_STORAGE_KEY,
+  frameTime,
+  parseStoredDelay,
+  pickFrame,
+  syncDelay,
+  type Frame,
+} from '@/src/lib/live/spoiler'
 import { espnScoreboardUrl, overlayEspn, parseEspnScoreboard, type EspnScore } from '@/src/lib/live/espn-backup'
 import {
   BACKUP_POLL_MS,
@@ -37,11 +49,37 @@ export interface LatencySample {
   received_at: number         // this browser got it (local clock)
 }
 
+export interface SpoilerState {
+  /** 0 = off. */
+  delayMs: number
+  setDelay(ms: number): void
+  /** Sets the delay from the newest buffered basket; returns it, or null if none is buffered. */
+  sync(): number | null
+  /** A delay is set but nothing that old is buffered yet: show a hold state, not a newer score. */
+  holding: boolean
+}
+
+/**
+ * Spoiler frames for one game. `at` is in the hub's clock (device time minus
+ * the measured clock offset), not the device's: the hub's replay on connect
+ * arrives all at once with each message's original `hub_at`, so the offset is
+ * only known well once the replay's newest message is in. Keying frames on the
+ * hub's clock and converting "now" with the current offset at render time lets
+ * every frame benefit as the estimate improves, and keeps replayed frames at
+ * the time their plays happened instead of bunching them at arrival.
+ */
+type Frames<T> = { gameId: string; list: Frame<T>[] } | null
+
+function withFrame<T>(frames: Frames<T>, gameId: string, frame: Frame<T>, now: number): Frames<T> {
+  return { gameId, list: addFrame(frames && frames.gameId === gameId ? frames.list : [], frame, now) }
+}
+
 export interface LiveStream {
   data: LivePayload | undefined
   error: unknown
   source: FeedSource
   latency: LatencySample | null
+  spoiler: SpoilerState
 }
 
 /** How often the push watchdog checks that the hub is still talking. */
@@ -53,7 +91,30 @@ const WATCHDOG_CHECK_MS = 5_000
  * live), and ESPN's public scoreboard if our runner goes stale.
  */
 export function useLiveStream(): LiveStream {
-  const now = useNow(5_000)?.getTime() ?? null
+  const [delayMs, setDelayMs] = React.useState(() => {
+    if (typeof window === 'undefined') return 0
+    try {
+      return parseStoredDelay(window.localStorage.getItem(DELAY_STORAGE_KEY))
+    } catch {
+      return 0
+    }
+  })
+  const setDelay = React.useCallback((ms: number) => {
+    const v = clampDelay(ms)
+    setDelayMs(v)
+    try {
+      window.localStorage.setItem(DELAY_STORAGE_KEY, String(v))
+    } catch {
+      // Private mode or blocked storage: the delay just won't persist.
+    }
+  }, [])
+  // A delayed page steps through its buffer once a second.
+  const tickMs = delayMs > 0 ? 1_000 : 5_000
+  const now = useNow(tickMs)?.getTime() ?? null
+  const [pushFrames, setPushFrames] = React.useState<Frames<LiveStateDoc>>(null)
+  const [pageFrames, setPageFrames] = React.useState<Frames<LivePayload>>(null)
+  // Device clock minus the hub's (spec §7.3); 0 until the hub has stamped a message.
+  const [offset, setOffset] = React.useState(0)
   const [pushed, setPushed] = React.useState<{ gameId: string; doc: LiveStateDoc } | null>(null)
   const [latency, setLatency] = React.useState<LatencySample | null>(null)
   const [espn, setEspn] = React.useState<{ gameId: string; score: EspnScore } | null>(null)
@@ -78,6 +139,7 @@ export function useLiveStream(): LiveStream {
     let ws: WebSocket | null = null
     let state: LiveStateDoc | null = lastDoc.current?.gameId === gameId ? lastDoc.current.doc : null
     let attempt = 0
+    let samples: number[] = []
     let stopped = false
     let retry: ReturnType<typeof setTimeout> | undefined
     let lastHeard = Date.now()
@@ -137,11 +199,23 @@ export function useLiveStream(): LiveStream {
         state = result.state
         lastDoc.current = { gameId, doc: result.state }
         setPushed({ gameId, doc: result.state })
+        const receivedAt = Date.now()
+        if (typeof msg.hub_at === 'number') {
+          samples = addOffsetSample(samples, receivedAt - msg.hub_at)
+          setOffset(clockOffset(samples))
+        }
+        // Frames are keyed in the hub's clock (see Frames). A play can't be
+        // later than the hub relayed it — true of the replay's old messages
+        // too, which is what keeps them at their own time.
+        const doc = result.state
+        const hubNow = receivedAt - clockOffset(samples)
+        const at = frameTime(doc.observed_at, 0, typeof msg.hub_at === 'number' ? msg.hub_at : hubNow)
+        setPushFrames((f) => withFrame(f, gameId, { at, value: doc }, hubNow))
         setLatency({
           observed_at: result.state.observed_at,
           fetched_at: result.state.fetched_at,
           hub_at: msg.hub_at ?? null,
-          received_at: Date.now(),
+          received_at: receivedAt,
         })
       }
       socket.onclose = () => drop(socket)
@@ -244,9 +318,66 @@ export function useLiveStream(): LiveStream {
     return { data, usedBackup }
   }, [base, pushLive, pushDoc, backupScore])
 
+  // Spoiler sync (spec §7.3). "Now" in the frames' clock (the hub's).
+  const frameNow = now === null ? null : now - offset
+
+  // Record each new on-screen payload (the "store information from previous
+  // renders" pattern, like followChip above). Waits for useNow to mount, so
+  // the first payload isn't skipped. Render can't read the clock, and `now` is
+  // the last tick, which can predate this payload's arrival; a frame stamped
+  // with it could show up to a tick early. One tick later is when it had
+  // arrived by, so that bounds the arrival cap, and it stamps an ESPN backup
+  // overlay (no play time: it counts from when it arrived).
+  const [seenShown, setSeenShown] = React.useState<LivePayload | undefined>(undefined)
+  if (shown.data !== seenShown && frameNow !== null) {
+    setSeenShown(shown.data)
+    const d = shown.data
+    if (gameId && d?.game) {
+      const arrivedBy = frameNow + tickMs
+      const at = shown.usedBackup ? arrivedBy : frameTime(d.observed_at, 0, arrivedBy)
+      setPageFrames((f) => withFrame(f, gameId, { at, value: d }, frameNow))
+    }
+  }
+
+  // With a delay set, show the newest frame at least that old: a pushed doc
+  // over the current /api/live base while push is live, else a whole page
+  // payload. Nothing that old yet → hold rather than show a newer score.
+  // Before useNow has mounted there's no clock to judge by: show the loading
+  // state. That render only has a game when SWR already had /api/live cached
+  // (a client-side navigation — the TopBar polls it on every page), never
+  // during hydration, so the first client render still matches the server's.
+  let out = shown.data
+  let holding = false
+  if (delayMs > 0 && gameId && shown.data?.game) {
+    if (frameNow === null) {
+      out = undefined
+    } else if (pushLive && base && pushFrames?.gameId === gameId) {
+      const f = pickFrame(pushFrames.list, frameNow, delayMs)
+      if (f) out = overlayLiveDoc(base, f.value)
+      else holding = true
+    } else {
+      const f = pageFrames?.gameId === gameId ? pickFrame(pageFrames.list, frameNow, delayMs) : null
+      if (f) out = f.value
+      else holding = true
+    }
+  }
+
+  const sync = React.useCallback((): number | null => {
+    const tap = Date.now() - offset
+    const d =
+      pushLive && pushFrames?.gameId === gameId
+        ? syncDelay(pushFrames.list, tap, (doc) => doc.home_score + doc.away_score)
+        : pageFrames?.gameId === gameId
+          ? syncDelay(pageFrames.list, tap, (p) => (p.game ? (p.game.home.score ?? 0) + (p.game.away.score ?? 0) : null))
+          : null
+    if (d !== null) setDelay(d)
+    return d
+  }, [offset, pushLive, pushFrames, pageFrames, gameId, setDelay])
+
   return {
-    data: shown.data,
+    data: holding ? undefined : out,
     error,
+    // Describes the live feed, not the delayed frame.
     source: pickSource({
       shown: shown.data,
       pushFetchedAt: pushLive && pushDoc ? pushDoc.fetched_at : null,
@@ -254,5 +385,6 @@ export function useLiveStream(): LiveStream {
       backup: shown.usedBackup,
     }),
     latency,
+    spoiler: { delayMs, setDelay, sync, holding },
   }
 }

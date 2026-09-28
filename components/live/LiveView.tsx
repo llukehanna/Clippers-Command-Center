@@ -21,6 +21,7 @@ import { IdleState } from './IdleState'
 import { FeedSource } from './FeedSource'
 import { GameFlow } from './GameFlow'
 import { Clipboard } from './Clipboard'
+import { SpoilerControl } from './SpoilerControl'
 import { resolveLiveState } from '@/src/lib/ui/live'
 import { BACKUP_STALE_REASON } from '@/src/lib/live/espn-backup'
 import { RUNNER_NOT_STARTED_REASON } from '@/src/lib/live/payload'
@@ -28,6 +29,7 @@ import type { FeedSource as FeedSourceKind } from '@/src/lib/live/stream'
 import { formatMoneyline, formatSpread, noVigProbabilities } from '@/src/lib/ui/odds'
 import { ageLabel, parseTimestamp } from '@/src/lib/ui/time'
 import type { LivePayload } from '@/src/lib/ui/types'
+import type { SpoilerState } from '@/hooks/useLiveStream'
 
 function LoadingState() {
   return (
@@ -44,7 +46,17 @@ function LoadingState() {
 }
 
 /** Everything under /live, driven by one /api/live payload. */
-export function LiveView({ data, error, source }: { data: LivePayload | undefined; error?: unknown; source?: FeedSourceKind }) {
+export function LiveView({
+  data,
+  error,
+  source,
+  spoiler,
+}: {
+  data: LivePayload | undefined
+  error?: unknown
+  source?: FeedSourceKind
+  spoiler?: SpoilerState
+}) {
   const scoreRef = React.useRef<HTMLDivElement>(null)
   const now = useNow(5_000)
   const wide = useMediaQuery('(min-width: 640px)')
@@ -55,6 +67,18 @@ export function LiveView({ data, error, source }: { data: LivePayload | undefine
     return (
       <div className="page">
         <EmptyState title="Live data isn't responding" body="Retrying automatically. The page will update as soon as the feed is back." />
+      </div>
+    )
+  }
+  if (spoiler?.holding) {
+    return (
+      <div className="page">
+        <Panel className="grid justify-items-start gap-3 p-6">
+          <p className="m-0 text-[14px] text-mute">
+            Holding the game {Math.round(spoiler.delayMs / 1000)} s behind live to match your screen…
+          </p>
+          <SpoilerControl spoiler={spoiler} />
+        </Panel>
       </div>
     )
   }
@@ -103,7 +127,9 @@ export function LiveView({ data, error, source }: { data: LivePayload | undefine
       <LiveTabTitle game={game} />
       <StickyScore sentinel={scoreRef} lac={lac} opp={opp} period={game.period} clock={game.clock} delayed={delayed} />
 
-      <section aria-label="Scoreboard" ref={scoreRef} className="enter">
+      {/* z-10: .enter's animation gives every section its own stacking context; the
+          spoiler control's popover has to paint over the sections below. */}
+      <section aria-label="Scoreboard" ref={scoreRef} className="enter relative z-10">
         <Scoreboard lac={lac} opp={opp} lacHome={lacHome} mode={delayed ? 'delayed' : 'live'} period={game.period} clock={game.clock}>
           <LineScore periods={game.periods ?? []} lacHome={lacHome} oppAbbr={oppAbbr} />
           {odds && (
@@ -133,9 +159,10 @@ export function LiveView({ data, error, source }: { data: LivePayload | undefine
             probs && <WinProbabilityBar lacProb={probs.a} oppAbbr={oppAbbr} />
           )}
         </Scoreboard>
-        {source && (
-          <div className="mt-3 flex justify-end">
-            <FeedSource source={source} />
+        {(source || spoiler) && (
+          <div className="mt-3 flex items-center justify-between gap-3">
+            {spoiler ? <SpoilerControl spoiler={spoiler} /> : <span />}
+            {source && <FeedSource source={source} />}
           </div>
         )}
         {delayed && (
