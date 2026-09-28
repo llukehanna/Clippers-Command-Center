@@ -1,8 +1,9 @@
 // scripts/lib/live-state.ts
 // Builds the live_state document (Live v2 spec §4) from the latest scoreboard,
-// box score and play-by-play. Pure. The box score is the freshest source for
-// score/clock (it is fetched right after play-by-play changes); the scoreboard
-// covers pre-tip and other games.
+// box score and play-by-play. Pure. The box score is preferred for header fields
+// (score, clock, period) only when it is at least as far along as the scoreboard.
+// If the scoreboard is ahead, use its data to avoid serving stale mid-game header
+// with a final status. Status is the max of both (ensures final from either).
 
 import { createHash } from 'node:crypto';
 import type { BoxscoreGame, BoxscoreTeam, PlayByPlayAction, ScoreboardGame } from '../../src/lib/types/live';
@@ -56,20 +57,22 @@ function statusOf(code: number): LiveStateDoc['status'] {
 
 export function buildLiveState(i: StateInputs): LiveStateBody {
   const b = i.box;
-  const period = b?.period ?? i.sbGame.period;
-  const isoClock = b?.gameClock ?? i.sbGame.gameClock;
+  // Use box for header fields only if it is at least as far along as the scoreboard
+  const head = i.box && i.box.gameStatus >= i.sbGame.gameStatus ? i.box : null;
+  const period = head?.period ?? i.sbGame.period;
+  const isoClock = head?.gameClock ?? i.sbGame.gameClock;
   const observed = [...i.actions].reverse().find((a) => a.timeActual)?.timeActual ?? null;
   return {
     v: 1,
     source: 'nba',
     nba_game_id: i.sbGame.gameId,
     status: statusOf(Math.max(i.sbGame.gameStatus, b?.gameStatus ?? 0)),
-    status_text: b?.gameStatusText ?? i.sbGame.gameStatusText,
+    status_text: head?.gameStatusText ?? i.sbGame.gameStatusText,
     period,
     clock: parseNBAClock(isoClock),
-    home_score: b?.homeTeam.score ?? i.sbGame.homeTeam.score,
-    away_score: b?.awayTeam.score ?? i.sbGame.awayTeam.score,
-    periods: b ? boxPeriods(b.homeTeam, b.awayTeam) : lineScore(i.sbGame),
+    home_score: head?.homeTeam.score ?? i.sbGame.homeTeam.score,
+    away_score: head?.awayTeam.score ?? i.sbGame.awayTeam.score,
+    periods: head ? boxPeriods(head.homeTeam, head.awayTeam) : lineScore(i.sbGame),
     home_box: b?.homeTeam ?? null,
     away_box: b?.awayTeam ?? null,
     recent_scoring: i.actions.length
