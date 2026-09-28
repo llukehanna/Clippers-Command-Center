@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { brier, calibrate, fitSigma, marginAt, reliability, samplesFor, type CalGame, type Sample } from './wp-calibrate.js';
+import {
+  brier,
+  calibrate,
+  fitBySource,
+  fitSigma,
+  marginAt,
+  MIN_GAMES,
+  modelSigma,
+  reliability,
+  samplesFor,
+  type CalGame,
+  type Sample,
+} from './wp-calibrate.js';
+import { DEFAULT_SIGMA } from '../../src/lib/live/win-prob.js';
+import type { WpCalibration } from '../../src/lib/types/live-state.js';
 
 // Deterministic PRNG (mulberry32) and a Box–Muller normal draw, so the fit test is stable.
 function mulberry32(seed: number): () => number {
@@ -93,5 +107,54 @@ describe('calibrate', () => {
     expect(r.sigma).toBeLessThanOrEqual(18);
     expect(r.brier).toBeGreaterThan(0);
     expect(r.reliability.length).toBeGreaterThan(0);
+  });
+});
+
+describe('fitBySource', () => {
+  const spread = simulate(600, 11, 21).map((g) => ({ ...g, source: 'spread' as const }));
+  const homeCourt = simulate(600, 15, 23).map((g) => ({ ...g, source: 'home_court' as const }));
+
+  it('fits σ separately for each source of the pregame expectation', () => {
+    const by = fitBySource([...spread, ...homeCourt]);
+    expect(Math.abs(by.spread!.sigma - 11)).toBeLessThan(1);
+    expect(Math.abs(by.home_court!.sigma - 15)).toBeLessThan(1);
+    expect(by.spread!.n_games).toBe(600);
+    expect(by.home_court!.n_games).toBe(600);
+    expect(by.spread!.brier).toBeGreaterThan(0);
+  });
+
+  it(`skips a source with fewer than ${MIN_GAMES} games, and games without a source`, () => {
+    const by = fitBySource([...spread, ...homeCourt.slice(0, MIN_GAMES - 1), ...simulate(80, 12, 29)]);
+    expect(by.spread?.n_games).toBe(600);
+    expect(by.home_court).toBeUndefined();
+  });
+
+  it('calibrate reports the overall fit plus each source', () => {
+    const r = calibrate([...spread, ...homeCourt]);
+    expect(r.n_games).toBe(1200);
+    expect(r.sigma).toBeGreaterThan(r.sigma_by_source!.spread!.sigma);
+    expect(r.sigma).toBeLessThan(r.sigma_by_source!.home_court!.sigma);
+  });
+});
+
+describe('modelSigma', () => {
+  const cal = (over: Partial<WpCalibration> = {}): WpCalibration => ({
+    sigma: 13, brier: 0.15, n_games: 900, n_samples: 43_200, fitted_at: '2026-09-28T10:00:00Z', reliability: [], ...over,
+  });
+  const bySource = { spread: { sigma: 11.5, brier: 0.14, n_games: 300 }, home_court: { sigma: 14, brier: 0.16, n_games: 600 } };
+
+  it("uses the σ fitted for the game's source of E", () => {
+    expect(modelSigma(cal({ sigma_by_source: bySource }), 'spread')).toBe(11.5);
+    expect(modelSigma(cal({ sigma_by_source: bySource }), 'home_court')).toBe(14);
+  });
+  it('falls back to the overall σ when that source has no (valid) fit', () => {
+    expect(modelSigma(cal({ sigma_by_source: { home_court: bySource.home_court } }), 'spread')).toBe(13);
+    expect(modelSigma(cal({ sigma_by_source: { spread: { ...bySource.spread, sigma: 0 } } }), 'spread')).toBe(13);
+    expect(modelSigma(cal({ sigma_by_source: { spread: { ...bySource.spread, sigma: Number.NaN } } }), 'spread')).toBe(13);
+    expect(modelSigma(cal(), 'spread')).toBe(13);
+  });
+  it('falls back to the default σ without a (valid) calibration', () => {
+    expect(modelSigma(null, 'spread')).toBe(DEFAULT_SIGMA);
+    expect(modelSigma(cal({ sigma: -1 }), 'home_court')).toBe(DEFAULT_SIGMA);
   });
 });

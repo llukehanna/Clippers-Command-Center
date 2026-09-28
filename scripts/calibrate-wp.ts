@@ -10,11 +10,10 @@
 //   npm run calibrate-wp -- --dry   fit and print only
 
 import { sql } from './lib/db.js';
-import { BRIER_TOLERANCE, calibrate, WP_MODEL_KEY, type CalGame } from './lib/wp-calibrate.js';
+import { BRIER_TOLERANCE, calibrate, MIN_GAMES, WP_MODEL_KEY, type CalGame } from './lib/wp-calibrate.js';
 import { expectedLacMargin } from '../src/lib/live/win-prob.js';
 import type { WpCalibration } from '../src/lib/types/live-state.js';
 
-const MIN_GAMES = 50;
 type Json = Parameters<typeof sql.json>[0];
 
 interface Row {
@@ -49,11 +48,15 @@ async function main(): Promise<void> {
 
   const games: CalGame[] = rows
     .filter((r) => Array.isArray(r.series) && r.home_score !== r.away_score)
-    .map((r) => ({
-      series: r.series,
-      lacWon: r.lac_home ? r.home_score > r.away_score : r.away_score > r.home_score,
-      expected: expectedLacMargin(r.lac_spread, r.lac_home).expected,
-    }));
+    .map((r) => {
+      const e = expectedLacMargin(r.lac_spread, r.lac_home);
+      return {
+        series: r.series,
+        lacWon: r.lac_home ? r.home_score > r.away_score : r.away_score > r.home_score,
+        expected: e.expected,
+        source: e.source,
+      };
+    });
   if (games.length < MIN_GAMES) {
     // Not a failure: game_flow fills in as play-by-play is ingested. The
     // runner keeps the stored (or default) σ meanwhile.
@@ -65,11 +68,21 @@ async function main(): Promise<void> {
   }
 
   const result = calibrate(games);
-  const withSpread = rows.filter((r) => r.lac_spread !== null).length;
+  const withSpread = games.filter((g) => g.source === 'spread').length;
   console.log(
     `[calibrate-wp] ${result.n_games} games (${withSpread} with a closing spread), ${result.n_samples} samples → ` +
       `σ ${result.sigma}, Brier ${result.brier}`
   );
+  // Per source of E: the runner uses the fit for a game's source when there is one.
+  for (const source of ['spread', 'home_court'] as const) {
+    const fit = result.sigma_by_source[source];
+    const n = games.filter((g) => g.source === source).length;
+    console.log(
+      fit
+        ? `  ${source}: σ ${fit.sigma}, Brier ${fit.brier}, ${fit.n_games} games`
+        : `  ${source}: ${n} games (need ${MIN_GAMES}); uses the overall σ`
+    );
+  }
   console.log('  predicted     actual   n');
   for (const b of result.reliability) {
     console.log(`  ${b.lo.toFixed(1)}–${b.hi.toFixed(1)}  ${b.mean_p.toFixed(3)}  ${b.observed.toFixed(3)}  ${b.n}`);

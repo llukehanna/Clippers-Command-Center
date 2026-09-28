@@ -4,9 +4,9 @@
 
 import type { Sql } from 'postgres';
 import type { LiveStateDoc, WpCalibration } from '../../src/lib/types/live-state';
-import { DEFAULT_SIGMA, expectedLacMargin } from '../../src/lib/live/win-prob';
+import { expectedLacMargin } from '../../src/lib/live/win-prob';
 import type { ModelContext } from './live-state';
-import { WP_MODEL_KEY } from './wp-calibrate';
+import { modelSigma, WP_MODEL_KEY } from './wp-calibrate';
 
 type Json = Parameters<Sql['json']>[0];
 
@@ -50,8 +50,9 @@ export async function saveLiveState(sql: Sql, gameDbId: string, doc: LiveStateDo
 /**
  * The win-probability and clipboard inputs for one game, read once when the
  * runner starts: the Clippers' closing spread (the newest odds snapshot taken
- * at or before tip), the fitted σ from app_kv, and each player's last-10-game
- * average minutes. Null when the game row doesn't exist.
+ * at or before tip), the fitted σ from app_kv (the fit for this game's source
+ * of E when there is one), and each player's last-10-game average minutes.
+ * Null when the game row doesn't exist.
  */
 export async function loadModelContext(sql: Sql, gameDbId: string): Promise<ModelContext | null> {
   const [g] = await sql<{ lac_home: boolean; home_team_id: string; away_team_id: string; lac_spread: number | null }[]>`
@@ -74,7 +75,8 @@ export async function loadModelContext(sql: Sql, gameDbId: string): Promise<Mode
 
   const [kv] = await sql<{ value: WpCalibration }[]>`SELECT value FROM app_kv WHERE key = ${WP_MODEL_KEY}`;
   const calibration = kv?.value ?? null;
-  const sigma = calibration && Number.isFinite(calibration.sigma) && calibration.sigma > 0 ? calibration.sigma : DEFAULT_SIGMA;
+  // The σ fitted for this game's source of E (spread or home court), else the overall σ, else the default.
+  const sigma = modelSigma(calibration, e.source);
 
   const rows = await sql<{ person_id: number; minutes: number | null }[]>`
     SELECT DISTINCT ON (r.player_id) p.nba_person_id AS person_id, r.minutes::float8 AS minutes
