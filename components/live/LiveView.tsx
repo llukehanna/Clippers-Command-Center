@@ -12,11 +12,13 @@ import { Panel } from '@/components/ui/panel'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useNow } from '@/hooks/useNow'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { KeyMetrics } from './KeyMetrics'
 import { StickyScore } from './StickyScore'
 import { LiveTabTitle } from './LiveTabTitle'
 import { IdleState } from './IdleState'
 import { FeedSource } from './FeedSource'
+import { GameFlow } from './GameFlow'
 import { resolveLiveState } from '@/src/lib/ui/live'
 import { BACKUP_STALE_REASON } from '@/src/lib/live/espn-backup'
 import { RUNNER_NOT_STARTED_REASON } from '@/src/lib/live/payload'
@@ -43,6 +45,8 @@ function LoadingState() {
 export function LiveView({ data, error, source }: { data: LivePayload | undefined; error?: unknown; source?: FeedSourceKind }) {
   const scoreRef = React.useRef<HTMLDivElement>(null)
   const now = useNow(5_000)
+  const wide = useMediaQuery('(min-width: 640px)')
+  const [flowOpen, setFlowOpen] = React.useState(false)
 
   if (error && !data) {
     return (
@@ -120,7 +124,11 @@ export function LiveView({ data, error, source }: { data: LivePayload | undefine
               />
             </div>
           )}
-          {probs && <WinProbabilityBar lacProb={probs.a} oppAbbr={oppAbbr} />}
+          {data.wp && game.status !== 'scheduled' ? (
+            <WinProbabilityBar lacProb={data.wp.lac} oppAbbr={oppAbbr} source="model" />
+          ) : (
+            probs && <WinProbabilityBar lacProb={probs.a} oppAbbr={oppAbbr} />
+          )}
         </Scoreboard>
         {source && (
           <div className="mt-3 flex justify-end">
@@ -138,14 +146,37 @@ export function LiveView({ data, error, source }: { data: LivePayload | undefine
         )}
       </section>
 
+      {data.flow && data.flow.points.length > 1 && (
+        <section className="enter" style={{ ['--i' as string]: 1 }} aria-label="Game flow">
+          <Eyebrow aside={pausedNote}>Game flow</Eyebrow>
+          {wide ? (
+            <Panel className="p-4 sm:p-5">
+              <GameFlow flow={data.flow} wp={data.wp ?? null} oppAbbr={oppAbbr} />
+            </Panel>
+          ) : (
+            <>
+              <Panel as="button" type="button" onClick={() => setFlowOpen((o) => !o)} aria-expanded={flowOpen} className="block w-full px-3 py-2 text-left">
+                <GameFlow flow={data.flow} wp={data.wp ?? null} oppAbbr={oppAbbr} compact />
+                <span className="font-mono text-[11px] text-dim">{flowOpen ? 'Hide the chart' : 'Tap for the full chart'}</span>
+              </Panel>
+              {flowOpen && (
+                <Panel className="mt-2 p-3">
+                  <GameFlow flow={data.flow} wp={data.wp ?? null} oppAbbr={oppAbbr} />
+                </Panel>
+              )}
+            </>
+          )}
+        </section>
+      )}
+
       {data.key_metrics?.length > 0 && (
-        <section className="enter" style={{ ['--i' as string]: 1 }} aria-label="Key metrics">
+        <section className="enter" style={{ ['--i' as string]: 2 }} aria-label="Key metrics">
           {pausedNote && <p className="m-0 mb-2 text-right font-mono text-[11.5px] leading-none text-dim">{pausedNote}</p>}
           <KeyMetrics metrics={data.key_metrics} lacFt={lacBox?.totals.FT as string | undefined} oppFt={oppBox?.totals.FT as string | undefined} oppAbbr={oppAbbr} />
         </section>
       )}
 
-      <section className="enter grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 2 }}>
+      <section className="enter grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 3 }}>
         <div className="min-w-0">
           <Eyebrow aside={pausedNote}>Box score</Eyebrow>
           {data.box_score ? (
