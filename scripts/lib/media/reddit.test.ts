@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { redditToItems, redditRssToItems, tweetUrl } from './reddit';
+import { redditToItems, redditRssToItems, tweetUrl, insiderPost } from './reddit';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REAL_FIXTURE = fs.readFileSync(path.join(__dirname, '__fixtures__/reddit-laclippers-hot.rss'), 'utf8');
@@ -27,6 +27,40 @@ describe('tweetUrl', () => {
     expect(tweetUrl('https://vxtwitter.com/LAClippers/status/222')).toEqual({ id: '222', embedUrl: 'https://twitter.com/LAClippers/status/222' });
     expect(tweetUrl('https://fixupx.com/LAClippers/status/333')).toEqual({ id: '333', embedUrl: 'https://twitter.com/LAClippers/status/333' });
     expect(tweetUrl('https://notfxtwitter.com/LAClippers/status/444')).toBeNull();
+  });
+});
+
+describe('insiderPost', () => {
+  it('detects the insider tags from the real captured feed', () => {
+    expect(insiderPost('[Jake Fischer] Former first-round pick Blake Wesley is signing a one-year deal with the LA Clippers, sources say.'))
+      .toEqual({ insider: 'Jake Fischer', text: 'Former first-round pick Blake Wesley is signing a one-year deal with the LA Clippers, sources say.' });
+    expect(insiderPost('[Keith Smith] The LA Clippers have signed Hunter Sallis and Jason Preston to Exhibit 10 contracts'))
+      .toEqual({ insider: 'Keith Smith', text: 'The LA Clippers have signed Hunter Sallis and Jason Preston to Exhibit 10 contracts' });
+    expect(insiderPost('[Law Murray] I’m told that the LA Clippers will waive Jamarion Sharp, opening up a two way contract'))
+      .toEqual({ insider: 'Law Murray', text: 'I’m told that the LA Clippers will waive Jamarion Sharp, opening up a two way contract' });
+    expect(insiderPost('[Fischer] The Clippers have waived Johni Broome, per source.'))
+      .toEqual({ insider: 'Fischer', text: 'The Clippers have waived Johni Broome, per source.' });
+    expect(insiderPost('[Vorkunov] If league investigators find proof that the Bucks and Trent are guilty of what the Clippers and Leonard were guilty of, the punishment could be equally severe, if not worse.'))
+      .toEqual({ insider: 'Vorkunov', text: 'If league investigators find proof that the Bucks and Trent are guilty of what the Clippers and Leonard were guilty of, the punishment could be equally severe, if not worse.' });
+    expect(insiderPost('[Windhorst] “Brandon Ingram had surgery in the offseason on his foot, on his heel. We don’t have an update on how he’s gonna be. We’re gonna hear at media day where he’s at his heel.”'))
+      .toEqual({ insider: 'Windhorst', text: 'Brandon Ingram had surgery in the offseason on his foot, on his heel. We don’t have an update on how he’s gonna be. We’re gonna hear at media day where he’s at his heel.' });
+    expect(insiderPost('[TheRinger / Pina] Clippers rank 26th in preseason power rankings: “The Clippers won’t make the play-in or anything”'))
+      .toEqual({ insider: 'TheRinger / Pina', text: 'Clippers rank 26th in preseason power rankings: “The Clippers won’t make the play-in or anything”' });
+  });
+  it('rejects generic bracket tags', () => {
+    expect(insiderPost('[Highlight] Kawhi dunk')).toBeNull();
+    expect(insiderPost('[OC] my art')).toBeNull();
+    expect(insiderPost('[Post Game Thread] …')).toBeNull();
+    expect(insiderPost('[Highlights] Kawhi and-1')).toBeNull();
+    expect(insiderPost('[Game Thread] Clippers vs Nuggets')).toBeNull();
+    expect(insiderPost('[Discussion] What now')).toBeNull();
+  });
+  it('returns null when there is no bracket', () => {
+    expect(insiderPost("Kawhi's 27.9 PPG last season were the most by any player 34 or older this century")).toBeNull();
+  });
+  it('returns null for bracket content with disallowed characters', () => {
+    expect(insiderPost('[NBA @ TNT] some text')).toBeNull();
+    expect(insiderPost('[Team 1] some text')).toBeNull();
   });
 });
 
@@ -57,6 +91,21 @@ describe('redditToItems', () => {
   it('returns nothing for an unexpected payload', () => {
     expect(redditToItems({ error: 403 })).toEqual([]);
   });
+  it('turns an insider screenshot post into a tweet item with the insider as author, even without a real tweet link', () => {
+    const items = redditToItems({ data: { children: [
+      post({ id: 'ins1', title: '[Jake Fischer] Blake Wesley signs a one-year deal, sources say.', author: 'doinnothin',
+             url: 'https://i.redd.it/screenshot.png', thumbnail: 'https://b.thumbnail.redditmedia.com/x.jpg',
+             preview: { images: [{ source: { url: 'https://preview.redd.it/screenshot.png' } }] } }),
+    ] } });
+    expect(items[0]).toMatchObject({
+      kind: 'tweet', dedupKey: 'reddit:ins1', title: 'Blake Wesley signs a one-year deal, sources say.',
+      author: 'Jake Fischer', embedUrl: null, thumbnailUrl: 'https://preview.redd.it/screenshot.png',
+    });
+  });
+  it('leaves non-insider posts unaffected', () => {
+    const items = redditToItems({ data: { children: [post({})] } });
+    expect(items[0]).toMatchObject({ kind: 'reddit', title: 'Kawhi drops 41', author: 'fan1' });
+  });
   it('drops weekly/daily discussion threads and assigns 1-based feedRank among kept posts', () => {
     const items = redditToItems({ data: { children: [
       post({ id: '1', title: 'Weekly Discussion Thread- July 23, 2026' }),
@@ -82,7 +131,34 @@ describe('redditRssToItems', () => {
     expect(items.every((i) => i.author == null || !i.author.startsWith('/u/'))).toBe(true);
     expect(items.some((i) => i.thumbnailUrl)).toBe(true);
   });
-  it('turns a [link] to an X status into a tweet item', () => {
+  it('detects at least 4 insider screenshot posts from the real feed, with the right insiders and thumbnails set', () => {
+    const items = redditRssToItems(REAL_FIXTURE);
+    const insiders = items.filter((i) => i.kind === 'tweet');
+    expect(insiders.length).toBeGreaterThanOrEqual(4);
+    const byAuthor = new Map(insiders.map((i) => [i.author, i]));
+    for (const name of ['Jake Fischer', 'Keith Smith', 'Law Murray', 'Fischer', 'Vorkunov', 'Windhorst', 'TheRinger / Pina']) {
+      expect(byAuthor.has(name)).toBe(true);
+      expect(byAuthor.get(name)!.thumbnailUrl).toBeTruthy();
+    }
+  });
+  it('turns a [link] to an X status into a tweet item (non-insider title)', () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+      <entry>
+        <author><name>/u/fan1</name></author>
+        <content type="html">&lt;span&gt;&lt;a href=&quot;https://x.com/ShamsCharania/status/123&quot;&gt;[link]&lt;/a&gt;&lt;/span&gt;</content>
+        <id>t3_xyz1</id>
+        <link href="https://www.reddit.com/r/LAClippers/comments/xyz1/shams_report/" />
+        <published>2026-09-27T12:00:00+00:00</published>
+        <title>Shams posted the report</title>
+      </entry>
+    </feed>`;
+    const [item] = redditRssToItems(xml);
+    expect(item).toMatchObject({
+      kind: 'tweet', dedupKey: 'tweet:123', embedUrl: 'https://twitter.com/ShamsCharania/status/123',
+      url: 'https://www.reddit.com/r/LAClippers/comments/xyz1/shams_report/', author: 'fan1', title: 'Shams posted the report', feedRank: 1,
+    });
+  });
+  it('prefers the insider as author/title even when the post also links to a real tweet', () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
       <entry>
         <author><name>/u/fan1</name></author>
@@ -96,7 +172,7 @@ describe('redditRssToItems', () => {
     const [item] = redditRssToItems(xml);
     expect(item).toMatchObject({
       kind: 'tweet', dedupKey: 'tweet:123', embedUrl: 'https://twitter.com/ShamsCharania/status/123',
-      url: 'https://www.reddit.com/r/LAClippers/comments/xyz1/shams_report/', author: 'fan1', feedRank: 1,
+      url: 'https://www.reddit.com/r/LAClippers/comments/xyz1/shams_report/', author: 'Shams', title: 'Clippers sign a guy', feedRank: 1,
     });
   });
   it('throws when the response has no Atom feed root (e.g. a block page)', () => {
