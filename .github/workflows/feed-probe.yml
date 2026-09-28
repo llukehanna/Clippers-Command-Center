@@ -34,8 +34,12 @@ jobs:
 
       - run: npm ci
 
-      - name: Probe feeds
-        run: node node_modules/.bin/tsx scripts/dev/feed-probe.ts --minutes="${MINUTES}" --nba-game="${GAME}" --out=feed-probe.ndjson
+      - name: Probe feeds and dry-run the poller
+        run: |
+          node node_modules/.bin/tsx scripts/dev/feed-probe.ts --minutes="${MINUTES}" --nba-game="${GAME}" --out=feed-probe.ndjson &
+          node node_modules/.bin/tsx scripts/dev/live-dry-run.ts --minutes="${MINUTES}" --nba-game="${GAME}" > live-dry-run.log 2>&1 &
+          wait
+          tail -40 live-dry-run.log
         env:
           MINUTES: ${{ inputs.minutes || '20' }}
           GAME: ${{ inputs.nba_game || 'auto' }}
@@ -44,4 +48,6 @@ jobs:
         if: always()
         with:
           name: feed-probe
-          path: feed-probe.ndjson
+          path: |
+            feed-probe.ndjson
+            live-dry-run.log
