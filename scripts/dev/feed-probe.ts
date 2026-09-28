@@ -118,7 +118,7 @@ async function main(): Promise<void> {
 
   while (Date.now() < end) {
     const started = Date.now();
-    const results = await Promise.all([
+    const results: Array<{ record: ProbeRecord; body: unknown }> = await Promise.all([
       probe('nba_pbp', `${NBA}/playbyplay/playbyplay_${nba}.json`, NBA_HEADERS, nbaNewest),
       probe('nba_pbp_conditional', `${NBA}/playbyplay/playbyplay_${nba}.json`, NBA_HEADERS, nbaNewest, pbpEtag),
       probe('nba_box', `${NBA}/boxscore/boxscore_${nba}.json`, NBA_HEADERS, none),
