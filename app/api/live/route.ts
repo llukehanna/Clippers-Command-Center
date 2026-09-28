@@ -133,7 +133,7 @@ function computeKeyMetrics(lacBox: BoxscoreTeam, oppBox: BoxscoreTeam): KeyMetri
   const lacEfg = computeEfg(lacStats);
   const oppEfg = computeEfg(oppStats);
 
-  // TO margin (positive = LAC has fewer turnovers = good)
+  // TO margin = LAC turnovers − opponent turnovers (positive = LAC committed MORE; negative is good)
   const tovMargin = lacStats.turnovers - oppStats.turnovers;
 
   // Reb margin

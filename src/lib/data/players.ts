@@ -141,11 +141,26 @@ export async function loadPlayers(url: URL): Promise<ApiResult> {
 
 interface RosterSnapshot {
   synced_at: string;
-  players: { player_id: string; jersey: string | null; position: string | null }[];
+  players: {
+    player_id: string;
+    jersey: string | null;
+    position: string | null;
+    espn_id?: string | null;
+    espn_headshot_url?: string | null;
+  }[];
+}
+
+/** NBA CDN headshot when the NBA personId is known, else ESPN's (rookies/new signings). */
+function headshotUrl(nbaPersonId: number | null, espnHeadshot: string | null | undefined): string | null {
+  if (nbaPersonId) return `https://cdn.nba.com/headshots/nba/latest/1040x760/${nbaPersonId}.png`;
+  return espnHeadshot ?? null;
 }
 
 /** The synced current roster joined to players rows, or null when missing/stale. */
-async function loadCurrentRoster(): Promise<{ synced_at: string; players: (PlayerRow & { jersey: string | null })[] } | null> {
+async function loadCurrentRoster(): Promise<{
+  synced_at: string;
+  players: (PlayerRow & { jersey: string | null; espn_id: string | null; headshot_url: string | null })[];
+} | null> {
   const [kv] = await sql<{ value: RosterSnapshot }[]>`
     SELECT value FROM app_kv
     WHERE key = 'roster:LAC' AND updated_at > now() - make_interval(days => ${ROSTER_MAX_AGE_DAYS})
@@ -164,10 +179,15 @@ async function loadCurrentRoster(): Promise<{ synced_at: string; players: (Playe
   const extra = new Map(snapshot.players.map((p) => [p.player_id, p]));
   return {
     synced_at: snapshot.synced_at,
-    players: rows.map((r) => ({
-      ...r,
-      position: r.position ?? extra.get(r.player_id)?.position ?? r.position,
-      jersey: extra.get(r.player_id)?.jersey ?? null,
-    })),
+    players: rows.map((r) => {
+      const e = extra.get(r.player_id);
+      return {
+        ...r,
+        position: r.position ?? e?.position ?? r.position,
+        jersey: e?.jersey ?? null,
+        espn_id: e?.espn_id ?? null,
+        headshot_url: headshotUrl(r.nba_person_id, e?.espn_headshot_url),
+      };
+    }),
   };
 }
