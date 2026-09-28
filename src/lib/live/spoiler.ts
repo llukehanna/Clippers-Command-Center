@@ -103,10 +103,16 @@ export function isOldEnough<T>(frame: Frame<T>, now: number, offset: number, del
   return frame.played !== null && frame.played <= now - offset - delayMs;
 }
 
+/** The index of the newest frame at least `delayMs` old at device time `now`; −1 while nothing is that old yet. */
+export function pickIndex<T>(frames: Frame<T>[], now: number, offset: number, delayMs: number): number {
+  for (let i = frames.length - 1; i >= 0; i--) if (isOldEnough(frames[i], now, offset, delayMs)) return i;
+  return -1;
+}
+
 /** The newest frame at least `delayMs` old at device time `now`; null while nothing is that old yet. */
 export function pickFrame<T>(frames: Frame<T>[], now: number, offset: number, delayMs: number): Frame<T> | null {
-  for (let i = frames.length - 1; i >= 0; i--) if (isOldEnough(frames[i], now, offset, delayMs)) return frames[i];
-  return null;
+  const i = pickIndex(frames, now, offset, delayMs);
+  return i < 0 ? null : frames[i];
 }
 
 /**
