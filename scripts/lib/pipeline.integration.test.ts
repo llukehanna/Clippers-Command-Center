@@ -71,6 +71,15 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     await sql?.end();
   });
 
+  it('schema has the play-by-play and record-book tables', async () => {
+    const tables = ['game_flow', 'period_team_stats', 'period_player_stats', 'clutch_stats', 'pbp_events', 'rb_game_highs', 'rb_streaks'];
+    const rows = await sql<{ name: string; exists: boolean }[]>`
+      SELECT t AS name, to_regclass('public.' || t) IS NOT NULL AS exists
+      FROM unnest(${tables}::text[]) AS t
+    `;
+    expect(rows.filter((r) => !r.exists).map((r) => r.name)).toEqual([]);
+  });
+
   async function activeInsights() {
     return sql<{ category: string; scope: string; headline: string; importance: number }[]>`
       SELECT category, scope, headline, importance FROM insights WHERE is_active ORDER BY importance DESC
