@@ -20,7 +20,7 @@ A desktop analytics dashboard for avid LA Clippers fans. Three modes that blend 
 
 - **Next.js 16** (App Router, Turbopack) + **React 19** + **TypeScript**
 - **Neon Postgres** via `postgres`
-- **shadcn/ui** + Tailwind v4, Recharts
+- Tailwind v4 with a small in-house component set (Geist type, Clippers palette), Recharts, `cmdk`
 - **SWR** for client data, `tsx` for ops scripts
 - **Vitest** for unit tests
 - Served at **clippers.lukeghanna.com** (Vercel project `clippers-command-center`; the `*.vercel.app` and `ccc.` hosts redirect there); every data job runs on GitHub Actions
@@ -35,7 +35,7 @@ A desktop analytics dashboard for avid LA Clippers fans. Three modes that blend 
 
 ```
 app/                  — Next.js App Router: /live, /home, /schedule, /history, /players
-components/           — UI (live/, nav/, skeletons/, stale-banner/, ui/)
+components/           — UI: ui/ primitives, shell/ (top bar, ⌘K), game/, live/, home/, players/, schedule/, history/
 hooks/                — useLiveData, useInsightRotation
 src/lib/              — DB client, insight engine, domain utils + tests
 scripts/              — pipeline scripts (sync, ingest, compute-stats, insights); scripts/lib/insights = batch insight engine
@@ -84,6 +84,7 @@ npm run verify-insights                # re-run every active insight's proof que
 - 18 routes deployed to production
 - 266 commits, 16 phases shipped
 - Tests cover the domain layer: insight engine, odds math, history, home, live, players, schedule
-- Desktop only (min-width 1024px); mobile deferred
+- Responsive down to phone width; installable to the home screen (web app manifest)
+- `/dev/live` renders the Live view from a fixture payload in development (404 in production)
 
 Product definition, architecture, and the live API contract are in `docs/`.
