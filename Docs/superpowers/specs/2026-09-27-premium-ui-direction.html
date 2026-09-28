@@ -1,0 +1,483 @@
+<title>CCC Design Direction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300..800&family=Geist+Mono:wght@400..600&display=swap">
+<style>
+:root{
+  color-scheme: dark;
+  /* Hybrid: lukeghanna.com materials on a Clippers Naval base */
+  --ink-0:#060A12;      /* page */
+  --ink-1:#0B1220;      /* surface */
+  --ink-2:#111A2C;      /* raised */
+  --ink-3:#18233A;      /* hover / inset */
+  --line:rgba(150,178,230,.09);
+  --line-2:rgba(150,178,230,.16);
+  --hl:rgba(255,255,255,.07);
+  --text:#E8EDF6;
+  --mute:#8D98AE;
+  --dim:#5A6680;
+  --naval:#0C2340;
+  --pacific:#418FDE;
+  --pacific-soft:rgba(65,143,222,.14);
+  --ember:#E0243F;      /* Ember #C8102E lifted for dark-ground legibility */
+  --ember-deep:#C8102E;
+  --ember-soft:rgba(200,16,46,.16);
+  --pos:#4CC38A;
+  --neg:#F0677A;
+  --glass:linear-gradient(170deg,rgba(255,255,255,.055),rgba(255,255,255,.012) 60%);
+  --shadow:0 1px 0 rgba(255,255,255,.05) inset,0 30px 80px -30px rgba(0,0,0,.7);
+  --ease:cubic-bezier(.32,.72,0,1);
+  --sans:"Geist",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r-lg:22px; --r-md:16px; --r-sm:10px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ink-0);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.5;
+  font-feature-settings:"tnum" 1,"ss01" 1;-webkit-font-smoothing:antialiased;padding-inline:16px;padding-block:0 64px}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(900px 520px at 12% -8%,rgba(65,143,222,.13),transparent 60%),
+    radial-gradient(700px 480px at 92% 4%,rgba(200,16,46,.07),transparent 60%),
+    radial-gradient(1200px 700px at 50% 120%,rgba(12,35,64,.55),transparent 70%)}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono)}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--pacific);outline-offset:2px;border-radius:8px}
+
+/* ---------- presentation chrome (not part of the app) ---------- */
+.deck{position:relative;z-index:1;max-width:1320px;margin:0 auto;padding-top:28px}
+.deck-head{display:flex;flex-wrap:wrap;gap:16px 32px;align-items:flex-end;justify-content:space-between;margin-bottom:22px}
+.deck-head h1{font-size:13px;letter-spacing:.12em;text-transform:uppercase;font-family:var(--mono);font-weight:500;color:var(--mute);margin:0 0 6px}
+.deck-head p{margin:0;max-width:64ch;color:var(--mute);font-size:14px}
+.deck-head p b{color:var(--text);font-weight:500}
+.switch{display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--ink-1);border:1px solid var(--line)}
+.switch button{border:0;background:none;padding:7px 14px;border-radius:999px;font-size:13px;color:var(--mute);cursor:pointer;transition:all .3s var(--ease)}
+.switch button[aria-pressed="true"]{background:var(--ink-3);color:var(--text);box-shadow:0 1px 0 var(--hl) inset}
+.controls{display:flex;flex-wrap:wrap;gap:10px}
+.frame{transition:max-width .5s var(--ease);max-width:1320px;margin:0 auto}
+.frame.phone{max-width:400px}
+.app{container-type:inline-size;container-name:app;border-radius:28px;border:1px solid var(--line);background:rgba(6,10,18,.6);overflow:hidden;box-shadow:0 40px 120px -40px rgba(0,0,0,.9)}
+
+/* ---------- app shell ---------- */
+.bar{display:flex;align-items:center;gap:20px;padding:14px 22px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(11,18,32,.85),rgba(11,18,32,.55));backdrop-filter:blur(20px)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em;font-size:15px;white-space:nowrap}
+.brand-mark{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:linear-gradient(160deg,#16325A,var(--naval));
+  box-shadow:0 1px 0 rgba(255,255,255,.14) inset,0 0 0 1px rgba(65,143,222,.25);font-family:var(--mono);font-size:10px;font-weight:600;color:#CFE1F7}
+.brand small{font-family:var(--mono);font-weight:400;color:var(--dim);font-size:11px;letter-spacing:.04em}
+.nav{display:flex;gap:2px;margin-inline:auto;padding:3px;border-radius:999px;background:rgba(255,255,255,.025);border:1px solid var(--line)}
+.nav a{position:relative;padding:6px 14px;border-radius:999px;font-size:13.5px;color:var(--mute);text-decoration:none;transition:color .25s var(--ease),background .25s var(--ease)}
+.nav a:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.nav a[aria-current]{color:var(--text);background:var(--ink-3);box-shadow:0 1px 0 var(--hl) inset,0 0 0 1px var(--line)}
+.nav .live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ember);margin-right:7px;vertical-align:1px;box-shadow:0 0 0 3px rgba(224,36,63,.18)}
+.status{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;color:var(--mute);white-space:nowrap}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--pos);box-shadow:0 0 0 0 rgba(76,195,138,.5);animation:pulse 2.4s var(--ease) infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(76,195,138,.45)}70%{box-shadow:0 0 0 8px rgba(76,195,138,0)}100%{box-shadow:0 0 0 0 rgba(76,195,138,0)}}
+.pulse.red{background:var(--ember);animation-name:pulsered}
+@keyframes pulsered{0%{box-shadow:0 0 0 0 rgba(224,36,63,.5)}70%{box-shadow:0 0 0 8px rgba(224,36,63,0)}100%{box-shadow:0 0 0 0 rgba(224,36,63,0)}}
+
+.page{padding:28px 22px 36px;display:grid;grid-template-columns:minmax(0,1fr);gap:28px}
+.page>*{min-width:0}
+.view[hidden]{display:none!important}
+
+/* eyebrow: mono label + index + hairline, from lukeghanna.com */
+.eyebrow{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin:0 0 14px}
+.eyebrow i{font-style:normal;color:var(--dim);letter-spacing:.04em}
+.eyebrow::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--line-2),transparent)}
+.eyebrow .aside{order:3;letter-spacing:.04em;text-transform:none;color:var(--dim)}
+
+.panel{position:relative;border-radius:var(--r-lg);background:var(--glass),var(--ink-1);border:1px solid var(--line);box-shadow:var(--shadow)}
+.panel.pad{padding:22px}
+.inset{border-radius:var(--r-md);background:rgba(255,255,255,.02);border:1px solid var(--line)}
+
+/* ---------- HOME ---------- */
+.hero-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:18px}
+.next{overflow:hidden;padding:26px 28px}
+.next::before{content:"";position:absolute;inset:-40% -10% auto auto;width:520px;height:520px;border-radius:50%;
+  background:radial-gradient(closest-side,rgba(65,143,222,.18),transparent);pointer-events:none}
+.next-top{display:flex;justify-content:space-between;gap:12px;align-items:center;font-family:var(--mono);font-size:11.5px;color:var(--mute);letter-spacing:.1em;text-transform:uppercase}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid var(--line-2);font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--mute);background:rgba(255,255,255,.02);text-transform:uppercase}
+.chip.blue{color:#9CC7F2;border-color:rgba(65,143,222,.35);background:var(--pacific-soft)}
+.matchup{position:relative;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;margin:26px 0 24px}
+.team{display:flex;align-items:center;gap:16px}
+.team.r{flex-direction:row-reverse;text-align:right}
+.logo{width:64px;height:64px;border-radius:18px;display:grid;place-items:center;font-weight:700;font-size:15px;letter-spacing:.02em;flex:none;
+  box-shadow:0 1px 0 rgba(255,255,255,.18) inset,0 12px 30px -10px rgba(0,0,0,.6)}
+.logo.lac{background:linear-gradient(150deg,#1A3A69,var(--naval));color:#fff;box-shadow:0 1px 0 rgba(255,255,255,.18) inset,0 0 0 1px rgba(65,143,222,.3),0 12px 30px -10px rgba(0,0,0,.6)}
+.logo.sac{background:linear-gradient(150deg,#6A3FA8,#3E2268);color:#fff}
+.logo.den{background:linear-gradient(150deg,#1D3D6B,#0E2240);color:#FEC524}
+.team-name{font-size:24px;font-weight:600;letter-spacing:-.025em;line-height:1.1}
+.team-meta{font-family:var(--mono);font-size:12px;color:var(--mute);margin-top:3px}
+.vs{font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.1em}
+.tip{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:18px;padding-top:20px;border-top:1px solid var(--line)}
+.when{font-size:15px;color:var(--mute)}
+.when b{display:block;font-size:30px;letter-spacing:-.03em;color:var(--text);font-weight:600;line-height:1.1;margin-bottom:4px}
+.countdown{display:flex;gap:6px}
+.cd{min-width:58px;padding:9px 10px 7px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--line);text-align:center}
+.cd b{display:block;font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1}
+.cd span{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.12em}
+.odds{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:18px;border-radius:14px;overflow:hidden;background:var(--line)}
+.odds div{background:var(--ink-1);padding:11px 14px}
+.odds span{display:block;font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.12em;text-transform:uppercase}
+.odds b{font-size:16px;font-weight:600;letter-spacing:-.01em}
+
+.season{display:grid;grid-template-rows:auto 1fr;padding:22px}
+.record{display:flex;align-items:baseline;gap:12px;margin:6px 0 2px}
+.record b{font-size:56px;font-weight:600;letter-spacing:-.05em;line-height:1}
+.record span{font-family:var(--mono);font-size:12px;color:var(--mute)}
+.seed{font-size:13.5px;color:var(--mute)}
+.seed em{font-style:normal;color:var(--text)}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:20px;align-self:end}
+.kpi{padding:12px 12px 11px}
+.kpi span{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
+.kpi b{display:block;font-size:22px;font-weight:600;letter-spacing:-.03em;margin:4px 0 1px}
+.kpi small{font-family:var(--mono);font-size:11px}
+.splits{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:22px}
+.splits div{display:grid;grid-template-columns:auto 1fr;align-items:baseline;gap:4px 10px}
+.splits span{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
+.splits b{font-size:18px;font-weight:600;letter-spacing:-.02em;justify-self:end}
+.splits i{grid-column:1/-1;height:4px;border-radius:2px;background:linear-gradient(90deg,var(--pacific) var(--w),var(--line) var(--w))}
+.up{color:var(--pos)} .down{color:var(--neg)}
+
+.form{padding:20px 22px}
+.form-row{position:relative;display:grid;grid-template-columns:repeat(10,1fr);gap:6px;height:160px;margin-top:6px}
+.form-row::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line-2)}
+.bar-col{position:relative;display:grid;grid-template-rows:1fr 1fr;justify-items:center;height:100%}
+.bar-col .up-h{align-self:end;width:100%;display:flex;justify-content:center;height:100%;align-items:flex-end}
+.bar-col .dn-h{align-self:start;width:100%;display:flex;justify-content:center;height:100%;align-items:flex-start}
+.bar-col i{display:block;width:100%;max-width:34px;min-height:4px;border-radius:6px 6px 3px 3px}
+.bar-col i.w{background:linear-gradient(180deg,rgba(76,195,138,.85),rgba(76,195,138,.25))}
+.bar-col i.l{background:linear-gradient(180deg,rgba(240,103,122,.25),rgba(240,103,122,.8));border-radius:3px 3px 6px 6px}
+.bar-col span{font-family:var(--mono);font-size:10.5px;color:var(--dim);position:absolute;top:50%;transform:translateY(6px)}
+.bar-col.win span{transform:translateY(6px)}
+.bar-col.loss span{transform:translateY(-18px)}
+.form-foot{display:flex;justify-content:space-between;margin-top:12px;font-family:var(--mono);font-size:11.5px;color:var(--mute)}
+
+.two{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:18px}
+.leaders{padding:8px}
+.lrow{display:grid;grid-template-columns:28px minmax(0,1fr) 64px 64px 64px 64px;align-items:center;gap:10px;padding:11px 14px;border-radius:14px;transition:background .25s var(--ease)}
+.lrow:hover{background:rgba(255,255,255,.035)}
+.lrow.head{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase;padding-block:10px 6px}
+.lrow.head:hover{background:none}
+.lrow .rk{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.who{display:flex;align-items:center;gap:11px;min-width:0}
+.av{width:30px;height:30px;border-radius:50%;flex:none;background:linear-gradient(160deg,var(--ink-3),var(--ink-2));border:1px solid var(--line-2);display:grid;place-items:center;font-size:11px;font-weight:600;color:var(--mute)}
+.who b{font-weight:500;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who small{display:block;font-family:var(--mono);font-size:11px;color:var(--dim)}
+.lrow .v{text-align:right;font-size:14.5px}
+.lrow .v.lead{font-weight:600}
+.spark{width:96px;height:26px}
+.r{text-align:right}
+
+.proof{padding:22px;display:flex;flex-direction:column;gap:16px}
+.proof-cat{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#9CC7F2}
+.proof-cat::before{content:"";width:6px;height:6px;border-radius:2px;background:var(--pacific)}
+.proof h3{margin:0;font-size:21px;line-height:1.25;letter-spacing:-.025em;font-weight:600;text-wrap:balance}
+.proof p{margin:0;color:var(--mute);font-size:14px}
+.verified{margin-top:auto;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding-top:14px;border-top:1px dashed var(--line-2);font-family:var(--mono);font-size:11px;color:var(--dim)}
+.verified .ok{color:var(--pos)}
+.dots{display:flex;gap:5px}
+.dots i{width:14px;height:3px;border-radius:2px;background:var(--line-2)}
+.dots i.on{background:var(--text)}
+
+/* ---------- LIVE ---------- */
+.score{padding:0;overflow:hidden}
+.score::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(600px 260px at 18% 0%,rgba(65,143,222,.16),transparent 70%),radial-gradient(600px 260px at 82% 0%,rgba(254,197,36,.06),transparent 70%)}
+.score-main{position:relative;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:20px;padding:30px 34px 26px}
+.side{display:flex;align-items:center;gap:20px}
+.side.r{flex-direction:row-reverse}
+.pts{font-size:88px;font-weight:600;letter-spacing:-.06em;line-height:.9}
+.pts.trail{color:var(--mute)}
+.side .team-name{font-size:18px}
+.clock{text-align:center;display:grid;gap:6px;justify-items:center}
+.clock b{font-size:34px;font-weight:600;letter-spacing:-.03em;line-height:1}
+.clock .q{font-family:var(--mono);font-size:12px;color:var(--mute);letter-spacing:.14em}
+.livepill{display:inline-flex;align-items:center;gap:7px;padding:4px 10px 4px 9px;border-radius:999px;background:var(--ember-soft);border:1px solid rgba(224,36,63,.35);color:#FF8A9B;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em}
+.qtable{position:relative;display:flex;flex-wrap:wrap;gap:0;border-top:1px solid var(--line);font-family:var(--mono);font-size:12px}
+.qtable div{flex:1;min-width:64px;padding:10px 14px;border-right:1px solid var(--line);display:grid;gap:3px}
+.qtable div:last-child{border-right:0}
+.qtable span{color:var(--dim);font-size:10.5px;letter-spacing:.12em}
+.qtable b{font-weight:500;color:var(--text)}
+.qtable b em{font-style:normal;color:var(--dim);margin:0 4px}
+.wp{position:relative;padding:14px 34px 18px;border-top:1px solid var(--line);display:grid;gap:8px}
+.wp-top{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--mute);letter-spacing:.06em}
+.wp-bar{height:6px;border-radius:99px;background:rgba(254,197,36,.28);overflow:hidden}
+.wp-bar i{display:block;height:100%;width:61%;border-radius:99px;background:linear-gradient(90deg,var(--naval),var(--pacific))}
+
+.metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.metric{padding:14px 14px 12px}
+.metric span{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
+.metric b{display:block;font-size:24px;font-weight:600;letter-spacing:-.03em;margin:5px 0 2px}
+.metric small{font-family:var(--mono);font-size:11px;color:var(--mute)}
+.meter{height:3px;border-radius:2px;background:var(--line);margin-top:10px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--pacific)}
+
+.live-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:18px;align-items:start}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:560px}
+th{font-family:var(--mono);font-weight:400;font-size:10.5px;letter-spacing:.12em;color:var(--dim);text-align:right;padding:12px 10px 8px;text-transform:uppercase;white-space:nowrap}
+th:first-child,td:first-child{text-align:left;padding-left:18px}
+td{padding:10px;text-align:right;border-top:1px solid var(--line);white-space:nowrap}
+tr:hover td{background:rgba(255,255,255,.02)}
+td .p{font-weight:500}
+td .pos{font-family:var(--mono);font-size:11px;color:var(--dim);margin-left:8px}
+td.hot{color:var(--text);font-weight:600}
+tr.oncourt td:first-child{box-shadow:2px 0 0 var(--pacific) inset}
+tr.total td{font-weight:600;border-top:1px solid var(--line-2)}
+.muted{color:var(--mute)}
+.tabs{display:flex;gap:4px;padding:10px 12px 0}
+.tabs button{border:0;background:none;padding:6px 12px;border-radius:999px;font-size:13px;color:var(--mute);cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--ink-3);color:var(--text)}
+
+.feed{display:grid;gap:10px}
+.feed .item{padding:16px 18px;display:grid;gap:6px}
+.feed .item h4{margin:0;font-size:15px;font-weight:500;letter-spacing:-.01em;line-height:1.35}
+.feed .item p{margin:0;font-size:13px;color:var(--mute)}
+.feed .item .verified{padding-top:10px;margin-top:4px}
+.feed .item.new{border-color:rgba(65,143,222,.35);box-shadow:0 0 0 1px rgba(65,143,222,.15) inset,var(--shadow)}
+.around .g{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:12px 16px;border-top:1px solid var(--line);font-size:13.5px}
+.around .g:first-of-type{border-top:0}
+.around .g small{font-family:var(--mono);font-size:11px;color:var(--dim)}
+
+/* ---------- container-query responsiveness ---------- */
+@container app (max-width: 980px){
+  .hero-grid,.two,.live-grid{grid-template-columns:1fr}
+  .metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@container app (max-width: 640px){
+  .bar{flex-wrap:wrap;gap:12px;padding:12px 14px}
+  .nav{order:3;width:100%;margin:0;overflow-x:auto;justify-content:space-between}
+  .nav a{padding:6px 10px;font-size:13px}
+  .status{margin-left:auto}
+  .page{padding:20px 14px 28px;gap:24px}
+  .next{padding:20px}
+  .matchup{grid-template-columns:1fr;gap:12px;margin:20px 0}
+  .team.r{flex-direction:row;text-align:left}
+  .vs{display:none}
+  .logo{width:48px;height:48px;border-radius:14px;font-size:13px}
+  .team-name{font-size:20px}
+  .when b{font-size:24px}
+  .record b{font-size:44px}
+  .kpis{grid-template-columns:repeat(3,1fr);gap:8px}
+  .lrow{grid-template-columns:22px minmax(0,1fr) 48px 48px;padding:10px}
+  .lrow .hide-s{display:none}
+  .score-main{grid-template-columns:1fr;gap:14px;padding:22px 20px}
+  .side,.side.r{flex-direction:row;justify-content:space-between}
+  .side .team{order:0}
+  .pts{font-size:56px}
+  .clock{order:-1;grid-auto-flow:column;align-items:center;justify-content:start;gap:12px}
+  .clock b{font-size:24px}
+  .wp{padding:12px 20px 16px}
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .brand small{display:none}
+}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="deck">
+  <div class="deck-head">
+    <div>
+      <h1>Clippers Command Center · design direction</h1>
+      <p><b>Hybrid:</b> the typography, spacing, glass materials, and mono eyebrows from lukeghanna.com, on a Clippers Naval base. Pacific Blue carries the data. Ember Red appears only when a game is live. All numbers are sample data.</p>
+    </div>
+    <div class="controls">
+      <div class="switch" role="group" aria-label="Screen">
+        <button id="v-home" aria-pressed="true" data-view="home">Home</button>
+        <button id="v-live" aria-pressed="false" data-view="live">Live</button>
+      </div>
+      <div class="switch" role="group" aria-label="Width">
+        <button id="w-desk" aria-pressed="true" data-w="desk">Desktop</button>
+        <button id="w-phone" aria-pressed="false" data-w="phone">Phone</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame" id="frame">
+    <div class="app">
+      <header class="bar">
+        <div class="brand"><span class="brand-mark">LAC</span>Command Center <small>2026–27</small></div>
+        <nav class="nav" aria-label="Main">
+          <a href="#" data-nav="home" aria-current="page">Home</a>
+          <a href="#" data-nav="live"><span class="live-dot"></span>Live</a>
+          <a href="#">Players</a>
+          <a href="#">Schedule</a>
+          <a href="#">History</a>
+        </nav>
+        <div class="status" id="status"><span class="pulse"></span>Synced 2m ago</div>
+      </header>
+
+      <!-- ================= HOME ================= -->
+      <main class="page view" id="home">
+        <section class="hero-grid">
+          <article class="panel next">
+            <div class="next-top"><span>Next game · 01</span><span class="chip blue">Season opener</span></div>
+            <div class="matchup">
+              <div class="team"><div class="logo lac">LAC</div><div><div class="team-name">Clippers</div><div class="team-meta">0–0 · Home</div></div></div>
+              <div class="vs">VS</div>
+              <div class="team r"><div class="logo sac">SAC</div><div><div class="team-name">Kings</div><div class="team-meta">0–0 · Away</div></div></div>
+            </div>
+            <div class="tip">
+              <div class="when"><b>Wed, Oct 21</b>7:30 PM PT · Intuit Dome</div>
+              <div class="countdown num" aria-label="Tip-off countdown">
+                <div class="cd"><b>23</b><span>DAYS</span></div>
+                <div class="cd"><b>19</b><span>HRS</span></div>
+                <div class="cd"><b>42</b><span>MIN</span></div>
+              </div>
+            </div>
+            <div class="odds num">
+              <div><span>Spread</span><b>LAC −4.5</b></div>
+              <div><span>Moneyline</span><b>−185</b></div>
+              <div><span>Total</span><b>226.5</b></div>
+            </div>
+          </article>
+
+          <article class="panel season">
+            <div>
+              <p class="eyebrow">Last season <i>02</i></p>
+              <div class="record num"><b>47–35</b><span>2025–26</span></div>
+              <div class="seed">Last 10: <em>6–4</em> · margin <em>+4.1</em></div>
+              <div class="splits num">
+                <div><span>Home</span><b>26–15</b><i style="--w:63%"></i></div>
+                <div><span>Away</span><b>21–20</b><i style="--w:51%"></i></div>
+              </div>
+            </div>
+            <div class="kpis num">
+              <div class="inset kpi"><span>Net rtg</span><b>+2.8</b><small class="up">▲ good</small></div>
+              <div class="inset kpi"><span>Off rtg</span><b>115.1</b><small class="muted">league avg 114.8</small></div>
+              <div class="inset kpi"><span>Def rtg</span><b>112.3</b><small class="up">▲ good</small></div>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel form">
+          <p class="eyebrow">Last 10 <i>03</i><span class="aside">point differential</span></p>
+          <div class="form-row num" role="img" aria-label="Last 10 games: 6 wins, 4 losses">
+            <div class="bar-col win"><div class="up-h"><i class="w" style="height:54%"></i></div><div class="dn-h"></div><span>DEN</span></div>
+            <div class="bar-col loss"><div class="up-h"></div><div class="dn-h"><i class="l" style="height:27%"></i></div><span>PHX</span></div>
+            <div class="bar-col win"><div class="up-h"><i class="w" style="height:85%"></i></div><div class="dn-h"></div><span>POR</span></div>
+            <div class="bar-col win"><div class="up-h"><i class="w" style="height:36%"></i></div><div class="dn-h"></div><span>UTA</span></div>
+            <div class="bar-col loss"><div class="up-h"></div><div class="dn-h"><i class="l" style="height:64%"></i></div><span>OKC</span></div>
+            <div class="bar-col win"><div class="up-h"><i class="w" style="height:22%"></i></div><div class="dn-h"></div><span>SAS</span></div>
+            <div class="bar-col win"><div class="up-h"><i class="w" style="height:70%"></i></div><div class="dn-h"></div><span>NOP</span></div>
+            <div class="bar-col loss"><div class="up-h"></div><div class="dn-h"><i class="l" style="height:18%"></i></div><span>MIN</span></div>
+            <div class="bar-col loss"><div class="up-h"></div><div class="dn-h"><i class="l" style="height:42%"></i></div><span>GSW</span></div>
+            <div class="bar-col win"><div class="up-h"><i class="w" style="height:100%"></i></div><div class="dn-h"></div><span>SAC</span></div>
+          </div>
+          <div class="form-foot num"><span>6–4 · avg +4.1</span><span>Best: +23 vs SAC</span></div>
+        </section>
+
+        <section class="two">
+          <div>
+            <p class="eyebrow">Player trends <i>04</i><span class="aside">last 10 vs season</span></p>
+            <div class="panel leaders num">
+              <div class="lrow head"><span></span><span>Player</span><span class="r">PTS</span><span class="r">REB</span><span class="r hide-s">AST</span><span class="r hide-s">MIN</span></div>
+              <div class="lrow"><span class="rk">01</span><div class="who"><span class="av">KL</span><div><b>Kawhi Leonard</b><small>F</small></div></div><span class="v lead">24.4</span><span class="v">7.0</span><span class="v hide-s">3.4</span><span class="v hide-s muted">34.1</span></div>
+              <div class="lrow"><span class="rk">02</span><div class="who"><span class="av">DG</span><div><b>Darius Garland</b><small>G</small></div></div><span class="v lead">18.6</span><span class="v">2.4</span><span class="v hide-s">6.0</span><span class="v hide-s muted">32.4</span></div>
+              <div class="lrow"><span class="rk">03</span><div class="who"><span class="av">JC</span><div><b>John Collins</b><small>F</small></div></div><span class="v lead">13.7</span><span class="v">6.1</span><span class="v hide-s">1.1</span><span class="v hide-s muted">28.0</span></div>
+              <div class="lrow"><span class="rk">04</span><div class="who"><span class="av">BL</span><div><b>Brook Lopez</b><small>C</small></div></div><span class="v lead">12.7</span><span class="v">6.7</span><span class="v hide-s">1.8</span><span class="v hide-s muted">26.3</span></div>
+              <div class="lrow"><span class="rk">05</span><div class="who"><span class="av">BB</span><div><b>Bogdan Bogdanović</b><small>G</small></div></div><span class="v lead">8.5</span><span class="v">1.5</span><span class="v hide-s">2.0</span><span class="v hide-s muted">22.2</span></div>
+            </div>
+          </div>
+          <div>
+            <p class="eyebrow">Verified insight <i>05</i></p>
+            <article class="panel proof">
+              <div class="proof-cat">Milestone</div>
+              <h3>Kawhi Leonard passed 1,750 points in 2025–26, his most since 2016–17.</h3>
+              <p>1,813 points in 65 games (27.9 per game). Only the third Clipper to reach 1,800 in the last 20 seasons.</p>
+              <div class="verified"><span class="ok">✓ Verified</span><span>65 box scores</span><span>query 7f3a·milestones</span></div>
+              <div class="dots" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+            </article>
+          </div>
+        </section>
+      </main>
+
+      <!-- ================= LIVE ================= -->
+      <main class="page view" id="live" hidden>
+        <section class="panel score">
+          <div class="score-main num">
+            <div class="side"><div class="team"><div class="logo lac">LAC</div><div><div class="team-name">Clippers</div><div class="team-meta">12–7</div></div></div><div class="pts">84</div></div>
+            <div class="clock"><span class="livepill"><span class="pulse red"></span>LIVE</span><b>7:42</b><span class="q">Q3 · BONUS</span></div>
+            <div class="side r"><div class="team r"><div class="logo den">DEN</div><div><div class="team-name">Nuggets</div><div class="team-meta">13–6</div></div></div><div class="pts trail">78</div></div>
+          </div>
+          <div class="qtable num">
+            <div><span>SPREAD</span><b>LAC −3.5</b></div>
+            <div><span>MONEYLINE</span><b>−158 <em>/</em> +132</b></div>
+            <div><span>TOTAL</span><b>231.5</b></div>
+            <div><span>LINE AS OF</span><b>Q3 8:10</b></div>
+          </div>
+          <div class="wp num">
+            <div class="wp-top"><span>LAC 61% · implied by live moneyline</span><span>DEN 39%</span></div>
+            <div class="wp-bar"><i></i></div>
+          </div>
+        </section>
+
+        <section class="metrics num">
+          <div class="panel metric"><span>eFG%</span><b>56.8</b><small>+4.7 vs DEN</small><div class="meter"><i style="width:57%"></i></div></div>
+          <div class="panel metric"><span>TOV margin</span><b>+4</b><small>9 vs 13</small><div class="meter"><i style="width:62%"></i></div></div>
+          <div class="panel metric"><span>REB margin</span><b>−3</b><small>31 vs 34</small><div class="meter"><i style="width:45%"></i></div></div>
+          <div class="panel metric"><span>Pace</span><b>99.4</b><small>game</small><div class="meter"><i style="width:66%"></i></div></div>
+          <div class="panel metric"><span>FT edge</span><b>+6</b><small>18–21 vs 12–15</small><div class="meter"><i style="width:60%"></i></div></div>
+        </section>
+
+        <section class="live-grid">
+          <div>
+            <p class="eyebrow">Box score <i>01</i><span class="aside">▏ starter</span></p>
+            <div class="panel">
+              <div class="tabs" role="group" aria-label="Team"><button aria-pressed="true">Clippers</button><button aria-pressed="false">Nuggets</button></div>
+              <div class="tablewrap">
+                <table class="num">
+                  <thead><tr><th>Player</th><th>Min</th><th>Pts</th><th>Reb</th><th>Ast</th><th>FG</th><th>3PT</th><th>+/−</th></tr></thead>
+                  <tbody>
+                    <tr class="oncourt"><td><span class="p">K. Leonard</span><span class="pos">F</span></td><td>27:14</td><td class="hot">26</td><td>6</td><td>3</td><td>10–17</td><td>3–6</td><td class="up">+9</td></tr>
+                    <tr class="oncourt"><td><span class="p">D. Garland</span><span class="pos">G</span></td><td>25:40</td><td>17</td><td>2</td><td class="hot">8</td><td>6–13</td><td>2–5</td><td class="up">+6</td></tr>
+                    <tr class="oncourt"><td><span class="p">J. Collins</span><span class="pos">F</span></td><td>22:03</td><td>12</td><td class="hot">9</td><td>1</td><td>5–8</td><td>0–1</td><td class="up">+4</td></tr>
+                    <tr class="oncourt"><td><span class="p">B. Lopez</span><span class="pos">C</span></td><td>20:51</td><td>10</td><td>5</td><td>1</td><td>4–7</td><td>2–4</td><td class="up">+7</td></tr>
+                    <tr class="oncourt"><td><span class="p">K. Dunn</span><span class="pos">G</span></td><td>19:12</td><td>5</td><td>3</td><td>2</td><td>2–4</td><td>1–2</td><td class="up">+2</td></tr>
+                    <tr><td><span class="p">B. Bogdanović</span><span class="pos">G</span></td><td>14:30</td><td>8</td><td>1</td><td>2</td><td>3–7</td><td>2–5</td><td class="down">−3</td></tr>
+                    <tr><td><span class="p">D. Jones Jr.</span><span class="pos">F</span></td><td>12:18</td><td>4</td><td>3</td><td>0</td><td>2–3</td><td>0–0</td><td class="down">−1</td></tr>
+                    <tr><td><span class="p">N. Batum</span><span class="pos">F</span></td><td>8:12</td><td>2</td><td>2</td><td>1</td><td>1–2</td><td>0–1</td><td class="muted">0</td></tr>
+                    <tr class="total"><td>Team</td><td>—</td><td>84</td><td>31</td><td>18</td><td>33–61</td><td>10–24</td><td>—</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="feed">
+            <p class="eyebrow" style="margin-bottom:4px">Insights <i>02</i><span class="aside">newest first</span></p>
+            <article class="panel item new">
+              <div class="proof-cat">Run</div>
+              <h4>9–0 Clippers run, their longest of the game.</h4>
+              <div class="verified"><span class="ok">✓ Verified</span><span>play-by-play</span><span>Q3 9:58 → 7:42</span></div>
+            </article>
+            <article class="panel item">
+              <div class="proof-cat">Clutch</div>
+              <h4>Within 5 in the final 5:00 of Q4. Clippers are 8–3 in clutch games this season.</h4>
+              <div class="verified"><span class="ok">✓ Verified</span><span>11 games</span></div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var views={home:document.getElementById('home'),live:document.getElementById('live')};
+  var status=document.getElementById('status');
+  function show(v){
+    Object.keys(views).forEach(function(k){views[k].hidden=(k!==v)});
+    document.querySelectorAll('[data-view]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.view===v))});
+    document.querySelectorAll('[data-nav]').forEach(function(a){ if(a.dataset.nav===v){a.setAttribute('aria-current','page')} else {a.removeAttribute('aria-current')} });
+    status.innerHTML = v==='live' ? '<span class="pulse red"></span>Updated 4s ago' : '<span class="pulse"></span>Synced 2m ago';
+  }
+  document.querySelectorAll('[data-view]').forEach(function(b){b.addEventListener('click',function(){show(b.dataset.view)})});
+  document.querySelectorAll('[data-nav]').forEach(function(a){a.addEventListener('click',function(e){e.preventDefault();show(a.dataset.nav)})});
+  var frame=document.getElementById('frame');
+  document.querySelectorAll('[data-w]').forEach(function(b){b.addEventListener('click',function(){
+    frame.classList.toggle('phone',b.dataset.w==='phone');
+    document.querySelectorAll('[data-w]').forEach(function(x){x.setAttribute('aria-pressed',String(x===b))});
+  })});
+})();
+</script>
