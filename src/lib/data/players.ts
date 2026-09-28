@@ -1,9 +1,8 @@
 // src/lib/data/players.ts — moved from app/api/players/route.ts; the route and server pages both call loadPlayers().
 // app/api/players/route.ts
 // GET /api/players — Returns the LAC roster for a season.
-// players table has NO team_id column — team membership comes from
-// player_team_stints (season-scoped) and, as a fallback because stints are not
-// maintained by ingestion, LAC box scores in that season.
+// players table has NO team_id column — team membership comes from LAC box
+// scores and player_team_stints (written by finalization for every team).
 //
 // Query params:
 //   season_id       — season start year (e.g. 2025 = 2025-26). Defaults to the
@@ -12,7 +11,7 @@
 //                     Pass 'false' to include inactive players.
 //   include_traded  — 'true': return everyone with an LAC association in the
 //                     season (ignores active_only) and flag is_traded = true for
-//                     players whose most recent box score that season was for
+//                     players whose most recent game/stint that season was with
 //                     another team.
 
 import { json, type ApiResult } from './result';
@@ -43,75 +42,62 @@ export async function loadPlayers(url: URL): Promise<ApiResult> {
     }
     const seasonId = seasonParam ?? (await getDisplaySeasonId());
 
-    // A player belongs to the LAC roster for a season if they have an LAC stint
-    // for that season, or appeared in an LAC box score in that season.
-    const lacInSeason = sql`
-      (
-        EXISTS (
-          SELECT 1 FROM player_team_stints pts
-          JOIN teams t ON pts.team_id = t.team_id
-          WHERE pts.player_id = p.player_id
-            AND t.nba_team_id = ${LAC_NBA_TEAM_ID}
-            AND pts.season_id = ${seasonId}
-        )
-        OR EXISTS (
-          SELECT 1 FROM game_player_box_scores gpbs
-          JOIN games g ON g.game_id = gpbs.game_id
-          JOIN teams t ON gpbs.team_id = t.team_id
-          WHERE gpbs.player_id = p.player_id
-            AND t.nba_team_id = ${LAC_NBA_TEAM_ID}
-            AND g.season_id = ${seasonId}
-        )
+    // Roster = players with any LAC association in the season (box score or
+    // stint) whose MOST RECENT event that season — a game played, or a stint
+    // start (finalization records LAC players who sat out, too) — was with LAC.
+    // Players traded away drop off (or are flagged with include_traded);
+    // players acquired mid-season are included. Starts from LAC's own rows,
+    // so it never scans the whole league.
+    const rows = await sql<PlayerRow[]>`
+      WITH lac AS (
+        SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID}
+      ), candidates AS (
+        SELECT pb.player_id
+        FROM game_player_box_scores pb
+        JOIN games g ON g.game_id = pb.game_id
+        WHERE pb.team_id = (SELECT team_id FROM lac) AND g.season_id = ${seasonId}
+        UNION
+        SELECT s.player_id
+        FROM player_team_stints s
+        WHERE s.team_id = (SELECT team_id FROM lac) AND s.season_id = ${seasonId}
+      ), events AS (
+        SELECT pb.player_id, pb.team_id, g.game_date AS event_date, 1 AS priority
+        FROM game_player_box_scores pb
+        JOIN games g ON g.game_id = pb.game_id
+        WHERE g.season_id = ${seasonId} AND pb.player_id IN (SELECT player_id FROM candidates)
+        UNION ALL
+        SELECT s.player_id, s.team_id, s.start_date, 0
+        FROM player_team_stints s
+        WHERE s.season_id = ${seasonId} AND s.start_date IS NOT NULL
+          AND s.player_id IN (SELECT player_id FROM candidates)
+      ), latest AS (
+        SELECT DISTINCT ON (player_id) player_id, team_id
+        FROM events
+        ORDER BY player_id, event_date DESC, priority DESC
       )
+      SELECT
+        p.player_id::text,
+        p.nba_player_id::text,
+        p.display_name,
+        p.position,
+        p.is_active,
+        (COALESCE(l.team_id, (SELECT team_id FROM lac)) <> (SELECT team_id FROM lac)) AS is_traded
+      FROM candidates c
+      JOIN players p ON p.player_id = c.player_id
+      LEFT JOIN latest l ON l.player_id = c.player_id
+      ORDER BY p.display_name ASC
     `;
 
-    let rows: PlayerRow[];
-
-    if (includeTraded) {
-      rows = await sql<PlayerRow[]>`
-        SELECT
-          p.player_id::text,
-          p.nba_player_id::text,
-          p.display_name,
-          p.position,
-          p.is_active,
-          COALESCE(
-            (
-              SELECT t.nba_team_id <> ${LAC_NBA_TEAM_ID}
-              FROM game_player_box_scores gpbs
-              JOIN games g ON g.game_id = gpbs.game_id
-              JOIN teams t ON t.team_id = gpbs.team_id
-              WHERE gpbs.player_id = p.player_id
-                AND g.season_id = ${seasonId}
-              ORDER BY g.game_date DESC, g.game_id DESC
-              LIMIT 1
-            ),
-            false
-          ) AS is_traded
-        FROM players p
-        WHERE ${lacInSeason}
-        ORDER BY p.display_name ASC
-      `;
-    } else {
-      rows = await sql<PlayerRow[]>`
-        SELECT
-          p.player_id::text,
-          p.nba_player_id::text,
-          p.display_name,
-          p.position,
-          p.is_active
-        FROM players p
-        WHERE ${lacInSeason}
-          ${activeOnly ? sql`AND p.is_active = true` : sql``}
-        ORDER BY p.display_name ASC
-      `;
-    }
+    const roster = rows.filter((r) =>
+      includeTraded ? true : !r.is_traded && (!activeOnly || r.is_active)
+    );
+    if (!includeTraded) for (const r of roster) delete r.is_traded;
 
     return json(
       {
         meta: buildMeta('db', 3600),
         season_id: seasonId,
-        players: rows,
+        players: roster,
       },
       {
         headers: {

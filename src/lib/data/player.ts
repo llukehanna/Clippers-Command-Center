@@ -12,6 +12,7 @@ import { sql } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { formatClock } from '@/src/lib/format';
 import { getDisplaySeasonId, parseSeasonIdParam } from '@/src/lib/season';
+import { GAME_TYPE_SQL, type GameType } from '@/src/lib/game-type';
 
 const GAME_LOG_LIMIT = 25;
 
@@ -34,6 +35,8 @@ type BoxScoreRow = {
   home_score: number | null;
   away_score: number | null;
   player_team_id: string;
+  team_abbreviation: string;
+  game_type: GameType;
   opp_abbreviation: string;
   minutes: string | null;
   points: number | null;
@@ -135,7 +138,22 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
         { status: 400 }
       );
     }
-    const seasonId = seasonParam ?? (await getDisplaySeasonId());
+    // Default: the latest season the player has a completed game in (capped
+    // at the app's display season), so a player who hasn't played yet this
+    // season still shows last season instead of an empty page.
+    const displaySeasonId = await getDisplaySeasonId();
+    let seasonId = seasonParam ?? displaySeasonId;
+    if (seasonParam === undefined) {
+      const [latest] = await sql<{ season_id: number | null }[]>`
+        SELECT MAX(g.season_id)::int AS season_id
+        FROM game_player_box_scores gpbs
+        JOIN games g ON g.game_id = gpbs.game_id
+        WHERE gpbs.player_id = ${player_id}::bigint
+          AND g.season_id <= ${displaySeasonId}
+          AND lower(g.status) = 'final'
+      `;
+      if (latest?.season_id != null) seasonId = latest.season_id;
+    }
 
     // 1. Fetch the player
     const playerRows = await sql<
@@ -204,7 +222,9 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
           g.home_score,
           g.away_score,
           gpbs.team_id::text  AS player_team_id,
+          tm.abbreviation     AS team_abbreviation,
           opp.abbreviation    AS opp_abbreviation,
+          ${sql.unsafe(GAME_TYPE_SQL)} AS game_type,
           gpbs.minutes,
           gpbs.points,
           gpbs.rebounds,
@@ -221,6 +241,7 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
           gpbs.plus_minus
         FROM game_player_box_scores gpbs
         JOIN games g ON g.game_id = gpbs.game_id
+        JOIN teams tm ON tm.team_id = gpbs.team_id
         JOIN teams opp ON opp.team_id = (
           CASE
             WHEN gpbs.team_id = g.home_team_id THEN g.away_team_id
@@ -268,7 +289,10 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
       ...r,
       ts_pct_computed: computeTs(r),
     }));
-    const splits = computeSplits(boxScoreRowsWithTs);
+    // Season averages and splits are regular season only (the usual season
+    // line); the game log below keeps every game, labelled.
+    const regularSeasonRows = boxScoreRowsWithTs.filter((r) => r.game_type === 'regular');
+    const splits = computeSplits(regularSeasonRows);
 
     // 5b. Compute season averages from all of the season's box score rows
     function avg(vals: (number | null)[]): number | null {
@@ -278,13 +302,14 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
     }
 
     const season_averages =
-      boxScoreRowsWithTs.length === 0
+      regularSeasonRows.length === 0
         ? null
         : {
-            pts_avg: avg(boxScoreRowsWithTs.map((r) => r.points)),
-            reb_avg: avg(boxScoreRowsWithTs.map((r) => r.rebounds)),
-            ast_avg: avg(boxScoreRowsWithTs.map((r) => r.assists)),
-            ts_pct: avg(boxScoreRowsWithTs.map((r) => r.ts_pct_computed)),
+            games: regularSeasonRows.length,
+            pts_avg: avg(regularSeasonRows.map((r) => r.points)),
+            reb_avg: avg(regularSeasonRows.map((r) => r.rebounds)),
+            ast_avg: avg(regularSeasonRows.map((r) => r.assists)),
+            ts_pct: avg(regularSeasonRows.map((r) => r.ts_pct_computed)),
           };
 
     // 6. Build game log
@@ -294,6 +319,8 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
         game_id: r.game_id,
         game_date: r.game_date,
         opp: r.opp_abbreviation,
+        team: r.team_abbreviation,
+        game_type: r.game_type,
         home_away: isHome ? 'home' : 'away',
         MIN: r.minutes ? formatClock(r.minutes) : '', // NBA box scores store "PT34M12.00S"
         PTS: r.points ?? 0,

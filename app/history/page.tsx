@@ -24,12 +24,14 @@ export default async function HistoryPage({
 
   // 3. Fetch ALL games for the season (unfiltered, limit=200) — used for W-L summary AND filtered list
   let allGames: GameItem[] = []
+  let netRating: number | null = null
   if (seasonId) {
     const url = new URL('http://internal/api/history/games')
     url.searchParams.set('season_id', seasonId)
     url.searchParams.set('limit', '200')
     const gamesData = okBody(await loadHistoryGames(url))
     allGames = gamesData?.games ?? []
+    netRating = gamesData?.season_summary?.net_rating ?? null
   }
 
   // 4. Apply display filters in RSC (W-L summary always uses allGames)
@@ -43,16 +45,17 @@ export default async function HistoryPage({
 
   // Show a data gap notice when fewer than 30 games are in the DB for a season
   // (an NBA regular season has 82 games — low count indicates missing historical data)
-  const showDataGapNotice = allGames.length > 0 && allGames.length < 30
+  const regularSeasonGames = allGames.filter((g) => (g.game_type ?? 'regular') === 'regular').length
+  const showDataGapNotice = regularSeasonGames > 0 && regularSeasonGames < 30
 
   return (
     <div className="px-6 py-6 max-w-[1440px] mx-auto space-y-4">
       <h1 className="text-xl font-semibold text-foreground">Historical Games</h1>
       <SeasonControls seasons={seasons} currentSeasonId={seasonId} />
-      <SeasonSummaryBar games={allGames} />
+      <SeasonSummaryBar games={allGames} netRating={netRating} />
       {showDataGapNotice && (
         <p className="text-[0.8125rem] text-muted-foreground">
-          Showing {allGames.length} of ~82 season games — historical game data not yet fully ingested.
+          Showing {regularSeasonGames} of ~82 season games — historical game data not yet fully ingested.
         </p>
       )}
       <GameListTable games={filteredGames} />

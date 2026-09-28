@@ -7,6 +7,8 @@ import { json, type ApiResult } from './result';
 import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { calendarSeasonId, parseSeasonIdParam } from '@/src/lib/season';
+import { GAME_TYPE_SQL, REGULAR_SEASON_SQL, type GameType } from '@/src/lib/game-type';
+import { MINUTES_SECONDS_SQL } from '@/src/lib/minutes';
 
 const DEFAULT_LIMIT = 82;
 const MAX_LIMIT = 200;
@@ -27,6 +29,8 @@ interface GameRow {
   away_score: number | null;
   home_abbr: string;
   away_abbr: string;
+  game_type: GameType;
+  overtime_periods: number | null;
 }
 
 interface CursorPayload {
@@ -157,7 +161,13 @@ export async function loadHistoryGames(url: URL): Promise<ApiResult> {
         g.home_score,
         g.away_score,
         ht.abbreviation       AS home_abbr,
-        at.abbreviation       AS away_abbr
+        at.abbreviation       AS away_abbr,
+        ${sql.unsafe(GAME_TYPE_SQL)} AS game_type,
+        -- Overtime periods from the Clippers' total player minutes: 240 in
+        -- regulation, +25 per OT (status no longer carries "OT").
+        (SELECT GREATEST(0, ROUND((SUM(${sql.unsafe(MINUTES_SECONDS_SQL)}) / 60.0 - 240) / 25))::int
+           FROM game_player_box_scores pb
+          WHERE pb.game_id = g.game_id AND pb.team_id = ${lacTeamId}::bigint) AS overtime_periods
       FROM games g
       JOIN teams ht ON g.home_team_id = ht.team_id
       JOIN teams at ON g.away_team_id = at.team_id
@@ -210,8 +220,21 @@ export async function loadHistoryGames(url: URL): Promise<ApiResult> {
             ? { team: lacScore, opp: oppScore }
             : null,
         status: g.status,
+        game_type: g.game_type,
+        overtime_periods: g.overtime_periods ?? 0,
       };
     });
+
+    // Regular-season net rating (points per 100 possessions, possession-weighted).
+    // First page only; later pages don't show the summary.
+    const [ratingRow] = cursorDate && cursorGameId ? [] : await sql<{ net_rating: number | null }[]>`
+      SELECT (SUM(a.net_rating * a.possessions) / NULLIF(SUM(a.possessions), 0))::float8 AS net_rating
+      FROM advanced_team_game_stats a
+      JOIN games g ON g.game_id = a.game_id
+      WHERE a.team_id = ${lacTeamId}::bigint
+        AND g.season_id = ${seasonId}
+        AND ${sql.unsafe(REGULAR_SEASON_SQL)}
+    `;
 
     // Past seasons are immutable → cache for a day. The current (or a future)
     // season changes nightly as games finish → cache briefly.
@@ -222,6 +245,7 @@ export async function loadHistoryGames(url: URL): Promise<ApiResult> {
         meta: buildMeta('db', ttlSeconds),
         games: gameItems,
         next_cursor: nextCursor,
+        season_summary: { net_rating: ratingRow?.net_rating ?? null },
       },
       {
         headers: { 'Cache-Control': `public, max-age=${ttlSeconds}` },
