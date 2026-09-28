@@ -18,6 +18,7 @@ import {
   parseStoredDelay,
   parseStoredOffset,
   pickFrame,
+  pickIndex,
   pickOffset,
   pushFramePlayed,
   SYNC_OFFSET_STORAGE_KEY,
@@ -393,14 +394,24 @@ export function useLiveStream(): LiveStream {
   // state. That render only has a game when SWR already had /api/live cached
   // (a client-side navigation — the TopBar polls it on every page), never
   // during hydration, so the first client render still matches the server's.
+  const delayOn = delayMs > 0 && pageKey !== null && now !== null
+  const onPush = Boolean(pushLive && base && gameId && pushFrames?.key === gameId)
+  // A position, not the frame: the delayed page re-picks every second, and
+  // while the same pushed frame is picked the overlaid payload stays the same
+  // object (rebuilt only when the base or the buffer changes).
+  // (Number(): as with the offset, the React Compiler can't infer the return type.)
+  const pushIdx = delayOn && onPush && pushFrames ? Number(pickIndex(pushFrames.list, now, frameOffset, delayMs)) : -1
+  const delayedPush = React.useMemo(() => {
+    const f = pushIdx >= 0 ? pushFrames?.list[pushIdx] : undefined
+    return base && f ? overlayLiveDoc(base, f.value) : undefined
+  }, [base, pushFrames, pushIdx])
   let out = shown.data
   let holding = false
   if (delayMs > 0 && pageKey) {
     if (now === null) {
       out = undefined
-    } else if (pushLive && base && gameId && pushFrames?.key === gameId) {
-      const f = pickFrame(pushFrames.list, now, frameOffset, delayMs)
-      if (f) out = overlayLiveDoc(base, f.value)
+    } else if (onPush) {
+      if (delayedPush) out = delayedPush
       else holding = true
     } else {
       const f = pageFrames?.key === pageKey ? pickFrame(pageFrames.list, now, frameOffset, delayMs) : null

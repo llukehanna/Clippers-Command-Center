@@ -15,6 +15,7 @@ import {
   parseStoredOffset,
   pickOffset,
   pickFrame,
+  pickIndex,
   pushFramePlayed,
   syncDelay,
   type Frame,
@@ -97,6 +98,11 @@ describe('isOldEnough / pickFrame', () => {
   it('holds (null) while nothing is that old yet', () => {
     expect(pickFrame([A(1_000, 1), A(9_000, 3)], 10_000, 0, 9_500)).toBeNull();
     expect(pickFrame([], 10_000, 0, 0)).toBeNull();
+  });
+  it('pickIndex is the picked frame’s position, −1 while holding', () => {
+    const frames = [A(1_000, 1), A(5_000, 2), A(9_000, 3)];
+    expect(pickIndex(frames, 10_000, 0, 2_000)).toBe(1);
+    expect(pickIndex(frames, 10_000, 0, 9_500)).toBe(-1);
   });
   it('lets a play time qualify a frame that arrived recently, compared in the server clock', () => {
     // Device 2 s ahead of the server (offset 2 000). Played at server 1 000,
