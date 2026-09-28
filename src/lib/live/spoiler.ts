@@ -1,8 +1,12 @@
 // src/lib/live/spoiler.ts
 // Spoiler sync (Live v2 spec §7.3). The page keeps what it showed over the
-// last 150 s as frames keyed by when the real play happened, in this device's
-// clock, and renders the newest frame at least `delay` old — so nothing shows
-// before the fan's own TV or stream does. Pure.
+// last 150 s as frames keyed by when the real play happened, in the server's
+// clock (the hub's, which /api/live and the NBA's play times share closely
+// enough), and renders the newest frame at least `delay` old — so nothing
+// shows before the fan's own TV or stream does. "Now" is converted into that
+// clock with the measured offset at render time (device time − offset), so
+// every frame benefits as the estimate improves and none needs re-stamping.
+// Pure.
 
 export const SPOILER_BUFFER_MS = 150_000;
 export const MAX_DELAY_MS = 120_000;
@@ -16,7 +20,7 @@ export const DELAY_PRESETS = [
 export const OFFSET_SAMPLES = 20;
 
 export interface Frame<T> {
-  at: number;                  // device-clock ms when the newest play in `value` happened
+  at: number;                  // server-clock ms when the newest play in `value` happened
   value: T;
 }
 
@@ -69,13 +73,50 @@ export function addOffsetSample(samples: number[], sample: number): number[] {
   return [...samples, sample].slice(-OFFSET_SAMPLES);
 }
 
-/** Device clock minus the hub's clock (plus the least network delay seen); 0 before any sample. */
+/**
+ * Device clock minus the server's (plus the least network delay seen); 0
+ * before any sample. Every sample is an upper bound of the true offset, so the
+ * estimate only ever errs toward showing plays later.
+ */
 export function clockOffset(samples: number[]): number {
   return samples.length ? Math.min(...samples) : 0;
 }
 
-/** When the newest play in a state happened, in device time; never later than it arrived. */
+/**
+ * An offset sample from a server timestamp: device receive time minus when
+ * the server stamped it (the hub's `hub_at`, or /api/live's `meta.generated_at`).
+ * NaN (which addOffsetSample ignores) when the stamp is missing or unparsable.
+ */
+export function offsetSample(receivedAt: number, stampedAt: number | string | null | undefined): number {
+  const stamped = typeof stampedAt === 'string' ? Date.parse(stampedAt) : (stampedAt ?? Number.NaN);
+  return receivedAt - stamped;
+}
+
+/**
+ * When the newest play in a state happened: `observedAt` shifted by `offset`
+ * into the clock `receivedAt` is in, and never later than it arrived.
+ */
 export function frameTime(observedAt: string | null | undefined, offset: number, receivedAt: number): number {
   const played = observedAt ? Date.parse(observedAt) : Number.NaN;
   return Number.isFinite(played) ? Math.min(receivedAt, played + offset) : receivedAt;
+}
+
+/**
+ * A pushed state's frame time (server clock). A play can't be later than the
+ * hub relayed it, so `hubAt` caps it. That holds for the hub's replay on
+ * connect too, which resends old messages with their original `hub_at` all at
+ * once: each keeps its own play time instead of bunching at arrival. `hubNow`
+ * (device receive time − offset) stands in when a message has no `hub_at`.
+ */
+export function pushFrameTime(observedAt: string | null | undefined, hubAt: number | undefined, hubNow: number): number {
+  return frameTime(observedAt, 0, typeof hubAt === 'number' && Number.isFinite(hubAt) ? hubAt : hubNow);
+}
+
+/**
+ * An on-screen payload's frame time (server clock). `arrivedAt` is when it
+ * reached this device, in the server clock (receive time − offset). An ESPN
+ * backup overlay has no play time: it counts from when it arrived.
+ */
+export function pageFrameTime(observedAt: string | null | undefined, arrivedAt: number, fromBackup: boolean): number {
+  return fromBackup ? arrivedAt : frameTime(observedAt, 0, arrivedAt);
 }
