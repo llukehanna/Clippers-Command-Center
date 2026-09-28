@@ -8,6 +8,7 @@ import { loadSchedule } from '@/src/lib/data/schedule'
 import { loadPlayers } from '@/src/lib/data/players'
 import { loadPlayer } from '@/src/lib/data/player'
 import { loadInsights } from '@/src/lib/data/insights'
+import { loadMedia } from '@/src/lib/data/media'
 import { loadHistorySeasons } from '@/src/lib/data/history-seasons'
 import { loadHistoryGames } from '@/src/lib/data/history-games'
 import { loadHistoryGame } from '@/src/lib/data/history-game'
@@ -21,6 +22,7 @@ const ROUTES: Array<[RegExp, Loader]> = [
   [/^\/api\/players$/, (_, url) => loadPlayers(url)],
   [/^\/api\/players\/([^/]+)$/, (m, url) => loadPlayer(decodeURIComponent(m[1]), url)],
   [/^\/api\/insights$/, (_, url) => loadInsights(url)],
+  [/^\/api\/media$/, (_, url) => loadMedia(url)],
   [/^\/api\/history\/seasons$/, () => loadHistorySeasons()],
   [/^\/api\/history\/games$/, (_, url) => loadHistoryGames(url)],
   [/^\/api\/history\/games\/([^/]+)$/, (m) => loadHistoryGame(decodeURIComponent(m[1]))],
