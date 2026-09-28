@@ -119,6 +119,18 @@ function observedAt(actions: PlayByPlayAction[], homeScore: number, awayScore: n
   return pbp.home === homeScore && pbp.away === awayScore ? newest : fetchedAt;
 }
 
+/**
+ * A derived field (flow, lineups) that fails on odd feed data is left out
+ * (null) rather than failing the tick: the score must still go out.
+ */
+function derive<T>(build: () => T): T | null {
+  try {
+    return build();
+  } catch {
+    return null;
+  }
+}
+
 function statusOf(code: number): LiveStateDoc['status'] {
   return code >= 3 ? 'final' : code === 2 ? 'in_progress' : 'scheduled';
 }
@@ -180,10 +192,10 @@ export function buildLiveState(i: StateInputs): LiveStateBody {
     is_stale: false,
     stale_reason: null,
     wp: liveWinProb(status, period, clockSec, lacIsHome ? homeScore - awayScore : awayScore - homeScore, model),
-    flow: status === 'scheduled' ? null : buildFlow(i.actions, lacIsHome, model),
+    flow: status === 'scheduled' ? null : derive(() => buildFlow(i.actions, lacIsHome, model)),
     lineups:
       status !== 'scheduled' && b
-        ? buildLineups({
+        ? derive(() => buildLineups({
             actions: i.actions,
             lacBox: lacIsHome ? b.homeTeam : b.awayTeam,
             oppBox: lacIsHome ? b.awayTeam : b.homeTeam,
@@ -195,7 +207,7 @@ export function buildLiveState(i: StateInputs): LiveStateBody {
               timeouts: { lac: sbLac.timeoutsRemaining ?? null, opp: sbOpp.timeoutsRemaining ?? null },
               bonus: { lac: sbLac.inBonus === '1', opp: sbOpp.inBonus === '1' },
             },
-          })
+          }))
         : null,
   };
 }

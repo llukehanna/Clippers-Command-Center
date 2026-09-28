@@ -133,6 +133,27 @@ describe('buildLiveState — observed_at never dates a basket early', () => {
   });
 });
 
+describe('buildLiveState — a failing derivation', () => {
+  it('drops only the lineups when the box score is malformed', () => {
+    const b = box({ home: 2, away: 0 });
+    const malformed = { ...b, homeTeam: { ...b.homeTeam, players: undefined as unknown as typeof b.homeTeam.players } };
+    const body = buildLiveState(inputs({ box: malformed, actions: [action(1)] }));
+    expect(body.lineups).toBeNull();
+    expect(body.flow).not.toBeNull();
+    expect(body.home_score).toBe(2);
+  });
+
+  it('drops the play-by-play derivations, not the doc, when a play is malformed', () => {
+    const bad = action(2, { actionType: undefined as unknown as string, scoreHome: '2', scoreAway: '0' });
+    const body = buildLiveState(inputs({ box: box({ home: 2, away: 0 }), actions: [action(1), bad] }));
+    expect(body.flow).toBeNull();
+    expect(body.lineups).toBeNull(); // substitution tracking reads actionType too
+    expect(body.home_score).toBe(2);
+    expect(body.wp).not.toBeNull();
+    expect(body.last_plays).toHaveLength(2);
+  });
+});
+
 describe('fingerprint', () => {
   it('ignores fetched_at and next_ms, but not phase or content', () => {
     // Header and play-by-play agree (2–0), so observed_at is the play's time.
