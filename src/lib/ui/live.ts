@@ -1,5 +1,7 @@
 // Live-game labels shared by the scoreboard, sticky bar and tab title.
 
+import { parseTimestamp } from './time'
+
 export function periodLabel(period: number | null | undefined): string {
   if (period == null || period <= 0) return 'Pregame'
   if (period <= 4) return `Q${period}`
@@ -41,8 +43,10 @@ export function countdownParts(
   targetIso: string,
   now: Date,
 ): { days: number; hours: number; minutes: number } | null {
-  const diff = Date.parse(targetIso) - now.getTime()
-  if (!Number.isFinite(diff) || diff <= 0) return null
+  const target = parseTimestamp(targetIso)
+  if (!target) return null
+  const diff = target.getTime() - now.getTime()
+  if (diff <= 0) return null
   const totalMinutes = Math.floor(diff / 60_000)
   return {
     days: Math.floor(totalMinutes / 1440),

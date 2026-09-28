@@ -8,7 +8,9 @@ export function headshotUrl(
 ): string | null {
   if (nbaPlayerId == null) return null
   const id = String(nbaPlayerId).trim()
-  if (!/^\d+$/.test(id)) return null
+  // NBA person ids are 5–7 digits (e.g. 76003, 202695, 1629636). Anything
+  // else is a foreign id (balldontlie ids are 1–3 or 8–10 digits) and would 404.
+  if (!/^\d{5,7}$/.test(id)) return null
   return `https://cdn.nba.com/headshots/nba/latest/${SIZES[size]}/${id}.png`
 }
 
