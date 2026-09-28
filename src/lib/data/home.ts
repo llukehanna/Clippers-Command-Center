@@ -52,6 +52,7 @@ interface GameRecordRow {
 }
 
 interface Last10GameRow extends GameRecordRow {
+  game_id: string;
   game_date: string;
   home_abbr: string;
   away_abbr: string;
@@ -147,6 +148,7 @@ export async function loadHome(): Promise<ApiResult> {
       //    (for last_10 W/L record and the last10_games point-diff chart)
       sql`
         SELECT
+          g.game_id::text AS game_id,
           g.home_team_id::text AS home_team_id,
           g.away_team_id::text AS away_team_id,
           g.home_score,
@@ -335,7 +337,7 @@ export async function loadHome(): Promise<ApiResult> {
     // Last 10
     let last10Wins = 0;
     let last10Losses = 0;
-    const last10GamesMapped: Array<{ opponent_abbr: string; game_date: string; margin: number }> = [];
+    const last10GamesMapped: Array<{ game_id: number; opponent_abbr: string; game_date: string; margin: number }> = [];
     for (const game of last10Rows) {
       const lacIsHome = game.home_team_id === lacTeamIdStr;
       const lacScore = lacIsHome ? game.home_score : game.away_score;
@@ -346,6 +348,7 @@ export async function loadHome(): Promise<ApiResult> {
         last10Losses++;
       }
       last10GamesMapped.push({
+        game_id: parseInt(game.game_id, 10), // same id as /api/history/games/{game_id}
         opponent_abbr: lacIsHome ? game.away_abbr : game.home_abbr,
         game_date: game.game_date,
         margin: lacScore - oppScore,
