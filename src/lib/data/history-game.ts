@@ -248,9 +248,15 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
       },
     }));
 
+    // A finished game with its box score never changes → cache for a day.
+    // Anything else (scheduled, in progress, awaiting finalization) → 60s, so
+    // a page opened before or during a game doesn't stay stale for 24h.
+    const settled = String(game.status).toLowerCase() === 'final' && available;
+    const ttlSeconds = settled ? 86400 : 60;
+
     return json(
       {
-        meta: buildMeta('mixed', 86400),
+        meta: buildMeta('mixed', ttlSeconds),
         game: {
           game_id: game.game_id,
           game_date: game.game_date,
@@ -265,7 +271,7 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
         insights,
       },
       {
-        headers: { 'Cache-Control': 'public, max-age=86400' },
+        headers: { 'Cache-Control': `public, max-age=${ttlSeconds}` },
       }
     );
   } catch (err) {

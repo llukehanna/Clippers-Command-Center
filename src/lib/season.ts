@@ -10,12 +10,13 @@
 import { sql, LAC_NBA_TEAM_ID } from './db';
 
 /**
- * Pure calendar-based season id. January–July belong to the season that
- * started the previous calendar year (the Finals can run into late June).
- * Used only as a fallback when the DB has no completed LAC games.
+ * Pure calendar-based season id. Seasons roll over on July 1 (after the
+ * Finals), the same rule as seasonStartYear() and the pipeline's
+ * currentSeasonId(). Used only as a fallback when the DB has no completed
+ * LAC games.
  */
 export function calendarSeasonId(now: Date = new Date()): number {
-  return now.getUTCMonth() < 7 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
+  return now.getUTCMonth() < 6 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
 }
 
 /**
