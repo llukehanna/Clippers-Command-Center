@@ -50,11 +50,16 @@ export async function GET(request: Request): Promise<NextResponse> {
     const initialSeq = await loadLiveSeq(sql, candidate.game_id);
     const poller = createPoller(
       candidate.nba_game_id,
-      candidate.start_time_utc ? new Date(candidate.start_time_utc).getTime() : null,
+      candidate.start_time_utc?.getTime() ?? null,
       nbaPollerDeps(sql, candidate.game_id),
       initialSeq
     );
     const result = await poller.tick();
+    if (result.status === 'error') {
+      // A tick error is a real fetch/save failure, not "no game right now" —
+      // surface it as a failure rather than a healthy 200.
+      return NextResponse.json({ state: 'ERROR', message: 'Poll cycle failed' }, { status: 502 });
+    }
     if (result.status !== 'ok' || !result.doc) {
       return NextResponse.json({ state: 'NO_ACTIVE_GAME' }, { status: 200 });
     }
