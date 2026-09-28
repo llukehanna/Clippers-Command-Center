@@ -229,6 +229,32 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     expect(run('scripts/compute-stats.ts')).toContain('for 1 game(s)');
   }, TIMEOUT);
 
+  it('pre-2019 seasons: advanced player stats for Clippers players only', async () => {
+    const { ingestBoxscore } = await import('./league-ingest');
+    await sql`INSERT INTO seasons (season_id, label) VALUES (2015, '2015-16') ON CONFLICT DO NOTHING`;
+    const box: NBABoxscoreResponse = {
+      meta: { version: 1, code: 200, request: '', time: '' },
+      game: {
+        gameId: '0021500077', gameStatus: 3, gameStatusText: 'Final', period: 4, gameClock: '',
+        gameTimeUTC: '2015-11-01T02:30:00Z',
+        regulationPeriods: 4,
+        homeTeam: team('DEN', [player(1_000_000 + 49, 'DEN Player 1', 18)]),
+        awayTeam: team('LAC', [player(1_000_001, 'Star Clipper', 12), player(1_000_002, 'Big Clipper', 10)]),
+      },
+    };
+    const gameId = await ingestBoxscore(2015, box);
+    expect(run('scripts/compute-stats.ts')).toContain('for 1 game(s)');
+
+    const [derived] = await sql<{ team_adv: number; lac_player_adv: number; other_player_adv: number }[]>`
+      SELECT (SELECT COUNT(*)::int FROM advanced_team_game_stats WHERE game_id = ${gameId}::bigint) AS team_adv,
+             (SELECT COUNT(*)::int FROM advanced_player_game_stats a JOIN teams t ON t.team_id = a.team_id
+               WHERE a.game_id = ${gameId}::bigint AND t.abbreviation = 'LAC') AS lac_player_adv,
+             (SELECT COUNT(*)::int FROM advanced_player_game_stats a JOIN teams t ON t.team_id = a.team_id
+               WHERE a.game_id = ${gameId}::bigint AND t.abbreviation <> 'LAC') AS other_player_adv
+    `;
+    expect(derived).toEqual({ team_adv: 2, lac_player_adv: 2, other_player_adv: 0 });
+  }, TIMEOUT);
+
   it('finds stale duplicate rows and removes only the safe ones', async () => {
     const { findLikelyDuplicates, removeStaleDuplicate } = await import('./league-ingest');
     // Two older-provider rows dated a day after real fixture games (like 2022-23 in production).

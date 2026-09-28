@@ -25,6 +25,12 @@ describe('normalizeTricode', () => {
     expect(normalizeTricode('NOH')).toBe('NOP');
     expect(normalizeTricode('LAC')).toBe('LAC');
   });
+
+  it('maps pre-2010 franchises to their current teams', () => {
+    expect(normalizeTricode('SEA')).toBe('OKC');
+    expect(normalizeTricode('VAN')).toBe('MEM');
+    expect(normalizeTricode('CHH')).toBe('CHA');
+  });
 });
 
 const TEAM_HEADERS = ['TEAM_ID', 'TEAM_ABBREVIATION', 'TEAM_NAME', 'GAME_ID', 'GAME_DATE', 'MATCHUP', 'WL', 'MIN',
