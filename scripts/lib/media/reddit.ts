@@ -22,6 +22,38 @@ export function tweetUrl(url: string): { id: string; embedUrl: string } | null {
   return { id, embedUrl: user ? `https://twitter.com/${user}/status/${id}` : `https://twitter.com/i/web/status/${id}` };
 }
 
+// r/LAClippers insider screenshot posts are titled "[Insider Name] tweet
+// text" (a screenshot of the tweet, no link to X itself). Bracket content
+// must look like a person/outlet name, not a generic post-flair tag.
+const INSIDER_BRACKET = /^\s*\[([^\]]{2,40})\]\s*(.+)$/;
+const INSIDER_CHARS = /^[A-Za-z .'’\-/&]+$/;
+const GENERIC_TAGS = new Set([
+  'highlight', 'highlights', 'game thread', 'post game thread', 'pre game thread', 'postgame', 'pregame',
+  'discussion', 'serious', 'meme', 'oc', 'stats', 'video', 'news', 'rumor', 'request', 'question', 'poll',
+  'official', 'final', 'pic', 'image', 'gif', 'discussion thread',
+]);
+// Curly and straight double quotes; the whole text must be quoted, both ends.
+const QUOTE_PAIRS: [string, string][] = [['"', '"'], ['“', '”']];
+
+function stripQuotes(s: string): string {
+  for (const [open, close] of QUOTE_PAIRS) {
+    if (s.length >= open.length + close.length && s.startsWith(open) && s.endsWith(close)) {
+      return s.slice(open.length, s.length - close.length).trim();
+    }
+  }
+  return s;
+}
+
+export function insiderPost(title: string): { insider: string; text: string } | null {
+  const m = INSIDER_BRACKET.exec(title);
+  if (!m) return null;
+  const bracket = m[1].trim();
+  if (!INSIDER_CHARS.test(bracket) || GENERIC_TAGS.has(bracket.toLowerCase())) return null;
+  const text = stripQuotes(m[2].trim());
+  if (!text) return null;
+  return { insider: bracket, text };
+}
+
 interface RedditPost {
   id: string; title: string; permalink: string; url: string; author: string; score: number; num_comments: number;
   created_utc: number; stickied: boolean; over_18: boolean; link_flair_text: string | null; thumbnail?: string;
@@ -37,16 +69,17 @@ export function redditToItems(listing: unknown): MediaItemInput[] {
     if (!p || p.stickied || p.over_18) continue;
     if (THREAD.test(p.title) || THREAD.test(p.link_flair_text ?? '')) continue;
     const tweet = tweetUrl(p.url ?? '');
+    const insider = insiderPost(p.title);
     const preview = p.preview?.images?.[0]?.source?.url ?? null;
     const thumb = preview ?? (p.thumbnail?.startsWith('http') ? p.thumbnail : null);
     rank += 1;
     items.push({
-      kind: tweet ? 'tweet' : 'reddit',
+      kind: tweet || insider ? 'tweet' : 'reddit',
       source: `r/${SUBREDDIT}`,
       url: `https://www.reddit.com${p.permalink}`,
       dedupKey: tweet ? `tweet:${tweet.id}` : `reddit:${p.id}`,
-      title: p.title,
-      author: p.author ?? null,
+      title: insider ? insider.text : p.title,
+      author: insider ? insider.insider : (p.author ?? null),
       publishedAt: new Date(p.created_utc * 1000).toISOString(),
       engagement: p.score ?? null,
       comments: p.num_comments ?? null,
@@ -97,15 +130,16 @@ export function redditRssToItems(xml: string): MediaItemInput[] {
     const thumbnailUrl = thumb && /^https?:\/\//.test(thumb) ? thumb : null;
     const contentLink = CONTENT_LINK.exec(text(e.content))?.[1] ?? '';
     const tweet = tweetUrl(contentLink);
+    const insider = insiderPost(title);
 
     rank += 1;
     items.push({
-      kind: tweet ? 'tweet' : 'reddit',
+      kind: tweet || insider ? 'tweet' : 'reddit',
       source: `r/${SUBREDDIT}`,
       url: href,
       dedupKey: tweet ? `tweet:${tweet.id}` : `reddit:${idMatch[1]}`,
-      title,
-      author,
+      title: insider ? insider.text : title,
+      author: insider ? insider.insider : author,
       publishedAt: published.toISOString(),
       engagement: null,
       comments: null,

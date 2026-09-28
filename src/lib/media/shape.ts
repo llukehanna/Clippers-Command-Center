@@ -17,8 +17,22 @@ export function shapeMedia(rows: MediaItem[], now: Date, limit: number): { artic
     .slice(0, limit);
 
   const socialRows = rows.filter((r) => r.kind !== 'article');
-  const reddit = socialRows.filter((r) => r.source === REDDIT_SOURCE);
-  const other = socialRows.filter((r) => r.source !== REDDIT_SOURCE);
+
+  // From X (kind 'tweet' — a real embedded tweet, or an insider screenshot
+  // post from r/LAClippers) lead the social feed: ranked by this fetch's
+  // hot-list position first (null last), then most recent.
+  const tweets = socialRows
+    .filter((r) => r.kind === 'tweet')
+    .sort((a, b) => {
+      const ar = a.feed_rank ?? Infinity;
+      const br = b.feed_rank ?? Infinity;
+      if (ar !== br) return ar - br;
+      return b.published_at.localeCompare(a.published_at);
+    });
+
+  const rest = socialRows.filter((r) => r.kind !== 'tweet');
+  const reddit = rest.filter((r) => r.source === REDDIT_SOURCE);
+  const other = rest.filter((r) => r.source !== REDDIT_SOURCE);
 
   // Reddit's RSS feed carries no engagement counts, so ranked posts (this
   // fetch's hot-list position) sort ahead of unranked leftovers from a prior
@@ -34,15 +48,14 @@ export function shapeMedia(rows: MediaItem[], now: Date, limit: number): { artic
 
   // Round-robin starting with Reddit so one source can't drown out the
   // other; a source with nothing left just stops contributing.
-  const social: MediaItem[] = [];
+  const restOrdered: MediaItem[] = [];
   let i = 0;
   let j = 0;
-  while (social.length < limit && (i < redditOrdered.length || j < otherOrdered.length)) {
-    if (i < redditOrdered.length) {
-      social.push(redditOrdered[i++]);
-      if (social.length >= limit) break;
-    }
-    if (j < otherOrdered.length) social.push(otherOrdered[j++]);
+  while (i < redditOrdered.length || j < otherOrdered.length) {
+    if (i < redditOrdered.length) restOrdered.push(redditOrdered[i++]);
+    if (j < otherOrdered.length) restOrdered.push(otherOrdered[j++]);
   }
+
+  const social = [...tweets, ...restOrdered].slice(0, limit);
   return { articles, social };
 }

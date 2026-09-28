@@ -386,7 +386,7 @@ News articles and social posts (`scripts/sync-media.ts`), retained 7 days. Exter
 - `dedup_key`: `'article:<title key>'` | `'reddit:<id>'` | `'tweet:<id>'` | `'bsky:<uri>'`
 
 **Key fields**
-- `kind`: `'article' | 'reddit' | 'tweet' | 'bluesky'`
+- `kind`: `'article' | 'reddit' | 'tweet' | 'bluesky'`. `'tweet'` may be a real X post linked from Reddit (`embed_url` set, `dedup_key` `'tweet:<id>'`) or an insider screenshot post detected from an r/LAClippers title like `"[Insider Name] ..."` (`embed_url` NULL, `dedup_key` still `'reddit:<id>'`, `author` is the insider's name, not the Reddit poster) — see `insiderPost` in `scripts/lib/media/reddit.ts`.
 - `source`: `'ESPN'`, `'LA Times'`, `'r/LAClippers'`, `'Bluesky'`, ...
 - `engagement`, `comments`: reddit score / bluesky likes + reposts; NULL for articles and for r/LAClippers posts fetched via the RSS path (no credentials — see `feed_rank`)
 - `priority`: lower wins de-duplication when the same story is upserted from two sources

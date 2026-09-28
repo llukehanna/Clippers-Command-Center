@@ -66,6 +66,32 @@ describe('shapeMedia', () => {
     expect(out.social.map((i) => i.media_id)).toEqual(['b-hot', 'b-cold']);
   });
 
+  it('leads with X (tweet) items, ranked by feed_rank ascending (null last) then published_at desc, ahead of the Reddit/other interleave', () => {
+    const rows = [
+      item({ media_id: 'x-rank2', kind: 'tweet', source: 'r/LAClippers', feed_rank: 2, published_at: hoursAgo(5) }),
+      item({ media_id: 'x-rank1', kind: 'tweet', source: 'r/LAClippers', feed_rank: 1, published_at: hoursAgo(6) }),
+      item({ media_id: 'x-unranked-new', kind: 'tweet', source: 'r/LAClippers', feed_rank: null, published_at: hoursAgo(0.5) }),
+      item({ media_id: 'x-unranked-old', kind: 'tweet', source: 'r/LAClippers', feed_rank: null, published_at: hoursAgo(2) }),
+      item({ media_id: 'r-rank1', kind: 'reddit', source: 'r/LAClippers', feed_rank: 1, published_at: hoursAgo(4) }),
+      item({ media_id: 'b-hot', kind: 'bluesky', source: 'Bluesky', engagement: 300, published_at: hoursAgo(1) }),
+    ];
+    const out = shapeMedia(rows, now, 10);
+    expect(out.social.map((i) => i.media_id)).toEqual([
+      'x-rank1', 'x-rank2', 'x-unranked-new', 'x-unranked-old', 'r-rank1', 'b-hot',
+    ]);
+  });
+
+  it('applies the limit across the whole list, X items first', () => {
+    const rows = [
+      item({ media_id: 'x1', kind: 'tweet', source: 'r/LAClippers', feed_rank: 1, published_at: hoursAgo(4) }),
+      item({ media_id: 'x2', kind: 'tweet', source: 'r/LAClippers', feed_rank: 2, published_at: hoursAgo(3) }),
+      item({ media_id: 'r-rank1', kind: 'reddit', source: 'r/LAClippers', feed_rank: 1, published_at: hoursAgo(4) }),
+      item({ media_id: 'b-hot', kind: 'bluesky', source: 'Bluesky', engagement: 300, published_at: hoursAgo(1) }),
+    ];
+    const out = shapeMedia(rows, now, 3);
+    expect(out.social.map((i) => i.media_id)).toEqual(['x1', 'x2', 'r-rank1']);
+  });
+
   it('applies the limit across the interleaved list', () => {
     const rows = [
       item({ media_id: 'r-rank1', kind: 'reddit', source: 'r/LAClippers', feed_rank: 1, published_at: hoursAgo(4) }),
