@@ -190,6 +190,7 @@ export interface LivePayload {
   insights: Insight[]
   other_games: unknown[]
   odds: LiveOdds | null
+  cadence?: { phase: string; next_ms: number } | null
 }
 
 export interface ChartPoint {
