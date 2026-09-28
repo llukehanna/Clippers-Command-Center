@@ -2,7 +2,7 @@
 // Live view without a real game. Sample numbers, not a real game.
 
 import { elapsedSecs, periodClockAt, winProbability } from '@/src/lib/live/win-prob'
-import type { FlowMarker, FlowPoint, LiveFlow, LiveWinProb } from '@/src/lib/types/live-state'
+import type { FlowMarker, FlowPoint, LineupState, LiveFlow, LiveWinProb } from '@/src/lib/types/live-state'
 import type { BoxScorePlayer, LivePayload } from '@/src/lib/ui/types'
 
 function p(
@@ -77,6 +77,34 @@ function sampleFlow(margin: number, tNow: number): { flow: LiveFlow; wp: LiveWin
     },
   }
   return { flow: { points, markers }, wp }
+}
+
+function sampleLineups(p: LivePayload): LineupState {
+  const [lacTeam, oppTeam] = p.box_score?.teams ?? []
+  const five = (players: BoxScorePlayer[], side: 'lac' | 'opp'): LineupState['on_court']['lac'] =>
+    players.slice(0, 5).map((pl, i) => ({
+      player_id: Number(pl.player_id) || i + 1,
+      name: pl.name,
+      stint_start: { period: 3, clock: ['12:00', '11:02', '9:48', '12:00', '10:30'][i] },
+      stint_secs: [258, 200, 126, 258, 168][i],
+      stint_plus_minus: side === 'lac' ? [4, 3, 1, 4, 2][i] : [-4, -3, -1, -4, -2][i],
+      pf: [1, 3, 2, 4, 0][i],
+      foul_trouble: i === 3,
+      min: [24.1, 22.6, 18.3, 26.0, 15.2][i],
+      usual_min: [34, 30, 28, 29, null][i],
+      pace: i === 2 ? 'under' : null,
+    }))
+  const lacNames = (lacTeam?.players ?? []).map((x) => x.name)
+  return {
+    on_court: { lac: five(lacTeam?.players ?? [], 'lac'), opp: five(oppTeam?.players ?? [], 'opp') },
+    current_unit: { lac_plus_minus: 1, secs_together: 126 },
+    units_tonight: [
+      { player_ids: [1, 2, 3, 4, 5], names: lacNames.slice(0, 5), secs: 842, plus_minus: 9 },
+      { player_ids: [1, 2, 4, 6, 7], names: [0, 1, 3, 5, 6].map((i) => lacNames[i] ?? `Player ${i + 1}`), secs: 380, plus_minus: -3 },
+    ],
+    timeouts: { lac: 4, opp: 3 },
+    bonus: { lac: false, opp: true },
+  }
 }
 
 export function liveFixture(now = new Date()): LivePayload {
@@ -171,5 +199,5 @@ export function liveFixture(now = new Date()): LivePayload {
   const g = payload.game!
   const lacHome = g.home.abbreviation === 'LAC'
   const margin = ((lacHome ? g.home.score : g.away.score) ?? 0) - ((lacHome ? g.away.score : g.home.score) ?? 0)
-  return { ...payload, ...sampleFlow(margin, elapsedSecs(g.period ?? 1, clockSecs(g.clock))) }
+  return { ...payload, ...sampleFlow(margin, elapsedSecs(g.period ?? 1, clockSecs(g.clock))), lineups: sampleLineups(payload) }
 }
