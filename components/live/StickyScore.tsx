@@ -32,7 +32,7 @@ export function StickyScore({
   React.useEffect(() => {
     const el = sentinel.current
     if (!el) return
-    const header = document.querySelector('header')
+    const header = document.querySelector('[data-topbar]')
     const measure = () => setTop(header?.getBoundingClientRect().height ?? 0)
     measure()
     window.addEventListener('resize', measure)

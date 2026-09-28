@@ -14,7 +14,7 @@ export function TopBar() {
   const isLive = state === 'LIVE' || state === 'DATA_DELAYED'
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-[linear-gradient(180deg,rgba(8,13,24,0.92),rgba(8,13,24,0.72))] pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl backdrop-saturate-150">
+    <header data-topbar className="sticky top-0 z-40 border-b border-line bg-[linear-gradient(180deg,rgba(8,13,24,0.92),rgba(8,13,24,0.72))] pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl backdrop-saturate-150">
       <div className="mx-auto grid max-w-[1320px] grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2.5 px-3.5 py-2.5 sm:px-[22px] md:grid-cols-[1fr_auto_1fr] md:py-3">
         <Link href="/home" className="flex min-w-0 items-center gap-2.5 justify-self-start rounded-lg" aria-label="Clippers Command Center home">
           <TeamLogo abbr="LAC" size="sm" priority />

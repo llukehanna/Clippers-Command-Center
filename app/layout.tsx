@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import { ViewTransition } from 'react'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { TopBar } from '@/components/shell/TopBar'
@@ -45,7 +46,9 @@ export default function RootLayout({
     <html lang="en" className={`dark ${geist.variable} ${geistMono.variable}`}>
       <body>
         <TopBar />
-        <main>{children}</main>
+        <ViewTransition default="page">
+          <main>{children}</main>
+        </ViewTransition>
         <CommandPalette />
       </body>
     </html>

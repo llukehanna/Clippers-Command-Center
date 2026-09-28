@@ -228,6 +228,31 @@
   }
 }
 
+/* Page-to-page transitions (React <ViewTransition default="page">). The top
+   bar keeps its own name so it stays still while the page crossfades. */
+[data-topbar] {
+  view-transition-name: topbar;
+}
+::view-transition-old(.page) {
+  animation: ccc-vt-out 160ms ease-out both;
+}
+::view-transition-new(.page) {
+  animation: ccc-vt-in 360ms var(--ease-premium) both;
+}
+
+@keyframes ccc-vt-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ccc-vt-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
 @keyframes ccc-enter {
   from {
     opacity: 0;
