@@ -57,8 +57,16 @@ function statusOf(code: number): LiveStateDoc['status'] {
 
 export function buildLiveState(i: StateInputs): LiveStateBody {
   const b = i.box;
-  // Use box for header fields only if it is at least as far along as the scoreboard
-  const head = i.box && i.box.gameStatus >= i.sbGame.gameStatus ? i.box : null;
+  // Use the box for header fields only if it is at least as far along as the
+  // scoreboard AND it actually has a clock/period to show. The stats.nba.com
+  // fallback (nba-live-client.ts's 403 path) always reports period: 1,
+  // gameClock: '' — that must never win the header even when its gameStatus
+  // matches or leads, unless it has since gone final (gameStatus >= 3), which
+  // it reports reliably even with an empty clock.
+  const head =
+    i.box && i.box.gameStatus >= i.sbGame.gameStatus && (i.box.gameClock !== '' || i.box.gameStatus >= 3)
+      ? i.box
+      : null;
   const period = head?.period ?? i.sbGame.period;
   const isoClock = head?.gameClock ?? i.sbGame.gameClock;
   const observed = [...i.actions].reverse().find((a) => a.timeActual)?.timeActual ?? null;
