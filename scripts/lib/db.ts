@@ -12,7 +12,7 @@ if (!DATABASE_URL) {
 }
 
 export const sql = postgres(DATABASE_URL, {
-  max: 3,          // small pool for a one-time CLI script
+  max: Number(process.env.DB_POOL_MAX ?? 3), // small pool for a CLI script
   idle_timeout: 30,
   connect_timeout: 10,
 });
