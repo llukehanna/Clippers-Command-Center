@@ -28,3 +28,15 @@ export function insightCategoryLabel(category: string): string {
       .join(' ')
   )
 }
+
+/**
+ * Betting line with an explicit sign: spread "3.5" → "+3.5", moneyline "150"
+ * → "+150"; negative and non-numeric values ("PK", "—") pass through.
+ */
+export function formatSignedLine(value: string | number | null | undefined): string | null {
+  if (value === null || value === undefined || value === '') return null
+  const s = String(value).trim()
+  const n = Number(s)
+  if (!Number.isFinite(n) || s.startsWith('+') || s.startsWith('-')) return s
+  return n > 0 ? `+${s}` : s
+}

@@ -399,7 +399,7 @@ export async function upsertBoxScoresForGame(
           ${stat.fgm ?? 0}, ${stat.fga ?? 0}, ${stat.fg3m ?? 0}, ${stat.fg3a ?? 0},
           ${stat.ftm ?? 0}, ${stat.fta ?? 0},
           ${stat.oreb ?? 0}, ${stat.dreb ?? 0},
-          ${rawPayloadJson}
+          ${rawPayloadJson}::text::jsonb
         )
         ON CONFLICT (game_id, player_id) DO UPDATE SET
           minutes      = EXCLUDED.minutes,
@@ -431,6 +431,9 @@ export async function upsertBoxScoresForGame(
  * Uses NBA-provided team statistics directly (not aggregated from players).
  * ON CONFLICT (game_id, team_id) DO UPDATE — idempotent, safe to re-run.
  */
+// raw_payload values arrive as JSON text: `::text::jsonb` makes Postgres parse
+// them into objects. Without the text cast postgres.js infers a jsonb parameter
+// and JSON-encodes the string again, storing a string scalar.
 export async function upsertTeamBoxScore(
   gameId: string,      // internal bigint as string
   teamId: string,      // internal bigint as string
@@ -452,7 +455,7 @@ export async function upsertTeamBoxScore(
       ${stats.freeThrowsMade}, ${stats.freeThrowsAttempted},
       ${stats.reboundsTotal}, ${stats.reboundsOffensive}, ${stats.reboundsDefensive},
       ${stats.assists}, ${stats.steals}, ${stats.blocks}, ${stats.turnovers},
-      ${stats.foulsPersonal}, ${rawPayload}
+      ${stats.foulsPersonal}, ${rawPayload}::text::jsonb
     )
     ON CONFLICT (game_id, team_id) DO UPDATE SET
       points        = EXCLUDED.points,
@@ -504,7 +507,7 @@ export async function upsertPlayerBoxScore(
       ${s.fieldGoalsMade}, ${s.fieldGoalsAttempted},
       ${s.threePointersMade}, ${s.threePointersAttempted},
       ${s.freeThrowsMade}, ${s.freeThrowsAttempted},
-      ${JSON.stringify(player)}
+      ${JSON.stringify(player)}::text::jsonb
     )
     ON CONFLICT (game_id, player_id) DO UPDATE SET
       starter       = EXCLUDED.starter,

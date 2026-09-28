@@ -149,6 +149,17 @@ describe('generateLiveInsights', () => {
     expect(runInsight!.headline).toContain('8');
   });
 
+  it('names the team by tricode, not its raw id', () => {
+    const events: ScoringEvent[] = [
+      { team_id: '1610612746', team_tricode: 'LAC', points: 3, event_time_seconds: 100 },
+      { team_id: '1610612746', team_tricode: 'LAC', points: 6, event_time_seconds: 130 },
+    ];
+    const snap = makeSnapshot({ period: 2, clock: '8:00', home_score: 55, away_score: 50, recent_scoring: events });
+    const run = generateLiveInsights(snap, emptyRolling).find((r) => r.category === 'run')!;
+    expect(run.headline).toBe('LAC on a 9-0 run');
+    expect(run.detail).not.toContain('1610612746');
+  });
+
   it('returns a clutch insight when clutch situation detected', () => {
     const snap = makeSnapshot({
       period: 4,

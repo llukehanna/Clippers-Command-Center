@@ -13,12 +13,14 @@ vi.mock('@/src/lib/db', () => ({
 import { calendarSeasonId, getDisplaySeasonId, parseSeasonIdParam } from './season';
 
 describe('calendarSeasonId', () => {
-  it('maps Jan–Jul to the season that started the previous year', () => {
+  it('maps Jan–Jun to the season that started the previous year', () => {
     expect(calendarSeasonId(new Date('2026-03-15T12:00:00Z'))).toBe(2025);
     expect(calendarSeasonId(new Date('2026-06-20T12:00:00Z'))).toBe(2025); // Finals
   });
 
-  it('maps Aug–Dec to the season starting that year', () => {
+  it('maps Jul–Dec to the season starting that year (rolls over July 1)', () => {
+    expect(calendarSeasonId(new Date('2026-06-30T12:00:00Z'))).toBe(2025);
+    expect(calendarSeasonId(new Date('2026-07-01T12:00:00Z'))).toBe(2026);
     expect(calendarSeasonId(new Date('2026-09-23T12:00:00Z'))).toBe(2026);
     expect(calendarSeasonId(new Date('2026-12-01T12:00:00Z'))).toBe(2026);
   });
@@ -42,7 +44,7 @@ describe('getDisplaySeasonId', () => {
     await expect(getDisplaySeasonId()).resolves.toBe(2025);
     const text = (mockSql.mock.calls[0][0] as string[]).join('?');
     expect(text).toContain("lower(g.status) = 'final'");
-    expect(text).toContain("AT TIME ZONE 'America/New_York'");
+    expect(text).toContain('game_team_box_scores'); // completed games with a box score only
   });
 
   it('falls back to the calendar season when the DB has no LAC games', async () => {

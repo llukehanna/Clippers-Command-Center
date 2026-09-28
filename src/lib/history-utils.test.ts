@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeSeasonRecord, detectOT } from './history-utils'
+import { computeSeasonRecord, detectOT, overtimeLabel } from './history-utils'
 import type { GameItem } from './history-utils'
 
 describe('computeSeasonRecord', () => {
@@ -65,20 +65,30 @@ describe('computeSeasonRecord', () => {
   })
 })
 
-describe('detectOT', () => {
-  it('returns true for "Final/OT"', () => {
+describe('overtimeLabel', () => {
+  it('labels overtime periods', () => {
+    expect(overtimeLabel({ overtime_periods: 0 })).toBeNull()
+    expect(overtimeLabel({})).toBeNull()
+    expect(overtimeLabel({ overtime_periods: 1 })).toBe('OT')
+    expect(overtimeLabel({ overtime_periods: 2 })).toBe('2OT')
+  })
+})
+
+describe('computeSeasonRecord postseason split', () => {
+  it('counts play-in and playoffs separately from the regular season', () => {
+    const g = (result: 'W' | 'L', game_type: GameItem['game_type'], home_away: 'home' | 'away' = 'home'): GameItem => ({
+      game_id: '1', game_date: '2026-04-01', opponent_abbr: 'DEN', home_away, result,
+      final_score: { team: 1, opp: 0 }, status: 'final', game_type,
+    })
+    const r = computeSeasonRecord([g('W', 'regular'), g('L', 'regular', 'away'), g('W', 'play_in'), g('L', 'playoffs')])
+    expect(r).toEqual({ overall: '1-1', home: '1-0', away: '0-1', postseason: '1-1' })
+  })
+})
+
+describe('detectOT (deprecated)', () => {
+  it('still reads legacy status strings', () => {
     expect(detectOT('Final/OT')).toBe(true)
-  })
-
-  it('returns false for "Final"', () => {
-    expect(detectOT('Final')).toBe(false)
-  })
-
-  it('returns false for null', () => {
+    expect(detectOT('final')).toBe(false)
     expect(detectOT(null)).toBe(false)
-  })
-
-  it('returns false for undefined', () => {
-    expect(detectOT(undefined)).toBe(false)
   })
 })
