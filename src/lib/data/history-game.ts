@@ -31,6 +31,8 @@ interface BoxScoreCountRow {
 
 interface PlayerBoxRow {
   player_id: string;
+  nba_player_id: number | null;
+  nba_person_id: number | null;
   display_name: string;
   team_id: string;
   minutes: string | null;
@@ -90,6 +92,8 @@ function mapPlayerRow(p: PlayerBoxRow) {
   return {
     id: p.player_id,          // Required by BoxScoreRow interface (used as React key)
     player_id: p.player_id,
+    nba_player_id: p.nba_player_id ?? null,
+    nba_person_id: p.nba_person_id ?? null,  // official NBA personId — use for headshots
     name: p.display_name,
     MIN: p.minutes ? formatClock(p.minutes) : null, // NBA box scores store "PT34M12.00S"
     PTS: p.points ?? null,
@@ -103,6 +107,25 @@ function mapPlayerRow(p: PlayerBoxRow) {
     FT: formatFraction(p.ft_made, p.ft_attempted),
     '+/-': p.plus_minus ?? null,
   };
+}
+
+type PeriodScore = { period: number; score: number };
+
+function asPeriods(value: unknown): PeriodScore[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (p): p is PeriodScore =>
+          p !== null && typeof p === 'object' && typeof p.period === 'number' && typeof p.score === 'number'
+      )
+    : [];
+}
+
+/** Pair home/away period scores into [{ period, home, away }]. */
+export function buildLineScore(home: unknown, away: unknown): { period: number; home: number; away: number }[] {
+  const awayByPeriod = new Map(asPeriods(away).map((p) => [p.period, p.score]));
+  return asPeriods(home)
+    .map((p) => ({ period: p.period, home: p.score, away: awayByPeriod.get(p.period) ?? 0 }))
+    .sort((a, b) => a.period - b.period);
 }
 
 export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
@@ -167,6 +190,8 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
       const playerRows = await sql<PlayerBoxRow[]>`
         SELECT
           p.player_id::text  AS player_id,
+          p.nba_player_id,
+          p.nba_person_id,
           p.display_name,
           pbs.team_id::text  AS team_id,
           pbs.minutes,
@@ -221,6 +246,18 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
       };
     }
 
+    // Line score from the team box scores' raw_payload (stored at finalization;
+    // older games are backfilled nightly by scripts/backfill-periods.ts).
+    const periodRows = await sql<{ is_home: boolean; periods: unknown }[]>`
+      SELECT is_home, raw_payload -> 'periods' AS periods
+      FROM game_team_box_scores
+      WHERE game_id = ${gameIdParam}::bigint
+    `;
+    const periods = buildLineScore(
+      periodRows.find((r) => r.is_home)?.periods,
+      periodRows.find((r) => !r.is_home)?.periods
+    );
+
     // Query insights from `insights` table (NOT `generated_insights`)
     const insightRows = await sql<InsightRow[]>`
       SELECT
@@ -266,6 +303,8 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
           status: game.status,
           home_score: game.home_score,
           away_score: game.away_score,
+          // [{ period, home, away }]; [] when the line score isn't stored yet
+          periods,
         },
         box_score: boxScore,
         insights,

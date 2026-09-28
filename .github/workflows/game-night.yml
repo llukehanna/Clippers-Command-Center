@@ -1,0 +1,43 @@
+name: Game Night (live)
+
+# Hourly launcher for scripts/game-night.ts. With no Clippers game tipping in
+# the next ~75 minutes it exits in seconds. Otherwise it sleeps until just
+# before tip, polls the NBA scoreboard every 12 seconds into live_snapshots,
+# and finalizes the game when it goes Final.
+#
+# Hours cover NBA tip times in US Eastern/Pacific (noon ET through late West
+# Coast overtime): 15:00–23:59 and 00:00–05:59 UTC.
+on:
+  schedule:
+    - cron: '20 15-23 * * *'
+    - cron: '20 0-5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One runner at a time; a launch that fires mid-game waits, then finds the game
+# final (or still live, and continues it).
+concurrency:
+  group: game-night
+  cancel-in-progress: false
+
+jobs:
+  game-night:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run game-night poller
+        run: node node_modules/.bin/tsx scripts/game-night.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

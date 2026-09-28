@@ -76,12 +76,15 @@ interface UpcomingGameRow {
 
 interface PlayerTrendRow {
   player_id: string;
+  nba_player_id: number | null;
+  nba_person_id: number | null;
   name: string;
   game_count: string;
   minutes_texts: string[];
   pts_avg: number | null;
   reb_avg: number | null;
   ast_avg: number | null;
+  ts_pct: number | null;
 }
 
 interface InsightRow {
@@ -115,6 +118,7 @@ export async function loadHome(): Promise<ApiResult> {
       playerTrendRows,
       seedRows,
       insightRows,
+      lastSyncRows,
     ] = await Promise.all([
       // 0: LAC team record (need abbreviation and internal id for opponent lookup)
       sql`
@@ -215,12 +219,17 @@ export async function loadHome(): Promise<ApiResult> {
       sql`
         SELECT
           p.player_id::text AS player_id,
+          p.nba_player_id,
+          p.nba_person_id,
           p.display_name AS name,
           COUNT(*)::text AS game_count,
           array_agg(gpbs.minutes ORDER BY g.game_date DESC) AS minutes_texts,
           AVG(gpbs.points)::float8 AS pts_avg,
           AVG(gpbs.rebounds)::float8 AS reb_avg,
-          AVG(gpbs.assists)::float8 AS ast_avg
+          AVG(gpbs.assists)::float8 AS ast_avg,
+          -- TS% = PTS / (2 × (FGA + 0.44 × FTA)) over the window
+          (SUM(gpbs.points)::float8
+            / NULLIF(2 * (SUM(gpbs.fg_attempted) + 0.44 * SUM(gpbs.ft_attempted)), 0)) AS ts_pct
         FROM game_player_box_scores gpbs
         JOIN players p ON p.player_id = gpbs.player_id
         JOIN games g ON g.game_id = gpbs.game_id
@@ -237,7 +246,7 @@ export async function loadHome(): Promise<ApiResult> {
               AND season_id = ${seasonId}
             ORDER BY game_date DESC LIMIT 10
           )
-        GROUP BY p.player_id, p.display_name
+        GROUP BY p.player_id, p.nba_player_id, p.nba_person_id, p.display_name
         ORDER BY AVG(${sql.unsafe(MINUTES_SECONDS_SQL.replaceAll('pb.', 'gpbs.'))}
         ) DESC NULLS LAST
         LIMIT 8
@@ -285,6 +294,16 @@ export async function loadHome(): Promise<ApiResult> {
         ORDER BY importance DESC
         LIMIT 10
       ` as Promise<InsightRow[]>,
+
+      // H: When the data pipeline last ran (nightly post-game workflow or the
+      //    game-night runner), else when the newest box score landed.
+      sql`
+        SELECT to_char(
+          COALESCE(
+            (SELECT (value #>> '{}')::timestamptz FROM app_kv WHERE key = 'pipeline:last_sync_at'),
+            (SELECT MAX(created_at) FROM game_team_box_scores)
+          ) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_sync_at
+      ` as Promise<{ last_sync_at: string | null }[]>,
     ]);
 
     // ── team_snapshot ─────────────────────────────────────────────────────────
@@ -393,15 +412,17 @@ export async function loadHome(): Promise<ApiResult> {
 
       return {
         player_id: parseInt(row.player_id, 10),
+        // For headshots use nba_person_id (official NBA personId):
+        // https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_person_id}.png
+        nba_player_id: row.nba_player_id ?? null,
+        nba_person_id: row.nba_person_id ?? null,
         name: row.name,
         window_games: parseInt(row.game_count, 10),
         minutes_avg: Math.round(minutesAvg * 10) / 10,
         pts_avg: Math.round(((row.pts_avg ?? 0)) * 10) / 10,
         reb_avg: Math.round(((row.reb_avg ?? 0)) * 10) / 10,
         ast_avg: Math.round(((row.ast_avg ?? 0)) * 10) / 10,
-        // ts_pct not stored in game_player_box_scores; available post-game in
-        // advanced_player_game_stats — omitted here rather than fabricating.
-        ts_pct: null,
+        ts_pct: row.ts_pct == null ? null : Math.round(row.ts_pct * 1000) / 1000,
       };
     });
 
@@ -426,7 +447,7 @@ export async function loadHome(): Promise<ApiResult> {
     const source = hasOdds ? 'mixed' : 'db';
 
     const payload = {
-      meta: buildMeta(source, 300),
+      meta: { ...buildMeta(source, 300), last_sync_at: lastSyncRows[0]?.last_sync_at ?? null },
       team_snapshot: teamSnapshot,
       next_game: nextGame,
       upcoming_schedule: upcomingWithOdds,
