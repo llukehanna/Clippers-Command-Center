@@ -3,7 +3,7 @@
 // fans' browsers hold a WebSocket per game. Routing, auth and origin checks
 // live here; each game's state and sockets live in a GameRoom Durable Object.
 
-import { GameRoom } from './game-room';
+import { GameRoom, isWebSocketUpgrade } from './game-room';
 
 export { GameRoom };
 
@@ -67,7 +67,7 @@ export default {
     }
 
     if (route === 'ws' && request.method === 'GET') {
-      if (request.headers.get('Upgrade') !== 'websocket') return new Response('expected websocket', { status: 426 });
+      if (!isWebSocketUpgrade(request)) return new Response('expected websocket', { status: 426 });
       if (!isAllowedOrigin(request.headers.get('Origin'), env.ALLOWED_ORIGINS)) {
         return new Response('forbidden origin', { status: 403 });
       }
