@@ -1,6 +1,6 @@
 # Live Hub
 
-The Live Hub is the central push server for Live v2 (see [spec §6.1](../../Docs/SPEC.md#61-live-v2-push-hub)). The game-night runner POSTs live state updates here, and fans' browsers connect via WebSocket to receive real-time game updates. Each game maintains its own isolated message stream with a 150-second replay window for reconnecting clients.
+The Live Hub is the central push server for Live v2 (see [spec §6.1](../../Docs/superpowers/specs/2026-09-27-live-v2-realtime-design.md#61-the-hub-cloudflare-durable-object)). The game-night runner POSTs live state updates here, and fans' browsers connect via WebSocket to receive real-time game updates. Each game maintains its own isolated message stream with a 150-second replay window for reconnecting clients.
 
 ## Endpoints
 
@@ -12,13 +12,13 @@ Health check. Returns `200 ok`.
 ### `POST /publish/:gameId`
 Publish a live state message to game `:gameId`. Requires `Authorization: Bearer $LIVE_HUB_SECRET` header.
 
-**Request body:** JSON keyframe or delta object. A keyframe requires a valid `doc.fetched_at` ISO 8601 timestamp.
+**Request body:** JSON keyframe or delta object. A keyframe must have integer `seq`, valid `doc.fetched_at` (ISO 8601 timestamp parseable by `Date.parse()`). A delta must have integer `seq` and `base_seq`.
 
 **Responses:**
 - `204 No Content` — message accepted
 - `400 Bad Request` — malformed JSON, non-object body, missing `seq`, invalid `doc.fetched_at`, or invalid game ID
 - `401 Unauthorized` — missing or incorrect secret
-- `409 Conflict` — stale delta (base_seq doesn't match the latest stored seq), stale keyframe (fetched_at is older than the newest keyframe), or late-arriving seq
+- `409 Conflict` — delta whose `base_seq` is not the latest stored seq, or whose `seq` is not strictly greater; or keyframe whose `seq` is ≤ the latest stored seq and whose `doc.fetched_at` is not newer than the newest stored keyframe's
 - `413 Payload Too Large` — body exceeds 512 KB
 
 ### `GET /ws/:gameId`
