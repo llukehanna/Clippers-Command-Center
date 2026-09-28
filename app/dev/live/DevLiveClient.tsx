@@ -6,12 +6,11 @@ import { Chip } from '@/components/ui/chip'
 import { liveFixture } from './fixture'
 
 export function DevLiveClient() {
-  const [delayed, setDelayed] = React.useState(false)
+  const [delayedAt, setDelayedAt] = React.useState<string | null>(null)
   const [data, setData] = React.useState(() => liveFixture())
+  const delayed = delayedAt !== null
 
-  const payload = delayed
-    ? { ...data, state: 'DATA_DELAYED' as const, snapshot_captured_at: new Date(Date.now() - 3 * 60_000).toISOString() }
-    : data
+  const payload = delayedAt ? { ...data, state: 'DATA_DELAYED' as const, snapshot_captured_at: delayedAt } : data
 
   return (
     <>
@@ -29,7 +28,7 @@ export function DevLiveClient() {
         >
           LAC +3
         </button>
-        <button type="button" className="rounded-full border border-line px-3 py-1 text-[12.5px] text-mute hover:text-text" onClick={() => setDelayed((v) => !v)}>
+        <button type="button" className="rounded-full border border-line px-3 py-1 text-[12.5px] text-mute hover:text-text" onClick={() => setDelayedAt((v) => (v ? null : new Date(Date.now() - 3 * 60_000).toISOString()))}>
           {delayed ? 'Set live' : 'Set delayed'}
         </button>
       </div>
