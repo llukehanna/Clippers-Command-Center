@@ -44,3 +44,13 @@ export function overtimeLabel(game: Pick<GameItem, 'overtime_periods'>): string 
   if (n <= 0) return null
   return n === 1 ? 'OT' : `${n}OT`
 }
+
+/**
+ * @deprecated Status is stored lowercase ('final') without "OT"; use
+ * overtimeLabel(game) with the API's `overtime_periods`. Kept for components
+ * that still call it.
+ */
+export function detectOT(status: string | null | undefined): boolean {
+  if (!status) return false
+  return /OT/i.test(status)
+}

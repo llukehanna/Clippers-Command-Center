@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeSeasonRecord, overtimeLabel } from './history-utils'
+import { computeSeasonRecord, detectOT, overtimeLabel } from './history-utils'
 import type { GameItem } from './history-utils'
 
 describe('computeSeasonRecord', () => {
@@ -82,5 +82,13 @@ describe('computeSeasonRecord postseason split', () => {
     })
     const r = computeSeasonRecord([g('W', 'regular'), g('L', 'regular', 'away'), g('W', 'play_in'), g('L', 'playoffs')])
     expect(r).toEqual({ overall: '1-1', home: '1-0', away: '0-1', postseason: '1-1' })
+  })
+})
+
+describe('detectOT (deprecated)', () => {
+  it('still reads legacy status strings', () => {
+    expect(detectOT('Final/OT')).toBe(true)
+    expect(detectOT('final')).toBe(false)
+    expect(detectOT(null)).toBe(false)
   })
 })
