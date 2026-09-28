@@ -97,22 +97,43 @@
     -webkit-text-size-adjust: 100%;
   }
   body {
-    @apply bg-ink-0 font-sans text-text antialiased;
+    /* Transparent so the ambient light layers (body::before/::after, painted
+       beneath the body) show; the base color lives on <html>. */
+    @apply font-sans text-text antialiased;
+    background: transparent;
     font-size: 15px;
     line-height: 1.5;
     font-feature-settings: "tnum" 1, "ss01" 1;
     min-height: 100dvh;
   }
+  /* Ambient field behind the glass. Liquid glass needs something to refract:
+     soft Naval / Pacific / Ember light pools that drift very slowly. */
   body::before {
+    content: "";
+    position: fixed;
+    inset: -10%;
+    z-index: -2;
+    pointer-events: none;
+    background:
+      radial-gradient(38% 34% at 12% 4%, rgba(65, 143, 222, 0.34), transparent 70%),
+      radial-gradient(30% 28% at 90% 8%, rgba(200, 16, 46, 0.2), transparent 70%),
+      radial-gradient(42% 38% at 74% 58%, rgba(50, 110, 200, 0.2), transparent 72%),
+      radial-gradient(36% 32% at 8% 52%, rgba(90, 70, 190, 0.1), transparent 72%),
+      radial-gradient(50% 44% at 22% 92%, rgba(20, 60, 120, 0.55), transparent 72%),
+      radial-gradient(60% 50% at 60% 118%, rgba(200, 16, 46, 0.1), transparent 70%);
+    filter: saturate(115%);
+    animation: ccc-drift 60s ease-in-out infinite alternate;
+  }
+  /* Fine grain so the gradients read as light, not banding. */
+  body::after {
     content: "";
     position: fixed;
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    background:
-      radial-gradient(900px 520px at 12% -8%, rgba(65, 143, 222, 0.13), transparent 60%),
-      radial-gradient(700px 480px at 92% 4%, rgba(200, 16, 46, 0.06), transparent 60%),
-      radial-gradient(1200px 700px at 50% 120%, rgba(12, 35, 64, 0.55), transparent 70%);
+    opacity: 0.05;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
   }
   ::selection {
     background: rgba(65, 143, 222, 0.35);
@@ -154,31 +175,128 @@
     min-width: 0;
   }
 
+  /* ── Liquid glass ─────────────────────────────────────────────────────────
+     .panel     frosted surface: translucent fill, backdrop blur + saturation,
+                a specular rim (brighter at the top-left) and a pointer sheen.
+     .panel-inset  quieter nested glass.
+     .lens      the bright "droplet" used for active controls.            */
   .panel {
     position: relative;
+    isolation: isolate;
     border-radius: var(--radius-lg);
-    border: 1px solid var(--line);
-    background: var(--glass), var(--ink-1);
-    box-shadow: var(--panel-shadow);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02) 42%, rgba(255, 255, 255, 0.012)),
+      rgba(12, 20, 36, 0.4);
+    -webkit-backdrop-filter: blur(26px) saturate(190%);
+    backdrop-filter: blur(26px) saturate(190%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+      0 1px 2px rgba(0, 0, 0, 0.35),
+      0 24px 60px -26px rgba(0, 0, 0, 0.8);
+  }
+  /* Specular rim: a 1px gradient ring, bright where light hits the edge. */
+  .panel::after,
+  .lens::after,
+  .glass-bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    background: linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.46),
+      rgba(255, 255, 255, 0.1) 24%,
+      rgba(150, 178, 230, 0.06) 55%,
+      rgba(255, 255, 255, 0.14)
+    );
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    z-index: 1;
+  }
+  /* Sheen that follows the pointer (vars set by GlassPointer). */
+  .panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.07), transparent 60%);
+    transition: opacity 0.4s var(--ease-premium);
+    z-index: -1;
+  }
+  .panel:hover::before {
+    opacity: 1;
   }
   .panel-inset {
     position: relative;
     border-radius: var(--radius-md);
-    border: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.02);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.09),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.05);
   }
   .panel-hero {
     overflow: hidden;
   }
-  .panel-hero::before {
-    content: "";
+  .panel-hero > .hero-glow {
     position: absolute;
     inset: -40% -10% auto auto;
-    width: 520px;
-    height: 520px;
+    width: 560px;
+    height: 560px;
     border-radius: 50%;
-    background: radial-gradient(closest-side, rgba(65, 143, 222, 0.18), transparent);
+    background: radial-gradient(closest-side, rgba(65, 143, 222, 0.22), transparent);
     pointer-events: none;
+    z-index: -1;
+  }
+
+  /* Bright droplet for the active item in nav / segmented controls. */
+  .lens {
+    position: relative;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.06) 55%, rgba(255, 255, 255, 0.1)),
+      rgba(40, 60, 96, 0.35);
+    -webkit-backdrop-filter: blur(10px) saturate(180%);
+    backdrop-filter: blur(10px) saturate(180%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.35),
+      inset 0 -1px 1px rgba(255, 255, 255, 0.08),
+      0 4px 14px -4px rgba(0, 0, 0, 0.55),
+      0 0 18px -6px rgba(65, 143, 222, 0.45);
+  }
+
+  /* Floating glass bar (top bar, sticky score). */
+  .glass-bar {
+    position: relative;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.025)),
+      rgba(10, 17, 31, 0.58);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 18px 50px -20px rgba(0, 0, 0, 0.85),
+      0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Recessed track that controls sit in. */
+  .glass-track {
+    background: rgba(4, 8, 16, 0.35);
+    box-shadow:
+      inset 0 1px 2px rgba(0, 0, 0, 0.45),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+
+  /* Tactile press on interactive glass. */
+  .press {
+    transition: transform 0.18s var(--ease-premium);
+  }
+  .press:active {
+    transform: scale(0.97);
   }
 
   /* Mono uppercase label */
@@ -253,6 +371,15 @@
   }
 }
 
+@keyframes ccc-drift {
+  from {
+    transform: translate3d(-1.5%, -1%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(1.5%, 1.5%, 0) scale(1.06);
+  }
+}
+
 @keyframes ccc-enter {
   from {
     opacity: 0;
@@ -292,6 +419,23 @@
   }
   to {
     background-position: -200% 0;
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .panel,
+  .glass-bar {
+    background: var(--ink-1);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .panel,
+  .glass-bar,
+  .lens {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--ink-2);
   }
 }
 

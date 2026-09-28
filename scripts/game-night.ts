@@ -21,6 +21,7 @@ import type { Publisher } from './lib/live-publish.js';
 import { loadLiveSeq } from './lib/live-store.js';
 import { finalizeGame } from './lib/finalize.js';
 import { decideGameNightAction, FINAL_SAVE_MAX_ATTEMPTS } from './lib/game-night-logic.js';
+import { ingestGamePbp } from './lib/pbp/ingest.js';
 
 const LEAD_MINUTES = Number(process.env.GAME_NIGHT_LEAD_MINUTES ?? 75);
 const PRE_TIP_MS = 10 * 60_000;
@@ -124,6 +125,20 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
         `;
         console.log('[game-night] Finalization complete.');
+        // Play-by-play → game flow / period / clutch tables, so postgame
+        // insights can run minutes after the buzzer. Non-fatal: the nightly
+        // pipeline picks up any game without a game_flow row.
+        try {
+          const pbp = await ingestGamePbp(candidate.game_id);
+          const detail = pbp.status === 'ok'
+            ? `${pbp.events} events`
+            : pbp.status === 'incomplete'
+              ? `feed incomplete (${pbp.got.home}-${pbp.got.away}, final ${pbp.expected.home}-${pbp.expected.away}); not written`
+              : 'not available yet';
+          console.log(`[game-night] Play-by-play: ${detail}`);
+        } catch (err) {
+          console.error(`[game-night] Play-by-play ingest failed: ${(err as Error).message}`);
+        }
       } catch (err) {
         // The nightly post-game pipeline retries games without box scores.
         console.error(`[game-night] Finalization failed: ${(err as Error).message}`);

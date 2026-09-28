@@ -14,10 +14,10 @@ export function TopBar() {
   const isLive = state === 'LIVE' || state === 'DATA_DELAYED'
 
   return (
-    <header data-topbar className="sticky top-0 z-40 border-b border-line bg-[linear-gradient(180deg,rgba(8,13,24,0.92),rgba(8,13,24,0.72))] pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl backdrop-saturate-150">
-      <div className="mx-auto grid max-w-[1320px] grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2.5 px-3.5 py-2.5 sm:px-[22px] md:grid-cols-[1fr_auto_1fr] md:py-3">
+    <header data-topbar className="sticky top-0 z-40 px-2 pt-[calc(env(safe-area-inset-top,0px)+8px)] sm:px-[14px] sm:pt-[calc(env(safe-area-inset-top,0px)+12px)]">
+      <div className="glass-bar mx-auto grid max-w-[1320px] grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2.5 rounded-[22px] px-3 py-2.5 sm:px-4 md:grid-cols-[1fr_auto_1fr] md:rounded-full md:py-2">
         <Link href="/home" className="flex min-w-0 items-center gap-2.5 justify-self-start rounded-lg" aria-label="Clippers Command Center home">
-          <TeamLogo abbr="LAC" size="sm" priority />
+          <TeamLogo abbr="LAC" size="sm" />
           <span className="truncate text-[15px] font-semibold tracking-[-0.01em]">Command Center</span>
         </Link>
 
@@ -30,7 +30,7 @@ export function TopBar() {
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event(OPEN_PALETTE_EVENT))}
-            className="flex items-center gap-2 rounded-full border border-line bg-white/[0.025] py-1.5 pl-3 pr-1.5 text-[13px] text-mute transition-colors duration-300 hover:bg-white/[0.05] hover:text-text"
+            className="glass-track press flex items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5 text-[13px] text-mute transition-colors duration-300 hover:text-text"
             aria-label="Search players and games"
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
@@ -38,7 +38,7 @@ export function TopBar() {
               <path d="M10.5 10.5 14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             <span className="hidden lg:inline">Search</span>
-            <kbd className="hidden rounded-md border border-line-2 bg-ink-2 px-1.5 py-0.5 font-mono text-[10.5px] text-dim sm:inline">⌘K</kbd>
+            <kbd className="hidden rounded-full bg-white/[0.07] px-2 py-0.5 font-mono text-[10.5px] text-mute shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] sm:inline">⌘K</kbd>
           </button>
         </div>
       </div>

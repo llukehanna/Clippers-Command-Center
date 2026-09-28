@@ -27,6 +27,7 @@ export function Panel<T extends React.ElementType = 'div'>({
   const Tag = (as ?? 'div') as React.ElementType
   return (
     <Tag className={cn(VARIANTS[variant], className)} {...rest}>
+      {variant === 'hero' && <span aria-hidden className="hero-glow" />}
       {children}
     </Tag>
   )
