@@ -83,6 +83,11 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     expect(rows.filter((r) => !r.exists).map((r) => r.name)).toEqual([]);
   });
 
+  it('schema has media_items', async () => {
+    const [row] = await sql<{ ok: boolean }[]>`SELECT to_regclass('public.media_items') IS NOT NULL AS ok`;
+    expect(row.ok).toBe(true);
+  });
+
   async function activeInsights() {
     return sql<{ category: string; scope: string; headline: string; importance: number }[]>`
       SELECT category, scope, headline, importance FROM insights WHERE is_active ORDER BY importance DESC
