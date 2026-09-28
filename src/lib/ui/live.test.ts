@@ -36,3 +36,20 @@ describe('live', () => {
     expect(countdownParts('2026-10-22T02:30:00Z', new Date('2026-10-23T00:00:00Z'))).toBeNull()
   })
 })
+
+import { resolveLiveState } from './live'
+
+describe('resolveLiveState', () => {
+  const base = { meta: { generated_at: '2026-01-01T12:00:00Z' }, game: { game_id: '1' } }
+  it('passes LIVE through when a game is present', () => {
+    expect(resolveLiveState({ ...base, state: 'LIVE' })).toBe('LIVE')
+  })
+  it('treats missing data or no game as idle', () => {
+    expect(resolveLiveState(undefined)).toBe('NO_ACTIVE_GAME')
+    expect(resolveLiveState({ ...base, state: 'LIVE', game: null })).toBe('NO_ACTIVE_GAME')
+  })
+  it('treats a delayed snapshot older than 6h as idle', () => {
+    expect(resolveLiveState({ ...base, state: 'DATA_DELAYED', snapshot_captured_at: '2026-01-01T11:00:00Z' })).toBe('DATA_DELAYED')
+    expect(resolveLiveState({ ...base, state: 'DATA_DELAYED', snapshot_captured_at: '2026-01-01T02:00:00Z' })).toBe('NO_ACTIVE_GAME')
+  })
+})

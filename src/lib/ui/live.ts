@@ -54,3 +54,29 @@ export function countdownParts(
     minutes: totalMinutes % 60,
   }
 }
+
+// A DATA_DELAYED snapshot older than this (vs. server time) is a leftover from
+// a finished game, not a delayed live one — treat it as no game.
+const STALE_SNAPSHOT_IDLE_MS = 6 * 60 * 60 * 1000
+
+export type ResolvedLiveState = 'LIVE' | 'DATA_DELAYED' | 'NO_ACTIVE_GAME'
+
+export function resolveLiveState(
+  data:
+    | {
+        state?: string
+        game?: unknown
+        snapshot_captured_at?: string | null
+        meta?: { generated_at?: string | null } | null
+      }
+    | undefined,
+): ResolvedLiveState {
+  const state = data?.state
+  if ((state !== 'LIVE' && state !== 'DATA_DELAYED') || !data?.game) return 'NO_ACTIVE_GAME'
+  if (state === 'DATA_DELAYED' && data.snapshot_captured_at && data.meta?.generated_at) {
+    const captured = parseTimestamp(data.snapshot_captured_at)
+    const generated = parseTimestamp(data.meta.generated_at)
+    if (captured && generated && generated.getTime() - captured.getTime() > STALE_SNAPSHOT_IDLE_MS) return 'NO_ACTIVE_GAME'
+  }
+  return state
+}

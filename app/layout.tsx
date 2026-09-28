@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
-import { TopNav } from '@/components/nav/TopNav'
+import { TopBar } from '@/components/shell/TopBar'
+import { CommandPalette } from '@/components/shell/CommandPalette'
 
 const geist = Geist({
   subsets: ['latin'],
@@ -43,8 +44,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`dark ${geist.variable} ${geistMono.variable}`}>
       <body>
-        <TopNav />
+        <TopBar />
         <main>{children}</main>
+        <CommandPalette />
       </body>
     </html>
   )
