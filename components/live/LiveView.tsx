@@ -86,6 +86,8 @@ export function LiveView({ data, error, source }: { data: LivePayload | undefine
   const insights = [...(data.insights ?? [])].sort((a, b) => b.importance - a.importance)
   const delayAge = delayed && now ? ageLabel(data.snapshot_captured_at, now) : null
   const onBackup = data.meta.stale_reason === BACKUP_STALE_REASON
+  // The ESPN backup refreshes only the score and clock; stats stay as last seen.
+  const pausedNote = onBackup ? 'Paused — backup feed' : undefined
 
   return (
     <div className="page">
@@ -134,13 +136,14 @@ export function LiveView({ data, error, source }: { data: LivePayload | undefine
 
       {data.key_metrics?.length > 0 && (
         <section className="enter" style={{ ['--i' as string]: 1 }} aria-label="Key metrics">
+          {pausedNote && <p className="m-0 mb-2 text-right font-mono text-[11.5px] leading-none text-dim">{pausedNote}</p>}
           <KeyMetrics metrics={data.key_metrics} lacFt={lacBox?.totals.FT as string | undefined} oppFt={oppBox?.totals.FT as string | undefined} oppAbbr={oppAbbr} />
         </section>
       )}
 
       <section className="enter grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 2 }}>
         <div className="min-w-0">
-          <Eyebrow>Box score</Eyebrow>
+          <Eyebrow aside={pausedNote}>Box score</Eyebrow>
           {data.box_score ? (
             <BoxScore teams={data.box_score.teams} playerIdsAreNba />
           ) : (
