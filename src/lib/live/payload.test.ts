@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { overlayLiveDoc } from './payload';
+import { overlayLiveDoc, notStartedPayload, RUNNER_NOT_STARTED_REASON } from './payload';
 import { box, liveDoc } from '../../../scripts/lib/live-fixtures';
+import { needsBackup } from './stream';
+import { overlayEspn } from './espn-backup';
 import type { LivePayload } from '../ui/types';
+import type { LiveGame } from '../ui/types';
 
 function base(over: Partial<LivePayload> = {}): LivePayload {
   return {
@@ -70,5 +73,31 @@ describe('overlayLiveDoc', () => {
     expect(out.wp).toEqual(wp);
     expect(out.lineups).toEqual(lineups);
     expect(out.observed_at).toBe('2026-10-22T02:41:00.000Z');
+  });
+});
+
+describe('notStartedPayload', () => {
+  const game: LiveGame = {
+    game_id: '77', nba_game_id: '0022600093', season_id: 2026, game_date: '2026-10-21', start_time_utc: '2026-10-22T02:30:00Z',
+    status: 'scheduled', period: null, clock: null,
+    home: { team_id: '13', abbreviation: 'LAC', name: 'Clippers', score: null, is_home: true },
+    away: { team_id: '24', abbreviation: 'SAC', name: 'Kings', score: null, is_home: false },
+  };
+  const meta = { generated_at: '2026-10-22T02:45:00.000Z', source: 'mixed' as const, stale: true, stale_reason: RUNNER_NOT_STARTED_REASON, ttl_seconds: 5 };
+
+  it('is a delayed, in-progress game with nothing but its identity', () => {
+    const p = notStartedPayload(game, meta);
+    expect(p.state).toBe('DATA_DELAYED');
+    expect(p.meta.stale_reason).toBe(RUNNER_NOT_STARTED_REASON);
+    expect(p.game).toMatchObject({ game_id: '77', status: 'in_progress', period: null, clock: null });
+    expect(p.game!.home.score).toBeNull();
+    expect(p).toMatchObject({ key_metrics: [], box_score: null, insights: [], odds: null, flow: null, wp: null, lineups: null });
+  });
+
+  it('switches the browser to the ESPN backup, which fills in the score', () => {
+    const p = notStartedPayload(game, meta);
+    expect(needsBackup(p, false)).toBe(true);
+    const shown = overlayEspn(p, { status: 'in_progress', status_text: 'Q1 8:12', period: 1, clock: '8:12', home: 9, away: 7 });
+    expect(shown.game).toMatchObject({ period: 1, clock: '8:12', home: { score: 9 }, away: { score: 7 } });
   });
 });

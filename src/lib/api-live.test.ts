@@ -190,7 +190,9 @@ describe('GET /api/live', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('returns state:"NO_ACTIVE_GAME" with game:null when there is no live state', async () => {
-    mockedSql.mockResolvedValueOnce([]); // snapshot query → no rows
+    mockedSql
+      .mockResolvedValueOnce([]) // snapshot query → no rows
+      .mockResolvedValueOnce([]); // fetchMissedGame → no rows
 
     const response = await GET();
     const body = await response.json();
@@ -274,7 +276,7 @@ describe('GET /api/live', () => {
 
   it('meta.ttl_seconds is 5 for LIVE state, 60 for NO_ACTIVE_GAME state', async () => {
     // NO_ACTIVE_GAME → ttl=60
-    mockedSql.mockResolvedValueOnce([]);
+    mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     const noGameRes = await GET();
     const noGameBody = await noGameRes.json();
     expect(noGameBody.meta.ttl_seconds).toBe(60);
@@ -292,7 +294,7 @@ describe('GET /api/live', () => {
   });
 
   it('meta envelope has generated_at, source, stale, stale_reason, ttl_seconds on all responses', async () => {
-    mockedSql.mockResolvedValueOnce([]);
+    mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const response = await GET();
     const body = await response.json();
@@ -308,7 +310,7 @@ describe('GET /api/live', () => {
   });
 
   it('box_score is null when state is NO_ACTIVE_GAME', async () => {
-    mockedSql.mockResolvedValueOnce([]);
+    mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const response = await GET();
     const body = await response.json();
@@ -331,7 +333,7 @@ describe('GET /api/live', () => {
   });
 
   it('other_games array is empty array (not null) when no other games are active', async () => {
-    mockedSql.mockResolvedValueOnce([]);
+    mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const response = await GET();
     const body = await response.json();
@@ -343,15 +345,20 @@ describe('GET /api/live', () => {
   it('returns NO_ACTIVE_GAME when the only LAC snapshot is old and its game is not in_progress', async () => {
     // The snapshot query filters to in_progress games or snapshots captured in the
     // last 30 minutes, so an old snapshot from a finished game yields no row.
-    mockedSql.mockResolvedValueOnce([]);
+    // With no snapshot at all, the route also checks for a missed (runner-never-
+    // started) game before giving up — here that check finds nothing either.
+    mockedSql
+      .mockResolvedValueOnce([]) // snapshot query → no rows
+      .mockResolvedValueOnce([]); // fetchMissedGame → no rows
 
     const response = await GET();
     const body = await response.json();
 
     expect(body.state).toBe('NO_ACTIVE_GAME');
     expect(body.game).toBeNull();
-    // Exactly one query: no follow-up game/team lookups for a non-live game
-    expect(mockedSql).toHaveBeenCalledTimes(1);
+    // Exactly two queries: the snapshot lookup and the missed-game check — no
+    // further game/team lookups for a non-live game.
+    expect(mockedSql).toHaveBeenCalledTimes(2);
     const queryText = (mockedSql.mock.calls[0][0] as string[]).join('?');
     expect(queryText).toMatch(/lower\(g\.status\) = 'in_progress'/);
     expect(queryText).toMatch(/interval '30 minutes'/);
@@ -400,7 +407,7 @@ describe('GET /api/live', () => {
     expect(live.headers.get('Vercel-CDN-Cache-Control')).toBe('max-age=2, stale-while-revalidate=10');
     expect(live.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
 
-    mockedSql.mockResolvedValueOnce([]);
+    mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     const idle = await GET();
     expect(idle.headers.get('Vercel-CDN-Cache-Control')).toBe('max-age=30, stale-while-revalidate=60');
   });
@@ -508,7 +515,7 @@ describe('GET /api/live', () => {
   });
 
   it('/api/live NO_ACTIVE_GAME path completes in under 200ms (wall-clock, mocked DB)', async () => {
-    mockedSql.mockResolvedValueOnce([]);
+    mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const start = Date.now();
     await GET();
