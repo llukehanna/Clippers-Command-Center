@@ -247,6 +247,18 @@ describe('GET /api/live', () => {
     expect(body.key_metrics).toHaveLength(4);
   });
 
+  it('LIVE responses carry snapshot_captured_at, so /live can tell whether a pushed doc is newer', async () => {
+    const freshSnap = makeFreshSnapRow();
+    mockedSql
+      .mockResolvedValueOnce([freshSnap])
+      .mockResolvedValueOnce([gameRow]);
+
+    const body = await (await GET()).json();
+
+    expect(body.state).toBe('LIVE');
+    expect(body.snapshot_captured_at).toBe(freshSnap.captured_at);
+  });
+
   it('key_metrics includes efg_pct, tov_margin, reb_margin, pace in that order', async () => {
     const freshSnap = makeFreshSnapRow();
     mockedSql

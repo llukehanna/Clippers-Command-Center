@@ -185,6 +185,7 @@ export type LiveState = 'LIVE' | 'DATA_DELAYED' | 'NO_ACTIVE_GAME'
 export interface LivePayload {
   meta: MetaEnvelope
   state: LiveState
+  /** When the runner built the snapshot behind a LIVE / DATA_DELAYED response (server clock). */
   snapshot_captured_at?: string
   game: LiveGame | null
   key_metrics: KeyMetric[]
