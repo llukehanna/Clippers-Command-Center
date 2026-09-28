@@ -37,9 +37,15 @@ jobs:
       - name: Probe feeds and dry-run the poller
         run: |
           node node_modules/.bin/tsx scripts/dev/feed-probe.ts --minutes="${MINUTES}" --nba-game="${GAME}" --out=feed-probe.ndjson &
+          probe_pid=$!
           node node_modules/.bin/tsx scripts/dev/live-dry-run.ts --minutes="${MINUTES}" --nba-game="${GAME}" > live-dry-run.log 2>&1 &
-          wait
+          dry_pid=$!
+          probe_rc=0
+          wait "$probe_pid" || probe_rc=$?
+          dry_rc=0
+          wait "$dry_pid" || dry_rc=$?
           tail -40 live-dry-run.log
+          exit $(( probe_rc != 0 || dry_rc != 0 ))
         env:
           MINUTES: ${{ inputs.minutes || '20' }}
           GAME: ${{ inputs.nba_game || 'auto' }}
