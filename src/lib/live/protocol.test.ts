@@ -78,4 +78,24 @@ describe('diffDocs + applyMessage', () => {
     const restarted: KeyframeMessage = { kind: 'keyframe', seq: 3, doc: liveDoc(3, { fetched_at: '2026-10-22T03:00:05.000Z' }) };
     expect(applyMessage(current, restarted).state).toBe(restarted.doc);
   });
+
+  it('detects reordered players (same ids, different order) and sends full replacement', () => {
+    const next = liveDoc(2, { home_box: team('homeTeam', [player(2, 0), player(1, 2)], 2), away_box: prev.away_box });
+    const delta = diffDocs(prev, next);
+    expect(delta.box?.home?.replace).toBe(true);
+    expect(delta.box?.home?.players.map((p) => p.personId)).toEqual([2, 1]);
+    const applied = applyMessage(prev, delta);
+    expect(applied.state).toEqual(next);
+    expect(applied.state?.home_box?.players.map((p) => p.personId)).toEqual([2, 1]);
+  });
+
+  it('detects new player inserted in the middle (not at end) and sends full replacement', () => {
+    const next = liveDoc(2, { home_box: team('homeTeam', [player(1, 2), player(3, 0), player(2, 0)], 2), away_box: prev.away_box });
+    const delta = diffDocs(prev, next);
+    expect(delta.box?.home?.replace).toBe(true);
+    expect(delta.box?.home?.players.map((p) => p.personId)).toEqual([1, 3, 2]);
+    const applied = applyMessage(prev, delta);
+    expect(applied.state).toEqual(next);
+    expect(applied.state?.home_box?.players.map((p) => p.personId)).toEqual([1, 3, 2]);
+  });
 });
