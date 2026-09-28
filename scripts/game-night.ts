@@ -19,6 +19,7 @@ import { createPoller } from './lib/live-poller.js';
 import { nbaPollerDeps } from './lib/live-deps.js';
 import { loadLiveSeq } from './lib/live-store.js';
 import { finalizeGame } from './lib/finalize.js';
+import { decideGameNightAction, FINAL_SAVE_MAX_ATTEMPTS } from './lib/game-night-logic.js';
 
 const LEAD_MINUTES = Number(process.env.GAME_NIGHT_LEAD_MINUTES ?? 75);
 const PRE_TIP_MS = 10 * 60_000;
@@ -58,6 +59,7 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
   const poller = createPoller(candidate.nba_game_id, tip?.getTime() ?? null, nbaPollerDeps(sql, candidate.game_id), initialSeq);
   let notListedSince: number | null = null;
   let saves = 0;
+  let finalAttempts = 0;
 
   while (Date.now() - startedAt < MAX_RUNTIME_MS) {
     const r = await poller.tick();
@@ -86,10 +88,26 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
       }
     }
 
-    if (r.final && r.doc) {
+    // Only finalize on a FINAL tick whose save actually succeeded (or after
+    // FINAL_SAVE_MAX_ATTEMPTS unsaved final ticks) — otherwise live_state would
+    // be left on the pre-buzzer doc. See scripts/lib/game-night-logic.ts.
+    const decision = decideGameNightAction(
+      { final: r.final, saved: r.saved, hasDoc: r.doc !== null, delayMs: r.delayMs },
+      finalAttempts
+    );
+    finalAttempts = decision.finalAttempts;
+
+    if (decision.action.type === 'finalize') {
+      // Guaranteed by decideGameNightAction: it only returns 'finalize' when hasDoc was true.
+      const finalDoc = r.doc!;
+      if (decision.action.forced) {
+        console.warn(
+          `[game-night] Final tick's save never succeeded after ${finalAttempts} attempts; finalizing anyway.`
+        );
+      }
       console.log('[game-night] Final. Finalizing…');
       try {
-        await finalizeGame(candidate.game_id, r.doc.nba_game_id);
+        await finalizeGame(candidate.game_id, finalDoc.nba_game_id);
         await sql`
           INSERT INTO app_kv (key, value, updated_at)
           VALUES ('pipeline:last_sync_at', ${sql.json(new Date().toISOString())}, now())
@@ -104,7 +122,14 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
       return;
     }
 
-    await sleep(r.delayMs);
+    if (r.final) {
+      console.warn(
+        `[game-night] Final tick's save failed (attempt ${finalAttempts}/${FINAL_SAVE_MAX_ATTEMPTS}); ` +
+          `retrying in ${decision.action.sleepMs}ms.`
+      );
+    }
+
+    await sleep(decision.action.sleepMs);
   }
   console.warn('[game-night] Max runtime reached; the next hourly launch continues.');
 }
