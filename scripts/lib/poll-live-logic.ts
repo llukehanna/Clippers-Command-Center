@@ -117,6 +117,8 @@ export interface PlayByPlayActionLike {
   scoreAway: string;
 }
 
+const MAX_POINTS_PER_PLAY = 4;
+
 export interface RecentScoringEvent {
   team_id: string;
   team_tricode?: string;
@@ -145,6 +147,13 @@ export function extractRecentScoring(
     const w = Number.parseInt(a.scoreAway, 10);
     if (!Number.isFinite(h) || !Number.isFinite(w)) continue;
     const t = gameElapsedSeconds(a.period, a.clock);
+    // No single play is worth more than 4 points; a bigger jump means the feed
+    // started mid-game (or skipped actions), so just re-baseline.
+    if (h - home > MAX_POINTS_PER_PLAY || w - away > MAX_POINTS_PER_PLAY) {
+      home = Math.max(home, h);
+      away = Math.max(away, w);
+      continue;
+    }
     if (h > home && t >= cutoff) {
       events.push({ team_id: String(teams.homeTeamId), team_tricode: teams.homeTricode, points: h - home, event_time_seconds: t });
     }

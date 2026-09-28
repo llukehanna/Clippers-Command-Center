@@ -27,7 +27,8 @@ async function main(): Promise<void> {
     WHERE lower(g.status) = 'final'
       AND EXISTS (
         SELECT 1 FROM game_team_box_scores tb
-        WHERE tb.game_id = g.game_id AND NOT (tb.raw_payload ? 'periods')
+        WHERE tb.game_id = g.game_id
+          AND (jsonb_typeof(tb.raw_payload) IS DISTINCT FROM 'object' OR NOT (tb.raw_payload ? 'periods'))
       )
     ORDER BY g.game_date DESC
     LIMIT ${limit}
@@ -47,12 +48,12 @@ async function main(): Promise<void> {
     const { homeTeam, awayTeam } = res.boxscore.game;
     await sql`
       UPDATE game_team_box_scores
-      SET raw_payload = (CASE WHEN jsonb_typeof(raw_payload) = 'object' THEN raw_payload ELSE '{}'::jsonb END) || jsonb_build_object('periods', ${sql.json(homeTeam.periods ?? [])}::jsonb)
+      SET raw_payload = (CASE jsonb_typeof(raw_payload) WHEN 'object' THEN raw_payload WHEN 'string' THEN (raw_payload #>> '{}')::jsonb ELSE '{}'::jsonb END) || jsonb_build_object('periods', ${sql.json(homeTeam.periods ?? [])}::jsonb)
       WHERE game_id = ${g.game_id}::bigint AND is_home
     `;
     await sql`
       UPDATE game_team_box_scores
-      SET raw_payload = (CASE WHEN jsonb_typeof(raw_payload) = 'object' THEN raw_payload ELSE '{}'::jsonb END) || jsonb_build_object('periods', ${sql.json(awayTeam.periods ?? [])}::jsonb)
+      SET raw_payload = (CASE jsonb_typeof(raw_payload) WHEN 'object' THEN raw_payload WHEN 'string' THEN (raw_payload #>> '{}')::jsonb ELSE '{}'::jsonb END) || jsonb_build_object('periods', ${sql.json(awayTeam.periods ?? [])}::jsonb)
       WHERE game_id = ${g.game_id}::bigint AND NOT is_home
     `;
     updated++;

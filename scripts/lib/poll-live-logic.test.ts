@@ -241,6 +241,12 @@ describe('extractRecentScoring', () => {
     ]);
   });
 
+  it('re-baselines when the feed starts mid-game instead of crediting the whole score', () => {
+    const actions = [act(1, 3, 'PT06M20.00S', 77, 71, 1), act(2, 3, 'PT05M50.00S', 80, 71, 1)];
+    const events = extractRecentScoring(actions, { period: 3, clock: 'PT04M32.00S' }, teams, 120);
+    expect(events).toEqual([{ team_id: '1', team_tricode: 'LAC', points: 3, event_time_seconds: 24 * 60 + 370 }]);
+  });
+
   it('skips actions without a parseable score', () => {
     const actions = [{ ...act(1, 1, 'PT11M00.00S', 0, 0), scoreHome: '' }];
     expect(extractRecentScoring(actions, { period: 1, clock: 'PT10M00.00S' }, teams)).toEqual([]);
