@@ -43,6 +43,40 @@ describe('deriveGameFlow', () => {
   it('emits the margin series at each score change', () => {
     expect(flow.marginSeries).toEqual([[0, 0], [20, 3], [60, 1], [2680, -1], [2760, 0], [2820, 2]]);
   });
+
+  it('subtracts a same-side correction from the in-progress run, flooring at 0', () => {
+    // LAC scores 2, then 3 (run = 5), then the 3-pointer is overturned (away score drops by 3).
+    const seq: PbpEvent[] = [
+      ev({ prev: [0, 0], home: 0, away: 2, teamTricode: 'LAC', personId: 1, kind: 'fg', made: true, shotValue: 2 }),
+      ev({ prev: [0, 2], home: 0, away: 5, teamTricode: 'LAC', personId: 1, kind: 'fg', made: true, shotValue: 3 }),
+      ev({ prev: [0, 5], home: 0, away: 2, description: 'Overturned on review' }),
+    ];
+    expect(deriveGameFlow(seq, false).lacBestRun).toBe(2);
+  });
+
+  it('leaves the run alone when the correction is to the side not currently on the run', () => {
+    // DEN scores 2 (run = opp 2), then LAC scores 3 then 2 (run = lac 5), then DEN's earlier
+    // basket is overturned (home score drops by 2) while the LAC run is still in progress.
+    const seq: PbpEvent[] = [
+      ev({ prev: [0, 0], home: 2, away: 0, teamTricode: 'DEN', personId: 9, kind: 'fg', made: true, shotValue: 2 }),
+      ev({ prev: [2, 0], home: 2, away: 3, teamTricode: 'LAC', personId: 1, kind: 'fg', made: true, shotValue: 3 }),
+      ev({ prev: [2, 3], home: 2, away: 5, teamTricode: 'LAC', personId: 1, kind: 'fg', made: true, shotValue: 2 }),
+      ev({ prev: [2, 5], home: 0, away: 5, description: 'DEN basket overturned' }),
+    ];
+    expect(deriveGameFlow(seq, false).lacBestRun).toBe(5);
+  });
+
+  it('does not lower an earlier, larger best run when a later smaller run is corrected', () => {
+    // LAC runs 6 (best = 6), DEN scores 4 (run = opp 4), LAC scores 3 (run = lac 3, best stays 6),
+    // then that 3-pointer is overturned (away score drops by 2) — best must stay 6, not drop.
+    const seq: PbpEvent[] = [
+      ev({ prev: [0, 0], home: 0, away: 6, teamTricode: 'LAC', personId: 1, kind: 'fg', made: true, shotValue: 2 }),
+      ev({ prev: [0, 6], home: 4, away: 6, teamTricode: 'DEN', personId: 9, kind: 'fg', made: true, shotValue: 2 }),
+      ev({ prev: [4, 6], home: 4, away: 9, teamTricode: 'LAC', personId: 1, kind: 'fg', made: true, shotValue: 3 }),
+      ev({ prev: [4, 9], home: 4, away: 7, description: '3-pointer overturned' }),
+    ];
+    expect(deriveGameFlow(seq, false).lacBestRun).toBe(6);
+  });
 });
 
 describe('derivePeriodStats', () => {
