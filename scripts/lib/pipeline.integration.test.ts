@@ -88,6 +88,32 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     expect(row.ok).toBe(true);
   });
 
+  it('stores media items: priority wins duplicates, engagement refreshes, old items pruned', async () => {
+    const { upsertMediaItems, pruneMedia } = await import('./media/store');
+    const base = { kind: 'article' as const, author: null, engagement: null, comments: null, thumbnailUrl: null, embedUrl: null };
+    const now = new Date();
+    await upsertMediaItems([
+      { ...base, source: 'Google News', url: 'https://g/1', dedupKey: 'article:clippers win', title: 'Clippers win', publishedAt: now.toISOString(), priority: 2 },
+      { ...base, source: 'Old', url: 'https://old', dedupKey: 'article:old', title: 'Old', publishedAt: new Date(now.getTime() - 9 * 86_400_000).toISOString(), priority: 1 },
+    ]);
+    await upsertMediaItems([
+      { ...base, source: 'LA Times', url: 'https://latimes/1', dedupKey: 'article:clippers win', title: 'Clippers win', publishedAt: now.toISOString(), priority: 1 },
+      { ...base, kind: 'reddit', source: 'r/LAClippers', url: 'https://reddit/1', dedupKey: 'reddit:1', title: 'Post', publishedAt: now.toISOString(), priority: 1, engagement: 5 },
+    ]);
+    await upsertMediaItems([
+      { ...base, kind: 'reddit', source: 'r/LAClippers', url: 'https://reddit/1', dedupKey: 'reddit:1', title: 'Post', publishedAt: now.toISOString(), priority: 1, engagement: 50 },
+      { ...base, source: 'Google News', url: 'https://g/1', dedupKey: 'article:clippers win', title: 'Clippers win', publishedAt: now.toISOString(), priority: 2 },
+    ]);
+    const rows = await sql<{ dedup_key: string; source: string; engagement: number | null }[]>`
+      SELECT dedup_key, source, engagement FROM media_items ORDER BY dedup_key`;
+    expect(rows).toEqual([
+      { dedup_key: 'article:clippers win', source: 'LA Times', engagement: null },
+      { dedup_key: 'article:old', source: 'Old', engagement: null },
+      { dedup_key: 'reddit:1', source: 'r/LAClippers', engagement: 50 },
+    ]);
+    expect(await pruneMedia()).toBe(1);
+  });
+
   async function activeInsights() {
     return sql<{ category: string; scope: string; headline: string; importance: number }[]>`
       SELECT category, scope, headline, importance FROM insights WHERE is_active ORDER BY importance DESC

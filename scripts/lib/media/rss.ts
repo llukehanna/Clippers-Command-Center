@@ -17,8 +17,11 @@ export interface FeedConfig {
 export const FEEDS: FeedConfig[] = [
   { source: 'ESPN', url: 'https://www.espn.com/espn/rss/nba/news', requireMention: true, splitPublisher: false, priority: 1 },
   { source: 'LA Times', url: 'https://www.latimes.com/sports/clippers/rss2.0.xml', requireMention: false, splitPublisher: false, priority: 1 },
-  { source: 'Clips Nation', url: 'https://www.clipsnation.com/rss/index.xml', requireMention: false, splitPublisher: false, priority: 1 },
-  { source: 'NBA.com', url: 'https://www.nba.com/clippers/rss.xml', requireMention: false, splitPublisher: false, priority: 1 },
+  // Clips Nation ('https://www.clipsnation.com/rss/index.xml') and NBA.com
+  // ('https://www.nba.com/clippers/rss.xml') were dropped 2026-09-27: both
+  // now 404 (Clips Nation's own <link rel="alternate"> still advertises the
+  // same dead URL; NBA.com serves its SPA shell instead of XML at that path)
+  // and no working replacement feed could be found.
   {
     source: 'Google News',
     url: 'https://news.google.com/rss/search?q=%22LA+Clippers%22&hl=en-US&gl=US&ceid=US:en',
