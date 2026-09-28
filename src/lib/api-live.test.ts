@@ -5,6 +5,7 @@
 
 import { vi, describe, it, expect, beforeEach, type Mock } from 'vitest';
 import { buildMeta, buildError } from './api-utils.js';
+import { RUNNER_NOT_STARTED_REASON } from './live/payload.js';
 
 // ── Module mocks (hoisted by Vitest before any imports below) ─────────────────
 
@@ -362,6 +363,50 @@ describe('GET /api/live', () => {
     const queryText = (mockedSql.mock.calls[0][0] as string[]).join('?');
     expect(queryText).toMatch(/lower\(g\.status\) = 'in_progress'/);
     expect(queryText).toMatch(/interval '30 minutes'/);
+  });
+
+  it('serves a DATA_DELAYED shell for a Clippers game the runner never started', async () => {
+    // No live_state row at all, but fetchMissedGame finds a non-final LAC game
+    // whose tip was 10 minutes to 4 hours ago — the runner's cron never ran.
+    const missedGameRow = {
+      game_id: '8888',
+      nba_game_id: '0022600093',
+      season_id: 2026,
+      game_date: '2026-10-21',
+      start_time_utc: '2026-10-22T02:30:00Z',
+      home_team_id: '13',
+      home_abbr: 'LAC',
+      home_name: 'Clippers',
+      away_team_id: '24',
+      away_abbr: 'SAC',
+      away_name: 'Kings',
+    };
+    mockedSql
+      .mockResolvedValueOnce([])              // snapshot query → no rows
+      .mockResolvedValueOnce([missedGameRow]); // fetchMissedGame → one row
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.state).toBe('DATA_DELAYED');
+    expect(body.meta.stale).toBe(true);
+    expect(body.meta.stale_reason).toBe(RUNNER_NOT_STARTED_REASON);
+    expect(body.game).toMatchObject({
+      game_id: '8888',
+      nba_game_id: '0022600093',
+      status: 'in_progress',
+      period: null,
+      clock: null,
+      home: { abbreviation: 'LAC', name: 'Clippers', score: null },
+      away: { abbreviation: 'SAC', name: 'Kings', score: null },
+    });
+    expect(body.key_metrics).toEqual([]);
+    expect(body.box_score).toBeNull();
+    expect(response.headers.get('Vercel-CDN-Cache-Control')).toContain('max-age=2');
+
+    // The missed-game query is the second call, and targets the 10-minute grace window.
+    const queryText = (mockedSql.mock.calls[1][0] as string[]).join('?');
+    expect(queryText).toMatch(/interval '10 minutes'/);
   });
 
   it('is LIVE while the state is younger than max(30 s, cadence + 20 s)', async () => {
