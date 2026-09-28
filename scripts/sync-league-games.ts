@@ -31,6 +31,7 @@ import { sql } from './lib/db.js';
 import { upsertSeasons } from './lib/upserts.js';
 import { findLikelyDuplicates, ingestBoxscore, removeStaleDuplicate } from './lib/league-ingest.js';
 import {
+  currentSeasonId,
   easternDateOf,
   isNbaFormatGameId,
   seasonIdFromSeasonYear,
@@ -209,6 +210,20 @@ async function main(): Promise<void> {
     log(`Done: ${ingested} ingested, ${failures.length} failed`);
   } else {
     await ingestCdnSeason(seasonId, ids, done, failures);
+  }
+
+  // Completeness guard: every completed season has playoffs. cdn.nba.com
+  // answers 403 both for ids that don't exist and when it throttles a runner,
+  // so a throttled load looks like "not found" and would otherwise pass.
+  if (args.seasonId !== null && seasonId < currentSeasonId()) {
+    const [{ n }] = await sql<{ n: number }[]>`
+      SELECT COUNT(*)::int AS n FROM games g
+      WHERE g.season_id = ${seasonId} AND g.is_playoffs
+        AND EXISTS (SELECT 1 FROM game_player_box_scores pb WHERE pb.game_id = g.game_id)
+    `;
+    if (n === 0) {
+      failures.push(`no playoff box scores for completed season ${seasonLabel(seasonId)} — the load was likely throttled; re-run it`);
+    }
   }
 
   // Duplicate guard (see findLikelyDuplicates). With --repair-duplicates, safe
