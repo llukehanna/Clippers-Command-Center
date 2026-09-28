@@ -6,7 +6,7 @@ A desktop analytics dashboard for avid LA Clippers fans. Three modes that blend 
 
 - **Live Game Mode** — dense box score, rotating "provable" insights, league-context side panels, Vegas odds, polling every ~12s during Clippers games.
 - **Between-Games Mode** — team snapshot, upcoming schedule, player trend summaries, macro insights.
-- **Historical Explorer** — 3 seasons of game-by-game data with drill-through to box scores and trend charts.
+- **Historical Explorer** — every season since 2010-11, game by game, with drill-through to box scores and trend charts.
 
 ## What makes it different
 
@@ -73,6 +73,9 @@ npm run poll-live            # game-night live poller (GitHub Actions: game-nigh
 npm run backfill-schedule-nba          # attach official NBA game ids to Clippers games
 npm run sync-league-games              # every NBA game from the last 3 days (nightly)
 npm run sync-league-games -- --season=2025-26   # load a whole past season, league-wide
+# Seasons before 2019-20 aren't in the cdn.nba.com archive and load from stats.nba.com,
+# which blocks cloud IPs — run them from a home network, e.g.:
+DB_POOL_MAX=10 npm run sync-league-games -- --season=2012-13
 npm run finalize-games                 # lock Clippers box scores after each game
 npm run compute-stats                  # advanced stats + rolling windows (incremental; --all to rebuild)
 npm run generate-insights -- --verbose # run the insight engine, print every headline
