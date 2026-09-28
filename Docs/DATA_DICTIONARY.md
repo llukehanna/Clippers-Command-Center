@@ -322,3 +322,61 @@ Small key-value store for caching app state, ingestion cursors, last-run times, 
 - `updated_at`
 
 ---
+
+## game_flow
+
+One row per Clippers game with play-by-play. Written by `scripts/lib/pbp/ingest.ts`.
+
+**Primary key** — `game_id`
+
+**Key fields**
+- `lac_largest_lead`, `lac_largest_deficit`: from the Clippers' side (deficit is a positive number)
+- `lead_changes`, `times_tied`
+- `lac_best_run`, `opp_best_run`: most unanswered points
+- `comeback_margin`: largest deficit overcome in a win (NULL in a loss)
+- `margin_series`: `[[elapsed_sec, lac_margin], …]` at each score change (game-flow chart)
+- `source`: `cdn` (2019-20+) or `stats_pbp` (stats.nba.com playbyplayv3)
+
+## period_team_stats / period_player_stats
+
+Per-quarter lines for both teams in Clippers games. Team points follow the score (match the line score). Team `reb` counts player rebounds only (team rebounds are excluded; the box score's team total may include them).
+
+- `period_team_stats`: only `ast` is nullable — NULL for `stats_pbp` games (no assist credits in that feed).
+- `period_player_stats`: `ast`, `stl`, `blk` are NULL for `stats_pbp` games (`stl`/`blk` exist only on this table).
+
+## clutch_stats
+
+Last 5:00 of the 4th/OT with the margin ≤ 5 before each event. `player_id` NULL = team line.
+
+## pbp_events
+
+Normalized events for current-season Clippers games (live receipts, replay) and games flagged `keep`. Past seasons are pruned by `ingest-pbp`. A feed whose last score differs from the game's final score is not written (counted `incomplete`, retried later).
+
+**Primary key** — `(game_id, event_num)`; **unique** — `(game_id, action_number)`
+
+- `event_num`: 1-based feed order. It may shift while a game is live (the provider inserts or deletes actions); the rewrite at final is authoritative.
+- `action_number`: stable provider id — cdn `actionNumber`, stats.nba.com v3 `actionId` (v3's own `actionNumber` repeats). Use it to identify an event across polls.
+- `action_type`, `sub_type`: raw provider values (`''` if missing), e.g. cdn `3pt` / `Jump Shot`, v3 `Made Shot` / `Jump Shot`
+- `kind`: normalized `fg | ft | rebound | turnover | steal | block | other`; `made`, `shot_value`, `points` (score change), `score_home`, `score_away`
+- `keep`: survives season-rollover pruning (`--keep-raw`)
+
+## rb_game_highs
+
+Record book, rebuilt nightly by `scripts/build-record-book.ts`. Regular season only.
+
+**Primary key** — `(scope, scope_id, stat_key, rank)`
+
+- `scope`: `lac_team`, `lac_player` (any Clipper), `player_career` / `player_season` (players with a Clippers game in the last 3 seasons), `league_season`
+- `scope_id`: `''`, a `player_id`, a `season_id`, or `player_id:season_id`
+- `stat_key`: `pts reb ast fg3m stl blk`, team `team_pts team_fg3m team_ast margin opp_pts_low team_q_pts`, player `q_pts half_pts`
+- `rank` 1 = best (for `opp_pts_low`, fewest points allowed); ties broken by earliest date
+
+## rb_streaks
+
+Every qualifying streak for relevant players and the Clippers (regular season; breaks on a miss or a team change). `is_active` = reaches the entity's latest game. Keys: `scoring_20`, `scoring_30`, `rebounding_10`, `threes_3`, `hot_shooting`, `double_double` (min 3–4 games), `wins`, `losses` (min 3).
+
+## app_kv keys (insights)
+
+- `insights.records_start`: `{ season_id, label }` — first season of complete league records; frames say "since {label}"
+- `insights.pbp_records_start`: `{ season_id, label }` — first season of complete play-by-play records (quarter/half highs, runs, clutch): the contiguous run of seasons where ≥ 95% of Clippers regular-season finals have a `game_flow` row, ending at the latest such season. Written by `build-record-book`; deleted when no season qualifies
+- `history:backfilled_through`: earliest season `backfill-history` finished cleanly

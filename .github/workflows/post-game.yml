@@ -54,6 +54,23 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # Clippers play-by-play → game flow / period / clutch tables (last 3 days).
+      # continue-on-error: Plan 2's insights will depend on this and the record
+      # book; until then a failure here must not block the insights steps.
+      - name: Ingest play-by-play
+        continue-on-error: true
+        run: npm run ingest-pbp
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Game highs, streaks and records start for insight framing.
+      # continue-on-error until Plan 2 depends on it (see Ingest play-by-play).
+      - name: Build record book
+        continue-on-error: true
+        run: npm run build-record-book
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       - name: Generate insights
         run: npm run generate-insights
         env:
