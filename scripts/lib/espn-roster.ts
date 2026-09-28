@@ -15,11 +15,17 @@ export interface RosterAthlete {
   last_name: string | null;
   position: string | null;
   jersey: string | null;
+  headshot_url: string | null;
 }
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => v !== null && typeof v === 'object' && !Array.isArray(v);
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
+/** ESPN's headshot CDN, keyed by ESPN athlete id. */
+export function espnHeadshotUrl(espnId: string): string {
+  return `https://a.espncdn.com/i/headshots/nba/players/full/${espnId}.png`;
+}
 
 export function parseEspnRoster(json: unknown): RosterAthlete[] {
   if (!isObj(json) || !Array.isArray(json.athletes)) return [];
@@ -34,13 +40,16 @@ export function parseEspnRoster(json: unknown): RosterAthlete[] {
     if (!name || seen.has(name)) continue;
     seen.add(name);
     const position = isObj(a.position) ? str(a.position.abbreviation) : null;
+    const espnId = a.id == null ? null : String(a.id);
+    const headshot = isObj(a.headshot) ? str(a.headshot.href) : null;
     out.push({
-      espn_id: a.id == null ? null : String(a.id),
+      espn_id: espnId,
       name,
       first_name: str(a.firstName),
       last_name: str(a.lastName),
       position,
       jersey: str(a.jersey),
+      headshot_url: headshot ?? (espnId ? espnHeadshotUrl(espnId) : null),
     });
   }
   return out;

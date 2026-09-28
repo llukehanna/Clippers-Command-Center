@@ -57,7 +57,14 @@ async function main(): Promise<void> {
     }
   }
 
-  const roster: { player_id: string; name: string; position: string | null; jersey: string | null }[] = [];
+  const roster: {
+    player_id: string;
+    name: string;
+    position: string | null;
+    jersey: string | null;
+    espn_id: string | null;
+    espn_headshot_url: string | null;
+  }[] = [];
   let created = 0;
   for (const a of athletes) {
     const matches = (byName.get(normalizePersonName(a.name)) ?? []).sort((x, y) =>
@@ -77,7 +84,14 @@ async function main(): Promise<void> {
     } else if (!matches[0].position && a.position) {
       await sql`UPDATE players SET position = ${a.position}, updated_at = now() WHERE player_id = ${playerId}::bigint`;
     }
-    roster.push({ player_id: playerId, name: a.name, position: a.position, jersey: a.jersey });
+    roster.push({
+      player_id: playerId,
+      name: a.name,
+      position: a.position,
+      jersey: a.jersey,
+      espn_id: a.espn_id,
+      espn_headshot_url: a.headshot_url,
+    });
   }
 
   const value = { team: TEAM, source: 'espn', synced_at: new Date().toISOString(), players: roster };

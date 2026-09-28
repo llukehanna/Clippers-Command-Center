@@ -160,19 +160,19 @@ describe('GET /api/home', () => {
 
   // ── last10_games (point-diff chart) ─────────────────────────────────────────
 
-  it('team_snapshot.last10_games has opponent_abbr, game_date and LAC-perspective margin', async () => {
+  it('team_snapshot.last10_games has game_id, opponent_abbr, game_date and LAC-perspective margin', async () => {
     last10Rows = [
       // LAC home win by 8
-      { home_team_id: LAC_TEAM_ID, away_team_id: '7', home_score: 110, away_score: 102,
+      { game_id: '501', home_team_id: LAC_TEAM_ID, away_team_id: '7', home_score: 110, away_score: 102,
         game_date: '2026-04-12', home_abbr: 'LAC', away_abbr: 'DEN' },
       // LAC away loss by 5
-      { home_team_id: '9', away_team_id: LAC_TEAM_ID, home_score: 101, away_score: 96,
+      { game_id: '500', home_team_id: '9', away_team_id: LAC_TEAM_ID, home_score: 101, away_score: 96,
         game_date: '2026-04-10', home_abbr: 'GSW', away_abbr: 'LAC' },
     ];
     const body = await (await getHome()).json();
     expect(body.team_snapshot.last10_games).toEqual([
-      { opponent_abbr: 'DEN', game_date: '2026-04-12', margin: 8 },
-      { opponent_abbr: 'GSW', game_date: '2026-04-10', margin: -5 },
+      { game_id: 501, opponent_abbr: 'DEN', game_date: '2026-04-12', margin: 8 },
+      { game_id: 500, opponent_abbr: 'GSW', game_date: '2026-04-10', margin: -5 },
     ]);
     expect(body.team_snapshot.last_10).toEqual({ wins: 1, losses: 1 });
   });
