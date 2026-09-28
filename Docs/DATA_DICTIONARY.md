@@ -375,6 +375,25 @@ Record book, rebuilt nightly by `scripts/build-record-book.ts`. Regular season o
 
 Every qualifying streak for relevant players and the Clippers (regular season; breaks on a miss or a team change). `is_active` = reaches the entity's latest game. Keys: `scoring_20`, `scoring_30`, `rebounding_10`, `threes_3`, `hot_shooting`, `double_double` (min 3–4 games), `wins`, `losses` (min 3).
 
+## media_items
+
+News articles and social posts (`scripts/sync-media.ts`), retained 7 days. External content, not "verified" insights.
+
+**Primary key**
+- `media_id` (UUID)
+
+**Unique keys**
+- `dedup_key`: `'article:<title key>'` | `'reddit:<id>'` | `'tweet:<id>'` | `'bsky:<uri>'`
+
+**Key fields**
+- `kind`: `'article' | 'reddit' | 'tweet' | 'bluesky'`
+- `source`: `'ESPN'`, `'LA Times'`, `'r/LAClippers'`, `'Bluesky'`, ...
+- `engagement`, `comments`: reddit score / bluesky likes + reposts; NULL for articles and for r/LAClippers posts fetched via the RSS path (no credentials — see `feed_rank`)
+- `priority`: lower wins de-duplication when the same story is upserted from two sources
+- `feed_rank`: nullable; 1 = top of the source's hot list at the last fetch. Set for Reddit posts (both the RSS and OAuth paths); NULL for articles and Bluesky. Reddit's public RSS feed carries no score/comment counts, so posts carry their hot-list position instead — cleared (`clearFeedRanks`) before each Reddit upsert so a post that falls out of the hot list doesn't keep a stale rank.
+
+---
+
 ## app_kv keys (insights)
 
 - `insights.records_start`: `{ season_id, label }` — first season of complete league records; frames say "since {label}"

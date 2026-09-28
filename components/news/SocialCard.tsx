@@ -16,6 +16,8 @@ function TextPost({ item }: { item: MediaItem }) {
         <span className="sr-only"> {upvoted ? 'upvotes' : 'likes'}</span>
       </span>,
     )
+  } else if (item.feed_rank != null) {
+    stats.push(<span key="rank">#{item.feed_rank} on r/LAClippers</span>)
   }
   if (item.comments != null) stats.push(<span key="comments">{item.comments.toLocaleString('en-US')} comments</span>)
   return (

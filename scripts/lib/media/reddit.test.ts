@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { redditToItems, tweetUrl } from './reddit';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { redditToItems, redditRssToItems, tweetUrl } from './reddit';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REAL_FIXTURE = fs.readFileSync(path.join(__dirname, '__fixtures__/reddit-laclippers-hot.rss'), 'utf8');
 
 const post = (data: Record<string, unknown>) => ({ kind: 't3', data: {
   id: 'abc', title: 'Kawhi drops 41', permalink: '/r/LAClippers/comments/abc/kawhi_drops_41/', url: 'https://www.reddit.com/r/LAClippers/comments/abc/',
@@ -50,5 +56,50 @@ describe('redditToItems', () => {
   });
   it('returns nothing for an unexpected payload', () => {
     expect(redditToItems({ error: 403 })).toEqual([]);
+  });
+  it('drops weekly/daily discussion threads and assigns 1-based feedRank among kept posts', () => {
+    const items = redditToItems({ data: { children: [
+      post({ id: '1', title: 'Weekly Discussion Thread- July 23, 2026' }),
+      post({ id: '2' }),
+      post({ id: '3', title: 'Daily Discussion — Oct 20' }),
+      post({ id: '4' }),
+    ] } });
+    expect(items.map((i) => ({ dedupKey: i.dedupKey, feedRank: i.feedRank }))).toEqual([
+      { dedupKey: 'reddit:2', feedRank: 1 },
+      { dedupKey: 'reddit:4', feedRank: 2 },
+    ]);
+  });
+});
+
+describe('redditRssToItems', () => {
+  it('parses the real captured feed', () => {
+    const items = redditRssToItems(REAL_FIXTURE);
+    expect(items.length).toBeGreaterThanOrEqual(15);
+    expect(items[0].feedRank).toBe(1);
+    expect(items.map((i) => i.feedRank)).toEqual(items.map((_, i) => i + 1));
+    expect(items.some((i) => /weekly discussion thread/i.test(i.title))).toBe(false);
+    expect(items.every((i) => i.url.startsWith('https://www.reddit.com/r/LAClippers/comments/'))).toBe(true);
+    expect(items.every((i) => i.author == null || !i.author.startsWith('/u/'))).toBe(true);
+    expect(items.some((i) => i.thumbnailUrl)).toBe(true);
+  });
+  it('turns a [link] to an X status into a tweet item', () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+      <entry>
+        <author><name>/u/fan1</name></author>
+        <content type="html">&lt;span&gt;&lt;a href=&quot;https://x.com/ShamsCharania/status/123&quot;&gt;[link]&lt;/a&gt;&lt;/span&gt;</content>
+        <id>t3_xyz1</id>
+        <link href="https://www.reddit.com/r/LAClippers/comments/xyz1/shams_report/" />
+        <published>2026-09-27T12:00:00+00:00</published>
+        <title>[Shams] Clippers sign a guy</title>
+      </entry>
+    </feed>`;
+    const [item] = redditRssToItems(xml);
+    expect(item).toMatchObject({
+      kind: 'tweet', dedupKey: 'tweet:123', embedUrl: 'https://twitter.com/ShamsCharania/status/123',
+      url: 'https://www.reddit.com/r/LAClippers/comments/xyz1/shams_report/', author: 'fan1', feedRank: 1,
+    });
+  });
+  it('returns nothing for malformed XML', () => {
+    expect(redditRssToItems('<not-a-feed>')).toEqual([]);
   });
 });

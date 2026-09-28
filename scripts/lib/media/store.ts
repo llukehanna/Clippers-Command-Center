@@ -24,7 +24,7 @@ export async function upsertMediaItems(items: MediaItemInput[], db: Db = rootSql
   const rows = safe.map((i) => ({
     kind: i.kind, source: i.source, url: i.url, dedup_key: i.dedupKey, title: i.title, author: i.author,
     published_at: i.publishedAt, engagement: i.engagement, comments: i.comments,
-    thumbnail_url: i.thumbnailUrl, embed_url: i.embedUrl, priority: i.priority,
+    thumbnail_url: i.thumbnailUrl, embed_url: i.embedUrl, priority: i.priority, feed_rank: i.feedRank,
   }));
   const result = await db`
     INSERT INTO media_items ${db(rows)}
@@ -37,6 +37,7 @@ export async function upsertMediaItems(items: MediaItemInput[], db: Db = rootSql
       title         = CASE WHEN EXCLUDED.priority < media_items.priority THEN EXCLUDED.title ELSE media_items.title END,
       author        = CASE WHEN EXCLUDED.priority < media_items.priority THEN EXCLUDED.author ELSE media_items.author END,
       priority      = LEAST(EXCLUDED.priority, media_items.priority),
+      feed_rank     = EXCLUDED.feed_rank,
       fetched_at    = now()
   `;
   return result.count;
@@ -45,5 +46,14 @@ export async function upsertMediaItems(items: MediaItemInput[], db: Db = rootSql
 export async function pruneMedia(db: Db = rootSql, now: Date = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - MEDIA_RETENTION_DAYS * 86_400_000).toISOString();
   const result = await db`DELETE FROM media_items WHERE published_at < ${cutoff}::timestamptz`;
+  return result.count;
+}
+
+/**
+ * Clears stale ranks before a fresh Reddit fetch is upserted, so a post that
+ * fell out of the hot list this run doesn't keep last run's feed_rank.
+ */
+export async function clearFeedRanks(source: string, db: Db = rootSql): Promise<number> {
+  const result = await db`UPDATE media_items SET feed_rank = NULL WHERE source = ${source} AND feed_rank IS NOT NULL`;
   return result.count;
 }

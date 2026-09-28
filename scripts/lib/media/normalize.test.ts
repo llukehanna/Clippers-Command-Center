@@ -4,7 +4,7 @@ import type { MediaItemInput } from './types';
 
 const item = (p: Partial<MediaItemInput>): MediaItemInput => ({
   kind: 'article', source: 'ESPN', url: 'https://x', dedupKey: 'k', title: 't', author: null,
-  publishedAt: '2026-10-20T12:00:00Z', engagement: null, comments: null, thumbnailUrl: null, embedUrl: null, priority: 1, ...p,
+  publishedAt: '2026-10-20T12:00:00Z', engagement: null, comments: null, thumbnailUrl: null, embedUrl: null, priority: 1, feedRank: null, ...p,
 });
 
 describe('titleKey', () => {

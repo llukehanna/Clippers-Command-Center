@@ -270,6 +270,7 @@ export interface MediaItem {
   comments: number | null
   thumbnail_url: string | null
   embed_url: string | null
+  feed_rank: number | null
 }
 
 export interface MediaPayload {
