@@ -118,10 +118,19 @@ export function createPoller(nbaGameId: string, tipAt: number | null, deps: Poll
     if (sbGame.gameStatus > (box?.gameStatus ?? 0)) boxDue = true;
 
     if (boxDue) {
-      const b = await deps.fetchBox(sbGame.gameId, boxValidators);
-      boxValidators = b.validators;
-      if (b.status === 200) box = b.body.game;
-      boxDue = false;
+      // A box-score fetch failure must not fail the whole tick — it would
+      // otherwise trigger the tick-level backoff (up to 60 s), which also
+      // slows play-by-play. Leave boxDue set so the next tick retries, and
+      // let this tick proceed with whatever box we had before (possibly
+      // none pre-tip/early), at the normal phase delay.
+      try {
+        const b = await deps.fetchBox(sbGame.gameId, boxValidators);
+        boxValidators = b.validators;
+        if (b.status === 200) box = b.body.game;
+        boxDue = false;
+      } catch (err) {
+        log(`box fetch failed, retrying next tick: ${(err as Error).message}`);
+      }
     }
   }
 

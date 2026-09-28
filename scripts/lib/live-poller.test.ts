@@ -198,7 +198,12 @@ describe('createPoller', () => {
     h.pbp = ok(pbpOf(action(1), action(2, { scoreHome: '4' }))); // basket, pbp advances
     deps.fetchBox.mockRejectedValueOnce(new Error('NBA CDN 503'));
     const errored = await poller.tick();
-    expect(errored.status).toBe('error');
+    // A box fetch failure no longer fails the tick — it proceeds with the
+    // previous box, and the pbp-derived change (last_plays, recent_scoring)
+    // still gets saved.
+    expect(errored.status).toBe('ok');
+    expect(errored.saved).toBe(true);
+    expect(errored.doc).toMatchObject({ home_score: 2 }); // stale box score retained, not the pbp's 4
     expect(deps.fetchBox).toHaveBeenCalledTimes(2); // attempted, but failed
 
     h.t += 3_000;
@@ -209,6 +214,27 @@ describe('createPoller', () => {
     expect(recovered.saved).toBe(true);
     expect(deps.fetchBox).toHaveBeenCalledTimes(3); // retried despite the 304
     expect(recovered.doc).toMatchObject({ home_score: 4 });
+  });
+
+  it('stays at the phase delay (no backoff) when the box keeps failing but pbp keeps advancing', async () => {
+    const { h, deps } = harness();
+    const poller = createPoller(GAME_ID, TIP, deps);
+    deps.fetchBox.mockRejectedValue(new Error('NBA CDN 503')); // fails on every attempt
+
+    let r = await poller.tick();
+    expect(r.status).toBe('ok');
+    expect(r.delayMs).toBe(3_000);
+    expect(deps.fetchBox).toHaveBeenCalledTimes(1);
+
+    for (let i = 2; i <= 4; i++) {
+      h.t += 3_000;
+      h.pbp = ok(pbpOf(action(1), action(i, { scoreHome: String(i * 2) })));
+      r = await poller.tick();
+      expect(r.status).toBe('ok');
+      expect(r.delayMs).toBe(3_000); // never the error-path backoff (6s, 12s, ...)
+      expect(r.saved).toBe(true); // pbp-derived change still saved despite the box never landing
+    }
+    expect(deps.fetchBox).toHaveBeenCalledTimes(4); // retried every tick, never gives up
   });
 
   it('keeps polling play-by-play when the periodic scoreboard refresh fails once live', async () => {
