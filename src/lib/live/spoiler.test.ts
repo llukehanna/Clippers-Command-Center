@@ -4,19 +4,23 @@ import {
   addOffsetSample,
   clampDelay,
   clockOffset,
-  frameTime,
+  frameDeviceTime,
+  isOldEnough,
   OFFSET_SAMPLES,
   offsetSample,
-  pageFrameTime,
+  pageFramePlayed,
   parseStoredDelay,
   pickFrame,
-  pushFrameTime,
+  pushFramePlayed,
   syncDelay,
   type Frame,
 } from './spoiler';
 
-const F = (at: number, value: number): Frame<number> => ({ at, value });
-const ats = (frames: Frame<number>[]) => frames.map((f) => f.at);
+/** A frame known only by its arrival (device clock). */
+const A = (arrived: number, value: number): Frame<number> => ({ played: null, arrived, value });
+/** A frame with a play time (server clock) and an arrival (device clock). */
+const P = (played: number, arrived: number, value: number): Frame<number> => ({ played, arrived, value });
+const arrivals = (frames: Frame<number>[]) => frames.map((f) => f.arrived);
 
 describe('clampDelay / parseStoredDelay', () => {
   it('keeps whole seconds between 0 and 120', () => {
@@ -35,44 +39,102 @@ describe('clampDelay / parseStoredDelay', () => {
 });
 
 describe('addFrame', () => {
-  it('keeps frames in play order, even when one arrives late', () => {
-    expect(ats(addFrame([F(10, 1), F(30, 3)], F(20, 2), 30))).toEqual([10, 20, 30]);
+  it('keeps frames in arrival order', () => {
+    expect(arrivals(addFrame([A(10, 1), A(30, 3)], A(20, 2), 30))).toEqual([10, 20, 30]);
   });
-  it('puts a frame with the same time after the existing one', () => {
-    expect(addFrame([F(10, 1)], F(10, 2), 10).map((f) => f.value)).toEqual([1, 2]);
+  it('puts a frame that arrived at the same time after the existing one', () => {
+    expect(addFrame([A(10, 1)], A(10, 2), 10).map((f) => f.value)).toEqual([1, 2]);
   });
-  it('drops frames older than 150 s but keeps the newest of those as a floor', () => {
-    const frames = addFrame([F(10_000, 1), F(40_000, 2), F(60_000, 3)], F(190_000, 4), 200_000);
-    expect(ats(frames)).toEqual([40_000, 60_000, 190_000]);
+  it('drops frames that arrived over 150 s ago but keeps the newest of those as a floor', () => {
+    const frames = addFrame([A(10_000, 1), A(40_000, 2), A(60_000, 3)], A(190_000, 4), 200_000);
+    expect(arrivals(frames)).toEqual([40_000, 60_000, 190_000]);
+  });
+  it('keeps a replayed frame with an old play time: pruning goes by arrival', () => {
+    const frames = addFrame([], P(10_000, 200_000, 1), 200_000);
+    expect(frames).toHaveLength(1);
   });
 });
 
-describe('pickFrame', () => {
-  const frames = [F(1_000, 1), F(5_000, 2), F(9_000, 3)];
-  it('shows the newest frame at least `delay` old', () => {
-    expect(pickFrame(frames, 10_000, 0)?.value).toBe(3);
-    expect(pickFrame(frames, 10_000, 2_000)?.value).toBe(2);
-    expect(pickFrame(frames, 10_000, 6_000)?.value).toBe(1);
+describe('isOldEnough / pickFrame', () => {
+  it('shows the newest frame at least `delay` old by arrival (device clock)', () => {
+    const frames = [A(1_000, 1), A(5_000, 2), A(9_000, 3)];
+    expect(pickFrame(frames, 10_000, 0, 0)?.value).toBe(3);
+    expect(pickFrame(frames, 10_000, 0, 2_000)?.value).toBe(2);
+    expect(pickFrame(frames, 10_000, 0, 6_000)?.value).toBe(1);
   });
   it('holds (null) while nothing is that old yet', () => {
-    expect(pickFrame(frames, 10_000, 9_500)).toBeNull();
-    expect(pickFrame([], 10_000, 0)).toBeNull();
+    expect(pickFrame([A(1_000, 1), A(9_000, 3)], 10_000, 0, 9_500)).toBeNull();
+    expect(pickFrame([], 10_000, 0, 0)).toBeNull();
+  });
+  it('lets a play time qualify a frame that arrived recently, compared in the server clock', () => {
+    // Device 2 s ahead of the server (offset 2 000). Played at server 1 000,
+    // i.e. device 3 000; arrived at device 9 500.
+    const f = P(1_000, 9_500, 7);
+    expect(isOldEnough(f, 10_000, 2_000, 7_000)).toBe(true); // 1 000 ≤ 10 000 − 2 000 − 7 000
+    expect(isOldEnough(f, 10_000, 2_000, 7_500)).toBe(false);
+    // An over-estimated offset only makes it later.
+    expect(isOldEnough(f, 10_000, 3_000, 7_000)).toBe(false);
+  });
+
+  it('never qualifies a fresh poll early after a stale CDN copy inflated the first offset sample', () => {
+    // Clocks in sync, delay 8 s. The first /api/live response is a 10 s stale
+    // CDN copy: its sample says the device is 10 s ahead.
+    const T = 1_000_000;
+    const delay = 8_000;
+    let samples = addOffsetSample([], offsetSample(T - 20_000, T - 30_000));
+    expect(clockOffset(samples)).toBe(10_000);
+    // A fresh poll arrives at T with a basket observed at T − 3 s, and its own
+    // sample (0.1 s of network) lowers the offset.
+    const frame = P(pageFramePlayed(new Date(T - 3_000).toISOString(), false)!, T, 42);
+    samples = addOffsetSample(samples, offsetSample(T, T - 100));
+    const offset = clockOffset(samples);
+    expect(offset).toBe(100);
+    // Stamping the arrival into server time with the old 10 s offset would
+    // have dated it T − 10 s and shown it at T − 2 s (on arrival): 5 s before
+    // the TV shows it at T − 3 s + 8 s. Compared each in its own clock, it
+    // qualifies only once its play is 8 s old in the server's time…
+    for (let now = T; now < T + 5_100; now += 100) expect(isOldEnough(frame, now, offset, delay)).toBe(false);
+    expect(isOldEnough(frame, T + 5_100, offset, delay)).toBe(true);
+    // …which is never before the TV shows it (T + 5 s) — and it's no earlier than
+    // arrival + delay on the arrival side either.
+    expect(frame.arrived + delay).toBeGreaterThan(T + 5_000);
+    expect(pickFrame([frame], T + 4_000, offset, delay)).toBeNull();
+  });
+
+  it('counts an ESPN backup frame from its arrival only, whatever the offset', () => {
+    const T = 1_000_000;
+    const frame: Frame<number> = { played: pageFramePlayed('2026-10-22T02:40:00.000Z', true), arrived: T, value: 5 };
+    expect(frame.played).toBeNull();
+    // A huge (or negative) offset changes nothing: only arrival + delay counts.
+    for (const offset of [0, 60_000, -60_000]) {
+      expect(isOldEnough(frame, T + 7_999, offset, 8_000)).toBe(false);
+      expect(isOldEnough(frame, T + 8_000, offset, 8_000)).toBe(true);
+    }
   });
 });
 
 describe('syncDelay', () => {
-  // value = total points on the scoreboard
-  const frames = [F(1_000, 10), F(3_000, 10), F(5_000, 12), F(8_000, 12), F(9_000, 15)];
+  // value = total points on the scoreboard; arrival-only frames
+  const frames = [A(1_000, 10), A(3_000, 10), A(5_000, 12), A(8_000, 12), A(9_000, 15)];
   it('measures from the newest basket at or before the tap', () => {
-    expect(syncDelay(frames, 29_000, (v) => v)).toBe(20_000);
-    expect(syncDelay(frames, 8_500, (v) => v)).toBe(4_000); // 3.5 s rounds to 4
+    expect(syncDelay(frames, 29_000, 0, (v) => v)).toBe(20_000);
+    expect(syncDelay(frames, 8_500, 0, (v) => v)).toBe(4_000); // 3.5 s rounds to 4
+  });
+  it('uses the play time, shifted into the device clock, when it is earlier than the arrival', () => {
+    // Played at server 2 000 (device 2 500 with offset 500), arrived 6 000.
+    const f = [P(1_000, 5_000, 10), P(2_000, 6_000, 12)];
+    expect(frameDeviceTime(f[1], 500)).toBe(2_500);
+    expect(syncDelay(f, 12_500, 500, (v) => v)).toBe(10_000);
+    // With an inflated offset the arrival is the tighter bound.
+    expect(frameDeviceTime(f[1], 9_000)).toBe(6_000);
+    expect(syncDelay(f, 12_500, 9_000, (v) => v)).toBe(7_000); // 6.5 s rounds to 7
   });
   it('is null without a basket, or when scores are unknown', () => {
-    expect(syncDelay([F(1_000, 10), F(2_000, 10)], 5_000, (v) => v)).toBeNull();
-    expect(syncDelay(frames, 29_000, () => null)).toBeNull();
+    expect(syncDelay([A(1_000, 10), A(2_000, 10)], 5_000, 0, (v) => v)).toBeNull();
+    expect(syncDelay(frames, 29_000, 0, () => null)).toBeNull();
   });
   it('never exceeds the maximum delay', () => {
-    expect(syncDelay(frames, 500_000, (v) => v)).toBe(120_000);
+    expect(syncDelay(frames, 500_000, 0, (v) => v)).toBe(120_000);
   });
 });
 
@@ -87,14 +149,6 @@ describe('clock offset', () => {
   it('uses the smallest sample, 0 before any', () => {
     expect(clockOffset([300, 120, 900])).toBe(120);
     expect(clockOffset([])).toBe(0);
-  });
-  it('dates a frame by its play, shifted into the arrival clock, never later than it arrived', () => {
-    const observed = '2026-10-22T02:40:00.000Z';
-    const played = Date.parse(observed);
-    expect(frameTime(observed, 250, played + 5_000)).toBe(played + 250);
-    expect(frameTime(observed, 250, played + 100)).toBe(played + 100);
-    expect(frameTime(null, 250, 42)).toBe(42);
-    expect(frameTime('not a date', 250, 42)).toBe(42);
   });
 });
 
@@ -112,17 +166,18 @@ describe('offsetSample', () => {
   });
 });
 
-describe('pushFrameTime', () => {
+describe('pushFramePlayed', () => {
   const observed = '2026-10-22T02:40:00.000Z';
   const played = Date.parse(observed);
-  it('dates a pushed state by its play, capped at when the hub relayed it', () => {
-    expect(pushFrameTime(observed, played + 3_000, played + 9_000)).toBe(played);
-    expect(pushFrameTime(observed, played - 500, played + 9_000)).toBe(played - 500);
+  it('is the play time, capped at when the hub relayed it', () => {
+    expect(pushFramePlayed(observed, played + 3_000)).toBe(played);
+    expect(pushFramePlayed(observed, played - 500)).toBe(played - 500);
   });
-  it('falls back to the hub-clock arrival without hub_at or a play time', () => {
-    expect(pushFrameTime(observed, undefined, played + 2_000)).toBe(played);
-    expect(pushFrameTime(null, undefined, 42)).toBe(42);
-    expect(pushFrameTime(null, 1_234, 9_999)).toBe(1_234);
+  it('uses whichever server stamp exists, and is null (arrival only) with neither', () => {
+    expect(pushFramePlayed(observed, undefined)).toBe(played);
+    expect(pushFramePlayed(null, 1_234)).toBe(1_234);
+    expect(pushFramePlayed(null, undefined)).toBeNull();
+    expect(pushFramePlayed('not a date', undefined)).toBeNull();
   });
 
   it('keeps a hub replay at its play-time spacing', () => {
@@ -140,36 +195,30 @@ describe('pushFrameTime', () => {
     for (const m of replay) {
       const receivedAt = T + 50;
       samples = addOffsetSample(samples, offsetSample(receivedAt, m.hubAt));
-      const hubNow = receivedAt - clockOffset(samples);
-      frames = addFrame(frames, { at: pushFrameTime(m.observed, m.hubAt, hubNow), value: m.score }, hubNow);
+      frames = addFrame(frames, { played: pushFramePlayed(m.observed, m.hubAt), arrived: receivedAt, value: m.score }, receivedAt);
     }
-    // Every replayed frame sits at its own play time, 10 s apart.
+    // Every replayed frame keeps its own play time, 10 s apart, in order.
     expect(frames.map((f) => f.value)).toEqual(replay.map((m) => m.score));
-    expect(ats(frames)).toEqual(replay.map((m) => Date.parse(m.observed)));
+    expect(frames.map((f) => f.played)).toEqual(replay.map((m) => Date.parse(m.observed)));
     // The offset has converged on the newest replayed message's sample.
     const offset = clockOffset(samples);
     expect(offset).toBe(T + 50 - replay[14].hubAt);
     // One second after connect a 30 s delay already has a frame: the play that
     // happened at least 30 s ago in the hub's clock.
-    const frameNow = T + 1_000 - offset;
-    const picked = pickFrame(frames, frameNow, 30_000);
-    expect(picked).not.toBeNull();
-    expect(Date.parse(replay.find((m) => m.score === picked!.value)!.observed)).toBeLessThanOrEqual(frameNow - 30_000);
+    const now = T + 1_000;
+    const picked = pickFrame(frames, now, offset, 30_000);
     expect(picked!.value).toBe(22);
+    expect(picked!.played!).toBeLessThanOrEqual(now - offset - 30_000);
     // …and an 8 s delay shows the newest play that is at least 8 s old.
-    expect(pickFrame(frames, frameNow, 8_000)!.value).toBe(26);
+    expect(pickFrame(frames, now, offset, 8_000)!.value).toBe(26);
   });
 });
 
-describe('pageFrameTime', () => {
-  const observed = '2026-10-22T02:40:00.000Z';
-  const played = Date.parse(observed);
-  it('dates a payload by its play, never later than it arrived', () => {
-    expect(pageFrameTime(observed, played + 6_000, false)).toBe(played);
-    expect(pageFrameTime(observed, played - 1_000, false)).toBe(played - 1_000);
-    expect(pageFrameTime(null, 777, false)).toBe(777);
-  });
-  it('dates an ESPN backup overlay by its arrival', () => {
-    expect(pageFrameTime(observed, played + 6_000, true)).toBe(played + 6_000);
+describe('pageFramePlayed', () => {
+  it('is the payload’s play time, or null for an ESPN backup overlay or an unknown play', () => {
+    const observed = '2026-10-22T02:40:00.000Z';
+    expect(pageFramePlayed(observed, false)).toBe(Date.parse(observed));
+    expect(pageFramePlayed(observed, true)).toBeNull();
+    expect(pageFramePlayed(null, false)).toBeNull();
   });
 });

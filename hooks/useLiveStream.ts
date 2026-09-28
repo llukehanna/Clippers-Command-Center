@@ -13,10 +13,10 @@ import {
   clockOffset,
   DELAY_STORAGE_KEY,
   offsetSample,
-  pageFrameTime,
+  pageFramePlayed,
   parseStoredDelay,
   pickFrame,
-  pushFrameTime,
+  pushFramePlayed,
   syncDelay,
   type Frame,
 } from '@/src/lib/live/spoiler'
@@ -62,13 +62,11 @@ export interface SpoilerState {
 }
 
 /**
- * Spoiler frames for one game (`key`). `at` is in the server's clock (device
- * time minus the measured clock offset), not the device's: the hub's replay on
- * connect arrives all at once with each message's original `hub_at`, so the
- * offset is only known well once the replay's newest message is in. Keying
- * frames on the server's clock and converting "now" with the current offset at
- * render time lets every frame benefit as the estimate improves, and keeps
- * replayed frames at the time their plays happened (src/lib/live/spoiler.ts).
+ * Spoiler frames for one game (`key`). Each frame keeps its play time (server
+ * clock) and its arrival (device clock) apart, and each is compared only in
+ * its own clock at pick time (src/lib/live/spoiler.ts): the offset estimate
+ * converts the device's "now", never an arrival, so an over-estimate can only
+ * make a frame show later. Replayed hub messages keep their own play times.
  */
 type Frames<T> = { key: string; list: Frame<T>[] } | null
 
@@ -211,11 +209,9 @@ export function useLiveStream(): LiveStream {
           samples = addOffsetSample(samples, offsetSample(receivedAt, msg.hub_at))
           setHubSamples(samples)
         }
-        // Frames are keyed in the server's clock (see Frames).
         const doc = result.state
-        const hubNow = receivedAt - clockOffset(samples)
-        const at = pushFrameTime(doc.observed_at, msg.hub_at, hubNow)
-        setPushFrames((f) => withFrame(f, gameId, { at, value: doc }, hubNow))
+        const frame = { played: pushFramePlayed(doc.observed_at, msg.hub_at), arrived: receivedAt, value: doc }
+        setPushFrames((f) => withFrame(f, gameId, frame, receivedAt))
         setLatency({
           observed_at: result.state.observed_at,
           fetched_at: result.state.fetched_at,
@@ -343,26 +339,29 @@ export function useLiveStream(): LiveStream {
     if (base && r !== undefined) setPollSamples((s) => addOffsetSample(s, offsetSample(r, base.meta?.generated_at)))
   }
   // Device clock minus the server's; 0 until a sample. Each source keeps its
-  // last 20 samples; every sample over-estimates the offset, so the smallest wins.
-  const offset = clockOffset([...hubSamples, ...pollSamples])
-  // "Now" in the frames' clock (the server's).
-  const frameNow = now === null ? null : now - offset
+  // last 20 samples; every sample over-estimates the offset, so the smallest
+  // wins. Only ever applied to "now" (see Frames). Number(): the React
+  // Compiler can't infer clockOffset's return type, so without it it treats
+  // the value as mutable once pickFrame receives it and can't keep `sync`
+  // memoized (react-hooks/preserve-manual-memoization).
+  const offset = Number(clockOffset([...hubSamples, ...pollSamples]))
 
   // Page frames are keyed by the on-screen game's own id: a game /api/live
   // serves without an NBA id (no push, gameId null) is still delayed.
   const pageKey = shown.data?.game ? String(shown.data.game.game_id) : null
 
-  // Record each new on-screen payload, stamped with when it reached this
-  // device (in the frames' clock) — not the last useNow tick, which a
-  // throttled or frozen tab can leave far behind.
+  // Record each new on-screen payload with its play time (none for an ESPN
+  // backup overlay) and when it reached this device — recorded where reading
+  // the clock is legal, not the last useNow tick, which a throttled or frozen
+  // tab can leave far behind.
   const [seenShown, setSeenShown] = React.useState<LivePayload | undefined>(undefined)
   if (shown.data !== seenShown) {
     setSeenShown(shown.data)
     const d = shown.data
-    if (pageKey && d?.game && shown.receivedAt !== undefined) {
-      const arrivedAt = shown.receivedAt - offset
-      const at = pageFrameTime(d.observed_at, arrivedAt, shown.usedBackup)
-      setPageFrames((f) => withFrame(f, pageKey, { at, value: d }, arrivedAt))
+    const arrived = shown.receivedAt
+    if (pageKey && d?.game && arrived !== undefined) {
+      const frame = { played: pageFramePlayed(d.observed_at, shown.usedBackup), arrived, value: d }
+      setPageFrames((f) => withFrame(f, pageKey, frame, arrived))
     }
   }
 
@@ -376,14 +375,14 @@ export function useLiveStream(): LiveStream {
   let out = shown.data
   let holding = false
   if (delayMs > 0 && pageKey) {
-    if (frameNow === null) {
+    if (now === null) {
       out = undefined
     } else if (pushLive && base && gameId && pushFrames?.key === gameId) {
-      const f = pickFrame(pushFrames.list, frameNow, delayMs)
+      const f = pickFrame(pushFrames.list, now, offset, delayMs)
       if (f) out = overlayLiveDoc(base, f.value)
       else holding = true
     } else {
-      const f = pageFrames?.key === pageKey ? pickFrame(pageFrames.list, frameNow, delayMs) : null
+      const f = pageFrames?.key === pageKey ? pickFrame(pageFrames.list, now, offset, delayMs) : null
       if (f) out = f.value
       else holding = true
     }
@@ -391,12 +390,12 @@ export function useLiveStream(): LiveStream {
   if (holding) out = undefined
 
   const sync = React.useCallback((): number | null => {
-    const tap = Date.now() - offset
+    const tap = Date.now()
     const d =
       pushLive && gameId && pushFrames?.key === gameId
-        ? syncDelay(pushFrames.list, tap, (doc) => doc.home_score + doc.away_score)
+        ? syncDelay(pushFrames.list, tap, offset, (doc) => doc.home_score + doc.away_score)
         : pageKey && pageFrames?.key === pageKey
-          ? syncDelay(pageFrames.list, tap, (p) => (p.game ? (p.game.home.score ?? 0) + (p.game.away.score ?? 0) : null))
+          ? syncDelay(pageFrames.list, tap, offset, (p) => (p.game ? (p.game.home.score ?? 0) + (p.game.away.score ?? 0) : null))
           : null
     if (d !== null) setDelay(d)
     return d
