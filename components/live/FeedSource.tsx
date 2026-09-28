@@ -12,7 +12,6 @@ export function FeedSource({ source }: { source: Source }) {
   if (source === 'idle') return null
   return (
     <span
-      role="status"
       className={cn('inline-flex items-center gap-1.5 font-mono text-[11.5px]', source === 'backup' ? 'text-warn' : 'text-mute')}
     >
       <span
