@@ -145,7 +145,7 @@ Final (or near-final) per-player box score lines per game.
 
 ## live_snapshots
 
-Dense snapshots captured during live games (polling roughly every ~12 seconds).
+Dense snapshots captured during live games (polling roughly every ~12 seconds). Since Live v2, one compact row per period end and one at final (`payload.reason`), not one per poll.
 
 **Primary key**
 - `snapshot_id`
@@ -158,6 +158,19 @@ Dense snapshots captured during live games (polling roughly every ~12 seconds).
 - `provider_ts`: provider time if present
 - `period`, `clock`, `home_score`, `away_score` extracted for query speed
 - `payload`: the full snapshot JSON for replay/debugging
+
+---
+
+## live_state
+
+The game-night runner's latest derived state for a game — one row per game, rewritten whenever anything a fan would see changes and at least every 15 seconds. `/api/live` reads this row.
+
+| Column | Meaning |
+|---|---|
+| `game_id` | `games.game_id` (primary key) |
+| `seq` | Increments by one per saved change; a restarted runner continues from the stored value, and older writes are ignored |
+| `state` | `LiveStateDoc` (`src/lib/types/live-state.ts`): score, clock, line score, both box scores, last 15 plays, recent scoring, other games, `observed_at` (time of the newest real play), `fetched_at`, `cadence` `{phase, next_ms}` |
+| `fetched_at` | When the runner built the state; `/api/live` treats the game as delayed when this is older than `max(30 s, cadence.next_ms + 20 s)` |
 
 ---
 
