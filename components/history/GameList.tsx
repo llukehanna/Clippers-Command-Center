@@ -6,6 +6,7 @@ import { groupByMonth } from '@/src/lib/ui/schedule'
 import { formatDay } from '@/src/lib/ui/time'
 import { teamName } from '@/src/lib/ui/teams'
 import { formatSigned } from '@/src/lib/ui/odds'
+import { gameTypeLabel } from '@/src/lib/ui/season'
 import type { HistoryGame, PlayedGame } from '@/src/lib/ui/season'
 
 function Row({ g }: { g: PlayedGame }) {
@@ -19,8 +20,11 @@ function Row({ g }: { g: PlayedGame }) {
         <span className="flex min-w-0 items-center gap-3">
           <TeamLogo abbr={g.opponent_abbr} size="sm" />
           <span className="min-w-0">
-            <span className="block truncate text-[14.5px] font-medium">
-              <span className="text-mute">{g.home_away === 'home' ? 'vs' : '@'}</span> {teamName(g.opponent_abbr)}
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-[14.5px] font-medium">
+                <span className="text-mute">{g.home_away === 'home' ? 'vs' : '@'}</span> {teamName(g.opponent_abbr)}
+              </span>
+              {gameTypeLabel(g.game_type) && <Chip tone="blue">{gameTypeLabel(g.game_type)}</Chip>}
             </span>
             <span className="block font-mono text-[11px] text-dim sm:hidden">{formatDay(g.game_date)}</span>
           </span>

@@ -11,6 +11,9 @@ import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
 import type { HistoryGame } from '@/src/lib/ui/season'
 import type { PlayerDetailPayload, PlayersPayload } from '@/src/lib/ui/types'
 
+// Live data on every request (loaders read the database directly).
+export const dynamic = 'force-dynamic'
+
 type Params = { params: Promise<{ player_id: string }> }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
@@ -39,7 +42,7 @@ export default async function PlayerDetailPage({ params }: Params) {
       score: g?.final_score ? `${g.final_score.team}–${g.final_score.opp}` : null,
     }
   })
-  const nbaId = roster?.players.find((p) => String(p.player_id) === String(player_id))?.nba_player_id ?? null
+  const nbaId: string | number | null = roster?.players.find((p) => String(p.player_id) === String(player_id))?.nba_person_id ?? null
 
   return (
     <div className="page">

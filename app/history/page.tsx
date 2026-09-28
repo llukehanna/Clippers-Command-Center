@@ -10,7 +10,10 @@ import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
 import { getJson } from '@/src/lib/ui/api'
 import { formatSigned } from '@/src/lib/ui/odds'
-import { playedGames, seasonSummary, streaks, upcomingGames, type HistoryGame } from '@/src/lib/ui/season'
+import { playedGames, regularSeason, seasonSummary, streaks, upcomingGames, type HistoryGame } from '@/src/lib/ui/season'
+
+// Live data on every request (loaders read the database directly).
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = { title: 'History' }
 
@@ -27,7 +30,9 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
   const homeAway = params.home_away === 'home' || params.home_away === 'away' ? params.home_away : 'all'
   const result = params.result === 'W' || params.result === 'L' ? params.result : 'all'
   const played = playedGames(all)
-  const summary = seasonSummary(played)
+  const regular = regularSeason(played)
+  const postseason = played.length - regular.length
+  const summary = seasonSummary(regular)
   const filtered = played.filter((g) => (homeAway === 'all' || g.home_away === homeAway) && (result === 'all' || g.result === result))
   const upcoming = homeAway === 'all' && result === 'all' ? upcomingGames(all) : []
   const label = seasons.find((s) => String(s.season_id) === seasonId)?.label.replace('-', '–') ?? ''
@@ -57,7 +62,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
     <div className="page">
       <PageHeader
         title="History"
-        subtitle={label ? `${label} season · ${played.length} games played` : 'Past seasons'}
+        subtitle={label ? `${label} season · ${regular.length} regular-season games${postseason ? ` + ${postseason} postseason` : ''}` : 'Past seasons'}
         actions={seasons.length > 0 && <SeasonSelect seasons={seasons} value={seasonId} />}
       />
 

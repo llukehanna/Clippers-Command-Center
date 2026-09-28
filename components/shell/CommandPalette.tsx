@@ -120,7 +120,7 @@ export function CommandPalette() {
                 onSelect={() => go(`/players/${p.player_id}`)}
                 className={item}
               >
-                <PlayerAvatar name={p.display_name} nbaPlayerId={p.nba_player_id} size={26} />
+                <PlayerAvatar name={p.display_name} nbaPlayerId={p.nba_person_id} size={26} />
                 <span className="text-text">{p.display_name}</span>
                 <span className="ml-auto font-mono text-[11px] text-dim">{p.position}</span>
               </Command.Item>

@@ -5,6 +5,7 @@ import { Scoreboard, type ScoreSide } from '@/components/game/Scoreboard'
 import { WinProbabilityBar } from '@/components/game/WinProbabilityBar'
 import { OddsStrip } from '@/components/game/OddsStrip'
 import { BoxScore } from '@/components/game/BoxScore'
+import { LineScore } from '@/components/game/LineScore'
 import { InsightCard } from '@/components/insights/InsightCard'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { Panel } from '@/components/ui/panel'
@@ -89,6 +90,7 @@ export function LiveView({ data, error }: { data: LivePayload | undefined; error
 
       <section aria-label="Scoreboard" ref={scoreRef} className="enter">
         <Scoreboard lac={lac} opp={opp} lacHome={lacHome} mode={delayed ? 'delayed' : 'live'} period={game.period} clock={game.clock}>
+          <LineScore periods={game.periods ?? []} lacHome={lacHome} oppAbbr={oppAbbr} />
           {odds && (
             <div className="relative border-t border-line px-3 py-3 sm:px-6">
               <OddsStrip

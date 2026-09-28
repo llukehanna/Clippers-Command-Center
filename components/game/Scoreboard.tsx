@@ -26,6 +26,8 @@ interface ScoreboardProps {
   status?: string | null
   /** Final mode: formatted date line. */
   dateLabel?: string
+  /** Final mode: extra label such as Play-In or Playoffs. */
+  tag?: string | null
   children?: React.ReactNode
   className?: string
 }
@@ -73,7 +75,7 @@ function Side({ side, meta, trailing, right }: { side: ScoreSide; meta: string; 
 }
 
 /** Game scoreboard. Clippers always on the left. */
-export function Scoreboard({ lac, opp, lacHome, mode, period, clock, status, dateLabel, children, className }: ScoreboardProps) {
+export function Scoreboard({ lac, opp, lacHome, mode, period, clock, status, dateLabel, tag, children, className }: ScoreboardProps) {
   const lacTrails = lac.score != null && opp.score != null && lac.score < opp.score
   const oppTrails = lac.score != null && opp.score != null && opp.score < lac.score
   const ot = mode === 'final' && /OT/i.test(status ?? '')
@@ -93,7 +95,12 @@ export function Scoreboard({ lac, opp, lacHome, mode, period, clock, status, dat
           {mode === 'final' ? (
             <>
               <span className="font-mono text-[12px] uppercase tracking-[0.16em] text-mute">Final</span>
-              {ot && <Chip>OT</Chip>}
+              {(ot || tag) && (
+                <span className="flex gap-1.5">
+                  {tag && <Chip tone="blue">{tag}</Chip>}
+                  {ot && <Chip>OT</Chip>}
+                </span>
+              )}
               {dateLabel && <span className="font-mono text-[11.5px] text-dim">{dateLabel}</span>}
             </>
           ) : (

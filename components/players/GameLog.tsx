@@ -1,6 +1,7 @@
 import { Panel } from '@/components/ui/panel'
 import { TeamLogo } from '@/components/ui/team-mark'
-import { ResultBadge } from '@/components/ui/chip'
+import { Chip, ResultBadge } from '@/components/ui/chip'
+import { gameTypeLabel } from '@/src/lib/ui/season'
 import { TableScroll, Th, Td, Tr, RowLink } from '@/components/ui/data-table'
 import { formatDayShort } from '@/src/lib/ui/time'
 import type { PlayerGameLogRow } from '@/src/lib/ui/types'
@@ -44,6 +45,7 @@ export function GameLog({ rows }: { rows: GameLogRow[] }) {
                     <span className="text-text">
                       <span className="text-mute">{r.home_away === 'home' ? 'vs' : '@'}</span> {r.opp}
                     </span>
+                    {gameTypeLabel(r.game_type) && <Chip tone="blue">{gameTypeLabel(r.game_type)}</Chip>}
                   </RowLink>
                 </Td>
                 <Td align="left">

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { playedGames, upcomingGames, seasonSummary, streaks, previousSeasonId, type HistoryGame } from './season'
+import { playedGames, upcomingGames, seasonSummary, streaks, previousSeasonId, regularSeason, type HistoryGame } from './season'
 
 const mk = (
   d: string,
@@ -48,5 +48,29 @@ describe('season', () => {
   it('finds the previous season', () => {
     expect(previousSeasonId([2024, 2025, 2026], 2026)).toBe(2025)
     expect(previousSeasonId([2026], 2026)).toBeNull()
+  })
+})
+
+describe('season with game types', () => {
+  const g = (d: string, r: 'W' | 'L', type: 'regular' | 'play_in' | 'playoffs', ot = 0): HistoryGame => ({
+    game_id: d,
+    game_date: d,
+    opponent_abbr: 'GSW',
+    home_away: 'home',
+    result: r,
+    final_score: { team: 110, opp: r === 'W' ? 100 : 120 },
+    status: 'final',
+    game_type: type,
+    overtime_periods: ot,
+  })
+
+  it('reads overtime from overtime_periods', () => {
+    expect(playedGames([g('2026-01-01', 'W', 'regular', 2)])[0].ot).toBe(true)
+    expect(playedGames([g('2026-01-01', 'W', 'regular', 0)])[0].ot).toBe(false)
+  })
+
+  it('keeps regular-season games apart from play-in and playoffs', () => {
+    const played = playedGames([g('2026-04-10', 'W', 'regular'), g('2026-04-15', 'L', 'play_in')])
+    expect(regularSeason(played).map((x) => x.game_date)).toEqual(['2026-04-10'])
   })
 })

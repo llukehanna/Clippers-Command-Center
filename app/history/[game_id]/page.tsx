@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Scoreboard } from '@/components/game/Scoreboard'
 import { BoxScore } from '@/components/game/BoxScore'
+import { LineScore } from '@/components/game/LineScore'
+import { gameTypeLabel } from '@/src/lib/ui/season'
 import { InsightCard } from '@/components/insights/InsightCard'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -12,6 +14,9 @@ import { playedGames, type HistoryGame } from '@/src/lib/ui/season'
 import { formatDayLong, formatDayShort } from '@/src/lib/ui/time'
 import { teamName } from '@/src/lib/ui/teams'
 import type { HistoryGameDetailPayload, Insight } from '@/src/lib/ui/types'
+
+// Live data on every request (loaders read the database directly).
+export const dynamic = 'force-dynamic'
 
 type Params = { params: Promise<{ game_id: string }> }
 
@@ -78,9 +83,13 @@ export default async function HistoryGamePage({ params }: Params) {
           opp={{ ...opp, name: teamName(oppAbbr) }}
           lacHome={lacHome}
           mode="final"
-          status={game.status}
+          status={(game.periods?.length ?? 0) > 4 ? 'Final/OT' : game.status}
           dateLabel={formatDayLong(game.game_date)}
-        />
+          tag={idx >= 0 ? gameTypeLabel(played[idx].game_type) : null}
+        >
+          <LineScore periods={game.periods ?? []} lacHome={lacHome} oppAbbr={oppAbbr} />
+        </Scoreboard>
+
       </section>
 
       <section
