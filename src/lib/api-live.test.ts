@@ -469,6 +469,19 @@ describe('GET /api/live', () => {
     expect(body.upcoming).toEqual({ nba_game_id: '0022600093' });
   });
 
+  it('caches a pre-tip response with an upcoming game for only 2 s, so the tip refetch sees the game quickly', async () => {
+    const snap = {
+      ...makeFreshSnapRow(),
+      game_status: 'scheduled',
+      payload: { is_stale: false, stale_reason: null, home_box: null, away_box: null, recent_scoring: [], status: 'scheduled', nba_game_id: '0022600093' },
+    };
+    mockedSql.mockResolvedValueOnce([snap]);
+    const res = await GET();
+    expect((await res.json()).upcoming).toEqual({ nba_game_id: '0022600093' });
+    expect(res.headers.get('Vercel-CDN-Cache-Control')).toBe('max-age=2, stale-while-revalidate=10');
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
+  });
+
   it('returns 500 without leaking internal error text', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockedSql.mockRejectedValueOnce(new Error('password authentication failed for user neondb'));

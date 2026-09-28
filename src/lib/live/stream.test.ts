@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hubSocketUrl, isFlapping, needsBackup, pickSource, reconnectDelay, streamGameId } from './stream';
+import { hubSocketUrl, isFlapping, isPushFresh, needsBackup, pickSource, pushIsCurrent, reconnectDelay, streamGameId } from './stream';
 import type { LivePayload } from '../ui/types';
 
 const payload = (over: Partial<LivePayload>): LivePayload =>
@@ -23,17 +23,48 @@ describe('stream helpers', () => {
 
   it('streams the live game, or the upcoming one before tip', () => {
     expect(streamGameId(payload({ game: game('in_progress') }))).toBe('22600093');
-    expect(streamGameId(payload({ state: 'NO_ACTIVE_GAME', upcoming: { nba_game_id: '0022600093' } }))).toBe('0022600093');
+    // Canonical (numeric) form, so the id doesn't change format at tip.
+    expect(streamGameId(payload({ state: 'NO_ACTIVE_GAME', upcoming: { nba_game_id: '0022600093' } }))).toBe('22600093');
+    expect(streamGameId(payload({ game: { ...game('in_progress'), nba_game_id: '0022600093' } }))).toBe('22600093');
+    expect(streamGameId(payload({ game: { ...game('in_progress'), nba_game_id: null } }))).toBeNull();
+    expect(streamGameId(payload({ state: 'NO_ACTIVE_GAME', upcoming: { nba_game_id: 'bogus' } }))).toBeNull();
     expect(streamGameId(payload({ state: 'NO_ACTIVE_GAME' }))).toBeNull();
     expect(streamGameId(undefined)).toBeNull();
   });
 
-  it('picks the source: backup, then fresh push, then poll; idle with no game', () => {
+  it('judges push freshness by when the runner built the doc (30 s + 15 s clock-skew tolerance), not when it arrived', () => {
+    const at = Date.parse('2026-10-21T03:00:00.000Z');
+    const doc = { fetched_at: '2026-10-21T03:00:00.000Z' };
+    expect(isPushFresh(doc, at + 10_000)).toBe(true);
+    expect(isPushFresh(doc, at + 44_999)).toBe(true);
+    expect(isPushFresh(doc, at + 45_000)).toBe(false);
+    // A replayed message from 150 s ago is not fresh even though it just arrived.
+    expect(isPushFresh(doc, at + 150_000)).toBe(false);
+    expect(isPushFresh(null, at)).toBe(false);
+    expect(isPushFresh({ fetched_at: 'garbage' }, at)).toBe(false);
+  });
+
+  it('overlays push only when it is at least as new as the polled snapshot', () => {
+    const doc = { fetched_at: '2026-10-21T03:00:10.000Z' };
+    expect(pushIsCurrent(doc, payload({ snapshot_captured_at: '2026-10-21T03:00:05.000Z' }))).toBe(true);
+    expect(pushIsCurrent(doc, payload({ snapshot_captured_at: '2026-10-21T03:00:10.000Z' }))).toBe(true);
+    expect(pushIsCurrent(doc, payload({ snapshot_captured_at: '2026-10-21T03:00:20.000Z' }))).toBe(false);
+    expect(pushIsCurrent(doc, payload({}))).toBe(true);
+    expect(pushIsCurrent({ fetched_at: 'garbage' }, payload({ snapshot_captured_at: '2026-10-21T03:00:05.000Z' }))).toBe(false);
+  });
+
+  it('picks the source: idle with no live game, then backup, then fresh push, then poll', () => {
+    const at = Date.parse('2026-10-21T03:00:00.000Z');
+    const fetched = '2026-10-21T03:00:00.000Z';
     const live = payload({ game: game('in_progress') });
-    expect(pickSource({ base: live, lastPushAt: 100_000, now: 110_000, backup: true })).toBe('backup');
-    expect(pickSource({ base: live, lastPushAt: 100_000, now: 110_000, backup: false })).toBe('push');
-    expect(pickSource({ base: live, lastPushAt: 100_000, now: 140_000, backup: false })).toBe('poll');
-    expect(pickSource({ base: payload({ state: 'NO_ACTIVE_GAME' }), lastPushAt: null, now: 0, backup: false })).toBe('idle');
+    expect(pickSource({ shown: live, pushFetchedAt: fetched, now: at + 10_000, backup: true })).toBe('backup');
+    expect(pickSource({ shown: live, pushFetchedAt: fetched, now: at + 10_000, backup: false })).toBe('push');
+    expect(pickSource({ shown: live, pushFetchedAt: fetched, now: at + 60_000, backup: false })).toBe('poll');
+    expect(pickSource({ shown: live, pushFetchedAt: null, now: at, backup: false })).toBe('poll');
+    expect(pickSource({ shown: payload({ state: 'NO_ACTIVE_GAME' }), pushFetchedAt: fetched, now: at, backup: false })).toBe('idle');
+    expect(pickSource({ shown: undefined, pushFetchedAt: null, now: at, backup: false })).toBe('idle');
+    // The buzzer has gone: nothing is streaming any more.
+    expect(pickSource({ shown: payload({ game: game('final') }), pushFetchedAt: fetched, now: at, backup: false })).toBe('idle');
   });
 
   it('wants the ESPN backup only when the feed is delayed, push is not fresh, and the game is live', () => {
