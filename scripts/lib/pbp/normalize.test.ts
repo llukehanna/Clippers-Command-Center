@@ -77,5 +77,16 @@ describe.skipIf(real.length === 0)('normalizePbp on captured games', () => {
       expect(pbp.events.length).toBeGreaterThan(300);
       expect(fromShots).toBe(last.scoreHome + last.scoreAway);
     });
+
+    it(`${file}: period team points sum to the final score`, async () => {
+      const { derivePeriodStats } = await import('./derive');
+      const source = file.startsWith('cdn-') ? 'cdn' : 'stats_pbp';
+      const pbp = normalizePbp(JSON.parse(fs.readFileSync(path.join(FIXTURES, file), 'utf8')), source);
+      const last = pbp.events[pbp.events.length - 1];
+      const { teams } = derivePeriodStats(pbp, { home: 'HOME', away: 'AWAY' });
+      const sum = (t: string) => teams.filter((l) => l.tricode === t).reduce((s, l) => s + l.pts, 0);
+      expect(sum('HOME')).toBe(last.scoreHome);
+      expect(sum('AWAY')).toBe(last.scoreAway);
+    });
   }
 });
