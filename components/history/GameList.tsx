@@ -14,6 +14,7 @@ function Row({ g }: { g: PlayedGame }) {
     <li>
       <Link
         href={`/history/${g.game_id}`}
+        prefetch={false}
         className="row-hover grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[14px] px-3 py-2.5 sm:grid-cols-[120px_minmax(0,1fr)_80px_130px_56px] sm:gap-4"
       >
         <span className="hidden font-mono text-[12px] text-mute sm:block">{formatDay(g.game_date)}</span>
