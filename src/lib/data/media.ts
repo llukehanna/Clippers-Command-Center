@@ -19,18 +19,39 @@ export async function loadMedia(url: URL): Promise<ApiResult> {
     const raw = parseInt(url.searchParams.get('limit') ?? String(DEFAULT_LIMIT), 10);
     const limit = Math.min(Math.max(Number.isNaN(raw) ? DEFAULT_LIMIT : raw, 1), MAX_LIMIT);
 
-    const rows = await sql<(Omit<MediaItem, 'published_at'> & { published_at: Date })[]>`
-      SELECT media_id::text AS media_id, kind, source, url, title, author, published_at,
-             engagement, comments, thumbnail_url, embed_url
-      FROM media_items
-      WHERE published_at > now() - interval '7 days'
-        ${kind === 'article' ? sql`AND kind = 'article'` : kind === 'social' ? sql`AND kind <> 'article'` : sql``}
-      ORDER BY published_at DESC
-      LIMIT 400
-    `;
-    const items: MediaItem[] = rows.map((r) => ({ ...r, published_at: r.published_at.toISOString() }));
+    type Row = Omit<MediaItem, 'published_at'> & { published_at: Date };
+
+    // Articles: recency-only, so a LIMIT before shapeMedia is safe (it re-sorts
+    // by published_at DESC anyway). Social: no row cap — a hot older post must
+    // survive to be ranked by shapeMedia's engagement-decay score; the 7-day
+    // retention window (Docs/migrations/2026-10-media.sql) already bounds it.
+    const [articleRows, socialRows] = await Promise.all([
+      kind === 'social'
+        ? Promise.resolve<Row[]>([])
+        : sql<Row[]>`
+            SELECT media_id::text AS media_id, kind, source, url, title, author, published_at,
+                   engagement, comments, thumbnail_url, embed_url
+            FROM media_items
+            WHERE published_at > now() - interval '7 days'
+              AND kind = 'article'
+            ORDER BY published_at DESC
+            LIMIT ${limit}
+          `,
+      kind === 'article'
+        ? Promise.resolve<Row[]>([])
+        : sql<Row[]>`
+            SELECT media_id::text AS media_id, kind, source, url, title, author, published_at,
+                   engagement, comments, thumbnail_url, embed_url
+            FROM media_items
+            WHERE published_at > now() - interval '7 days'
+              AND kind <> 'article'
+            ORDER BY published_at DESC
+          `,
+    ]);
+
+    const items: MediaItem[] = [...articleRows, ...socialRows].map((r) => ({ ...r, published_at: r.published_at.toISOString() }));
     const { articles, social } = shapeMedia(items, new Date(), limit);
-    return json({ meta: buildMeta('db', 300), articles, social }, { headers: { 'Cache-Control': 'public, max-age=60' } });
+    return json({ meta: buildMeta('db', 60), articles, social }, { headers: { 'Cache-Control': 'public, max-age=60' } });
   } catch (err) {
     console.error('[GET /api/media] Unexpected error:', err);
     return json(buildError('INTERNAL_ERROR', 'Failed to fetch media'), { status: 500 });
