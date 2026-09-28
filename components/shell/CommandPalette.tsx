@@ -17,6 +17,7 @@ const PAGES = [
   { href: '/live', label: 'Live', hint: 'Scoreboard and box score' },
   { href: '/players', label: 'Players', hint: 'Roster' },
   { href: '/schedule', label: 'Schedule', hint: 'Upcoming games' },
+  { href: '/news', label: 'News', hint: 'Articles and social' },
   { href: '/history', label: 'History', hint: 'Past seasons' },
 ]
 
@@ -83,8 +84,8 @@ export function CommandPalette() {
       open={open}
       onOpenChange={setOpen}
       label="Search"
-      overlayClassName="fixed inset-0 z-50 bg-[rgba(3,6,12,0.6)] backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0"
-      contentClassName="fixed left-1/2 top-[12vh] z-50 w-[min(640px,calc(100vw-28px))] -translate-x-1/2 overflow-hidden rounded-[22px] border border-line-2 bg-ink-1 shadow-[0_40px_120px_-20px_rgba(0,0,0,0.9)] data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.98]"
+      overlayClassName="fixed inset-0 z-50 bg-[rgba(3,6,12,0.45)] backdrop-blur-[6px] data-[state=open]:animate-in data-[state=open]:fade-in-0"
+      contentClassName="fixed left-1/2 top-[12vh] z-50 w-[min(640px,calc(100vw-28px))] -translate-x-1/2 overflow-hidden glass-bar rounded-[26px] shadow-[0_40px_120px_-20px_rgba(0,0,0,0.9)] data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.98]"
     >
       <div className="flex items-center gap-3 border-b border-line px-4">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden className="text-dim">

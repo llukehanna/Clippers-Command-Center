@@ -50,12 +50,12 @@ export function StickyScore({
     <div
       aria-hidden={!visible}
       className={cn(
-        'fixed inset-x-0 z-30 border-b border-line bg-[rgba(8,13,24,0.9)] backdrop-blur-xl transition-[transform,opacity] duration-500 ease-premium',
+        'fixed inset-x-0 z-30 px-2 pt-2 transition-[transform,opacity] duration-500 ease-premium sm:px-[14px]',
         visible ? 'translate-y-0 opacity-100' : 'pointer-events-none -translate-y-3 opacity-0',
       )}
       style={{ top }}
     >
-      <div className="mx-auto flex max-w-[1320px] items-center justify-between gap-4 px-3.5 py-2 sm:px-[22px]">
+      <div className="glass-bar mx-auto flex max-w-[1320px] items-center justify-between gap-4 rounded-full px-4 py-2 sm:px-5">
         <div className="flex items-center gap-4 tabular-nums">
           <span className="flex items-center gap-2 text-[15px] font-semibold">
             <TeamLogo abbr={lac.abbr} size="xs" /> {lac.score ?? '—'}

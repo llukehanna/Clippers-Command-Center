@@ -259,3 +259,27 @@ export interface HistoryGameDetailPayload {
   box_score: { columns: string[]; teams: BoxScoreTeam[]; available: boolean }
   insights: Array<Omit<Insight, 'category'> & { category?: string }>
 }
+
+export type MediaKind = 'article' | 'reddit' | 'tweet' | 'bluesky'
+
+/** News/social item from /api/media — external content, never "verified". */
+export interface MediaItem {
+  media_id: string
+  kind: MediaKind
+  source: string
+  url: string
+  title: string
+  author: string | null
+  published_at: string
+  engagement: number | null
+  comments: number | null
+  thumbnail_url: string | null
+  embed_url: string | null
+  feed_rank: number | null
+}
+
+export interface MediaPayload {
+  meta: MetaEnvelope
+  articles: MediaItem[]
+  social: MediaItem[]
+}

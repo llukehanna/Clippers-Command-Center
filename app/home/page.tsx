@@ -4,6 +4,7 @@ import { UpNextList } from '@/components/game/UpNextList'
 import { SeasonPanel } from '@/components/home/SeasonPanel'
 import { LastTenPanel } from '@/components/home/LastTenPanel'
 import { PlayerLeaders } from '@/components/home/PlayerLeaders'
+import { BuzzPanel } from '@/components/home/BuzzPanel'
 import { InsightStack } from '@/components/insights/InsightStack'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { Chip } from '@/components/ui/chip'
@@ -13,7 +14,7 @@ import { annotateSchedule } from '@/src/lib/ui/schedule'
 import { playedGames, regularSeason, seasonSummary, type HistoryGame } from '@/src/lib/ui/season'
 import { ageLabel } from '@/src/lib/ui/time'
 import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
-import type { HomePayload, Insight, PlayersPayload } from '@/src/lib/ui/types'
+import type { HomePayload, Insight, MediaPayload, PlayersPayload } from '@/src/lib/ui/types'
 
 // Live data on every request (loaders read the database directly).
 export const dynamic = 'force-dynamic'
@@ -21,10 +22,11 @@ export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Home' }
 
 export default async function HomePage() {
-  const [home, insightsRes, roster] = await Promise.all([
+  const [home, insightsRes, roster, media] = await Promise.all([
     getJson<HomePayload>('/api/home'),
     getJson<{ insights: Insight[] }>('/api/insights?scope=between_games&limit=12'),
     getJson<PlayersPayload>('/api/players?include_traded=true'),
+    getJson<MediaPayload>('/api/media?limit=3'),
   ])
 
   if (!home) {
@@ -111,8 +113,13 @@ export default async function HomePage() {
         )}
       </section>
 
-      {upcoming.length > 1 && (
+      {media && (media.articles.length > 0 || media.social.length > 0) && (
         <section className="enter" style={{ ['--i' as string]: 3 }}>
+          <BuzzPanel articles={media.articles.slice(0, 3)} social={media.social.slice(0, 2)} />
+        </section>
+      )}
+      {upcoming.length > 1 && (
+        <section className="enter" style={{ ['--i' as string]: 4 }}>
           <Eyebrow aside="all times PT">Up next</Eyebrow>
           <UpNextList games={upcoming.slice(1, 5)} />
         </section>

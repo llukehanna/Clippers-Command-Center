@@ -11,7 +11,7 @@ export function SeasonSelect({ seasons, value }: { seasons: Array<{ season_id: n
       <select
         value={value}
         onChange={(e) => router.push(`/history?season_id=${e.target.value}`, { scroll: false })}
-        className="cursor-pointer appearance-none rounded-full border border-line bg-white/[0.025] py-1.5 pl-3.5 pr-8 text-[13.5px] text-text outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-pacific"
+        className="glass-track press cursor-pointer appearance-none rounded-full py-1.5 pl-3.5 pr-8 text-[13.5px] text-text outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-pacific"
       >
         {[...seasons].reverse().map((s) => (
           <option key={s.season_id} value={String(s.season_id)} className="bg-ink-2">

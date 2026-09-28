@@ -17,7 +17,7 @@ export function Countdown({ tipoff }: { tipoff: string | null }) {
   return (
     <div className="flex gap-1.5 tabular-nums" role="timer" aria-label="Time until tip-off">
       {cells.map(([label, value]) => (
-        <div key={label} className="min-w-[56px] rounded-[12px] border border-line bg-white/[0.03] px-2.5 pb-1.5 pt-2 text-center">
+        <div key={label} className="panel-inset min-w-[56px] px-2.5 pb-1.5 pt-2 text-center">
           <div className="text-[22px] font-semibold leading-none tracking-[-0.02em]">
             {value == null ? <span className="text-dim">··</span> : String(value).padStart(2, '0')}
           </div>
