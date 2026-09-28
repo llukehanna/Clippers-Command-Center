@@ -3,13 +3,25 @@
 // source/url/title; engagement and comment counts always refresh.
 import { sql as rootSql } from '../db.js';
 import type { Db } from '../upserts.js';
+import { isHttpUrl, MEDIA_RETENTION_DAYS } from './normalize.js';
 import type { MediaItemInput } from './types.js';
 
-export const MEDIA_RETENTION_DAYS = 7;
+export { MEDIA_RETENTION_DAYS };
 
+/**
+ * Items whose url isn't http(s) are dropped; a non-http(s) thumbnailUrl or
+ * embedUrl is written as null (the UI puts these straight into href/src).
+ */
 export async function upsertMediaItems(items: MediaItemInput[], db: Db = rootSql): Promise<number> {
-  if (items.length === 0) return 0;
-  const rows = items.map((i) => ({
+  const safe = items
+    .filter((i) => isHttpUrl(i.url))
+    .map((i) => ({
+      ...i,
+      thumbnailUrl: isHttpUrl(i.thumbnailUrl) ? i.thumbnailUrl : null,
+      embedUrl: isHttpUrl(i.embedUrl) ? i.embedUrl : null,
+    }));
+  if (safe.length === 0) return 0;
+  const rows = safe.map((i) => ({
     kind: i.kind, source: i.source, url: i.url, dedup_key: i.dedupKey, title: i.title, author: i.author,
     published_at: i.publishedAt, engagement: i.engagement, comments: i.comments,
     thumbnail_url: i.thumbnailUrl, embed_url: i.embedUrl, priority: i.priority,

@@ -8,11 +8,15 @@ export interface RedditCredentials { clientId: string; clientSecret: string; use
 
 const SUBREDDIT = 'LAClippers';
 const THREAD = /\b(game thread|post[- ]?game thread|pre[- ]?game thread)\b/i;
-const TWEET = /^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/([A-Za-z0-9_]+)\/status\/(\d+)/;
+// x.com / twitter.com and the fxtwitter / vxtwitter / fixupx embed-fixer
+// mirrors; either /<user>/status/<id> or /i/web/status/<id>.
+const TWEET = /^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter|fxtwitter|vxtwitter|fixupx)\.com\/(?:i\/web|([A-Za-z0-9_]+))\/status\/(\d+)/i;
 
 export function tweetUrl(url: string): { id: string; embedUrl: string } | null {
   const m = TWEET.exec(url);
-  return m ? { id: m[2], embedUrl: `https://twitter.com/${m[1]}/status/${m[2]}` } : null;
+  if (!m) return null;
+  const [, user, id] = m;
+  return { id, embedUrl: user ? `https://twitter.com/${user}/status/${id}` : `https://twitter.com/i/web/status/${id}` };
 }
 
 interface RedditPost {

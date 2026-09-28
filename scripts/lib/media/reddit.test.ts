@@ -12,6 +12,16 @@ describe('tweetUrl', () => {
     expect(tweetUrl('https://mobile.twitter.com/LAClippers/status/123')).toEqual({ id: '123', embedUrl: 'https://twitter.com/LAClippers/status/123' });
     expect(tweetUrl('https://www.espn.com/nba/story')).toBeNull();
   });
+  it('recognizes x.com/i/web status links', () => {
+    expect(tweetUrl('https://x.com/i/web/status/1847000000000000001')).toEqual({ id: '1847000000000000001', embedUrl: 'https://twitter.com/i/web/status/1847000000000000001' });
+    expect(tweetUrl('https://twitter.com/i/web/status/42?s=20')).toEqual({ id: '42', embedUrl: 'https://twitter.com/i/web/status/42' });
+  });
+  it('recognizes fxtwitter, vxtwitter and fixupx links', () => {
+    expect(tweetUrl('https://fxtwitter.com/ShamsCharania/status/111')).toEqual({ id: '111', embedUrl: 'https://twitter.com/ShamsCharania/status/111' });
+    expect(tweetUrl('https://vxtwitter.com/LAClippers/status/222')).toEqual({ id: '222', embedUrl: 'https://twitter.com/LAClippers/status/222' });
+    expect(tweetUrl('https://fixupx.com/LAClippers/status/333')).toEqual({ id: '333', embedUrl: 'https://twitter.com/LAClippers/status/333' });
+    expect(tweetUrl('https://notfxtwitter.com/LAClippers/status/444')).toBeNull();
+  });
 });
 
 describe('redditToItems', () => {
