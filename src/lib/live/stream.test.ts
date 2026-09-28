@@ -10,6 +10,7 @@ import {
   reconnectDelay,
   socketIsSilent,
   streamGameId,
+  tipRefetchExpired,
 } from './stream';
 import type { LivePayload } from '../ui/types';
 
@@ -94,6 +95,12 @@ describe('stream helpers', () => {
     const heard = 1_000_000;
     expect(socketIsSilent(heard, heard + 2 * PING_EVERY_MS - 1)).toBe(false);
     expect(socketIsSilent(heard, heard + 2 * PING_EVERY_MS)).toBe(true);
+  });
+
+  it('stops the pre-tip refetch loop after 2 minutes', () => {
+    const started = 1_000_000;
+    expect(tipRefetchExpired(started, started + 119_999)).toBe(false);
+    expect(tipRefetchExpired(started, started + 120_000)).toBe(true);
   });
 
   it('wants the ESPN backup only when the feed is delayed, push is not fresh, and the game is live', () => {
