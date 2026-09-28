@@ -81,6 +81,14 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # Refit the live win-probability model with last night's games (Live v2
+      # spec §7.1). Exits 1 — a red run — if the fit got worse by more than
+      # 0.005 Brier; the stored model is kept.
+      - name: Calibrate win probability
+        run: npm run calibrate-wp
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       # Current roster (ESPN) → /api/players default. An ESPN outage keeps the
       # previous snapshot, so it doesn't fail the pipeline.
       - name: Sync current roster
