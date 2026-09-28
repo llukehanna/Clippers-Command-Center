@@ -35,6 +35,9 @@ import {
   computePlayerRollingWindows,
 } from './lib/rolling-windows.js';
 
+/** First season with player rolling windows for every player, not just Clippers. */
+const FULL_ROLLING_FIRST_SEASON = 2019;
+
 // ---- Types ----
 
 interface TeamBoxRow {
@@ -74,7 +77,12 @@ interface PlayerBoxRow {
 
 // ---- Step 1 & 2: Per-game advanced stats ----
 
-async function computeGameStats(gameId: string): Promise<void> {
+/**
+ * @param clippersPlayersOnly before FULL_ROLLING_FIRST_SEASON, advanced player
+ *   stats are kept for Clippers players only (the same rule as their rolling
+ *   windows) — league-wide rows for old seasons cost storage nothing reads.
+ */
+async function computeGameStats(gameId: string, clippersPlayersOnly: boolean): Promise<void> {
   // Fetch both team box scores for this game
   const boxes = await sql<TeamBoxRow[]>`
     SELECT
@@ -165,6 +173,7 @@ async function computeGameStats(gameId: string): Promise<void> {
       p.offensive_reb, p.defensive_reb
     FROM game_player_box_scores p
     WHERE p.game_id = ${gameId}::bigint
+      ${clippersPlayersOnly ? sql`AND p.team_id IN (SELECT team_id FROM teams WHERE abbreviation = 'LAC')` : sql``}
   `;
 
   // Build maps: team_id -> team box row
@@ -272,8 +281,8 @@ async function main(): Promise<void> {
 
   // Games to compute: every game with box scores (--all), or only those whose
   // advanced rows are missing. Ordered by date for readable progress.
-  const games = await sql<{ game_id: string }[]>`
-    SELECT g.game_id::text AS game_id
+  const games = await sql<{ game_id: string; season_id: number | null }[]>`
+    SELECT g.game_id::text AS game_id, g.season_id
     FROM games g
     WHERE EXISTS (SELECT 1 FROM game_team_box_scores b WHERE b.game_id = g.game_id)
       ${all ? sql`` : sql`AND NOT EXISTS (SELECT 1 FROM advanced_team_game_stats a WHERE a.game_id = g.game_id)`}
@@ -282,8 +291,9 @@ async function main(): Promise<void> {
   const gameIds = games.map((g) => g.game_id);
 
   console.log(`[1/4] Computing team + player advanced stats for ${gameIds.length} game(s)...`);
-  for (let i = 0; i < gameIds.length; i++) {
-    await computeGameStats(gameIds[i]);
+  for (let i = 0; i < games.length; i++) {
+    const { game_id, season_id } = games[i];
+    await computeGameStats(game_id, season_id !== null && season_id < FULL_ROLLING_FIRST_SEASON);
     if ((i + 1) % 200 === 0) console.log(`  ${i + 1}/${gameIds.length}`);
   }
   console.log(`  Done.`);
@@ -311,7 +321,10 @@ async function main(): Promise<void> {
   }
   console.log(`  Done.`);
 
-  // Step 4: Player rolling windows — (player_id, season_id) pairs touched by these games
+  // Step 4: Player rolling windows — (player_id, season_id) pairs touched by these games.
+  // Before FULL_ROLLING_FIRST_SEASON only Clippers players get them (their
+  // player pages chart them); league-wide rows for those seasons would cost
+  // storage nothing reads.
   const playerPairs = await sql<{ player_id: string; team_id: string; season_id: number }[]>`
     SELECT DISTINCT ON (apgs.player_id, g.season_id)
            apgs.player_id::text AS player_id, apgs.team_id::text AS team_id, g.season_id
@@ -319,6 +332,15 @@ async function main(): Promise<void> {
     JOIN games g ON g.game_id = apgs.game_id
     WHERE g.season_id IS NOT NULL
       ${all ? sql`` : sql`AND g.game_id = ANY(${gameIds}::bigint[])`}
+      AND (
+        g.season_id >= ${FULL_ROLLING_FIRST_SEASON}
+        OR EXISTS (
+          SELECT 1 FROM game_player_box_scores pb
+          JOIN games g2 ON g2.game_id = pb.game_id
+          JOIN teams t ON t.team_id = pb.team_id AND t.abbreviation = 'LAC'
+          WHERE pb.player_id = apgs.player_id AND g2.season_id = g.season_id
+        )
+      )
     ORDER BY apgs.player_id, g.season_id
   `;
 

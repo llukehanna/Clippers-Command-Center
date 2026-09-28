@@ -6,6 +6,9 @@
 //   FIXTURE_DATABASE_URL=postgres://postgres@127.0.0.1:5432/fixture npx vitest run scripts/lib/pipeline
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type { NBABoxscoreResponse, BoxscorePlayer, BoxscoreTeam } from '../../src/lib/types/live';
 
 const url = process.env.FIXTURE_DATABASE_URL;
@@ -69,6 +72,67 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
 
   afterAll(async () => {
     await sql?.end();
+  });
+
+  it('schema has the play-by-play and record-book tables', async () => {
+    const tables = ['game_flow', 'period_team_stats', 'period_player_stats', 'clutch_stats', 'pbp_events', 'rb_game_highs', 'rb_streaks'];
+    const rows = await sql<{ name: string; exists: boolean }[]>`
+      SELECT t AS name, to_regclass('public.' || t) IS NOT NULL AS exists
+      FROM unnest(${tables}::text[]) AS t
+    `;
+    expect(rows.filter((r) => !r.exists).map((r) => r.name)).toEqual([]);
+  });
+
+  it('schema has media_items', async () => {
+    const [row] = await sql<{ ok: boolean }[]>`SELECT to_regclass('public.media_items') IS NOT NULL AS ok`;
+    expect(row.ok).toBe(true);
+  });
+
+  it('stores media items: priority wins duplicates, engagement refreshes, old items pruned', async () => {
+    const { upsertMediaItems, pruneMedia } = await import('./media/store');
+    const base = { kind: 'article' as const, author: null, engagement: null, comments: null, thumbnailUrl: null, embedUrl: null };
+    const now = new Date();
+    await upsertMediaItems([
+      { ...base, source: 'Google News', url: 'https://g/1', dedupKey: 'article:clippers win', title: 'Clippers win', publishedAt: now.toISOString(), priority: 2 },
+      { ...base, source: 'Old', url: 'https://old', dedupKey: 'article:old', title: 'Old', publishedAt: new Date(now.getTime() - 9 * 86_400_000).toISOString(), priority: 1 },
+    ]);
+    await upsertMediaItems([
+      { ...base, source: 'LA Times', url: 'https://latimes/1', dedupKey: 'article:clippers win', title: 'Clippers win', publishedAt: now.toISOString(), priority: 1 },
+      { ...base, kind: 'reddit', source: 'r/LAClippers', url: 'https://reddit/1', dedupKey: 'reddit:1', title: 'Post', publishedAt: now.toISOString(), priority: 1, engagement: 5 },
+    ]);
+    await upsertMediaItems([
+      { ...base, kind: 'reddit', source: 'r/LAClippers', url: 'https://reddit/1', dedupKey: 'reddit:1', title: 'Post', publishedAt: now.toISOString(), priority: 1, engagement: 50 },
+      { ...base, source: 'Google News', url: 'https://g/1', dedupKey: 'article:clippers win', title: 'Clippers win', publishedAt: now.toISOString(), priority: 2 },
+    ]);
+    const rows = await sql<{ dedup_key: string; source: string; engagement: number | null }[]>`
+      SELECT dedup_key, source, engagement FROM media_items ORDER BY dedup_key`;
+    expect(rows).toEqual([
+      { dedup_key: 'article:clippers win', source: 'LA Times', engagement: null },
+      { dedup_key: 'article:old', source: 'Old', engagement: null },
+      { dedup_key: 'reddit:1', source: 'r/LAClippers', engagement: 50 },
+    ]);
+    expect(await pruneMedia()).toBe(1);
+  });
+
+  it('stores only http(s) media URLs: bad item URLs are dropped, bad thumbnail/embed URLs nulled', async () => {
+    const { upsertMediaItems } = await import('./media/store');
+    const base = { kind: 'tweet' as const, source: 'r/LAClippers', author: null, engagement: null, comments: null, priority: 1, publishedAt: new Date().toISOString() };
+    const written = await upsertMediaItems([
+      { ...base, url: 'javascript:alert(1)', dedupKey: 'urltest:bad', title: 'Bad', thumbnailUrl: null, embedUrl: null },
+      { ...base, url: 'https://www.reddit.com/r/LAClippers/comments/ok/', dedupKey: 'urltest:ok', title: 'OK',
+        thumbnailUrl: 'data:image/png;base64,AAAA', embedUrl: 'javascript:void(0)' },
+      { ...base, url: 'https://www.reddit.com/r/LAClippers/comments/good/', dedupKey: 'urltest:good', title: 'Good',
+        thumbnailUrl: 'https://preview.redd.it/p.jpg', embedUrl: 'https://twitter.com/LAClippers/status/1' },
+    ]);
+    expect(written).toBe(2);
+    const rows = await sql<{ dedup_key: string; thumbnail_url: string | null; embed_url: string | null }[]>`
+      SELECT dedup_key, thumbnail_url, embed_url FROM media_items WHERE dedup_key LIKE 'urltest:%' ORDER BY dedup_key`;
+    expect(rows).toEqual([
+      { dedup_key: 'urltest:good', thumbnail_url: 'https://preview.redd.it/p.jpg', embed_url: 'https://twitter.com/LAClippers/status/1' },
+      { dedup_key: 'urltest:ok', thumbnail_url: null, embed_url: null },
+    ]);
+    expect(await upsertMediaItems([{ ...base, url: 'ftp://x', dedupKey: 'urltest:ftp', title: 'FTP', thumbnailUrl: null, embedUrl: null }])).toBe(0);
+    await sql`DELETE FROM media_items WHERE dedup_key LIKE 'urltest:%'`;
   });
 
   async function activeInsights() {
@@ -218,6 +282,138 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     const [dupes] = await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM games WHERE nba_game_id = 22600077`;
     expect(dupes.n).toBe(1);
     expect(run('scripts/compute-stats.ts')).toContain('for 1 game(s)');
+  }, TIMEOUT);
+
+  it('pre-2019 seasons: advanced player stats for Clippers players only', async () => {
+    const { ingestBoxscore } = await import('./league-ingest');
+    await sql`INSERT INTO seasons (season_id, label) VALUES (2015, '2015-16') ON CONFLICT DO NOTHING`;
+    const box: NBABoxscoreResponse = {
+      meta: { version: 1, code: 200, request: '', time: '' },
+      game: {
+        gameId: '0021500077', gameStatus: 3, gameStatusText: 'Final', period: 4, gameClock: '',
+        gameTimeUTC: '2015-11-01T02:30:00Z',
+        regulationPeriods: 4,
+        homeTeam: team('DEN', [player(1_000_000 + 49, 'DEN Player 1', 18)]),
+        awayTeam: team('LAC', [player(1_000_001, 'Star Clipper', 12), player(1_000_002, 'Big Clipper', 10)]),
+      },
+    };
+    const gameId = await ingestBoxscore(2015, box);
+    expect(run('scripts/compute-stats.ts')).toContain('for 1 game(s)');
+
+    const [derived] = await sql<{ team_adv: number; lac_player_adv: number; other_player_adv: number }[]>`
+      SELECT (SELECT COUNT(*)::int FROM advanced_team_game_stats WHERE game_id = ${gameId}::bigint) AS team_adv,
+             (SELECT COUNT(*)::int FROM advanced_player_game_stats a JOIN teams t ON t.team_id = a.team_id
+               WHERE a.game_id = ${gameId}::bigint AND t.abbreviation = 'LAC') AS lac_player_adv,
+             (SELECT COUNT(*)::int FROM advanced_player_game_stats a JOIN teams t ON t.team_id = a.team_id
+               WHERE a.game_id = ${gameId}::bigint AND t.abbreviation <> 'LAC') AS other_player_adv
+    `;
+    expect(derived).toEqual({ team_adv: 2, lac_player_adv: 2, other_player_adv: 0 });
+  }, TIMEOUT);
+
+  it('ingests play-by-play for a Clippers game: flow, periods, clutch, raw events', async () => {
+    const [game] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM games WHERE nba_game_id = 22600077`;
+    // DEN home, LAC away. LAC 3 (0-3), DEN 2+2 (4-3), LAC FT in the clutch (4-4), LAC 2 (4-6).
+    const a = (n: number, clock: string, period: number, tri: string | null, person: number, type: string, result: string | null, h: number, w: number, extra: Record<string, unknown> = {}) =>
+      ({ actionNumber: n, clock, period, teamTricode: tri, personId: person, actionType: type, shotResult: result, scoreHome: String(h), scoreAway: String(w), description: '', ...extra });
+    const pbp = { game: { gameId: '0022600077', actions: [
+      a(1, 'PT12M00.00S', 1, null, 0, 'period', null, 0, 0),
+      a(2, 'PT11M40.00S', 1, 'LAC', 1_000_001, '3pt', 'Made', 0, 3, { assistPersonId: 1_000_002 }),
+      a(3, 'PT11M00.00S', 1, 'DEN', 1_000_049, '2pt', 'Made', 2, 3),
+      a(4, 'PT03M20.00S', 4, 'DEN', 1_000_049, '2pt', 'Made', 4, 3),
+      a(5, 'PT02M00.00S', 4, 'LAC', 1_000_001, 'freethrow', 'Made', 4, 4),
+      a(6, 'PT01M00.00S', 4, 'LAC', 1_000_001, '2pt', 'Made', 4, 6),
+    ] } };
+    const file = path.join(os.tmpdir(), `pbp-${Date.now()}.json`);
+    fs.writeFileSync(file, JSON.stringify(pbp));
+
+    // The game still carries the box-score final (59-49), so this 4-6 feed looks
+    // truncated: nothing is written and the game is counted incomplete, not failed.
+    const partial = run('scripts/ingest-pbp.ts', {}, [`--game=${game.game_id}`, `--from-file=${file}`, '--format=cdn', '--keep-raw']);
+    expect(partial).toContain('0 ingested, 1 incomplete');
+    const [noFlow] = await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM game_flow WHERE game_id = ${game.game_id}::bigint`;
+    expect(noFlow.n).toBe(0);
+
+    // Make the game's final score match the synthetic feed's last event so it is accepted.
+    await sql`UPDATE games SET home_score = 4, away_score = 6 WHERE game_id = ${game.game_id}::bigint`;
+    const out = run('scripts/ingest-pbp.ts', {}, [`--game=${game.game_id}`, `--from-file=${file}`, '--format=cdn', '--keep-raw']);
+    expect(out).toContain('1 ingested, 0 incomplete');
+
+    const [flow] = await sql`SELECT lac_largest_lead, lac_largest_deficit, lead_changes, times_tied, lac_best_run, opp_best_run, comeback_margin, source
+                             FROM game_flow WHERE game_id = ${game.game_id}::bigint`;
+    expect(flow).toEqual({ lac_largest_lead: 3, lac_largest_deficit: 1, lead_changes: 2, times_tied: 1, lac_best_run: 3, opp_best_run: 4, comeback_margin: 1, source: 'cdn' });
+
+    const star = await sql<{ period: number; pts: number; fg3m: number }[]>`
+      SELECT pp.period, pp.pts, pp.fg3m FROM period_player_stats pp JOIN players p ON p.player_id = pp.player_id
+      WHERE pp.game_id = ${game.game_id}::bigint AND p.display_name = 'Star Clipper' ORDER BY pp.period`;
+    expect(star).toEqual([{ period: 1, pts: 3, fg3m: 1 }, { period: 4, pts: 3, fg3m: 0 }]);
+
+    const [clutch] = await sql`SELECT c.pts, c.ftm FROM clutch_stats c JOIN teams t ON t.team_id = c.team_id
+                               WHERE c.game_id = ${game.game_id}::bigint AND t.abbreviation = 'LAC' AND c.player_id IS NULL`;
+    expect(clutch).toEqual({ pts: 3, ftm: 1 });
+
+    const counts = async () => (await sql<{ events: number; periods: number }[]>`
+      SELECT (SELECT COUNT(*)::int FROM pbp_events WHERE game_id = ${game.game_id}::bigint) AS events,
+             (SELECT COUNT(*)::int FROM period_team_stats WHERE game_id = ${game.game_id}::bigint) AS periods`)[0];
+    expect(await counts()).toEqual({ events: 6, periods: 4 });
+
+    // Stable provider ids: one row per action_number, with the raw type and subtype.
+    const ids = await sql<{ action_number: number; action_type: string; sub_type: string }[]>`
+      SELECT action_number, action_type, sub_type FROM pbp_events WHERE game_id = ${game.game_id}::bigint ORDER BY event_num`;
+    expect(new Set(ids.map((r) => r.action_number)).size).toBe(6);
+    expect(ids.map((r) => r.action_number)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(ids[1]).toEqual({ action_number: 2, action_type: '3pt', sub_type: '' });
+
+    // Already ingested → skipped; --force rewrites the same rows.
+    expect(run('scripts/ingest-pbp.ts', {}, [`--game=${game.game_id}`, `--from-file=${file}`, '--format=cdn'])).toContain('0 game(s) to ingest');
+    run('scripts/ingest-pbp.ts', {}, [`--game=${game.game_id}`, `--from-file=${file}`, '--format=cdn', '--force']);
+    expect(await counts()).toEqual({ events: 6, periods: 4 });   // rows flagged keep by --keep-raw are stored again
+    const [kept] = await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM pbp_events WHERE game_id = ${game.game_id}::bigint AND keep`;
+    expect(kept.n).toBe(6);
+  }, TIMEOUT);
+
+  it('builds the record book: highs, streaks, records start; idempotent', async () => {
+    const out = run('scripts/build-record-book.ts');
+    expect(out).toContain('records start 2024-25');
+    expect(out).toContain('pbp records start 2026-27');
+
+    const [top] = await sql<{ display_name: string }[]>`
+      SELECT p.display_name FROM rb_game_highs h JOIN players p ON p.player_id = h.player_id
+      WHERE h.scope = 'lac_player' AND h.stat_key = 'pts' AND h.rank = 1`;
+    expect(top.display_name).toBe('Star Clipper');
+
+    const [career] = await sql<{ n: number }[]>`
+      SELECT COUNT(*)::int AS n FROM rb_game_highs h JOIN players p ON p.player_id::text = h.scope_id
+      WHERE h.scope = 'player_career' AND h.stat_key = 'pts' AND p.display_name = 'Star Clipper'`;
+    expect(career.n).toBeGreaterThan(0);
+
+    const [low] = await sql<{ r1: number; r2: number }[]>`
+      SELECT MAX(value) FILTER (WHERE rank = 1)::int AS r1, MAX(value) FILTER (WHERE rank = 2)::int AS r2
+      FROM rb_game_highs WHERE scope = 'lac_team' AND stat_key = 'opp_pts_low'`;
+    expect(low.r1).toBeLessThanOrEqual(low.r2);
+
+    const [quarter] = await sql<{ value: number }[]>`
+      SELECT value::int FROM rb_game_highs WHERE scope = 'lac_player' AND stat_key = 'q_pts' AND rank = 1`;
+    expect(quarter.value).toBe(3);
+
+    const [streak] = await sql<{ length: number; is_active: boolean }[]>`
+      SELECT s.length, s.is_active FROM rb_streaks s JOIN players p ON p.player_id = s.entity_id
+      WHERE s.entity_type = 'player' AND s.streak_key = 'scoring_30' AND p.display_name = 'Star Clipper'
+      ORDER BY s.end_date DESC LIMIT 1`;
+    expect(streak.is_active).toBe(true);
+    expect(streak.length).toBeGreaterThanOrEqual(4);
+
+    const [kv] = await sql<{ value: { season_id: number; label: string } }[]>`SELECT value FROM app_kv WHERE key = 'insights.records_start'`;
+    expect(kv.value).toEqual({ season_id: 2024, label: '2024-25' });
+
+    // Only the one 2026 Clippers game has play-by-play, so play-by-play records start in 2026-27.
+    const [pbpKv] = await sql<{ value: { season_id: number; label: string } }[]>`SELECT value FROM app_kv WHERE key = 'insights.pbp_records_start'`;
+    expect(pbpKv.value).toEqual({ season_id: 2026, label: '2026-27' });
+
+    const counts = async () => (await sql<{ highs: number; streaks: number }[]>`
+      SELECT (SELECT COUNT(*)::int FROM rb_game_highs) AS highs, (SELECT COUNT(*)::int FROM rb_streaks) AS streaks`)[0];
+    const before = await counts();
+    run('scripts/build-record-book.ts');
+    expect(await counts()).toEqual(before);
   }, TIMEOUT);
 
   it('finds stale duplicate rows and removes only the safe ones', async () => {
