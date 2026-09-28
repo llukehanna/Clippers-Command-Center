@@ -10,8 +10,11 @@ interface OddsStripProps {
 export function OddsStrip({ items, className, compact }: OddsStripProps) {
   return (
     <div
-      className={cn('grid gap-px overflow-hidden rounded-[14px] bg-line tabular-nums', className)}
-      style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+      className={cn(
+        'grid gap-px overflow-hidden rounded-[14px] bg-line tabular-nums',
+        items.length === 4 ? 'grid-cols-2 sm:grid-cols-4' : items.length === 3 ? 'grid-cols-3' : 'grid-cols-2',
+        className,
+      )}
     >
       {items.map((it) => (
         <div key={it.label} className={cn('min-w-0 bg-ink-1', compact ? 'px-3 py-2' : 'px-3.5 py-2.5')}>

@@ -1,0 +1,154 @@
+'use client'
+
+import * as React from 'react'
+import { Scoreboard, type ScoreSide } from '@/components/game/Scoreboard'
+import { WinProbabilityBar } from '@/components/game/WinProbabilityBar'
+import { OddsStrip } from '@/components/game/OddsStrip'
+import { BoxScore } from '@/components/game/BoxScore'
+import { InsightCard } from '@/components/insights/InsightCard'
+import { Eyebrow } from '@/components/ui/eyebrow'
+import { Panel } from '@/components/ui/panel'
+import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
+import { useNow } from '@/hooks/useNow'
+import { KeyMetrics } from './KeyMetrics'
+import { StickyScore } from './StickyScore'
+import { LiveTabTitle } from './LiveTabTitle'
+import { IdleState } from './IdleState'
+import { resolveLiveState } from '@/src/lib/ui/live'
+import { formatMoneyline, formatSpread, noVigProbabilities } from '@/src/lib/ui/odds'
+import { ageLabel, parseTimestamp } from '@/src/lib/ui/time'
+import type { LivePayload } from '@/src/lib/ui/types'
+
+function LoadingState() {
+  return (
+    <>
+      <Skeleton className="h-[220px] rounded-[22px]" />
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+        {Array.from({ length: 5 }, (_, i) => (
+          <Skeleton key={i} className="h-[92px] rounded-[22px]" />
+        ))}
+      </div>
+      <Skeleton className="h-[420px] rounded-[22px]" />
+    </>
+  )
+}
+
+/** Everything under /live, driven by one /api/live payload. */
+export function LiveView({ data, error }: { data: LivePayload | undefined; error?: unknown }) {
+  const scoreRef = React.useRef<HTMLDivElement>(null)
+  const now = useNow(5_000)
+
+  if (error && !data) {
+    return (
+      <div className="page">
+        <EmptyState title="Live data isn't responding" body="Retrying automatically. The page will update as soon as the feed is back." />
+      </div>
+    )
+  }
+  if (!data) {
+    return (
+      <div className="page" aria-busy="true">
+        <LoadingState />
+      </div>
+    )
+  }
+
+  const state = resolveLiveState(data)
+  if (state === 'NO_ACTIVE_GAME' || !data.game) {
+    return (
+      <div className="page">
+        <IdleState />
+      </div>
+    )
+  }
+
+  const game = data.game
+  const lacHome = game.home.abbreviation === 'LAC'
+  const lacSide = lacHome ? game.home : game.away
+  const oppSide = lacHome ? game.away : game.home
+  const lac: ScoreSide = { abbr: lacSide.abbreviation ?? 'LAC', name: lacSide.name, score: lacSide.score }
+  const opp: ScoreSide = { abbr: oppSide.abbreviation, name: oppSide.name, score: oppSide.score }
+  const oppAbbr = opp.abbr ?? 'OPP'
+  const delayed = state === 'DATA_DELAYED'
+
+  const odds = data.odds
+  const probs = odds ? noVigProbabilities(lacHome ? odds.moneyline_home : odds.moneyline_away, lacHome ? odds.moneyline_away : odds.moneyline_home) : null
+  const lacSpread = odds ? (lacHome ? odds.spread_home : odds.spread_away) : null
+  const oddsAsOf = odds ? parseTimestamp(odds.captured_at) : null
+
+  const lacBox = data.box_score?.teams.find((t) => t.team_abbr === lac.abbr)
+  const oppBox = data.box_score?.teams.find((t) => t.team_abbr !== lac.abbr)
+  const insights = [...(data.insights ?? [])].sort((a, b) => b.importance - a.importance)
+  const delayAge = delayed && now ? ageLabel(data.snapshot_captured_at, now) : null
+
+  return (
+    <div className="page">
+      <LiveTabTitle game={game} />
+      <StickyScore sentinel={scoreRef} lac={lac} opp={opp} period={game.period} clock={game.clock} delayed={delayed} />
+
+      <section aria-label="Scoreboard" ref={scoreRef} className="enter">
+        <Scoreboard lac={lac} opp={opp} lacHome={lacHome} mode={delayed ? 'delayed' : 'live'} period={game.period} clock={game.clock}>
+          {odds && (
+            <div className="relative border-t border-line px-3 py-3 sm:px-6">
+              <OddsStrip
+                compact
+                items={[
+                  { label: 'Spread', value: lacSpread == null ? '—' : `LAC ${formatSpread(lacSpread)}` },
+                  {
+                    label: 'Moneyline',
+                    value: `${formatMoneyline(lacHome ? odds.moneyline_home : odds.moneyline_away)} / ${formatMoneyline(lacHome ? odds.moneyline_away : odds.moneyline_home)}`,
+                  },
+                  { label: 'Total', value: odds.total_points == null ? '—' : String(odds.total_points) },
+                  {
+                    label: 'Line as of',
+                    value: oddsAsOf
+                      ? oddsAsOf.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' })
+                      : '—',
+                  },
+                ]}
+              />
+            </div>
+          )}
+          {probs && <WinProbabilityBar lacProb={probs.a} oppAbbr={oppAbbr} />}
+        </Scoreboard>
+        {delayed && (
+          <p className="m-0 mt-3 flex items-center gap-2 font-mono text-[12px] text-warn" role="status">
+            Feed delayed{delayAge ? ` · last update ${delayAge} ago` : ''}. Showing the most recent snapshot.
+          </p>
+        )}
+      </section>
+
+      {data.key_metrics?.length > 0 && (
+        <section className="enter" style={{ ['--i' as string]: 1 }} aria-label="Key metrics">
+          <KeyMetrics metrics={data.key_metrics} lacFt={lacBox?.totals.FT as string | undefined} oppFt={oppBox?.totals.FT as string | undefined} oppAbbr={oppAbbr} />
+        </section>
+      )}
+
+      <section className="enter grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 2 }}>
+        <div className="min-w-0">
+          <Eyebrow>Box score</Eyebrow>
+          {data.box_score ? (
+            <BoxScore teams={data.box_score.teams} playerIdsAreNba />
+          ) : (
+            <Panel className="p-6 text-[14px] text-mute">The box score appears after the first stats come in.</Panel>
+          )}
+        </div>
+        <div className="min-w-0">
+          <Eyebrow aside={insights.length ? 'newest first' : undefined}>Insights</Eyebrow>
+          {insights.length ? (
+            <div className="grid gap-2.5">
+              {insights.map((ins, i) => (
+                <InsightCard key={ins.insight_id} insight={ins} fresh={i === 0} />
+              ))}
+            </div>
+          ) : (
+            <Panel className="p-5 text-[14px] text-mute">
+              {delayed ? 'Insights pause while the feed is delayed.' : 'Scoring runs and clutch moments show up here as they happen.'}
+            </Panel>
+          )}
+        </div>
+      </section>
+    </div>
+  )
+}
