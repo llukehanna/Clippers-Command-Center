@@ -2,7 +2,9 @@
 // Runs the Live v2 poller against a real game with no database and prints
 // every save: phase, delay, seq, score and state size. Use with the feed probe
 // (.github/workflows/feed-probe.yml) to check the cadence on a real game.
-//   npx tsx scripts/dev/live-dry-run.ts [--nba-game=auto|0022600001] [--minutes=20]
+//   npx tsx scripts/dev/live-dry-run.ts [--nba-game=auto|0022600001] [--minutes=20] [--publish]
+// --publish also pushes each save to LIVE_HUB_URL (if set) — pushes any live
+// NBA game to the hub during preseason, independent of Clippers game-night.
 
 import {
   fetchBoxscoreConditional,
@@ -10,9 +12,11 @@ import {
   fetchScoreboard,
 } from '../lib/nba-live-client.js';
 import { createPoller } from '../lib/live-poller.js';
+import { hubPublisherFromEnv } from '../lib/live-publish.js';
 
 const arg = (name: string, fallback: string): string =>
   process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1] || fallback;
+const flag = (name: string): boolean => process.argv.includes(`--${name}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main(): Promise<void> {
@@ -27,16 +31,22 @@ async function main(): Promise<void> {
     gameId = g.gameId;
   }
   const end = Date.now() + Number(arg('minutes', '20')) * 60_000;
+  const hub = flag('publish') ? hubPublisherFromEnv(gameId) : null;
   const poller = createPoller(gameId, null, {
     fetchScoreboard,
     fetchPbp: fetchPlayByPlayConditional,
     fetchBox: fetchBoxscoreConditional,
-    saveState: async (d) =>
+    saveState: async (d) => {
       console.log(
         `[dry-run] ${new Date().toISOString()} seq ${d.seq} ${d.cadence.phase} next ${d.cadence.next_ms}ms ` +
           `Q${d.period} ${d.clock} ${d.away_score}-${d.home_score} observed ${d.observed_at ?? '—'} ` +
           `${JSON.stringify(d).length} bytes`
-      ),
+      );
+      if (hub) {
+        const ok = await hub.publish(d);
+        console.log(`[dry-run] publish ${ok ? 'ok' : 'failed'}`);
+      }
+    },
     saveMoment: async (d, reason) => console.log(`[dry-run] moment ${reason} seq ${d.seq}`),
     now: Date.now,
     log: (m) => console.log(`[dry-run] ${m}`),
@@ -45,6 +55,11 @@ async function main(): Promise<void> {
     const r = await poller.tick();
     if (r.final) break;
     await sleep(r.delayMs);
+  }
+  if (hub) {
+    console.log('[dry-run] flushing hub…');
+    await Promise.race([hub.flush(), sleep(5_000)]);
+    console.log('[dry-run] hub flushed');
   }
 }
 

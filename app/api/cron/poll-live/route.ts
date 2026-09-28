@@ -13,10 +13,23 @@ import { sql } from '@/src/lib/db';
 import { findLiveCandidates } from '../../../../scripts/lib/live-cycle';
 import { createPoller } from '../../../../scripts/lib/live-poller';
 import { nbaPollerDeps } from '../../../../scripts/lib/live-deps';
+import type { Publisher } from '../../../../scripts/lib/live-publish';
 import { loadLiveSeq } from '../../../../scripts/lib/live-store';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Best-effort: give a queued hub publish a chance to go out before returning.
+// Vercel can freeze/suspend the function once its response promise resolves,
+// so an unawaited publish() here (unlike the long-running game-night runner,
+// which flushes only when the whole process is about to exit) can be dropped
+// silently. Bounded so a stuck hub never holds the response open for long.
+async function flushHub(hub: Publisher | null): Promise<void> {
+  if (!hub) return;
+  await Promise.race([hub.flush(), sleep(5_000)]);
+}
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -42,27 +55,33 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  let hub: Publisher | null = null;
   try {
     const [candidate] = await findLiveCandidates(sql);
     if (!candidate) {
       return NextResponse.json({ state: 'NO_ACTIVE_GAME' }, { status: 200 });
     }
     const initialSeq = await loadLiveSeq(sql, candidate.game_id);
+    const deps = nbaPollerDeps(sql, candidate.game_id, candidate.nba_game_id);
+    hub = deps.hub;
     const poller = createPoller(
       candidate.nba_game_id,
       candidate.start_time_utc?.getTime() ?? null,
-      nbaPollerDeps(sql, candidate.game_id),
+      deps,
       initialSeq
     );
     const result = await poller.tick();
     if (result.status === 'error') {
       // A tick error is a real fetch/save failure, not "no game right now" —
       // surface it as a failure rather than a healthy 200.
+      await flushHub(hub);
       return NextResponse.json({ state: 'ERROR', message: 'Poll cycle failed' }, { status: 502 });
     }
     if (result.status !== 'ok' || !result.doc) {
+      await flushHub(hub);
       return NextResponse.json({ state: 'NO_ACTIVE_GAME' }, { status: 200 });
     }
+    await flushHub(hub);
     return NextResponse.json(
       { state: 'OK', snapshot_written: result.saved, status: result.doc.status, seq: result.doc.seq },
       { status: 200 }
@@ -70,6 +89,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   } catch (err) {
     // Log details server-side only; return a generic non-2xx so failures are visible.
     console.error('[cron/poll-live] Unhandled error:', err);
+    await flushHub(hub);
     return NextResponse.json({ state: 'ERROR', message: 'Poll cycle failed' }, { status: 500 });
   }
 }

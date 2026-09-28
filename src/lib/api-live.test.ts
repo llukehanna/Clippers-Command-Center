@@ -201,6 +201,7 @@ describe('GET /api/live', () => {
     expect(body.box_score).toBeNull();
     expect(body.insights).toEqual([]);
     expect(body.odds).toBeNull();
+    expect(body.upcoming).toBeNull();
   });
 
   it('returns state:"DATA_DELAYED" and meta.stale:true when latest snapshot has is_stale:true', async () => {
@@ -244,6 +245,18 @@ describe('GET /api/live', () => {
 
     expect(body.state).toBe('LIVE');
     expect(body.key_metrics).toHaveLength(4);
+  });
+
+  it('LIVE responses carry snapshot_captured_at, so /live can tell whether a pushed doc is newer', async () => {
+    const freshSnap = makeFreshSnapRow();
+    mockedSql
+      .mockResolvedValueOnce([freshSnap])
+      .mockResolvedValueOnce([gameRow]);
+
+    const body = await (await GET()).json();
+
+    expect(body.state).toBe('LIVE');
+    expect(body.snapshot_captured_at).toBe(freshSnap.captured_at);
   });
 
   it('key_metrics includes efg_pct, tov_margin, reb_margin, pace in that order', async () => {
@@ -449,7 +462,14 @@ describe('GET /api/live', () => {
       ...base,
       period: 0,
       game_status: 'scheduled',
-      payload: { ...base.payload, home_box: null, away_box: null, status: 'scheduled', other_games: [other] },
+      payload: {
+        ...base.payload,
+        home_box: null,
+        away_box: null,
+        status: 'scheduled',
+        other_games: [other],
+        nba_game_id: '0022600093',
+      },
     };
     mockedSql.mockResolvedValueOnce([snap]);
 
@@ -458,6 +478,20 @@ describe('GET /api/live', () => {
     expect(body.state).toBe('NO_ACTIVE_GAME');
     expect(body.game).toBeNull();
     expect(body.other_games).toEqual([other]);
+    expect(body.upcoming).toEqual({ nba_game_id: '0022600093' });
+  });
+
+  it('caches a pre-tip response with an upcoming game for only 2 s, so the tip refetch sees the game quickly', async () => {
+    const snap = {
+      ...makeFreshSnapRow(),
+      game_status: 'scheduled',
+      payload: { is_stale: false, stale_reason: null, home_box: null, away_box: null, recent_scoring: [], status: 'scheduled', nba_game_id: '0022600093' },
+    };
+    mockedSql.mockResolvedValueOnce([snap]);
+    const res = await GET();
+    expect((await res.json()).upcoming).toEqual({ nba_game_id: '0022600093' });
+    expect(res.headers.get('Vercel-CDN-Cache-Control')).toBe('max-age=2, stale-while-revalidate=10');
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
   });
 
   it('returns 500 without leaking internal error text', async () => {

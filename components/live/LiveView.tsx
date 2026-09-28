@@ -16,7 +16,10 @@ import { KeyMetrics } from './KeyMetrics'
 import { StickyScore } from './StickyScore'
 import { LiveTabTitle } from './LiveTabTitle'
 import { IdleState } from './IdleState'
+import { FeedSource } from './FeedSource'
 import { resolveLiveState } from '@/src/lib/ui/live'
+import { BACKUP_STALE_REASON } from '@/src/lib/live/espn-backup'
+import type { FeedSource as FeedSourceKind } from '@/src/lib/live/stream'
 import { formatMoneyline, formatSpread, noVigProbabilities } from '@/src/lib/ui/odds'
 import { ageLabel, parseTimestamp } from '@/src/lib/ui/time'
 import type { LivePayload } from '@/src/lib/ui/types'
@@ -36,7 +39,7 @@ function LoadingState() {
 }
 
 /** Everything under /live, driven by one /api/live payload. */
-export function LiveView({ data, error }: { data: LivePayload | undefined; error?: unknown }) {
+export function LiveView({ data, error, source }: { data: LivePayload | undefined; error?: unknown; source?: FeedSourceKind }) {
   const scoreRef = React.useRef<HTMLDivElement>(null)
   const now = useNow(5_000)
 
@@ -82,6 +85,9 @@ export function LiveView({ data, error }: { data: LivePayload | undefined; error
   const oppBox = data.box_score?.teams.find((t) => t.team_abbr !== lac.abbr)
   const insights = [...(data.insights ?? [])].sort((a, b) => b.importance - a.importance)
   const delayAge = delayed && now ? ageLabel(data.snapshot_captured_at, now) : null
+  const onBackup = data.meta.stale_reason === BACKUP_STALE_REASON
+  // The ESPN backup refreshes only the score and clock; stats stay as last seen.
+  const pausedNote = onBackup ? 'Paused — backup feed' : undefined
 
   return (
     <div className="page">
@@ -114,22 +120,30 @@ export function LiveView({ data, error }: { data: LivePayload | undefined; error
           )}
           {probs && <WinProbabilityBar lacProb={probs.a} oppAbbr={oppAbbr} />}
         </Scoreboard>
+        {source && (
+          <div className="mt-3 flex justify-end">
+            <FeedSource source={source} />
+          </div>
+        )}
         {delayed && (
           <p className="m-0 mt-3 flex items-center gap-2 font-mono text-[12px] text-warn" role="status">
-            Feed delayed{delayAge ? ` · last update ${delayAge} ago` : ''}. Showing the most recent snapshot.
+            {onBackup
+              ? "Our live feed is delayed. Score and clock are from ESPN's backup feed."
+              : `Feed delayed${delayAge ? ` · last update ${delayAge} ago` : ''}. Showing the most recent snapshot.`}
           </p>
         )}
       </section>
 
       {data.key_metrics?.length > 0 && (
         <section className="enter" style={{ ['--i' as string]: 1 }} aria-label="Key metrics">
+          {pausedNote && <p className="m-0 mb-2 text-right font-mono text-[11.5px] leading-none text-dim">{pausedNote}</p>}
           <KeyMetrics metrics={data.key_metrics} lacFt={lacBox?.totals.FT as string | undefined} oppFt={oppBox?.totals.FT as string | undefined} oppAbbr={oppAbbr} />
         </section>
       )}
 
       <section className="enter grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 2 }}>
         <div className="min-w-0">
-          <Eyebrow>Box score</Eyebrow>
+          <Eyebrow aside={pausedNote}>Box score</Eyebrow>
           {data.box_score ? (
             <BoxScore teams={data.box_score.teams} playerIdsAreNba />
           ) : (

@@ -52,3 +52,26 @@ jobs:
         run: npm test
         env:
           FIXTURE_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/fixture
+
+  live-hub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: workers/live-hub
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: workers/live-hub/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests (workerd)
+        run: npm test
