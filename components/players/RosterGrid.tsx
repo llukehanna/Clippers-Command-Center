@@ -22,11 +22,14 @@ export function RosterCards({ players }: { players: RosterPlayer[] }) {
       {players.map((p, i) => (
         <li key={p.player_id} className="enter" style={{ ['--i' as string]: Math.min(i, 12) }}>
           <Link href={`/players/${p.player_id}`} className="panel group block overflow-hidden transition-colors duration-300 hover:border-line-2">
-            <PlayerAvatar name={p.display_name} nbaPlayerId={p.nba_player_id} variant="card" className="border-b border-line" />
+            <PlayerAvatar name={p.display_name} nbaPlayerId={p.nba_person_id} variant="card" className="border-b border-line" />
             <div className="flex items-start justify-between gap-2 p-3.5">
               <div className="min-w-0">
                 <div className="truncate text-[14.5px] font-medium tracking-[-0.01em] group-hover:text-white">{p.display_name}</div>
-                <div className="truncate font-mono text-[11px] text-dim">{positionLabel(p.position)}</div>
+                <div className="truncate font-mono text-[11px] text-dim">
+                  {p.jersey ? `#${p.jersey} · ` : ''}
+                  {positionLabel(p.position)}
+                </div>
               </div>
               {p.is_traded && <Chip>Traded</Chip>}
             </div>
@@ -54,7 +57,7 @@ export function RosterTable({ players }: { players: RosterPlayer[] }) {
             <Tr key={p.player_id} href={`/players/${p.player_id}`}>
               <Td align="left">
                 <RowLink href={`/players/${p.player_id}`} className="flex items-center gap-3">
-                  <PlayerAvatar name={p.display_name} nbaPlayerId={p.nba_player_id} size={30} />
+                  <PlayerAvatar name={p.display_name} nbaPlayerId={p.nba_person_id} size={30} />
                   <span className="font-medium text-text">{p.display_name}</span>
                 </RowLink>
               </Td>

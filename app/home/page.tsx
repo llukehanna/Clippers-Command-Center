@@ -10,9 +10,13 @@ import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
 import { getJson } from '@/src/lib/ui/api'
 import { annotateSchedule } from '@/src/lib/ui/schedule'
-import { playedGames, seasonSummary, type HistoryGame } from '@/src/lib/ui/season'
+import { playedGames, regularSeason, seasonSummary, type HistoryGame } from '@/src/lib/ui/season'
+import { ageLabel } from '@/src/lib/ui/time'
 import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
 import type { HomePayload, Insight, PlayersPayload } from '@/src/lib/ui/types'
+
+// Live data on every request (loaders read the database directly).
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = { title: 'Home' }
 
@@ -37,7 +41,8 @@ export default async function HomePage() {
     ? await getJson<{ games: HistoryGame[] }>(`/api/history/games?season_id=${seasonId}&limit=200`)
     : null
   const played = playedGames(history?.games ?? [])
-  const summary = played.length ? seasonSummary(played) : null
+  const regular = regularSeason(played)
+  const summary = regular.length ? seasonSummary(regular) : null
   const gameIdByDate = new Map(played.map((g) => [`${g.game_date}|${g.opponent_abbr}`, g.game_id]))
 
   const next = home.next_game
@@ -58,7 +63,7 @@ export default async function HomePage() {
     .slice(0, 6)
     .map((p) => {
       const r = rosterById.get(String(p.player_id))
-      return { ...p, position: r?.position ?? null, nba_player_id: r?.nba_player_id ?? null }
+      return { ...p, position: r?.position ?? null, nba_person_id: p.nba_person_id ?? r?.nba_person_id ?? null }
     })
 
   const insights = (insightsRes?.insights ?? []).slice().sort((a, b) => b.importance - a.importance)
@@ -111,6 +116,9 @@ export default async function HomePage() {
           <Eyebrow aside="all times PT">Up next</Eyebrow>
           <UpNextList games={upcoming.slice(1, 5)} />
         </section>
+      )}
+      {home.meta?.last_sync_at && (
+        <p className="m-0 font-mono text-[11.5px] text-dim">Data synced {ageLabel(home.meta.last_sync_at)} ago</p>
       )}
     </div>
   )

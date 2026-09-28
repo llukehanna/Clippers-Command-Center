@@ -45,6 +45,8 @@ export interface TeamSnapshot {
 
 export interface PlayerTrend {
   player_id: number | string
+  /** Real NBA person id (headshots). nba_player_id is a legacy provider id. */
+  nba_person_id?: number | string | null
   name: string
   window_games: number
   minutes_avg: number | null
@@ -70,7 +72,7 @@ export interface Insight {
 }
 
 export interface HomePayload {
-  meta: MetaEnvelope
+  meta: MetaEnvelope & { last_sync_at?: string | null }
   team_snapshot: TeamSnapshot | null
   next_game: ScheduleGame | null
   upcoming_schedule: ScheduleGame[]
@@ -87,6 +89,9 @@ export interface SchedulePayload {
 export interface RosterPlayer {
   player_id: string
   nba_player_id: string | null
+  /** Real NBA person id (headshots). */
+  nba_person_id?: number | string | null
+  jersey?: string | null
   display_name: string
   position: string | null
   is_active: boolean
@@ -103,6 +108,7 @@ export type BoxValue = string | number | null
 
 export interface BoxScorePlayer {
   player_id: string
+  nba_person_id?: number | string | null
   name: string
   starter?: boolean
   MIN: BoxValue
@@ -116,7 +122,7 @@ export interface BoxScorePlayer {
   '3PT': BoxValue
   FT: BoxValue
   '+/-': BoxValue
-  [key: string]: BoxValue | boolean | undefined
+  [key: string]: BoxValue | boolean | undefined | number | string | null
 }
 
 export interface BoxScoreTeam {
@@ -142,8 +148,16 @@ export interface LiveGame {
   status: string
   period: number | null
   clock: string | null
+  status_text?: string | null
+  periods?: LinePeriod[]
   home: LiveSide
   away: LiveSide
+}
+
+export interface LinePeriod {
+  period: number
+  home: number
+  away: number
 }
 
 export interface KeyMetric {
@@ -186,6 +200,7 @@ export interface ChartPoint {
 export interface PlayerGameLogRow {
   game_id: string
   game_date: string
+  game_type?: 'regular' | 'play_in' | 'playoffs'
   opp: string
   home_away: HomeAway
   MIN: BoxValue
@@ -233,6 +248,7 @@ export interface HistoryGameDetailPayload {
     status: string
     home_score: number | null
     away_score: number | null
+    periods?: LinePeriod[]
   }
   box_score: { columns: string[]; teams: BoxScoreTeam[]; available: boolean }
   insights: Array<Omit<Insight, 'category'> & { category?: string }>

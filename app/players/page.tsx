@@ -7,6 +7,9 @@ import { getJson } from '@/src/lib/ui/api'
 import { formatSeasonLabel } from '@/src/lib/home-utils'
 import type { PlayersPayload } from '@/src/lib/ui/types'
 
+// Live data on every request (loaders read the database directly).
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = { title: 'Players' }
 
 type View = 'cards' | 'table'

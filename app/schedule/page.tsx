@@ -8,6 +8,9 @@ import { getJson } from '@/src/lib/ui/api'
 import { annotateSchedule, groupByMonth } from '@/src/lib/ui/schedule'
 import type { SchedulePayload } from '@/src/lib/ui/types'
 
+// Live data on every request (loaders read the database directly).
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = { title: 'Schedule' }
 
 export default async function SchedulePage() {

@@ -8,6 +8,8 @@ export interface HistoryGame {
   result: 'W' | 'L' | null
   final_score: { team: number; opp: number } | null
   status: string
+  game_type?: 'regular' | 'play_in' | 'playoffs'
+  overtime_periods?: number | null
 }
 
 export interface PlayedGame extends HistoryGame {
@@ -26,9 +28,18 @@ export function playedGames(games: HistoryGame[]): PlayedGame[] {
     .map((g) => ({
       ...g,
       margin: g.final_score.team - g.final_score.opp,
-      ot: /OT/i.test(g.status ?? ''),
+      ot: g.overtime_periods != null ? g.overtime_periods > 0 : /OT/i.test(g.status ?? ''),
     }))
     .sort(byDate)
+}
+
+/** Regular-season games only (play-in and playoff games are excluded from records). */
+export function regularSeason<T extends Pick<HistoryGame, 'game_type'>>(games: T[]): T[] {
+  return games.filter((g) => !g.game_type || g.game_type === 'regular')
+}
+
+export function gameTypeLabel(t: HistoryGame['game_type']): string | null {
+  return t === 'playoffs' ? 'Playoffs' : t === 'play_in' ? 'Play-In' : null
 }
 
 export function upcomingGames(games: HistoryGame[]): HistoryGame[] {

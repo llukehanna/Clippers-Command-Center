@@ -32,12 +32,12 @@ export function SeasonStrip({ games, streaks }: { games: PlayedGame[]; streaks: 
             {games.map((g) => {
               const h = Math.max(6, (Math.abs(g.margin) / max) * 50)
               const win = g.result === 'W'
-              const label = `${win ? 'W' : 'L'} ${g.final_score.team}–${g.final_score.opp} ${g.home_away === 'home' ? 'vs' : '@'} ${g.opponent_abbr} · ${formatDayShort(g.game_date)}${g.ot ? ' · OT' : ''}`
+              const label = `${win ? 'W' : 'L'} ${g.final_score.team}–${g.final_score.opp} ${g.home_away === 'home' ? 'vs' : '@'} ${g.opponent_abbr} · ${formatDayShort(g.game_date)}${g.ot ? ' · OT' : ''}${g.game_type === 'play_in' ? ' · Play-In' : g.game_type === 'playoffs' ? ' · Playoffs' : ''}`
               return (
                 <li key={g.game_id} className="relative flex-1">
                   <Link href={`/history/${g.game_id}`} title={label} aria-label={label} className="group absolute inset-0">
                     <span
-                      className={`absolute left-0 right-0 rounded-[2px] transition-[filter,opacity] duration-200 group-hover:brightness-150 ${win ? 'bottom-1/2 bg-pos/80' : 'top-1/2 bg-neg/80'}`}
+                      className={`absolute left-0 right-0 rounded-[2px] transition-[filter,opacity] duration-200 group-hover:brightness-150 ${win ? 'bottom-1/2 bg-pos/80' : 'top-1/2 bg-neg/80'} ${g.game_type && g.game_type !== 'regular' ? 'outline outline-1 outline-offset-1 outline-pacific' : ''}`}
                       style={{ height: `${h}%` }}
                     />
                   </Link>

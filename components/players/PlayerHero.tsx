@@ -16,7 +16,7 @@ interface Averages {
 interface PlayerHeroProps {
   name: string
   position: string | null
-  nbaPlayerId: string | null
+  nbaPlayerId: string | number | null
   seasonLabel: string
   gamesPlayed: number
   season: Averages | null

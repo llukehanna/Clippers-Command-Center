@@ -36,6 +36,11 @@ export function liveFixture(now = new Date()): LivePayload {
       status: 'in_progress',
       period: 3,
       clock: 'PT07M42.00S',
+      periods: [
+        { period: 1, home: 28, away: 24 },
+        { period: 2, home: 31, away: 30 },
+        { period: 3, home: 25, away: 24 },
+      ],
       home: { team_id: '13', abbreviation: 'LAC', name: 'Clippers', score: 84, is_home: true },
       away: { team_id: '8', abbreviation: 'DEN', name: 'Nuggets', score: 78, is_home: false },
     },

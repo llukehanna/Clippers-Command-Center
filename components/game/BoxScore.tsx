@@ -102,7 +102,7 @@ export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, c
           {players.map((p) => {
             const name = (
               <span className="flex items-center gap-2.5">
-                <PlayerAvatar name={p.name} nbaPlayerId={playerIdsAreNba ? p.player_id : null} size={26} />
+                <PlayerAvatar name={p.name} nbaPlayerId={p.nba_person_id ?? (playerIdsAreNba ? p.player_id : null)} size={26} />
                 <span className="font-medium text-text">
                   <span className="sm:hidden">{shortName(p.name)}</span>
                   <span className="hidden sm:inline">{p.name}</span>
