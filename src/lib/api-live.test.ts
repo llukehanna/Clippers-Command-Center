@@ -407,6 +407,8 @@ describe('GET /api/live', () => {
     // The missed-game query is the second call, and targets the 10-minute grace window.
     const queryText = (mockedSql.mock.calls[1][0] as string[]).join('?');
     expect(queryText).toMatch(/interval '10 minutes'/);
+    // A game whose live_state already says final isn't "missed", whatever the games row lags at.
+    expect(queryText).toMatch(/NOT EXISTS \(SELECT 1 FROM live_state ls WHERE ls\.game_id = g\.game_id AND ls\.state->>'status' = 'final'\)/);
   });
 
   it('is LIVE while the state is younger than max(30 s, cadence + 20 s)', async () => {
