@@ -60,28 +60,29 @@ async function main() {
     is_active: s.isActive, team_id: s.teamId,
   }));
 
+  let start: number | null = null;
   await sql.begin(async (txRaw) => {
     const tx = txRaw as unknown as typeof sql;
     await tx`DELETE FROM rb_game_highs`;
     for (const s of HIGH_SPECS) await tx.unsafe(buildHighsSql(s), highsParams(s, lac.team_id, relevantFrom));
     await tx`DELETE FROM rb_streaks`;
     for (let i = 0; i < streakRows.length; i += 1000) await tx`INSERT INTO rb_streaks ${tx(streakRows.slice(i, i + 1000))}`;
-  });
 
-  const coverage = await sql<SeasonCoverage[]>`
-    SELECT g.season_id::int AS season_id, COUNT(*)::int AS games_with_box
-    FROM games g
-    WHERE g.status = 'final' AND g.season_id IS NOT NULL AND ${sql.unsafe(REGULAR_SEASON)}
-      AND EXISTS (SELECT 1 FROM game_player_box_scores pb WHERE pb.game_id = g.game_id)
-    GROUP BY g.season_id`;
-  const [kv] = await sql<{ value: number }[]>`SELECT value::int AS value FROM app_kv WHERE key = 'history:backfilled_through'`;
-  const start = resolveRecordsStart(coverage, kv?.value ?? null);
-  if (start !== null) {
-    await sql`
-      INSERT INTO app_kv (key, value, updated_at)
-      VALUES ('insights.records_start', ${sql.json({ season_id: start, label: seasonLabel(start) })}, now())
-      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
-  }
+    const coverage = await tx<SeasonCoverage[]>`
+      SELECT g.season_id::int AS season_id, COUNT(*)::int AS games_with_box
+      FROM games g
+      WHERE g.status = 'final' AND g.season_id IS NOT NULL AND ${tx.unsafe(REGULAR_SEASON)}
+        AND EXISTS (SELECT 1 FROM game_player_box_scores pb WHERE pb.game_id = g.game_id)
+      GROUP BY g.season_id`;
+    const [kv] = await tx<{ value: number }[]>`SELECT value::int AS value FROM app_kv WHERE key = 'history:backfilled_through'`;
+    start = resolveRecordsStart(coverage, kv?.value ?? null);
+    if (start !== null) {
+      await tx`
+        INSERT INTO app_kv (key, value, updated_at)
+        VALUES ('insights.records_start', ${tx.json({ season_id: start, label: seasonLabel(start) })}, now())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
+    }
+  });
 
   const [counts] = await sql<{ highs: number }[]>`SELECT COUNT(*)::int AS highs FROM rb_game_highs`;
   log(`${counts.highs} game highs, ${streakRows.length} streaks; records start ${start === null ? 'unknown' : seasonLabel(start)}`);
