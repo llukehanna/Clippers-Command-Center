@@ -19,6 +19,7 @@ import { IdleState } from './IdleState'
 import { FeedSource } from './FeedSource'
 import { resolveLiveState } from '@/src/lib/ui/live'
 import { BACKUP_STALE_REASON } from '@/src/lib/live/espn-backup'
+import { RUNNER_NOT_STARTED_REASON } from '@/src/lib/live/payload'
 import type { FeedSource as FeedSourceKind } from '@/src/lib/live/stream'
 import { formatMoneyline, formatSpread, noVigProbabilities } from '@/src/lib/ui/odds'
 import { ageLabel, parseTimestamp } from '@/src/lib/ui/time'
@@ -86,6 +87,7 @@ export function LiveView({ data, error, source }: { data: LivePayload | undefine
   const insights = [...(data.insights ?? [])].sort((a, b) => b.importance - a.importance)
   const delayAge = delayed && now ? ageLabel(data.snapshot_captured_at, now) : null
   const onBackup = data.meta.stale_reason === BACKUP_STALE_REASON
+  const notStarted = data.meta.stale_reason === RUNNER_NOT_STARTED_REASON
   // The ESPN backup refreshes only the score and clock; stats stay as last seen.
   const pausedNote = onBackup ? 'Paused — backup feed' : undefined
 
@@ -129,7 +131,9 @@ export function LiveView({ data, error, source }: { data: LivePayload | undefine
           <p className="m-0 mt-3 flex items-center gap-2 font-mono text-[12px] text-warn" role="status">
             {onBackup
               ? "Our live feed is delayed. Score and clock are from ESPN's backup feed."
-              : `Feed delayed${delayAge ? ` · last update ${delayAge} ago` : ''}. Showing the most recent snapshot.`}
+              : notStarted
+                ? "Our live feed hasn't started. Checking ESPN's scoreboard for the score…"
+                : `Feed delayed${delayAge ? ` · last update ${delayAge} ago` : ''}. Showing the most recent snapshot.`}
           </p>
         )}
       </section>
