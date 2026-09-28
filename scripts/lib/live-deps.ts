@@ -11,8 +11,10 @@ import {
 } from './nba-live-client';
 import type { PollerDeps } from './live-poller';
 import { saveLiveMoment, saveLiveState } from './live-store';
+import { hubPublisherFromEnv, saveThenPublish } from './live-publish';
 
-export function nbaPollerDeps(sql: Sql, gameDbId: string): PollerDeps {
+export function nbaPollerDeps(sql: Sql, gameDbId: string, nbaGameId: string): PollerDeps {
+  const hub = hubPublisherFromEnv(nbaGameId);
   return {
     fetchScoreboard,
     fetchPbp: fetchPlayByPlayConditional,
@@ -28,9 +30,7 @@ export function nbaPollerDeps(sql: Sql, gameDbId: string): PollerDeps {
         throw err;
       }
     },
-    saveState: async (doc) => {
-      await saveLiveState(sql, gameDbId, doc);
-    },
+    saveState: (doc) => saveThenPublish(doc, (d) => saveLiveState(sql, gameDbId, d), hub),
     saveMoment: (doc, reason) => saveLiveMoment(sql, gameDbId, doc, reason),
     now: Date.now,
     log: (msg) => console.log(`[live] ${msg}`),
