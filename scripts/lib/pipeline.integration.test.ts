@@ -114,6 +114,27 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     expect(await pruneMedia()).toBe(1);
   });
 
+  it('stores only http(s) media URLs: bad item URLs are dropped, bad thumbnail/embed URLs nulled', async () => {
+    const { upsertMediaItems } = await import('./media/store');
+    const base = { kind: 'tweet' as const, source: 'r/LAClippers', author: null, engagement: null, comments: null, priority: 1, publishedAt: new Date().toISOString() };
+    const written = await upsertMediaItems([
+      { ...base, url: 'javascript:alert(1)', dedupKey: 'urltest:bad', title: 'Bad', thumbnailUrl: null, embedUrl: null },
+      { ...base, url: 'https://www.reddit.com/r/LAClippers/comments/ok/', dedupKey: 'urltest:ok', title: 'OK',
+        thumbnailUrl: 'data:image/png;base64,AAAA', embedUrl: 'javascript:void(0)' },
+      { ...base, url: 'https://www.reddit.com/r/LAClippers/comments/good/', dedupKey: 'urltest:good', title: 'Good',
+        thumbnailUrl: 'https://preview.redd.it/p.jpg', embedUrl: 'https://twitter.com/LAClippers/status/1' },
+    ]);
+    expect(written).toBe(2);
+    const rows = await sql<{ dedup_key: string; thumbnail_url: string | null; embed_url: string | null }[]>`
+      SELECT dedup_key, thumbnail_url, embed_url FROM media_items WHERE dedup_key LIKE 'urltest:%' ORDER BY dedup_key`;
+    expect(rows).toEqual([
+      { dedup_key: 'urltest:good', thumbnail_url: 'https://preview.redd.it/p.jpg', embed_url: 'https://twitter.com/LAClippers/status/1' },
+      { dedup_key: 'urltest:ok', thumbnail_url: null, embed_url: null },
+    ]);
+    expect(await upsertMediaItems([{ ...base, url: 'ftp://x', dedupKey: 'urltest:ftp', title: 'FTP', thumbnailUrl: null, embedUrl: null }])).toBe(0);
+    await sql`DELETE FROM media_items WHERE dedup_key LIKE 'urltest:%'`;
+  });
+
   async function activeInsights() {
     return sql<{ category: string; scope: string; headline: string; importance: number }[]>`
       SELECT category, scope, headline, importance FROM insights WHERE is_active ORDER BY importance DESC

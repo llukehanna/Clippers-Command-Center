@@ -25,7 +25,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          for wf in keepalive.yml game-night.yml post-game.yml sync-odds.yml sync-schedule.yml; do
+          for wf in keepalive.yml game-night.yml post-game.yml sync-odds.yml sync-schedule.yml sync-media.yml; do
             gh api -X PUT "repos/${REPO}/actions/workflows/${wf}/enable"
             echo "enabled ${wf}"
           done

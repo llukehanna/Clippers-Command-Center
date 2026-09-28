@@ -11,7 +11,7 @@ import { sql } from './lib/db.js';
 import { FEEDS, parseFeed } from './lib/media/rss.js';
 import { fetchRedditHot, redditToItems } from './lib/media/reddit.js';
 import { blueskyToItems, fetchBlueskyTop } from './lib/media/bluesky.js';
-import { dedupeItems } from './lib/media/normalize.js';
+import { dedupeItems, inRetention, MEDIA_RETENTION_DAYS } from './lib/media/normalize.js';
 import { pruneMedia, upsertMediaItems } from './lib/media/store.js';
 import type { MediaItemInput } from './lib/media/types.js';
 
@@ -57,7 +57,11 @@ async function main() {
     log('Bluesky: skipped (BSKY_HANDLE / BSKY_APP_PASSWORD not set)');
   }
 
-  const items = dedupeItems(collected);
+  // Drop stories older than the retention window (pruneMedia would delete
+  // them right after) and clamp future timestamps to now, then de-duplicate.
+  const kept = inRetention(collected, new Date());
+  if (kept.length < collected.length) log(`dropped ${collected.length - kept.length} item(s) older than ${MEDIA_RETENTION_DAYS} days`);
+  const items = dedupeItems(kept);
   log(`${items.length} unique item(s) from ${okSources} source(s)`);
   if (okSources === 0) throw new Error('every source failed');
 

@@ -15,10 +15,16 @@ export function ArticleCard({ item, compact = false }: { item: MediaItem; compac
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-dim">
           <span className="truncate">{item.source}</span>
-          {age && <span aria-label={`${age} ago`}>· {age}</span>}
+          {age && (
+            <span>
+              · {age}
+              <span className="sr-only"> ago</span>
+            </span>
+          )}
         </div>
         <p className={cn('m-0 leading-snug text-text', compact ? 'text-[13.5px]' : 'text-[15px] font-medium')}>{item.title}</p>
         {!compact && item.author && <p className="m-0 mt-1 text-[12.5px] text-mute">{item.author}</p>}
+        <span className="sr-only"> (opens in new tab)</span>
       </div>
       {!compact && item.thumbnail_url && (
         // eslint-disable-next-line @next/next/no-img-element -- arbitrary publisher hosts; no image proxy

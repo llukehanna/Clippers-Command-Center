@@ -9,14 +9,18 @@ export interface FeedConfig {
   url: string;
   /** General-NBA feeds: keep only items that mention the Clippers. */
   requireMention: boolean;
-  /** Google News: title is "Headline - Publisher"; use the publisher as the source. */
+  /**
+   * Google News: title is "Headline - Publisher". The last " - …" segment is
+   * always stripped; the source is <source> when present, else that suffix.
+   */
   splitPublisher: boolean;
   priority: number;
 }
 
 export const FEEDS: FeedConfig[] = [
   { source: 'ESPN', url: 'https://www.espn.com/espn/rss/nba/news', requireMention: true, splitPublisher: false, priority: 1 },
-  { source: 'LA Times', url: 'https://www.latimes.com/sports/clippers/rss2.0.xml', requireMention: false, splitPublisher: false, priority: 1 },
+  // The LA Times "Clippers" feed also carries general-sports stories.
+  { source: 'LA Times', url: 'https://www.latimes.com/sports/clippers/rss2.0.xml', requireMention: true, splitPublisher: false, priority: 1 },
   // Clips Nation ('https://www.clipsnation.com/rss/index.xml') and NBA.com
   // ('https://www.nba.com/clippers/rss.xml') were dropped 2026-09-27: both
   // now 404 (Clips Nation's own <link rel="alternate"> still advertises the
@@ -29,7 +33,8 @@ export const FEEDS: FeedConfig[] = [
   },
 ];
 
-const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', textNodeName: '#text', htmlEntities: true });
+// parseTagValue: false keeps every value a string (a title "007" stays "007").
+const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', textNodeName: '#text', htmlEntities: true, parseTagValue: false });
 const MENTION = /\bclippers\b/i;
 
 type Node = Record<string, unknown>;
@@ -50,7 +55,7 @@ interface RawEntry { title: string; link: string; date: string; description: str
 
 function rssEntries(channel: Node | undefined): RawEntry[] {
   return list(channel?.item as Node | Node[]).map((i) => ({
-    title: text(i.title),
+    title: stripHtml(text(i.title)),
     link: text(i.link),
     date: text(i.pubDate) || text(i['dc:date']),
     description: stripHtml(text(i.description)),
@@ -68,7 +73,7 @@ function atomEntries(feed: Node | undefined): RawEntry[] {
     const links = list(e.link as Node | Node[]);
     const alt = links.find((l) => !l['@_rel'] || l['@_rel'] === 'alternate') ?? links[0];
     return {
-      title: text(e.title),
+      title: stripHtml(text(e.title)),
       link: typeof alt?.['@_href'] === 'string' ? (alt['@_href'] as string) : '',
       date: text(e.published) || text(e.updated),
       description: stripHtml(text(e.summary) || text(e.content)),
@@ -96,13 +101,19 @@ export function parseFeed(xml: string, feed: FeedConfig): MediaItemInput[] {
 
     let title = e.title;
     let source = feed.source;
-    if (feed.splitPublisher && e.publisher) {
-      source = e.publisher;
-      const suffix = ` - ${e.publisher}`;
-      if (title.endsWith(suffix)) title = title.slice(0, -suffix.length).trim();
+    if (feed.splitPublisher) {
+      const cut = title.lastIndexOf(' - ');
+      let suffix = '';
+      if (cut > 0) {
+        suffix = title.slice(cut + 3).trim();
+        title = title.slice(0, cut).trim();
+      }
+      source = e.publisher || suffix || feed.source;
     }
+    // A title with no Latin characters has an empty key; fall back to the URL.
+    const key = titleKey(title);
     items.push({
-      kind: 'article', source, url: e.link, dedupKey: `article:${titleKey(title)}`, title,
+      kind: 'article', source, url: e.link, dedupKey: key ? `article:${key}` : `article:url:${e.link}`, title,
       author: e.author, publishedAt: published.toISOString(), engagement: null, comments: null,
       thumbnailUrl: e.thumb, embedUrl: null, priority: feed.priority,
     });

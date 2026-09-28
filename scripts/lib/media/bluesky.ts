@@ -49,7 +49,8 @@ export async function fetchBlueskyTop(creds: BlueskyCredentials, now: Date = new
     body: JSON.stringify({ identifier: creds.handle, password: creds.appPassword }),
     signal: AbortSignal.timeout(15_000),
   });
-  if (!sessionRes.ok) throw new Error(`bluesky session HTTP ${sessionRes.status}`);
+  // Never include the credentials themselves in the message.
+  if (!sessionRes.ok) throw new Error(`bluesky session HTTP ${sessionRes.status} — check BSKY_HANDLE / BSKY_APP_PASSWORD`);
   const { accessJwt } = (await sessionRes.json()) as { accessJwt?: string };
   if (!accessJwt) throw new Error('bluesky session missing token');
 

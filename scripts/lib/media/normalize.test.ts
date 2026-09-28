@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dedupeItems, titleKey } from './normalize';
+import { dedupeItems, inRetention, isHttpUrl, MEDIA_RETENTION_DAYS, titleKey } from './normalize';
 import type { MediaItemInput } from './types';
 
 const item = (p: Partial<MediaItemInput>): MediaItemInput => ({
@@ -26,5 +26,46 @@ describe('dedupeItems', () => {
   it('keeps the first seen on equal priority', () => {
     const out = dedupeItems([item({ dedupKey: 'a', source: 'ESPN' }), item({ dedupKey: 'a', source: 'LA Times' })]);
     expect(out[0].source).toBe('ESPN');
+  });
+});
+
+describe('inRetention', () => {
+  const now = new Date('2026-10-20T12:00:00.000Z');
+  const daysAgo = (d: number) => new Date(now.getTime() - d * 86_400_000).toISOString();
+  it('drops items published before the retention window', () => {
+    const out = inRetention([
+      item({ dedupKey: 'fresh', publishedAt: daysAgo(1) }),
+      item({ dedupKey: 'edge', publishedAt: daysAgo(MEDIA_RETENTION_DAYS) }),
+      item({ dedupKey: 'stale', publishedAt: daysAgo(MEDIA_RETENTION_DAYS + 0.01) }),
+    ], now);
+    expect(out.map((i) => i.dedupKey)).toEqual(['fresh', 'edge']);
+  });
+  it('clamps future timestamps to now and leaves others untouched', () => {
+    const out = inRetention([
+      item({ dedupKey: 'future', publishedAt: '2026-10-21T00:00:00.000Z' }),
+      item({ dedupKey: 'past', publishedAt: daysAgo(2) }),
+    ], now);
+    expect(out.map((i) => [i.dedupKey, i.publishedAt])).toEqual([
+      ['future', '2026-10-20T12:00:00.000Z'],
+      ['past', daysAgo(2)],
+    ]);
+  });
+  it('is a 7-day window', () => {
+    expect(MEDIA_RETENTION_DAYS).toBe(7);
+  });
+});
+
+describe('isHttpUrl', () => {
+  it('accepts http(s) URLs only', () => {
+    expect(isHttpUrl('https://www.espn.com/nba/story/_/id/1')).toBe(true);
+    expect(isHttpUrl('http://example.com')).toBe(true);
+    expect(isHttpUrl('HTTPS://EXAMPLE.COM/x')).toBe(true);
+    expect(isHttpUrl('javascript:alert(1)')).toBe(false);
+    expect(isHttpUrl('data:text/html,<b>x</b>')).toBe(false);
+    expect(isHttpUrl('ftp://example.com/file')).toBe(false);
+    expect(isHttpUrl('/relative/path')).toBe(false);
+    expect(isHttpUrl('not a url')).toBe(false);
+    expect(isHttpUrl('')).toBe(false);
+    expect(isHttpUrl(null)).toBe(false);
   });
 });

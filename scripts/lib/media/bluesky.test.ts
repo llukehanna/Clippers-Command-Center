@@ -56,7 +56,11 @@ describe('fetchBlueskyTop', () => {
     const fetchMock = vi.fn(async () => new Response('nope', { status: 401 }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(fetchBlueskyTop({ handle: 'clippers.bsky.social', appPassword: 'bad' })).rejects.toThrow('bluesky session HTTP 401');
+    const err = await fetchBlueskyTop({ handle: 'clippers.bsky.social', appPassword: 'bad-secret' }).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toBe('bluesky session HTTP 401 — check BSKY_HANDLE / BSKY_APP_PASSWORD');
+    expect((err as Error).message).not.toContain('clippers.bsky.social');
+    expect((err as Error).message).not.toContain('bad-secret');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

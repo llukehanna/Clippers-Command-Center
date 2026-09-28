@@ -155,7 +155,7 @@ CREATE INDEX idx_media_kind_published ON media_items (kind, published_at DESC);
 - **`npm run sync-media`**, GitHub Actions cron every 15 minutes (repo is public → unlimited minutes).
 - **Articles:** RSS from ESPN (Clippers), LA Times (Clippers), Clips Nation, NBA.com (Clippers), Google News query `"LA Clippers"`. Dedup by normalized title (lowercase, strip source suffix and punctuation); first-seen source wins, Google News items lose ties to direct sources.
 - **Reddit:** r/LAClippers `hot` via a free Reddit "script" app (OAuth client credentials; env `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT` as Actions secrets). Stickied posts and game threads excluded. Posts whose URL is an `x.com`/`twitter.com` status become `kind='tweet'` with `embed_url` set; others stay `kind='reddit'`.
-- **Bluesky:** `app.bsky.feed.searchPosts?q=clippers&sort=top` (public AppView, no auth), last 24 h, min 10 likes.
+- **Bluesky:** `app.bsky.feed.searchPosts?q=clippers&sort=top` via an authenticated session (`com.atproto.server.createSession` with a free app password; env `BSKY_HANDLE`, `BSKY_APP_PASSWORD` as Actions secrets; skipped when unset). The public AppView returns 403 for unauthenticated search. Last 24 h, min 10 likes.
 - **Retention:** items older than 7 days deleted each run.
 - **First task verifies** Reddit and Bluesky from Actions (both returned 403 from the dev sandbox, which blocks outbound requests). If either fails for real, ship without it and flag.
 
@@ -450,4 +450,5 @@ Target: phases 1–5 by the 2026-27 opener (~Oct 20); live within the first two 
 
 - Run `backfill-history` and `backfill-pbp-history` locally (long-running, resumable).
 - Create a Reddit "script" app and add `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT` as GitHub Actions secrets.
+- Create a free Bluesky app password (Settings → App passwords) and add `BSKY_HANDLE` and `BSKY_APP_PASSWORD` as GitHub Actions secrets.
 - Confirm the Neon plan's storage limit before the backfill passes 2010-11.
