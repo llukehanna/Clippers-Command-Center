@@ -36,6 +36,7 @@ export function staleThresholdMs(cadence?: { next_ms: number } | null): number {
 }
 
 const IDLE_POLL_MS = 300_000
+const PRETIP_POLL_MS = 30_000
 const FINAL_POLL_MS = 60_000
 const DEFAULT_LIVE_POLL_MS = 12_000
 const MIN_LIVE_POLL_MS = 4_000   // the CDN caches /api/live for 2 s; faster polls only re-read the cache
@@ -58,14 +59,20 @@ export type LiveFollowMode = 'cadence' | 'chip'
  * - 'chip' (the TopBar — mounted on every page): a flat 30 s while a game is
  *   LIVE or DATA_DELAYED, never the fast cadence, so the chip doesn't
  *   multiply the site's request volume by every page view.
- * NO_ACTIVE_GAME (5 min) and final (60 s) are the same in both modes.
+ * NO_ACTIVE_GAME: 30 s while a game is about to tip (`upcoming`), else 5 min.
+ * final (60 s) is the same in both modes.
  */
 export function livePollInterval(
-  d?: { state: string; game?: { status?: string } | null; cadence?: { next_ms: number } | null },
+  d?: {
+    state: string
+    game?: { status?: string } | null
+    cadence?: { next_ms: number } | null
+    upcoming?: { nba_game_id: string } | null
+  },
   mode: LiveFollowMode = 'cadence'
 ): number {
   if (!d) return DEFAULT_LIVE_POLL_MS
-  if (d.state === 'NO_ACTIVE_GAME') return IDLE_POLL_MS
+  if (d.state === 'NO_ACTIVE_GAME') return d.upcoming ? PRETIP_POLL_MS : IDLE_POLL_MS
   if (d.game?.status === 'final') return FINAL_POLL_MS
 
   if (mode === 'chip') {

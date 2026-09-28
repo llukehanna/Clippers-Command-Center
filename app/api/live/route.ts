@@ -9,27 +9,15 @@ import { NextResponse } from 'next/server';
 import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { getLatestOdds } from '@/src/lib/odds';
-import { generateLiveInsights } from '@/src/lib/insights/live';
+import { computeKeyMetrics, buildBoxScore, liveInsights } from '@/src/lib/live/payload';
 import { staleThresholdMs } from '@/src/lib/live-utils';
-import type { BoxscoreTeam, BoxscorePlayer, TeamStatistics } from '@/src/lib/types/live';
+import type { LiveStateDoc } from '@/src/lib/types/live-state';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface SnapshotPayload {
-  is_stale: boolean;
-  stale_reason: string | null;
-  home_box: BoxscoreTeam | null;
-  away_box: BoxscoreTeam | null;
-  recent_scoring: Array<{ team_id: string; team_tricode?: string; points: number; event_time_seconds: number }>;
-  // Written by the game-night runner (scripts/lib/live-cycle.ts); absent on older snapshots.
-  status?: 'scheduled' | 'in_progress' | 'final';
-  status_text?: string;
-  periods?: Array<{ period: number; home: number; away: number }>;
-  other_games?: unknown[];
-  // The live_state.state document is a superset of this payload — cadence is
-  // written by the game-night runner and absent on older snapshots.
-  cadence?: { phase: string; next_ms: number };
-}
+/** The live_state.state document (older rows may lack Live v2 fields). */
+type SnapshotPayload = Pick<LiveStateDoc, 'is_stale' | 'stale_reason' | 'home_box' | 'away_box' | 'recent_scoring'> &
+  Partial<LiveStateDoc>;
 
 interface SnapRow {
   snapshot_id: number;
@@ -60,203 +48,6 @@ interface GameRow {
   away_team_id: string;
   away_abbr: string;
   away_name: string;
-}
-
-// ── Key metrics computation ───────────────────────────────────────────────────
-
-/**
- * Compute eFG% = (FGM + 0.5 * FG3M) / FGA
- * Returns 0 if FGA is 0 (avoid division by zero).
- */
-function computeEfg(stats: TeamStatistics): number {
-  const fga = stats.fieldGoalsAttempted;
-  if (fga === 0) return 0;
-  return (stats.fieldGoalsMade + 0.5 * stats.threePointersMade) / fga;
-}
-
-/**
- * Estimate possessions: FGA - OREB + TOV + 0.44 * FTA
- */
-function estimatePossessions(stats: TeamStatistics): number {
-  return (
-    stats.fieldGoalsAttempted -
-    stats.reboundsOffensive +
-    stats.turnovers +
-    0.44 * stats.freeThrowsAttempted
-  );
-}
-
-/**
- * Parse ISO 8601 minutes string (e.g. "PT25M01.00S") to decimal minutes.
- * Falls back to 0 on parse failure.
- */
-function parseMinutes(minutesStr: string): number {
-  const match = minutesStr.match(/PT(?:(\d+)M)?(?:([\d.]+)S)?/);
-  if (!match) return 0;
-  const mins = parseFloat(match[1] ?? '0');
-  const secs = parseFloat(match[2] ?? '0');
-  return mins + secs / 60;
-}
-
-/**
- * Compute game minutes played from all player minutes in a box score.
- * Uses the team with more player minutes (to handle partial data).
- * Falls back to 48 minutes if unable to parse.
- */
-function computeGameMinutes(lacBox: BoxscoreTeam, oppBox: BoxscoreTeam): number {
-  const sumMinutes = (box: BoxscoreTeam): number =>
-    box.players
-      .filter((p) => p.played === '1')
-      .reduce((acc, p) => acc + parseMinutes(p.statistics.minutes), 0);
-
-  const lacMins = sumMinutes(lacBox);
-  const oppMins = sumMinutes(oppBox);
-
-  // Convert to per-team game minutes (5 players on court at once → divide by 5)
-  const gameMinutes = Math.max(lacMins, oppMins) / 5;
-  return gameMinutes > 0 ? gameMinutes : 48;
-}
-
-interface KeyMetric {
-  key: string;
-  label: string;
-  value: number | null;
-  team: string;
-  delta_vs_opp: number | null;
-}
-
-/**
- * Compute the 4 key metrics from box score data.
- * lacBox is the Clippers box, oppBox is the opponent box.
- * Returns array in fixed order: efg_pct, tov_margin, reb_margin, pace
- */
-function computeKeyMetrics(lacBox: BoxscoreTeam, oppBox: BoxscoreTeam): KeyMetric[] {
-  const lacStats = lacBox.statistics;
-  const oppStats = oppBox.statistics;
-
-  // eFG%
-  const lacEfg = computeEfg(lacStats);
-  const oppEfg = computeEfg(oppStats);
-
-  // TO margin = LAC turnovers − opponent turnovers (positive = LAC committed MORE; negative is good)
-  const tovMargin = lacStats.turnovers - oppStats.turnovers;
-
-  // Reb margin
-  const rebMargin = lacStats.reboundsTotal - oppStats.reboundsTotal;
-
-  // Pace = 48 * ((LAC_POSS + OPP_POSS) / 2) / game_minutes_played
-  const lacPoss = estimatePossessions(lacStats);
-  const oppPoss = estimatePossessions(oppStats);
-  const gameMinutes = computeGameMinutes(lacBox, oppBox);
-  const pace = gameMinutes > 0 ? 48 * ((lacPoss + oppPoss) / 2) / gameMinutes : null;
-
-  return [
-    {
-      key: 'efg_pct',
-      label: 'eFG%',
-      value: parseFloat(lacEfg.toFixed(3)),
-      team: 'LAC',
-      delta_vs_opp: parseFloat((lacEfg - oppEfg).toFixed(3)),
-    },
-    {
-      key: 'tov_margin',
-      label: 'TO Margin',
-      value: tovMargin,
-      team: 'LAC',
-      delta_vs_opp: tovMargin,
-    },
-    {
-      key: 'reb_margin',
-      label: 'Reb Margin',
-      value: rebMargin,
-      team: 'LAC',
-      delta_vs_opp: rebMargin,
-    },
-    {
-      key: 'pace',
-      label: 'Pace',
-      value: pace !== null ? parseFloat(pace.toFixed(1)) : null,
-      team: 'GAME',
-      delta_vs_opp: null,
-    },
-  ];
-}
-
-// ── Box score builder ─────────────────────────────────────────────────────────
-
-function formatFraction(made: number, attempted: number): string {
-  return `${made}-${attempted}`;
-}
-
-/**
- * Parse ISO 8601 minutes string to "MM:SS" display format.
- */
-function parseMinutesToDisplay(minutesStr: string): string {
-  const match = minutesStr.match(/PT(?:(\d+)M)?(?:([\d.]+)S)?/);
-  if (!match) return '0:00';
-  const mins = parseInt(match[1] ?? '0', 10);
-  const secs = Math.floor(parseFloat(match[2] ?? '0'));
-  return `${mins}:${String(secs).padStart(2, '0')}`;
-}
-
-function buildPlayerRow(player: BoxscorePlayer): Record<string, unknown> {
-  const s = player.statistics;
-  return {
-    player_id: player.personId,
-    nba_person_id: player.personId,
-    name: player.name,
-    starter: player.starter === '1',
-    MIN: parseMinutesToDisplay(s.minutes),
-    PTS: s.points,
-    REB: s.reboundsTotal,
-    AST: s.assists,
-    STL: s.steals,
-    BLK: s.blocks,
-    TO: s.turnovers,
-    FG: formatFraction(s.fieldGoalsMade, s.fieldGoalsAttempted),
-    '3PT': formatFraction(s.threePointersMade, s.threePointersAttempted),
-    FT: formatFraction(s.freeThrowsMade, s.freeThrowsAttempted),
-    '+/-': s.plusMinusPoints,
-  };
-}
-
-function buildTeamTotals(stats: TeamStatistics): Record<string, unknown> {
-  return {
-    PTS: stats.points,
-    REB: stats.reboundsTotal,
-    AST: stats.assists,
-    TO: stats.turnovers,
-    FG: formatFraction(stats.fieldGoalsMade, stats.fieldGoalsAttempted),
-    '3PT': formatFraction(stats.threePointersMade, stats.threePointersAttempted),
-    FT: formatFraction(stats.freeThrowsMade, stats.freeThrowsAttempted),
-  };
-}
-
-function buildBoxScore(
-  lacBox: BoxscoreTeam,
-  oppBox: BoxscoreTeam,
-  lacAbbr: string,
-  oppAbbr: string
-) {
-  return {
-    columns: ['MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', 'FG', '3PT', 'FT', '+/-'],
-    teams: [
-      {
-        team_abbr: lacAbbr,
-        players: lacBox.players
-          .filter((p) => p.played === '1')
-          .map(buildPlayerRow),
-        totals: buildTeamTotals(lacBox.statistics),
-      },
-      {
-        team_abbr: oppAbbr,
-        players: oppBox.players
-          .filter((p) => p.played === '1')
-          .map(buildPlayerRow),
-        totals: buildTeamTotals(oppBox.statistics),
-      },
-    ],
-  };
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────
@@ -337,6 +128,7 @@ export async function GET(): Promise<NextResponse> {
           other_games: otherGames,
           odds: null,
           cadence: null,
+          upcoming: payload?.status === 'scheduled' && payload.nba_game_id ? { nba_game_id: payload.nba_game_id } : null,
         },
         CDN_IDLE
       );
@@ -422,35 +214,16 @@ export async function GET(): Promise<NextResponse> {
     // Compute key_metrics from raw box data (NOT from advanced_stats table)
     const keyMetrics = lacBox && oppBox ? computeKeyMetrics(lacBox, oppBox) : [];
 
-    // Build LiveSnapshot for insight generation
-    const liveSnap = {
+    const insights = liveInsights({
       game_id: snap.game_id,
+      home_team_id: snap.home_team_id,
+      away_team_id: snap.away_team_id,
       period: snap.period,
       clock: snap.clock,
       home_score: snap.home_score,
       away_score: snap.away_score,
-      home_team_id: snap.home_team_id,
-      away_team_id: snap.away_team_id,
       recent_scoring: payload.recent_scoring ?? [],
-    };
-
-    // Generate live insights (pure function, no DB)
-    const rawInsights = generateLiveInsights(liveSnap, {
-      home_rolling_10: null,
-      away_rolling_10: null,
     });
-
-    const insights = rawInsights.map((candidate, idx) => ({
-      insight_id: `live-${snap.game_id}-${idx}`,
-      category: candidate.category,
-      headline: candidate.headline,
-      detail: candidate.detail,
-      importance: candidate.importance,
-      proof: {
-        summary: candidate.category,
-        result: candidate.proof_result[0] ?? null,
-      },
-    }));
 
     // Fetch odds
     const oddsRaw = await getLatestOdds(snap.game_id);

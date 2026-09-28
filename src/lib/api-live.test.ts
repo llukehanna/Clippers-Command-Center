@@ -201,6 +201,7 @@ describe('GET /api/live', () => {
     expect(body.box_score).toBeNull();
     expect(body.insights).toEqual([]);
     expect(body.odds).toBeNull();
+    expect(body.upcoming).toBeNull();
   });
 
   it('returns state:"DATA_DELAYED" and meta.stale:true when latest snapshot has is_stale:true', async () => {
@@ -449,7 +450,14 @@ describe('GET /api/live', () => {
       ...base,
       period: 0,
       game_status: 'scheduled',
-      payload: { ...base.payload, home_box: null, away_box: null, status: 'scheduled', other_games: [other] },
+      payload: {
+        ...base.payload,
+        home_box: null,
+        away_box: null,
+        status: 'scheduled',
+        other_games: [other],
+        nba_game_id: '0022600093',
+      },
     };
     mockedSql.mockResolvedValueOnce([snap]);
 
@@ -458,6 +466,7 @@ describe('GET /api/live', () => {
     expect(body.state).toBe('NO_ACTIVE_GAME');
     expect(body.game).toBeNull();
     expect(body.other_games).toEqual([other]);
+    expect(body.upcoming).toEqual({ nba_game_id: '0022600093' });
   });
 
   it('returns 500 without leaking internal error text', async () => {

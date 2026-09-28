@@ -2,6 +2,7 @@
 // app/api/**/route.ts on main exactly — the UI never reshapes the API.
 
 import type { MetaEnvelope } from '@/src/lib/api-utils'
+import type { LivePhase } from '../types/live-state'
 
 export type HomeAway = 'home' | 'away'
 
@@ -107,7 +108,8 @@ export interface PlayersPayload {
 export type BoxValue = string | number | null
 
 export interface BoxScorePlayer {
-  player_id: string
+  /** NBA-sourced box scores (live and history) key this by the NBA personId (number). */
+  player_id: number | string
   nba_person_id?: number | string | null
   name: string
   starter?: boolean
@@ -190,7 +192,9 @@ export interface LivePayload {
   insights: Insight[]
   other_games: unknown[]
   odds: LiveOdds | null
-  cadence?: { phase: string; next_ms: number } | null
+  cadence?: { phase: LivePhase; next_ms: number } | null
+  /** Pre-tip: the game the runner is already watching, so clients can connect early. */
+  upcoming?: { nba_game_id: string } | null
 }
 
 export interface ChartPoint {
