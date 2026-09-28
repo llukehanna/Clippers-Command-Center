@@ -201,6 +201,10 @@ export async function GET(): Promise<NextResponse> {
           other_games: otherGames,
           odds: staleOdds,
           cadence: payload.cadence ?? null,
+          flow: payload.flow ?? null,
+          wp: payload.wp ?? null,
+          lineups: payload.lineups ?? null,
+          observed_at: payload.observed_at ?? null,
         },
         CDN_LIVE
       );
@@ -259,6 +263,10 @@ export async function GET(): Promise<NextResponse> {
         other_games: otherGames,
         odds,
         cadence: payload.cadence ?? null,
+        flow: payload.flow ?? null,
+        wp: payload.wp ?? null,
+        lineups: payload.lineups ?? null,
+        observed_at: payload.observed_at ?? null,
       },
       CDN_LIVE
     );

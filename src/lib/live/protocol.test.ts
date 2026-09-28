@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { BoxscorePlayer, BoxscoreTeam } from '../types/live';
+import type { FlowMarker, FlowPoint } from '../types/live-state';
 import { applyMessage, diffDocs, type KeyframeMessage } from './protocol';
 import { box, liveDoc } from '../../../scripts/lib/live-fixtures';
 
@@ -97,5 +98,43 @@ describe('diffDocs + applyMessage', () => {
     const applied = applyMessage(prev, delta);
     expect(applied.state).toEqual(next);
     expect(applied.state?.home_box?.players.map((p) => p.personId)).toEqual([1, 3, 2]);
+  });
+});
+
+const P = (t: number, m: number): FlowPoint => ({ t, m, wp: 0.5, a: t, d: `play ${t}` });
+const RUN: FlowMarker = { kind: 'run', t: 90, t_start: 30, side: 'lac', pts: 8 };
+
+describe('flow deltas', () => {
+  it('send only the new points, and rebuild the same state', () => {
+    const prev = liveDoc(1, { flow: { points: [P(0, 0), P(30, 2)], markers: [] } });
+    const next = liveDoc(2, { flow: { points: [P(0, 0), P(30, 2), P(90, 8)], markers: [RUN] } });
+    const d = diffDocs(prev, next);
+    expect(d.patch.flow).toBeUndefined();
+    expect(d.flow_append).toEqual({ from: 2, points: [P(90, 8)], markers: [RUN] });
+    expect(applyMessage(prev, d).state).toEqual(next);
+  });
+
+  it('send the whole series when an earlier point changed', () => {
+    const prev = liveDoc(1, { flow: { points: [P(0, 0), P(30, 2)], markers: [] } });
+    const next = liveDoc(2, { flow: { points: [P(0, 0), P(30, 3)], markers: [] } });
+    const d = diffDocs(prev, next);
+    expect(d.flow_append).toBeUndefined();
+    expect(d.patch.flow).toEqual(next.flow);
+    expect(applyMessage(prev, d).state).toEqual(next);
+  });
+
+  it('carry nothing when the flow did not change', () => {
+    const flow = { points: [P(0, 0)], markers: [] };
+    const d = diffDocs(liveDoc(1, { flow }), liveDoc(2, { flow, clock: '9:59' }));
+    expect(d.flow_append).toBeUndefined();
+    expect(d.patch.flow).toBeUndefined();
+  });
+
+  it('ask for a keyframe when an append does not line up', () => {
+    const state = liveDoc(1, { flow: { points: [P(0, 0)], markers: [] } });
+    const r = applyMessage(state, {
+      kind: 'delta', seq: 2, base_seq: 1, patch: {}, flow_append: { from: 2, points: [P(90, 8)], markers: [] },
+    });
+    expect(r).toEqual({ state, applied: false, needKeyframe: true });
   });
 });
