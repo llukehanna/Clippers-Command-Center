@@ -93,6 +93,32 @@ function boxPeriods(home: BoxscoreTeam, away: BoxscoreTeam): LiveStateDoc['perio
   return (home.periods ?? []).map((p) => ({ period: p.period, home: p.score, away: awayBy.get(p.period) ?? 0 }));
 }
 
+/** Home/away score after the newest play that carries readable scores; 0–0 when none does. */
+function pbpScore(actions: PlayByPlayAction[]): { home: number; away: number } {
+  for (let i = actions.length - 1; i >= 0; i--) {
+    const { scoreHome, scoreAway } = actions[i];
+    if (scoreHome === '' || scoreAway === '' || scoreHome == null || scoreAway == null) continue;
+    const home = Number(scoreHome);
+    const away = Number(scoreAway);
+    if (Number.isFinite(home) && Number.isFinite(away)) return { home, away };
+  }
+  return { home: 0, away: 0 };
+}
+
+/**
+ * When the doc's newest play happened (spoiler sync's clock, spec §7.3): the
+ * newest play-by-play action's timeActual — but only while the header score is
+ * the one play-by-play reached. The box score or scoreboard can be ahead of
+ * play-by-play, and that basket has no play time yet; dating the doc by the
+ * previous play would let a delayed page show it early, so the doc is dated
+ * by its fetch instead (late, therefore safe).
+ */
+function observedAt(actions: PlayByPlayAction[], homeScore: number, awayScore: number, fetchedAt: string): string | null {
+  const newest = [...actions].reverse().find((a) => a.timeActual)?.timeActual ?? null;
+  const pbp = pbpScore(actions);
+  return pbp.home === homeScore && pbp.away === awayScore ? newest : fetchedAt;
+}
+
 function statusOf(code: number): LiveStateDoc['status'] {
   return code >= 3 ? 'final' : code === 2 ? 'in_progress' : 'scheduled';
 }
@@ -111,13 +137,13 @@ export function buildLiveState(i: StateInputs): LiveStateBody {
       : null;
   const period = head?.period ?? i.sbGame.period;
   const isoClock = head?.gameClock ?? i.sbGame.gameClock;
-  const observed = [...i.actions].reverse().find((a) => a.timeActual)?.timeActual ?? null;
   const lacIsHome = i.sbGame.homeTeam.teamId === LAC_TEAM_ID;
   const model = i.model ?? defaultModel(lacIsHome);
   const status = statusOf(Math.max(i.sbGame.gameStatus, b?.gameStatus ?? 0));
   const homeScore = head?.homeTeam.score ?? i.sbGame.homeTeam.score;
   const awayScore = head?.awayTeam.score ?? i.sbGame.awayTeam.score;
   const clockSec = clockToSecondsRemaining(isoClock);
+  const fetchedAt = new Date(i.now).toISOString();
   const sbLac = lacIsHome ? i.sbGame.homeTeam : i.sbGame.awayTeam;
   const sbOpp = lacIsHome ? i.sbGame.awayTeam : i.sbGame.homeTeam;
   return {
@@ -148,8 +174,8 @@ export function buildLiveState(i: StateInputs): LiveStateBody {
       : [],
     last_plays: lastPlays(i.actions),
     other_games: summarizeOtherGames(i.sbGames, i.sbGame.gameId),
-    observed_at: observed,
-    fetched_at: new Date(i.now).toISOString(),
+    observed_at: observedAt(i.actions, homeScore, awayScore, fetchedAt),
+    fetched_at: fetchedAt,
     cadence: { phase: i.phase, next_ms: i.nextMs },
     is_stale: false,
     stale_reason: null,
@@ -174,8 +200,13 @@ export function buildLiveState(i: StateInputs): LiveStateBody {
   };
 }
 
-/** Content hash: changes when anything a fan would see changes, including the phase. */
+/**
+ * Content hash: changes when anything a fan would see changes, including the
+ * phase. An observed_at that is only the fetch time (the header is ahead of
+ * play-by-play) isn't content: the saved doc keeps the first fetch's time.
+ */
 export function fingerprint(body: LiveStateBody): string {
-  const comparable = { ...body, fetched_at: '', cadence: { phase: body.cadence.phase, next_ms: 0 } };
+  const observed_at = body.observed_at === body.fetched_at ? 'fetched' : body.observed_at;
+  const comparable = { ...body, observed_at, fetched_at: '', cadence: { phase: body.cadence.phase, next_ms: 0 } };
   return createHash('sha1').update(JSON.stringify(comparable)).digest('hex');
 }
