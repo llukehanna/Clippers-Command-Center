@@ -128,7 +128,9 @@ async function main(): Promise<void> {
   await sql`INSERT INTO seasons (season_id, label) VALUES (2024, '2024-25'), (2025, '2025-26'), (2026, '2026-27')`;
   await sql`
     INSERT INTO teams ${sql(TEAMS.map(([abbr, city, name, conf], i) => ({
-      team_id: i + 1, nba_team_id: i + 1, abbreviation: abbr, name, city, conference: conf,
+      // nba_team_id = balldontlie id: the app finds the Clippers by 13 (LAC_NBA_TEAM_ID),
+      // so LAC and SAS (index 12) swap ids to match production.
+      team_id: i + 1, nba_team_id: i === 0 ? 13 : i === 12 ? 1 : i + 1, abbreviation: abbr, name, city, conference: conf,
     })))}
   `;
 
