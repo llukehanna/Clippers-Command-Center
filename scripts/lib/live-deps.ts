@@ -8,9 +8,9 @@ import {
   fetchPlayByPlayConditional,
   fetchScoreboard,
   NbaHttpError,
-} from './nba-live-client.js';
-import type { PollerDeps } from './live-poller.js';
-import { saveLiveMoment, saveLiveState } from './live-store.js';
+} from './nba-live-client';
+import type { PollerDeps } from './live-poller';
+import { saveLiveMoment, saveLiveState } from './live-store';
 
 export function nbaPollerDeps(sql: Sql, gameDbId: string): PollerDeps {
   return {

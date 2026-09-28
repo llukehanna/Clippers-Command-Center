@@ -8,8 +8,8 @@
 import { createHash } from 'node:crypto';
 import type { BoxscoreGame, BoxscoreTeam, PlayByPlayAction, ScoreboardGame } from '../../src/lib/types/live';
 import type { LivePhase, LivePlay, LiveStateDoc } from '../../src/lib/types/live-state';
-import { parseNBAClock } from './nba-live-client.js';
-import { extractRecentScoring, lineScore, summarizeOtherGames } from './poll-live-logic.js';
+import { parseNBAClock } from './nba-live-client';
+import { extractRecentScoring, lineScore, summarizeOtherGames } from './poll-live-logic';
 
 export const LAST_PLAYS = 15;
 export const RECENT_SCORING_LOOKBACK_SECONDS = 120;
