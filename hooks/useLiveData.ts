@@ -1,5 +1,6 @@
 'use client'
 
+import * as React from 'react'
 import useSWR from 'swr'
 import { livePollInterval } from '@/src/lib/live-utils'
 import type { LivePayload } from '@/src/lib/ui/types'
@@ -39,8 +40,12 @@ export interface UseLiveDataOptions {
  */
 export function useLiveData(options: UseLiveDataOptions = {}) {
   const follow = options.follow ?? 'chip'
+  // Stable identity: SWR's polling effect depends on `refreshInterval` and
+  // clears/re-arms its timer whenever it changes, so an inline arrow would
+  // reset the countdown on every render (and /live re-renders every 5 s).
+  const refreshInterval = React.useCallback((d?: LivePayload) => livePollInterval(d, follow), [follow])
   return useSWR<LivePayload>('/api/live', fetcher, {
-    refreshInterval: (d) => livePollInterval(d, follow),
+    refreshInterval,
     revalidateOnFocus: true,
     dedupingInterval: 2_000,
   })

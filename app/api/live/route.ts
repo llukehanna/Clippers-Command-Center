@@ -117,6 +117,7 @@ export async function GET(): Promise<NextResponse> {
       payload && snapshotAgeMs <= OTHER_GAMES_MAX_AGE_MS ? (payload.other_games ?? []) : [];
 
     if (!snap || !payload || payload.status === 'scheduled') {
+      const upcoming = payload?.status === 'scheduled' && payload.nba_game_id ? { nba_game_id: payload.nba_game_id } : null;
       return NextResponse.json(
         {
           meta: buildMeta('mixed', 60),
@@ -128,9 +129,11 @@ export async function GET(): Promise<NextResponse> {
           other_games: otherGames,
           odds: null,
           cadence: null,
-          upcoming: payload?.status === 'scheduled' && payload.nba_game_id ? { nba_game_id: payload.nba_game_id } : null,
+          upcoming,
         },
-        CDN_IDLE
+        // Pre-tip, /live refetches every few seconds once the hub reports the
+        // tip; a 30 s CDN copy would keep answering "no game" that long.
+        upcoming ? CDN_LIVE : CDN_IDLE
       );
     }
 

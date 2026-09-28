@@ -12,11 +12,13 @@ import {
   FLAP_PAUSE_MS,
   HIDDEN_CLOSE_MS,
   PING_EVERY_MS,
-  PUSH_FRESH_MS,
+  TIP_REFETCH_MS,
   hubSocketUrl,
   isFlapping,
+  isPushFresh,
   needsBackup,
   pickSource,
+  pushIsCurrent,
   reconnectDelay,
   streamGameId,
   type FeedSource,
@@ -47,12 +49,15 @@ export interface LiveStream {
  */
 export function useLiveStream(): LiveStream {
   const now = useNow(5_000)?.getTime() ?? null
-  const [pushed, setPushed] = React.useState<{ gameId: string; doc: LiveStateDoc; at: number } | null>(null)
+  const [pushed, setPushed] = React.useState<{ gameId: string; doc: LiveStateDoc } | null>(null)
   const [latency, setLatency] = React.useState<LatencySample | null>(null)
   const [espn, setEspn] = React.useState<{ gameId: string; score: EspnScore } | null>(null)
+  // The newest doc per game, read when a socket (re)connects so the hub's
+  // replay can't roll the page back to older states.
+  const lastDoc = React.useRef<{ gameId: string; doc: LiveStateDoc } | null>(null)
 
-  const lastPushAt = pushed?.at ?? null
-  const pushFresh = lastPushAt !== null && now !== null && now - lastPushAt < PUSH_FRESH_MS
+  // Freshness comes from when the runner built the doc, never arrival time.
+  const pushFresh = now !== null && isPushFresh(pushed?.doc, now)
   const { data: base, error, mutate } = useLiveData({ follow: pushFresh ? 'chip' : 'cadence' })
   const gameId = streamGameId(base)
   const visible = useVisibleWithGrace(HIDDEN_CLOSE_MS)
@@ -62,18 +67,32 @@ export function useLiveStream(): LiveStream {
   React.useEffect(() => {
     if (!HUB_URL || !gameId || !visible) return
     let ws: WebSocket | null = null
-    let state: LiveStateDoc | null = null
+    let state: LiveStateDoc | null = lastDoc.current?.gameId === gameId ? lastDoc.current.doc : null
     let attempt = 0
     let stopped = false
     let retry: ReturnType<typeof setTimeout> | undefined
     const drops: number[] = []
 
+    const scheduleRetry = () => {
+      if (stopped) return
+      drops.push(Date.now())
+      retry = setTimeout(connect, isFlapping(drops, Date.now()) ? FLAP_PAUSE_MS : reconnectDelay(attempt++))
+    }
+
     const connect = () => {
-      ws = new WebSocket(hubSocketUrl(HUB_URL, gameId))
-      ws.onopen = () => {
+      try {
+        ws = new WebSocket(hubSocketUrl(HUB_URL, gameId))
+      } catch {
+        // A bad URL or a blocked scheme throws synchronously; treat it as a drop.
+        ws = null
+        scheduleRetry()
+        return
+      }
+      const socket = ws
+      socket.onopen = () => {
         attempt = 0
       }
-      ws.onmessage = (event) => {
+      socket.onmessage = (event) => {
         if (typeof event.data !== 'string' || event.data === 'pong') return
         let msg: LiveMessage
         try {
@@ -82,23 +101,19 @@ export function useLiveStream(): LiveStream {
           return
         }
         const result = applyMessage(state, msg)
-        if (result.needKeyframe) ws?.send('resync')
+        if (result.needKeyframe) socket.send('resync')
         if (!result.applied || !result.state) return
         state = result.state
-        const receivedAt = Date.now()
-        setPushed({ gameId, doc: result.state, at: receivedAt })
+        lastDoc.current = { gameId, doc: result.state }
+        setPushed({ gameId, doc: result.state })
         setLatency({
           observed_at: result.state.observed_at,
           fetched_at: result.state.fetched_at,
           hub_at: msg.hub_at ?? null,
-          received_at: receivedAt,
+          received_at: Date.now(),
         })
       }
-      ws.onclose = () => {
-        if (stopped) return
-        drops.push(Date.now())
-        retry = setTimeout(connect, isFlapping(drops, Date.now()) ? FLAP_PAUSE_MS : reconnectDelay(attempt++))
-      }
+      socket.onclose = scheduleRetry
     }
 
     connect()
@@ -113,16 +128,22 @@ export function useLiveStream(): LiveStream {
     }
   }, [gameId, visible])
 
-  // Pre-tip → tip: the hub knows the game started before /api/live's slow
-  // pre-tip poll does; refetch so the page has the game's identity to overlay.
-  const pushedStatus = pushDoc?.status
-  const hasGame = Boolean(base?.game)
+  // Pre-tip → tip: the hub knows the game started before /api/live does.
+  // Refetch every few seconds (the pre-tip response is CDN-cached for only
+  // 2 s) until the page has the game's identity to overlay.
+  const tipped = Boolean(pushDoc && pushDoc.status !== 'scheduled' && !base?.game)
   React.useEffect(() => {
-    if (pushedStatus && pushedStatus !== 'scheduled' && !hasGame) void mutate()
-  }, [pushedStatus, hasGame, mutate])
+    if (!tipped) return
+    void mutate()
+    const id = setInterval(() => void mutate(), TIP_REFETCH_MS)
+    return () => clearInterval(id)
+  }, [tipped, mutate])
+
+  // Push is overlaid only while fresh and at least as new as the polled snapshot.
+  const pushLive = Boolean(base && pushDoc && now !== null && isPushFresh(pushDoc, now) && pushIsCurrent(pushDoc, base))
 
   // Tier 3: ESPN backup while our runner is stale.
-  const backupWanted = needsBackup(base, pushFresh)
+  const backupWanted = needsBackup(base, pushLive)
   const backupGame = backupWanted ? base?.game ?? null : null
   React.useEffect(() => {
     const g = backupGame
@@ -150,24 +171,31 @@ export function useLiveStream(): LiveStream {
   }, [backupGame])
 
   const backupScore = backupWanted && espn && espn.gameId === base?.game?.game_id ? espn.score : null
-  let data = base
-  if (data && pushDoc && pushFresh) data = overlayLiveDoc(data, pushDoc)
-  // overlayEspn hands back the same object when ESPN is behind us (or can't
-  // apply), so the chip only claims the backup feed when it actually changed
-  // what's on screen.
-  let usedBackup = false
-  if (data && backupScore) {
-    const withBackup = overlayEspn(data, backupScore)
-    usedBackup = withBackup !== data
-    data = withBackup
-  }
+
+  const shown = React.useMemo(() => {
+    let data = base
+    if (data && pushLive && pushDoc) data = overlayLiveDoc(data, pushDoc)
+    // overlayEspn hands back the same object when ESPN is behind us (or can't
+    // apply), so the chip only claims the backup feed when it actually changed
+    // what's on screen.
+    let usedBackup = false
+    if (data && backupScore) {
+      const withBackup = overlayEspn(data, backupScore)
+      usedBackup = withBackup !== data
+      data = withBackup
+    }
+    return { data, usedBackup }
+  }, [base, pushLive, pushDoc, backupScore])
 
   return {
-    data,
+    data: shown.data,
     error,
-    // Count push only when its doc is for the game on screen (not a stale
-    // doc from a previous game id during a handover).
-    source: pickSource({ base, lastPushAt: pushDoc ? lastPushAt : null, now: now ?? 0, backup: usedBackup }),
+    source: pickSource({
+      shown: shown.data,
+      pushFetchedAt: pushLive && pushDoc ? pushDoc.fetched_at : null,
+      now: now ?? 0,
+      backup: shown.usedBackup,
+    }),
     latency,
   }
 }
