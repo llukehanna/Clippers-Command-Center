@@ -65,7 +65,7 @@ export async function loadSchedule(url: URL): Promise<ApiResult> {
         g.status,
         g.home_score,
         g.away_score,
-        g.start_time_utc::text AS start_time_utc,
+        to_char(g.start_time_utc AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS start_time_utc,  -- ISO-8601 for every browser
         ht.abbreviation        AS home_abbr,
         at.abbreviation        AS away_abbr,
         ht.city                AS home_city,
@@ -79,7 +79,7 @@ export async function loadSchedule(url: URL): Promise<ApiResult> {
         AND g.game_date >= (now() AT TIME ZONE 'America/New_York')::date
         AND lower(g.status) <> 'final'
       ORDER BY g.game_date ASC, g.game_id ASC
-      LIMIT 20
+      LIMIT 110 -- a full 82-game schedule plus any postseason games
     `;
 
     // Fetch odds in parallel for all games (if requested)

@@ -10,6 +10,12 @@ interface GameHeaderProps {
   isHome: boolean         // is LAC the home team?
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  final: 'Final',
+  in_progress: 'In progress',
+  scheduled: 'Scheduled',
+}
+
 export function GameHeader({
   homeAbbr,
   awayAbbr,
@@ -22,8 +28,10 @@ export function GameHeader({
   const lacScore = isHome ? homeScore : awayScore
   const oppScore = isHome ? awayScore : homeScore
 
+  const isFinal = status.toLowerCase() === 'final'
+  // Scores/W-L only mean something once the game is final (scheduled rows can hold 0-0).
   let resultBadge: React.ReactNode = null
-  if (lacScore !== null && oppScore !== null) {
+  if (isFinal && lacScore !== null && oppScore !== null) {
     const isWin = lacScore > oppScore
     resultBadge = isWin ? (
       <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-positive/10 text-positive">
@@ -58,7 +66,7 @@ export function GameHeader({
         <div className="flex items-center gap-4">
           <span className="text-2xl font-bold text-foreground">{awayAbbr}</span>
           <span className="text-4xl font-bold tabular-nums text-foreground">
-            {awayScore ?? '—'}
+            {isFinal || status === 'in_progress' ? (awayScore ?? '—') : '—'}
           </span>
         </div>
 
@@ -71,7 +79,7 @@ export function GameHeader({
         {/* Home team */}
         <div className="flex items-center gap-4">
           <span className="text-4xl font-bold tabular-nums text-foreground">
-            {homeScore ?? '—'}
+            {isFinal || status === 'in_progress' ? (homeScore ?? '—') : '—'}
           </span>
           <span className="text-2xl font-bold text-foreground">{homeAbbr}</span>
         </div>
@@ -79,7 +87,7 @@ export function GameHeader({
 
       {/* Date and status */}
       <div className="mt-3 text-sm text-muted-foreground text-center">
-        {formattedDate} &middot; {status}
+        {formattedDate} &middot; {STATUS_LABELS[status.toLowerCase()] ?? status}
       </div>
     </div>
   )

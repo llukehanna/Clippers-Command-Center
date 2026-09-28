@@ -19,7 +19,7 @@ export function PlayerHeader({ player, season_averages }: PlayerHeaderProps) {
     <div className="flex items-start justify-between py-4 border-b border-white/[0.06]">
       <div>
         <h1 className="text-2xl font-semibold text-foreground">{player.display_name}</h1>
-        <p className="text-sm text-muted-foreground">{player.position ?? 'Guard'}</p>
+        {player.position && <p className="text-sm text-muted-foreground">{player.position}</p>}
       </div>
       <div className="flex gap-6">
         <div className="text-center">

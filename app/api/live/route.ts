@@ -276,7 +276,7 @@ export async function GET(): Promise<NextResponse> {
         ls.away_score,
         g.home_team_id::text      AS home_team_id,
         g.away_team_id::text      AS away_team_id,
-        ls.captured_at::text      AS captured_at,
+        to_char(ls.captured_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS captured_at,
         lac.team_id::text         AS lac_team_id,
         ls.payload
       FROM live_snapshots ls
@@ -470,7 +470,7 @@ async function fetchGameDetails(gameId: string, snap: SnapRow) {
       g.nba_game_id::text      AS nba_game_id,
       g.season_id,
       g.game_date::text        AS game_date,
-      g.start_time_utc::text   AS start_time_utc,
+      to_char(g.start_time_utc AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS start_time_utc,  -- ISO-8601 for every browser
       g.home_team_id::text     AS home_team_id,
       ht.abbreviation          AS home_abbr,
       ht.name                  AS home_name,

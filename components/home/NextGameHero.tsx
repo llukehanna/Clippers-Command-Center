@@ -2,6 +2,7 @@
 // Server Component — prominent hero card showing the next upcoming game.
 
 import { formatGameDate, formatGameTime } from '@/src/lib/home-utils'
+import { formatSignedLine } from '@/src/lib/format'
 
 interface GameOdds {
   spread: string | null
@@ -49,7 +50,7 @@ export function NextGameHero({ game }: NextGameProps) {
               Spread
             </p>
             <p className="text-sm font-semibold text-foreground tabular-nums">
-              {game.odds.spread ?? '—'}
+              {formatSignedLine(game.odds.spread) ?? '—'}
             </p>
           </div>
           <div>
@@ -57,7 +58,7 @@ export function NextGameHero({ game }: NextGameProps) {
               ML
             </p>
             <p className="text-sm font-semibold text-foreground tabular-nums">
-              {game.odds.moneyline ?? '—'}
+              {formatSignedLine(game.odds.moneyline) ?? '—'}
             </p>
           </div>
           <div>

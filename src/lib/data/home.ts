@@ -188,7 +188,7 @@ export async function loadHome(): Promise<ApiResult> {
         SELECT
           g.game_id::text AS game_id,
           g.game_date::text AS game_date,
-          g.start_time_utc::text AS start_time_utc,
+          to_char(g.start_time_utc AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS start_time_utc,  -- ISO-8601 for every browser
           g.home_team_id::text AS home_team_id,
           g.away_team_id::text AS away_team_id,
           ht.abbreviation AS home_abbr,
