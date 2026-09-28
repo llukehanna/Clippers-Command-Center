@@ -17,6 +17,12 @@ describe('HIGH_SPECS', () => {
       expect(params.length, `${s.scope}:${s.statKey}`).toBe(maxRef);
     }
   });
+  it('limits quarter highs to regulation quarters (periods 1-4)', () => {
+    const team = HIGH_SPECS.find((x) => x.scope === 'lac_team' && x.statKey === 'team_q_pts')!;
+    const player = HIGH_SPECS.find((x) => x.scope === 'lac_player' && x.statKey === 'q_pts')!;
+    expect(team.source).toContain('pt.period <= 4');
+    expect(player.source).toContain('pp.period <= 4');
+  });
   it('builds an INSERT that keeps the top N per scope id', () => {
     const s = HIGH_SPECS.find((x) => x.scope === 'player_season' && x.statKey === 'pts')!;
     const text = buildHighsSql(s);

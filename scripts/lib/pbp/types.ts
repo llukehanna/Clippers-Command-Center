@@ -7,7 +7,8 @@ export type PbpSource = 'cdn' | 'stats_pbp';
 export type PbpKind = 'fg' | 'ft' | 'rebound' | 'turnover' | 'steal' | 'block' | 'other';
 
 export interface RawAction {
-  actionNumber: number;
+  actionNumber: number;                // cdn: unique per game; v3: NOT unique (repeats across related actions)
+  actionId?: number | null;            // v3 only: unique, increasing id within the game
   clock: string;                       // "PT04M32.00S" — time left in the period
   period: number;
   teamTricode?: string | null;
@@ -28,6 +29,9 @@ export interface RawPlayByPlay {
 
 export interface PbpEvent {
   seq: number;                         // 1-based order within the game
+  actionNumber: number;                // stable provider id (cdn: actionNumber; v3: actionId ?? actionNumber)
+  actionType: string;                  // raw provider actionType ('' if missing)
+  subType: string;                     // raw provider subType ('' if missing)
   period: number;
   clockSec: number;
   elapsedSec: number;

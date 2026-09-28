@@ -101,7 +101,12 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
             // pipeline picks up any game without a game_flow row.
             try {
               const r = await ingestGamePbp(candidate.game_id);
-              console.log(`[game-night] Play-by-play: ${r.status === 'ok' ? `${r.events} events` : 'not available yet'}`);
+              const detail = r.status === 'ok'
+                ? `${r.events} events`
+                : r.status === 'incomplete'
+                  ? `feed incomplete (${r.got.home}-${r.got.away}, final ${r.expected.home}-${r.expected.away}); not written`
+                  : 'not available yet';
+              console.log(`[game-night] Play-by-play: ${detail}`);
             } catch (err) {
               console.error(`[game-night] Play-by-play ingest failed: ${(err as Error).message}`);
             }

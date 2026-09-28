@@ -8,6 +8,8 @@
 //                    the play-by-play is read from disk (tests, replays)
 //   --keep-raw       store raw events even for past seasons (replay games)
 //
+// A feed whose last score differs from the game's final is counted incomplete
+// and not written (not a failure; the next run retries it).
 // Also prunes past seasons' raw events. Exits 1 if any game fails.
 // Run via: npm run ingest-pbp [-- --season=2025-26]
 import fs from 'node:fs';
@@ -62,12 +64,16 @@ async function main() {
 
   let ingested = 0;
   let missing = 0;
+  let incomplete = 0;
   const failures: string[] = [];
   for (const [i, g] of games.entries()) {
     try {
       const r = await ingestGamePbp(g.game_id, { raw, keepRaw: args.keepRaw || undefined, log });
       if (r.status === 'missing') missing++;
-      else {
+      else if (r.status === 'incomplete') {
+        incomplete++;
+        log(`game ${g.game_id}: feed ends at ${r.got.home}-${r.got.away}, final is ${r.expected.home}-${r.expected.away} — not written (retried next run)`);
+      } else {
         ingested++;
         if (r.unknownPlayers > 0) log(`game ${g.game_id}: ${r.unknownPlayers} player id(s) not in players — their lines were skipped`);
       }
@@ -78,7 +84,7 @@ async function main() {
   }
 
   const pruned = await pruneRawEvents();
-  log(`Done: ${ingested} ingested, ${missing} without play-by-play, ${failures.length} failed; pruned ${pruned} old raw event(s)`);
+  log(`Done: ${ingested} ingested, ${incomplete} incomplete, ${missing} without play-by-play, ${failures.length} failed; pruned ${pruned} old raw event(s)`);
   await sql.end();
   if (failures.length) throw new Error(`${failures.length} game(s) failed:\n  ${failures.slice(0, 50).join('\n  ')}`);
 }

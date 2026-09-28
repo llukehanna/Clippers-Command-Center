@@ -3,6 +3,8 @@
 //   rb_game_highs — top single-game values per scope (see lib/record-book/highs.ts)
 //   rb_streaks    — every qualifying streak of relevant players and the Clippers
 //   app_kv 'insights.records_start' — first season of complete records
+//   app_kv 'insights.pbp_records_start' — first season of complete play-by-play
+//     records (quarters, runs, clutch); deleted when no season qualifies
 // Relevant players: a regular-season Clippers game in the last RELEVANT_SEASONS
 // seasons that have Clippers box scores. Regular season only.
 //
@@ -14,7 +16,9 @@ import { buildHighsSql, highsParams, HIGH_SPECS, RELEVANT_PLAYERS } from './lib/
 import {
   computeStreaks, PLAYER_STREAK_DEFS, TEAM_STREAK_DEFS, type PlayerStreakGame, type TeamStreakGame,
 } from './lib/record-book/streaks.js';
-import { resolveRecordsStart, type SeasonCoverage } from './lib/record-book/records-start.js';
+import {
+  resolvePbpRecordsStart, resolveRecordsStart, type PbpCoverage, type SeasonCoverage,
+} from './lib/record-book/records-start.js';
 
 const RELEVANT_SEASONS = 3;
 const log = (msg: string) => console.log(`[record-book] ${msg}`);
@@ -61,6 +65,7 @@ async function main() {
   }));
 
   let start: number | null = null;
+  let pbpStart: number | null = null;
   await sql.begin(async (txRaw) => {
     const tx = txRaw as unknown as typeof sql;
     await tx`DELETE FROM rb_game_highs`;
@@ -82,10 +87,28 @@ async function main() {
         VALUES ('insights.records_start', ${tx.json({ season_id: start, label: seasonLabel(start) })}, now())
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
     }
+
+    // Play-by-play coverage: Clippers regular-season finals per season, and how many have a game_flow row.
+    const pbpCoverage = await tx<PbpCoverage[]>`
+      SELECT g.season_id::int AS season_id, COUNT(*)::int AS games,
+             COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM game_flow f WHERE f.game_id = g.game_id))::int AS with_flow
+      FROM games g
+      WHERE ${lac.team_id}::bigint IN (g.home_team_id, g.away_team_id)
+        AND g.status = 'final' AND g.season_id IS NOT NULL AND ${tx.unsafe(REGULAR_SEASON)}
+      GROUP BY g.season_id`;
+    pbpStart = resolvePbpRecordsStart(pbpCoverage);
+    if (pbpStart !== null) {
+      await tx`
+        INSERT INTO app_kv (key, value, updated_at)
+        VALUES ('insights.pbp_records_start', ${tx.json({ season_id: pbpStart, label: seasonLabel(pbpStart) })}, now())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
+    } else {
+      await tx`DELETE FROM app_kv WHERE key = 'insights.pbp_records_start'`;
+    }
   });
 
   const [counts] = await sql<{ highs: number }[]>`SELECT COUNT(*)::int AS highs FROM rb_game_highs`;
-  log(`${counts.highs} game highs, ${streakRows.length} streaks; records start ${start === null ? 'unknown' : seasonLabel(start)}`);
+  log(`${counts.highs} game highs, ${streakRows.length} streaks; records start ${start === null ? 'unknown' : seasonLabel(start)}; pbp records start ${pbpStart === null ? 'unknown' : seasonLabel(pbpStart)}`);
   await sql.end();
 }
 

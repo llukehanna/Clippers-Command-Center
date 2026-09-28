@@ -326,7 +326,10 @@ One row per Clippers game with play-by-play. Written by `scripts/lib/pbp/ingest.
 
 ## period_team_stats / period_player_stats
 
-Per-quarter lines for both teams in Clippers games. Team points follow the score (match the line score). `ast`, `stl`, `blk` are NULL for `stats_pbp` games (no player credits in that feed).
+Per-quarter lines for both teams in Clippers games. Team points follow the score (match the line score). Team `reb` counts player rebounds only (team rebounds are excluded; the box score's team total may include them).
+
+- `period_team_stats`: only `ast` is nullable — NULL for `stats_pbp` games (no assist credits in that feed).
+- `period_player_stats`: `ast`, `stl`, `blk` are NULL for `stats_pbp` games (`stl`/`blk` exist only on this table).
 
 ## clutch_stats
 
@@ -334,7 +337,15 @@ Last 5:00 of the 4th/OT with the margin ≤ 5 before each event. `player_id` NUL
 
 ## pbp_events
 
-Normalized events for current-season Clippers games (live receipts, replay) and games flagged `keep`. Past seasons are pruned by `ingest-pbp`.
+Normalized events for current-season Clippers games (live receipts, replay) and games flagged `keep`. Past seasons are pruned by `ingest-pbp`. A feed whose last score differs from the game's final score is not written (counted `incomplete`, retried later).
+
+**Primary key** — `(game_id, event_num)`; **unique** — `(game_id, action_number)`
+
+- `event_num`: 1-based feed order. It may shift while a game is live (the provider inserts or deletes actions); the rewrite at final is authoritative.
+- `action_number`: stable provider id — cdn `actionNumber`, stats.nba.com v3 `actionId` (v3's own `actionNumber` repeats). Use it to identify an event across polls.
+- `action_type`, `sub_type`: raw provider values (`''` if missing), e.g. cdn `3pt` / `Jump Shot`, v3 `Made Shot` / `Jump Shot`
+- `kind`: normalized `fg | ft | rebound | turnover | steal | block | other`; `made`, `shot_value`, `points` (score change), `score_home`, `score_away`
+- `keep`: survives season-rollover pruning (`--keep-raw`)
 
 ## rb_game_highs
 
@@ -354,4 +365,5 @@ Every qualifying streak for relevant players and the Clippers (regular season; b
 ## app_kv keys (insights)
 
 - `insights.records_start`: `{ season_id, label }` — first season of complete league records; frames say "since {label}"
+- `insights.pbp_records_start`: `{ season_id, label }` — first season of complete play-by-play records (quarter/half highs, runs, clutch): the contiguous run of seasons where ≥ 95% of Clippers regular-season finals have a `game_flow` row, ending at the latest such season. Written by `build-record-book`; deleted when no season qualifies
 - `history:backfilled_through`: earliest season `backfill-history` finished cleanly

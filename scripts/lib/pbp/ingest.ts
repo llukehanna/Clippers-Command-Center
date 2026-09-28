@@ -16,7 +16,7 @@ export const CDN_PBP_FIRST_SEASON = 2019;
 
 export interface IngestPbpOptions {
   db?: Db;
-  /** Store raw events and flag them keep (survive pruning). Default: store only for the current season, unflagged. */
+  /** true: store raw events and flag them keep (survive pruning). Raw events are always stored for the current season and for games already flagged keep. */
   keepRaw?: boolean;
   /** Use this play-by-play instead of fetching (tests, replays). */
   raw?: { data: RawPlayByPlay; source: PbpSource };
@@ -25,15 +25,23 @@ export interface IngestPbpOptions {
 
 export type IngestPbpResult =
   | { status: 'ok'; events: number; unknownPlayers: number }
-  | { status: 'missing' };
+  | { status: 'missing' }
+  /** The feed's last score differs from the game's final score (truncated feed) — nothing was written. */
+  | { status: 'incomplete'; expected: { home: number; away: number }; got: { home: number; away: number } };
 
-async function fetchNormalized(gid: string, seasonId: number | null, log: (m: string) => void): Promise<NormalizedPbp | null> {
+/**
+ * CDN-era seasons use cdn.nba.com only: a failure returns null rather than
+ * falling back to stats.nba.com, which blocks cloud IPs and stalls ~25 min per
+ * game. stats.nba.com serves only seasons before the CDN archive (or unknown).
+ */
+export async function fetchNormalized(gid: string, seasonId: number | null, log: (m: string) => void): Promise<NormalizedPbp | null> {
   if (seasonId !== null && seasonId >= CDN_PBP_FIRST_SEASON) {
     try {
       const data = (await fetchPlayByPlay(gid)) as unknown as RawPlayByPlay;
       return normalizePbp(data, 'cdn');
     } catch (err) {
-      log(`cdn play-by-play failed for ${gid} (${(err as Error).message}); trying stats.nba.com`);
+      log(`cdn play-by-play failed for ${gid} (${(err as Error).message})`);
+      return null;
     }
   }
   const raw = await fetchStatsPlayByPlay(gid, log);
@@ -46,8 +54,9 @@ export async function ingestGamePbp(gameDbId: string, opts: IngestPbpOptions = {
 
   const [game] = await db<{
     nba_game_id: string; season_id: number | null; home_team_id: string; away_team_id: string; home_abbr: string; away_abbr: string;
+    home_score: number | null; away_score: number | null;
   }[]>`
-    SELECT g.nba_game_id::text AS nba_game_id, g.season_id,
+    SELECT g.nba_game_id::text AS nba_game_id, g.season_id, g.home_score, g.away_score,
            g.home_team_id::text AS home_team_id, g.away_team_id::text AS away_team_id,
            h.abbreviation AS home_abbr, a.abbreviation AS away_abbr
     FROM games g
@@ -64,6 +73,17 @@ export async function ingestGamePbp(gameDbId: string, opts: IngestPbpOptions = {
   const pbp = opts.raw ? normalizePbp(opts.raw.data, opts.raw.source) : await fetchNormalized(gid, game.season_id, log);
   if (!pbp || pbp.events.length === 0) return { status: 'missing' };
 
+  // Never persist a truncated feed: the last event must carry the final score.
+  const last = pbp.events[pbp.events.length - 1];
+  if (game.home_score !== null && game.away_score !== null &&
+      (last.scoreHome !== game.home_score || last.scoreAway !== game.away_score)) {
+    return {
+      status: 'incomplete',
+      expected: { home: game.home_score, away: game.away_score },
+      got: { home: last.scoreHome, away: last.scoreAway },
+    };
+  }
+
   const flow = deriveGameFlow(pbp.events, lacIsHome);
   const periods = derivePeriodStats(pbp, { home: game.home_abbr, away: game.away_abbr });
   const clutch = deriveClutch(pbp.events);
@@ -76,13 +96,18 @@ export async function ingestGamePbp(gameDbId: string, opts: IngestPbpOptions = {
     : [];
   const playerIds = new Map(known.map((r) => [r.nba_person_id, r.player_id]));
   const unknownPlayers = personIds.filter((id) => !playerIds.has(id)).length;
+  const unmappedRows =
+    periods.teams.filter((t) => !teamIds.has(t.tricode)).length +
+    periods.players.filter((p) => !teamIds.has(p.tricode)).length +
+    clutch.filter((c) => !teamIds.has(c.tricode)).length;
+  if (unmappedRows > 0) log(`game ${gameDbId}: ${unmappedRows} period/clutch row(s) dropped — tricode not ${game.home_abbr}/${game.away_abbr}`);
 
   await db.begin(async (txRaw) => {
     const tx = txRaw as unknown as Db;
     // keepRaw: true also flags the rows keep, so season-rollover pruning spares them (replay games).
     const [existing] = await tx<{ keep: boolean | null }[]>`SELECT bool_or(keep) AS keep FROM pbp_events WHERE game_id = ${gameDbId}::bigint`;
     const keepFlag = (existing?.keep ?? false) || opts.keepRaw === true;
-    const storeRaw = opts.keepRaw ?? (keepFlag || game.season_id === currentSeasonId());
+    const storeRaw = opts.keepRaw === true || keepFlag || game.season_id === currentSeasonId();
 
     await tx`DELETE FROM game_flow WHERE game_id = ${gameDbId}::bigint`;
     await tx`DELETE FROM period_team_stats WHERE game_id = ${gameDbId}::bigint`;
@@ -123,7 +148,8 @@ export async function ingestGamePbp(gameDbId: string, opts: IngestPbpOptions = {
 
     if (storeRaw) {
       const rows = pbp.events.map((e) => ({
-        game_id: gameDbId, event_num: e.seq, period: e.period, clock_sec: e.clockSec, elapsed_sec: e.elapsedSec,
+        game_id: gameDbId, event_num: e.seq, action_number: e.actionNumber, action_type: e.actionType, sub_type: e.subType,
+        period: e.period, clock_sec: e.clockSec, elapsed_sec: e.elapsedSec,
         team_id: e.teamTricode ? teamIds.get(e.teamTricode) ?? null : null,
         player_id: e.personId ? playerIds.get(e.personId) ?? null : null,
         kind: e.kind, made: e.made, shot_value: e.shotValue, points: e.points,

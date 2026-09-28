@@ -8,7 +8,7 @@ function ev(p: Partial<PbpEvent> & { home: number; away: number; prev: [number, 
   const { home, away, prev, ...rest } = p;
   const points = home - prev[0] + (away - prev[1]);
   return {
-    seq: ++seq, period: 1, clockSec: 600, elapsedSec: 120, teamTricode: null, personId: null,
+    seq: ++seq, actionNumber: seq, actionType: '', subType: '', period: 1, clockSec: 600, elapsedSec: 120, teamTricode: null, personId: null,
     kind: 'other', made: null, shotValue: null, assistPersonId: null,
     points, scoringSide: home > prev[0] ? 'home' : away > prev[1] ? 'away' : null,
     scoreHome: home, scoreAway: away, description: '', ...rest,
@@ -64,6 +64,17 @@ describe('deriveGameFlow', () => {
       ev({ prev: [2, 5], home: 0, away: 5, description: 'DEN basket overturned' }),
     ];
     expect(deriveGameFlow(seq, false).lacBestRun).toBe(5);
+  });
+
+  it('updates margin, deficit and lead changes on a net-zero reassignment', () => {
+    // LAC (away) scores 2 (0-2), then the basket is reassigned to DEN (2-0): total points 0.
+    const seq: PbpEvent[] = [
+      ev({ prev: [0, 0], home: 0, away: 2, teamTricode: 'LAC', personId: 1, kind: 'fg', made: true, shotValue: 2, elapsedSec: 30 }),
+      ev({ prev: [0, 2], home: 2, away: 0, description: 'Basket reassigned to DEN', elapsedSec: 45 }),
+    ];
+    const flow = deriveGameFlow(seq, false);
+    expect(flow).toMatchObject({ lacLargestLead: 2, lacLargestDeficit: 2, leadChanges: 1, timesTied: 0, comebackMargin: null });
+    expect(flow.marginSeries).toEqual([[0, 0], [30, 2], [45, -2]]);
   });
 
   it('does not lower an earlier, larger best run when a later smaller run is corrected', () => {

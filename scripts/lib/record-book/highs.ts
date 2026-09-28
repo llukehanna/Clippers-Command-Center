@@ -64,15 +64,15 @@ export const HIGH_SPECS: HighSpec[] = [
   spec('lac_team', 'team_ast', lacTeamGames('t.assists')),
   spec('lac_team', 'margin', lacTeamGames('t.points - o.points')),
   spec('lac_team', 'opp_pts_low', lacTeamGames('o.points'), 25, 'asc'),
-  // Quarters and halves (play-by-play derived).
+  // Quarters and halves (play-by-play derived; regulation periods only — overtime is 5 minutes).
   spec('lac_team', 'team_q_pts', `
     SELECT ''::text AS scope_id, pt.pts::numeric AS value, pt.game_id, g.game_date, NULL::bigint AS player_id, pt.team_id
     FROM period_team_stats pt JOIN games g ON g.game_id = pt.game_id
-    WHERE pt.team_id = $1::bigint AND ${REGULAR_SEASON}`),
+    WHERE pt.team_id = $1::bigint AND pt.period <= 4 AND ${REGULAR_SEASON}`),
   spec('lac_player', 'q_pts', `
     SELECT ''::text AS scope_id, pp.pts::numeric AS value, pp.game_id, g.game_date, pp.player_id, pp.team_id
     FROM period_player_stats pp JOIN games g ON g.game_id = pp.game_id
-    WHERE pp.team_id = $1::bigint AND ${REGULAR_SEASON}`),
+    WHERE pp.team_id = $1::bigint AND pp.period <= 4 AND ${REGULAR_SEASON}`),
   spec('lac_player', 'half_pts', `
     SELECT ''::text AS scope_id, SUM(pp.pts)::numeric AS value, pp.game_id, g.game_date, pp.player_id, pp.team_id
     FROM period_player_stats pp JOIN games g ON g.game_id = pp.game_id

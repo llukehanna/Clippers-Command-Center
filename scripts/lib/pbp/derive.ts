@@ -36,7 +36,9 @@ export function deriveGameFlow(events: PbpEvent[], lacIsHome: boolean): GameFlow
     const dLac = lacIsHome ? dHome : dAway;
     const dOpp = lacIsHome ? dAway : dHome;
 
-    if (e.points === 0) continue;
+    // Skip only when neither side's score moved — a net-zero reassignment (basket
+    // moved from one team to the other) still changes the margin.
+    if (dHome === 0 && dAway === 0) continue;
     const m = lacIsHome ? e.scoreHome - e.scoreAway : e.scoreAway - e.scoreHome;
     if (m !== margin) {
       if (m === 0) timesTied++;
@@ -165,7 +167,9 @@ export function derivePeriodStats(
       }
       case 'rebound': {
         const rebounder = p();
-        if (rebounder) {   // team rebounds (no player) are not counted, as in the box score
+        // Team rebounds (no player) are excluded, so reb is the sum of player
+        // rebounds; the box score's team total may include team rebounds.
+        if (rebounder) {
           t.reb++;
           rebounder.reb++;
         }

@@ -274,8 +274,17 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     const file = path.join(os.tmpdir(), `pbp-${Date.now()}.json`);
     fs.writeFileSync(file, JSON.stringify(pbp));
 
+    // The game still carries the box-score final (59-49), so this 4-6 feed looks
+    // truncated: nothing is written and the game is counted incomplete, not failed.
+    const partial = run('scripts/ingest-pbp.ts', {}, [`--game=${game.game_id}`, `--from-file=${file}`, '--format=cdn', '--keep-raw']);
+    expect(partial).toContain('0 ingested, 1 incomplete');
+    const [noFlow] = await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM game_flow WHERE game_id = ${game.game_id}::bigint`;
+    expect(noFlow.n).toBe(0);
+
+    // Make the game's final score match the synthetic feed's last event so it is accepted.
+    await sql`UPDATE games SET home_score = 4, away_score = 6 WHERE game_id = ${game.game_id}::bigint`;
     const out = run('scripts/ingest-pbp.ts', {}, [`--game=${game.game_id}`, `--from-file=${file}`, '--format=cdn', '--keep-raw']);
-    expect(out).toContain('1 ingested');
+    expect(out).toContain('1 ingested, 0 incomplete');
 
     const [flow] = await sql`SELECT lac_largest_lead, lac_largest_deficit, lead_changes, times_tied, lac_best_run, opp_best_run, comeback_margin, source
                              FROM game_flow WHERE game_id = ${game.game_id}::bigint`;
@@ -295,6 +304,13 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
              (SELECT COUNT(*)::int FROM period_team_stats WHERE game_id = ${game.game_id}::bigint) AS periods`)[0];
     expect(await counts()).toEqual({ events: 6, periods: 4 });
 
+    // Stable provider ids: one row per action_number, with the raw type and subtype.
+    const ids = await sql<{ action_number: number; action_type: string; sub_type: string }[]>`
+      SELECT action_number, action_type, sub_type FROM pbp_events WHERE game_id = ${game.game_id}::bigint ORDER BY event_num`;
+    expect(new Set(ids.map((r) => r.action_number)).size).toBe(6);
+    expect(ids.map((r) => r.action_number)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(ids[1]).toEqual({ action_number: 2, action_type: '3pt', sub_type: '' });
+
     // Already ingested → skipped; --force rewrites the same rows.
     expect(run('scripts/ingest-pbp.ts', {}, [`--game=${game.game_id}`, `--from-file=${file}`, '--format=cdn'])).toContain('0 game(s) to ingest');
     run('scripts/ingest-pbp.ts', {}, [`--game=${game.game_id}`, `--from-file=${file}`, '--format=cdn', '--force']);
@@ -306,6 +322,7 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
   it('builds the record book: highs, streaks, records start; idempotent', async () => {
     const out = run('scripts/build-record-book.ts');
     expect(out).toContain('records start 2024-25');
+    expect(out).toContain('pbp records start 2026-27');
 
     const [top] = await sql<{ display_name: string }[]>`
       SELECT p.display_name FROM rb_game_highs h JOIN players p ON p.player_id = h.player_id
@@ -335,6 +352,10 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
 
     const [kv] = await sql<{ value: { season_id: number; label: string } }[]>`SELECT value FROM app_kv WHERE key = 'insights.records_start'`;
     expect(kv.value).toEqual({ season_id: 2024, label: '2024-25' });
+
+    // Only the one 2026 Clippers game has play-by-play, so play-by-play records start in 2026-27.
+    const [pbpKv] = await sql<{ value: { season_id: number; label: string } }[]>`SELECT value FROM app_kv WHERE key = 'insights.pbp_records_start'`;
+    expect(pbpKv.value).toEqual({ season_id: 2026, label: '2026-27' });
 
     const counts = async () => (await sql<{ highs: number; streaks: number }[]>`
       SELECT (SELECT COUNT(*)::int FROM rb_game_highs) AS highs, (SELECT COUNT(*)::int FROM rb_streaks) AS streaks`)[0];
