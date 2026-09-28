@@ -63,7 +63,7 @@ describe('buildLiveState', () => {
     expect(body.status).toBe('final');
   });
 
-  it('uses stale box header if scoreboard is ahead', () => {
+  it("the scoreboard's header wins when it is ahead of a lagging box", () => {
     const body = buildLiveState(inputs({
       sbGame: sbGame({ status: 3, home: 110, away: 101 }),
       box: box({ status: 2, home: 106, away: 101 }),
@@ -72,6 +72,32 @@ describe('buildLiveState', () => {
     expect(body.home_score).toBe(110);
     expect(body.away_score).toBe(101);
     expect(body.home_box?.score).toBe(106);
+  });
+
+  it('never uses the stats.nba.com fallback box (period 1, empty clock) as the header source', () => {
+    // scripts/lib/nba-live-client.ts's 403 fallback always reports period: 1,
+    // gameClock: '' — even when gameStatus matches or leads the scoreboard, it
+    // must not be picked as the header source (no real clock/period to show).
+    const body = buildLiveState(inputs({
+      sbGame: sbGame({ status: 2, period: 3, clock: 'PT06M00.00S', home: 60, away: 55 }),
+      box: box({ status: 2, period: 1, clock: '', home: 60, away: 55 }),
+    }));
+    expect(body.period).toBe(3);
+    expect(body.clock).toBe('6:00');
+    expect(body.home_score).toBe(60);
+    expect(body.away_score).toBe(55);
+    // The box score panel itself still reflects whatever the box has.
+    expect(body.home_box?.score).toBe(60);
+  });
+
+  it('does use the fallback box as the header once it reports final, even with an empty clock', () => {
+    const body = buildLiveState(inputs({
+      sbGame: sbGame({ status: 2, period: 3, clock: 'PT06M00.00S', home: 60, away: 55 }),
+      box: box({ status: 3, period: 1, clock: '', home: 110, away: 101 }),
+    }));
+    expect(body.status).toBe('final');
+    expect(body.home_score).toBe(110);
+    expect(body.away_score).toBe(101);
   });
 });
 
