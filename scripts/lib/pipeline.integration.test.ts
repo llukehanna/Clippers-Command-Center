@@ -303,6 +303,46 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     expect(kept.n).toBe(6);
   }, TIMEOUT);
 
+  it('builds the record book: highs, streaks, records start; idempotent', async () => {
+    const out = run('scripts/build-record-book.ts');
+    expect(out).toContain('records start 2024-25');
+
+    const [top] = await sql<{ display_name: string }[]>`
+      SELECT p.display_name FROM rb_game_highs h JOIN players p ON p.player_id = h.player_id
+      WHERE h.scope = 'lac_player' AND h.stat_key = 'pts' AND h.rank = 1`;
+    expect(top.display_name).toBe('Star Clipper');
+
+    const [career] = await sql<{ n: number }[]>`
+      SELECT COUNT(*)::int AS n FROM rb_game_highs h JOIN players p ON p.player_id::text = h.scope_id
+      WHERE h.scope = 'player_career' AND h.stat_key = 'pts' AND p.display_name = 'Star Clipper'`;
+    expect(career.n).toBeGreaterThan(0);
+
+    const [low] = await sql<{ r1: number; r2: number }[]>`
+      SELECT MAX(value) FILTER (WHERE rank = 1)::int AS r1, MAX(value) FILTER (WHERE rank = 2)::int AS r2
+      FROM rb_game_highs WHERE scope = 'lac_team' AND stat_key = 'opp_pts_low'`;
+    expect(low.r1).toBeLessThanOrEqual(low.r2);
+
+    const [quarter] = await sql<{ value: number }[]>`
+      SELECT value::int FROM rb_game_highs WHERE scope = 'lac_player' AND stat_key = 'q_pts' AND rank = 1`;
+    expect(quarter.value).toBe(3);
+
+    const [streak] = await sql<{ length: number; is_active: boolean }[]>`
+      SELECT s.length, s.is_active FROM rb_streaks s JOIN players p ON p.player_id = s.entity_id
+      WHERE s.entity_type = 'player' AND s.streak_key = 'scoring_30' AND p.display_name = 'Star Clipper'
+      ORDER BY s.end_date DESC LIMIT 1`;
+    expect(streak.is_active).toBe(true);
+    expect(streak.length).toBeGreaterThanOrEqual(4);
+
+    const [kv] = await sql<{ value: { season_id: number; label: string } }[]>`SELECT value FROM app_kv WHERE key = 'insights.records_start'`;
+    expect(kv.value).toEqual({ season_id: 2024, label: '2024-25' });
+
+    const counts = async () => (await sql<{ highs: number; streaks: number }[]>`
+      SELECT (SELECT COUNT(*)::int FROM rb_game_highs) AS highs, (SELECT COUNT(*)::int FROM rb_streaks) AS streaks`)[0];
+    const before = await counts();
+    run('scripts/build-record-book.ts');
+    expect(await counts()).toEqual(before);
+  }, TIMEOUT);
+
   it('finds stale duplicate rows and removes only the safe ones', async () => {
     const { findLikelyDuplicates, removeStaleDuplicate } = await import('./league-ingest');
     // Two older-provider rows dated a day after real fixture games (like 2022-23 in production).
