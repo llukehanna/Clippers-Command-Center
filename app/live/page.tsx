@@ -1,9 +1,15 @@
 'use client'
 
-import { useLiveData } from '@/hooks/useLiveData'
+import { useLiveStream } from '@/hooks/useLiveStream'
 import { LiveView } from '@/components/live/LiveView'
+import { LatencyOverlay } from '@/components/live/LatencyOverlay'
 
 export default function LivePage() {
-  const { data, error } = useLiveData({ follow: 'cadence' })
-  return <LiveView data={data} error={error} />
+  const { data, error, source, latency } = useLiveStream()
+  return (
+    <>
+      <LiveView data={data} error={error} source={source} />
+      <LatencyOverlay sample={latency} />
+    </>
+  )
 }

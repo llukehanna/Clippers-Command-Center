@@ -1,0 +1,173 @@
+'use client'
+
+import * as React from 'react'
+import { useLiveData } from '@/hooks/useLiveData'
+import { useNow } from '@/hooks/useNow'
+import { useVisibleWithGrace } from '@/hooks/useVisibleWithGrace'
+import { applyMessage, type LiveMessage } from '@/src/lib/live/protocol'
+import { overlayLiveDoc } from '@/src/lib/live/payload'
+import { espnScoreboardUrl, overlayEspn, parseEspnScoreboard, type EspnScore } from '@/src/lib/live/espn-backup'
+import {
+  BACKUP_POLL_MS,
+  FLAP_PAUSE_MS,
+  HIDDEN_CLOSE_MS,
+  PING_EVERY_MS,
+  PUSH_FRESH_MS,
+  hubSocketUrl,
+  isFlapping,
+  needsBackup,
+  pickSource,
+  reconnectDelay,
+  streamGameId,
+  type FeedSource,
+} from '@/src/lib/live/stream'
+import type { LiveStateDoc } from '@/src/lib/types/live-state'
+import type { LivePayload } from '@/src/lib/ui/types'
+
+const HUB_URL = process.env.NEXT_PUBLIC_LIVE_HUB_URL ?? ''
+
+export interface LatencySample {
+  observed_at: string | null  // the real play (NBA wall clock)
+  fetched_at: string          // the runner saw it
+  hub_at: number | null       // the hub relayed it
+  received_at: number         // this browser got it (local clock)
+}
+
+export interface LiveStream {
+  data: LivePayload | undefined
+  error: unknown
+  source: FeedSource
+  latency: LatencySample | null
+}
+
+/**
+ * /live's connection manager (spec §6.2): WebSocket push from the live hub,
+ * /api/live polling underneath (slowed to the 30 s chip budget while push is
+ * fresh), and ESPN's public scoreboard if our runner goes stale.
+ */
+export function useLiveStream(): LiveStream {
+  const now = useNow(5_000)?.getTime() ?? null
+  const [pushed, setPushed] = React.useState<{ gameId: string; doc: LiveStateDoc; at: number } | null>(null)
+  const [latency, setLatency] = React.useState<LatencySample | null>(null)
+  const [espn, setEspn] = React.useState<{ gameId: string; score: EspnScore } | null>(null)
+
+  const lastPushAt = pushed?.at ?? null
+  const pushFresh = lastPushAt !== null && now !== null && now - lastPushAt < PUSH_FRESH_MS
+  const { data: base, error, mutate } = useLiveData({ follow: pushFresh ? 'chip' : 'cadence' })
+  const gameId = streamGameId(base)
+  const visible = useVisibleWithGrace(HIDDEN_CLOSE_MS)
+  const pushDoc = pushed && pushed.gameId === gameId ? pushed.doc : null
+
+  // Tier 1: push.
+  React.useEffect(() => {
+    if (!HUB_URL || !gameId || !visible) return
+    let ws: WebSocket | null = null
+    let state: LiveStateDoc | null = null
+    let attempt = 0
+    let stopped = false
+    let retry: ReturnType<typeof setTimeout> | undefined
+    const drops: number[] = []
+
+    const connect = () => {
+      ws = new WebSocket(hubSocketUrl(HUB_URL, gameId))
+      ws.onopen = () => {
+        attempt = 0
+      }
+      ws.onmessage = (event) => {
+        if (typeof event.data !== 'string' || event.data === 'pong') return
+        let msg: LiveMessage
+        try {
+          msg = JSON.parse(event.data) as LiveMessage
+        } catch {
+          return
+        }
+        const result = applyMessage(state, msg)
+        if (result.needKeyframe) ws?.send('resync')
+        if (!result.applied || !result.state) return
+        state = result.state
+        const receivedAt = Date.now()
+        setPushed({ gameId, doc: result.state, at: receivedAt })
+        setLatency({
+          observed_at: result.state.observed_at,
+          fetched_at: result.state.fetched_at,
+          hub_at: msg.hub_at ?? null,
+          received_at: receivedAt,
+        })
+      }
+      ws.onclose = () => {
+        if (stopped) return
+        drops.push(Date.now())
+        retry = setTimeout(connect, isFlapping(drops, Date.now()) ? FLAP_PAUSE_MS : reconnectDelay(attempt++))
+      }
+    }
+
+    connect()
+    const ping = setInterval(() => {
+      if (ws?.readyState === WebSocket.OPEN) ws.send('ping')
+    }, PING_EVERY_MS)
+    return () => {
+      stopped = true
+      clearTimeout(retry)
+      clearInterval(ping)
+      ws?.close()
+    }
+  }, [gameId, visible])
+
+  // Pre-tip → tip: the hub knows the game started before /api/live's slow
+  // pre-tip poll does; refetch so the page has the game's identity to overlay.
+  const pushedStatus = pushDoc?.status
+  const hasGame = Boolean(base?.game)
+  React.useEffect(() => {
+    if (pushedStatus && pushedStatus !== 'scheduled' && !hasGame) void mutate()
+  }, [pushedStatus, hasGame, mutate])
+
+  // Tier 3: ESPN backup while our runner is stale.
+  const backupWanted = needsBackup(base, pushFresh)
+  const backupGame = backupWanted ? base?.game ?? null : null
+  React.useEffect(() => {
+    const g = backupGame
+    if (!g?.game_date || !g.home.abbreviation || !g.away.abbreviation) return
+    const { game_id, game_date } = g
+    const home = g.home.abbreviation
+    const away = g.away.abbreviation
+    let stopped = false
+    const tick = async () => {
+      try {
+        const res = await fetch(espnScoreboardUrl(game_date), { signal: AbortSignal.timeout(4_000) })
+        if (!res.ok) return
+        const score = parseEspnScoreboard(await res.json(), home, away)
+        if (score && !stopped) setEspn({ gameId: game_id, score })
+      } catch {
+        // Best effort: the delayed banner is already showing.
+      }
+    }
+    void tick()
+    const id = setInterval(tick, BACKUP_POLL_MS)
+    return () => {
+      stopped = true
+      clearInterval(id)
+    }
+  }, [backupGame])
+
+  const backupScore = backupWanted && espn && espn.gameId === base?.game?.game_id ? espn.score : null
+  let data = base
+  if (data && pushDoc && pushFresh) data = overlayLiveDoc(data, pushDoc)
+  // overlayEspn hands back the same object when ESPN is behind us (or can't
+  // apply), so the chip only claims the backup feed when it actually changed
+  // what's on screen.
+  let usedBackup = false
+  if (data && backupScore) {
+    const withBackup = overlayEspn(data, backupScore)
+    usedBackup = withBackup !== data
+    data = withBackup
+  }
+
+  return {
+    data,
+    error,
+    // Count push only when its doc is for the game on screen (not a stale
+    // doc from a previous game id during a handover).
+    source: pickSource({ base, lastPushAt: pushDoc ? lastPushAt : null, now: now ?? 0, backup: usedBackup }),
+    latency,
+  }
+}

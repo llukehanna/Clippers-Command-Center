@@ -16,7 +16,10 @@ import { KeyMetrics } from './KeyMetrics'
 import { StickyScore } from './StickyScore'
 import { LiveTabTitle } from './LiveTabTitle'
 import { IdleState } from './IdleState'
+import { FeedSource } from './FeedSource'
 import { resolveLiveState } from '@/src/lib/ui/live'
+import { BACKUP_STALE_REASON } from '@/src/lib/live/espn-backup'
+import type { FeedSource as FeedSourceKind } from '@/src/lib/live/stream'
 import { formatMoneyline, formatSpread, noVigProbabilities } from '@/src/lib/ui/odds'
 import { ageLabel, parseTimestamp } from '@/src/lib/ui/time'
 import type { LivePayload } from '@/src/lib/ui/types'
@@ -36,7 +39,7 @@ function LoadingState() {
 }
 
 /** Everything under /live, driven by one /api/live payload. */
-export function LiveView({ data, error }: { data: LivePayload | undefined; error?: unknown }) {
+export function LiveView({ data, error, source }: { data: LivePayload | undefined; error?: unknown; source?: FeedSourceKind }) {
   const scoreRef = React.useRef<HTMLDivElement>(null)
   const now = useNow(5_000)
 
@@ -82,6 +85,7 @@ export function LiveView({ data, error }: { data: LivePayload | undefined; error
   const oppBox = data.box_score?.teams.find((t) => t.team_abbr !== lac.abbr)
   const insights = [...(data.insights ?? [])].sort((a, b) => b.importance - a.importance)
   const delayAge = delayed && now ? ageLabel(data.snapshot_captured_at, now) : null
+  const onBackup = data.meta.stale_reason === BACKUP_STALE_REASON
 
   return (
     <div className="page">
@@ -114,9 +118,16 @@ export function LiveView({ data, error }: { data: LivePayload | undefined; error
           )}
           {probs && <WinProbabilityBar lacProb={probs.a} oppAbbr={oppAbbr} />}
         </Scoreboard>
+        {source && (
+          <div className="mt-3 flex justify-end">
+            <FeedSource source={source} />
+          </div>
+        )}
         {delayed && (
           <p className="m-0 mt-3 flex items-center gap-2 font-mono text-[12px] text-warn" role="status">
-            Feed delayed{delayAge ? ` · last update ${delayAge} ago` : ''}. Showing the most recent snapshot.
+            {onBackup
+              ? "Our live feed is delayed. Score and clock are from ESPN's backup feed."
+              : `Feed delayed${delayAge ? ` · last update ${delayAge} ago` : ''}. Showing the most recent snapshot.`}
           </p>
         )}
       </section>
