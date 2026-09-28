@@ -3,6 +3,12 @@
 // a keyframe every 30 s (and after any failed post), deltas in between.
 // Publishing is best-effort — the database write is the source of truth and
 // /api/live keeps working without the hub.
+//
+// The publisher is single-flight and latest-wins: at most one post is ever in
+// flight. A publish() that arrives mid-flight replaces any earlier queued doc
+// rather than piling up requests — a hub outage must never make the poller's
+// own tick cadence wait on PUBLISH_TIMEOUT_MS (saveThenPublish doesn't await
+// publish() either, for the same reason).
 
 import type { LiveStateDoc } from '../../src/lib/types/live-state';
 import { diffDocs, type LiveMessage } from '../../src/lib/live/protocol';
@@ -12,6 +18,8 @@ const PUBLISH_TIMEOUT_MS = 3_000;
 
 export interface Publisher {
   publish(doc: LiveStateDoc): Promise<boolean>;
+  /** Resolves once nothing is in flight or queued. For callers about to exit. */
+  flush(): Promise<void>;
 }
 
 export function createPublisher(o: {
@@ -23,21 +31,69 @@ export function createPublisher(o: {
   let last: LiveStateDoc | null = null;
   let lastKeyframeAt = Number.NEGATIVE_INFINITY;
   const every = o.keyframeEveryMs ?? KEYFRAME_EVERY_MS;
-  return {
-    async publish(doc) {
-      const now = o.now();
-      const keyframe = last === null || now - lastKeyframeAt >= every;
-      const msg: LiveMessage = keyframe ? { kind: 'keyframe', seq: doc.seq, doc } : diffDocs(last!, doc);
-      try {
-        await o.post(msg);
-      } catch (err) {
+
+  let inFlight = false;
+  let pending: { doc: LiveStateDoc; resolve: (ok: boolean) => void } | null = null;
+  let idleWaiters: Array<() => void> = [];
+
+  function notifyIdle(): void {
+    if (inFlight || pending) return;
+    const waiters = idleWaiters;
+    idleWaiters = [];
+    for (const w of waiters) w();
+  }
+
+  function dispatch(doc: LiveStateDoc, resolve: (ok: boolean) => void): void {
+    inFlight = true;
+    const now = o.now();
+    const keyframe = last === null || now - lastKeyframeAt >= every;
+    const msg: LiveMessage = keyframe ? { kind: 'keyframe', seq: doc.seq, doc } : diffDocs(last!, doc);
+    o.post(msg).then(
+      () => {
+        last = doc;
+        if (keyframe) lastKeyframeAt = now;
+        inFlight = false;
+        resolve(true);
+        advance();
+      },
+      (err: unknown) => {
         o.log?.(`hub publish failed (seq ${doc.seq}): ${(err as Error).message}`);
         last = null; // the next publish resynchronizes everyone with a keyframe
-        return false;
+        inFlight = false;
+        resolve(false);
+        advance();
       }
-      last = doc;
-      if (keyframe) lastKeyframeAt = now;
-      return true;
+    );
+  }
+
+  function advance(): void {
+    if (pending) {
+      const next = pending;
+      pending = null;
+      dispatch(next.doc, next.resolve);
+    } else {
+      notifyIdle();
+    }
+  }
+
+  return {
+    publish(doc) {
+      return new Promise<boolean>((resolve) => {
+        if (!inFlight) {
+          dispatch(doc, resolve);
+        } else {
+          // A doc already queued behind the in-flight post is superseded —
+          // its own state is stale the moment a newer one shows up.
+          pending?.resolve(false);
+          pending = { doc, resolve };
+        }
+      });
+    },
+    flush() {
+      if (!inFlight && !pending) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        idleWaiters.push(resolve);
+      });
     },
   };
 }
@@ -67,12 +123,15 @@ export function hubPublisherFromEnv(nbaGameId: string, env: Partial<NodeJS.Proce
   });
 }
 
-/** Save to the database and publish concurrently; only a failed save is an error. */
+/**
+ * Save to the database; kick off (but don't wait on) the hub publish. Only a
+ * failed save is an error — a slow or down hub must never add to tick latency.
+ */
 export async function saveThenPublish(
   doc: LiveStateDoc,
   save: (doc: LiveStateDoc) => Promise<unknown>,
   publisher: Publisher | null
 ): Promise<void> {
-  const [saved] = await Promise.allSettled([save(doc), publisher?.publish(doc)]);
-  if (saved.status === 'rejected') throw saved.reason;
+  publisher?.publish(doc).catch(() => {});
+  await save(doc);
 }

@@ -17,6 +17,7 @@ import { sql } from './lib/db.js';
 import { findLiveCandidates, type LiveCandidate } from './lib/live-cycle.js';
 import { createPoller } from './lib/live-poller.js';
 import { nbaPollerDeps } from './lib/live-deps.js';
+import type { Publisher } from './lib/live-publish.js';
 import { loadLiveSeq } from './lib/live-store.js';
 import { finalizeGame } from './lib/finalize.js';
 import { decideGameNightAction, FINAL_SAVE_MAX_ATTEMPTS } from './lib/game-night-logic.js';
@@ -31,6 +32,13 @@ const NOT_LISTED_GIVE_UP_MS = 30 * 60_000;
 
 const startedAt = Date.now();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Best-effort: give a queued hub publish a chance to go out before the
+// process exits, but never let a stuck hub delay shutdown indefinitely.
+async function flushHub(hub: Publisher | null): Promise<void> {
+  if (!hub) return;
+  await Promise.race([hub.flush(), sleep(5_000)]);
+}
 
 async function main(): Promise<void> {
   const [candidate] = await findLiveCandidates(sql, LEAD_MINUTES);
@@ -56,12 +64,8 @@ async function main(): Promise<void> {
 
 async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<void> {
   const initialSeq = await loadLiveSeq(sql, candidate.game_id);
-  const poller = createPoller(
-    candidate.nba_game_id,
-    tip?.getTime() ?? null,
-    nbaPollerDeps(sql, candidate.game_id, candidate.nba_game_id),
-    initialSeq
-  );
+  const deps = nbaPollerDeps(sql, candidate.game_id, candidate.nba_game_id);
+  const poller = createPoller(candidate.nba_game_id, tip?.getTime() ?? null, deps, initialSeq);
   let notListedSince: number | null = null;
   let saves = 0;
   let finalAttempts = 0;
@@ -76,6 +80,7 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
       const pastTip = !tip || Date.now() > tip.getTime();
       if (pastTip && Date.now() - notListedSince > NOT_LISTED_GIVE_UP_MS) {
         console.warn('[game-night] Game not on the scoreboard for 30 min after tip. Stopping.');
+        await flushHub(deps.hub);
         return;
       }
     } else if (r.status === 'ok') {
@@ -124,6 +129,7 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
         console.error(`[game-night] Finalization failed: ${(err as Error).message}`);
         process.exitCode = 1;
       }
+      await flushHub(deps.hub);
       return;
     }
 
@@ -137,6 +143,7 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
     await sleep(decision.action.sleepMs);
   }
   console.warn('[game-night] Max runtime reached; the next hourly launch continues.');
+  await flushHub(deps.hub);
 }
 
 main()

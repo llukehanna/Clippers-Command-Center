@@ -56,6 +56,11 @@ async function main(): Promise<void> {
     if (r.final) break;
     await sleep(r.delayMs);
   }
+  if (hub) {
+    console.log('[dry-run] flushing hub…');
+    await Promise.race([hub.flush(), sleep(5_000)]);
+    console.log('[dry-run] hub flushed');
+  }
 }
 
 main().catch((err) => {
