@@ -1,67 +1,125 @@
-import { TeamSnapshot } from '@/components/home/TeamSnapshot'
-import { NextGameHero } from '@/components/home/NextGameHero'
-import { ScheduleTable } from '@/components/home/ScheduleTable'
-import { PlayerTrendsTable } from '@/components/home/PlayerTrendsTable'
-import { InsightTileArea } from '@/components/live/InsightTileArea'
-import { PointDiffChart } from '@/components/home/PointDiffChart'
-import { formatSeasonLabel } from '@/src/lib/home-utils'
+import type { Metadata } from 'next'
+import { NextGamePanel } from '@/components/game/NextGamePanel'
+import { UpNextList } from '@/components/game/UpNextList'
+import { SeasonPanel } from '@/components/home/SeasonPanel'
+import { LastTenPanel } from '@/components/home/LastTenPanel'
+import { PlayerLeaders } from '@/components/home/PlayerLeaders'
+import { InsightStack } from '@/components/insights/InsightStack'
+import { Eyebrow } from '@/components/ui/eyebrow'
+import { Chip } from '@/components/ui/chip'
+import { EmptyState } from '@/components/ui/empty-state'
+import { getJson } from '@/src/lib/ui/api'
+import { annotateSchedule } from '@/src/lib/ui/schedule'
+import { playedGames, regularSeason, seasonSummary, type HistoryGame } from '@/src/lib/ui/season'
+import { ageLabel } from '@/src/lib/ui/time'
+import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
+import type { HomePayload, Insight, PlayersPayload } from '@/src/lib/ui/types'
 
-async function getHomeData() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-  const res = await fetch(`${baseUrl}/api/home`, { cache: 'no-store' })
-  if (!res.ok) return null
-  return res.json()
-}
+// Live data on every request (loaders read the database directly).
+export const dynamic = 'force-dynamic'
 
-async function getTeamInsights() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-  const res = await fetch(`${baseUrl}/api/insights?scope=between_games`, { cache: 'no-store' })
-  if (!res.ok) return []
-  const body = await res.json()
-  return body.insights ?? []
-}
+export const metadata: Metadata = { title: 'Home' }
 
 export default async function HomePage() {
-  const [data, teamInsights] = await Promise.all([getHomeData(), getTeamInsights()])
+  const [home, insightsRes, roster] = await Promise.all([
+    getJson<HomePayload>('/api/home'),
+    getJson<{ insights: Insight[] }>('/api/insights?scope=between_games&limit=12'),
+    getJson<PlayersPayload>('/api/players?include_traded=true'),
+  ])
 
-  if (!data) {
+  if (!home) {
     return (
-      <div className="px-6 py-6 max-w-[1440px] mx-auto">
-        <p className="text-sm text-muted-foreground">Unable to load dashboard data.</p>
+      <div className="page">
+        <EmptyState title="The dashboard couldn't load" body="The data service didn't respond. Refresh in a moment." />
       </div>
     )
   }
 
-  const snapshot = data.team_snapshot
-  const upcoming = Array.isArray(data.upcoming_schedule) ? data.upcoming_schedule : []
-  const last10Games = Array.isArray(snapshot?.last10_games) ? snapshot.last10_games : []
-  // Offseason: no games played and none scheduled — label the season so a
-  // 0–0 record isn't read as a bad start.
-  const isOffseason =
-    upcoming.length === 0 &&
-    snapshot?.record?.wins === 0 &&
-    snapshot?.record?.losses === 0 &&
-    typeof snapshot?.season_id === 'number'
+  const snapshot = home.team_snapshot
+  const seasonId = snapshot?.season_id ?? null
+  const history = seasonId
+    ? await getJson<{ games: HistoryGame[] }>(`/api/history/games?season_id=${seasonId}&limit=200`)
+    : null
+  const played = playedGames(history?.games ?? [])
+  const regular = regularSeason(played)
+  const summary = regular.length ? seasonSummary(regular) : null
+  const gameIdByDate = new Map(played.map((g) => [`${g.game_date}|${g.opponent_abbr}`, g.game_id]))
+
+  const next = home.next_game
+  const isPastSeason = seasonId != null && seasonId < seasonStartYear()
+  const nextIsOpener = next != null && seasonId != null && seasonStartYear(new Date(`${next.game_date}T12:00:00Z`)) > seasonId
+  const upcoming = annotateSchedule(home.upcoming_schedule ?? [], null)
+  const nextContext = next ? (
+    nextIsOpener ? (
+      <Chip tone="blue">Season opener</Chip>
+    ) : upcoming[0]?.annotation.stand ? (
+      <Chip tone="blue">{upcoming[0].annotation.stand.kind === 'home' ? 'Home stand' : 'Road trip'}</Chip>
+    ) : null
+  ) : null
+
+  const rosterById = new Map((roster?.players ?? []).map((p) => [String(p.player_id), p]))
+  const leaders = [...(home.player_trends ?? [])]
+    .sort((a, b) => (b.pts_avg ?? 0) - (a.pts_avg ?? 0))
+    .slice(0, 6)
+    .map((p) => {
+      const r = rosterById.get(String(p.player_id))
+      return { ...p, position: r?.position ?? null, nba_person_id: p.nba_person_id ?? r?.nba_person_id ?? null }
+    })
+
+  const insights = (insightsRes?.insights ?? []).slice().sort((a, b) => b.importance - a.importance)
+  const last10 = (snapshot?.last10_games ?? []).map((g) => ({
+    ...g,
+    game_id: gameIdByDate.get(`${g.game_date}|${g.opponent_abbr}`),
+  }))
+  const last10Margin = last10.length ? last10.reduce((s, g) => s + g.margin, 0) / last10.length : null
 
   return (
-    <div className="px-6 py-6 max-w-[1440px] mx-auto space-y-6">
-      {isOffseason && (
-        <p className="text-sm text-muted-foreground">
-          {formatSeasonLabel(snapshot.season_id).replace('-', '–')} season — no games played yet.
-        </p>
-      )}
-      {snapshot && <TeamSnapshot snapshot={snapshot} />}
-      <div className="space-y-4">
-        <NextGameHero game={data.next_game ?? null} />
-        {upcoming.length > 1 && (
-          <ScheduleTable games={upcoming.slice(1, 5)} />
+    <div className="page">
+      <section className="enter grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 0 }}>
+        <NextGamePanel game={next} context={nextContext} />
+        {snapshot && (
+          <SeasonPanel
+            title={isPastSeason ? 'Last season' : 'This season'}
+            seasonLabel={formatSeasonLabel(snapshot.season_id).replace('-', '–')}
+            record={snapshot.record}
+            last10={snapshot.last_10}
+            last10Margin={last10Margin}
+            splits={summary ? { home: summary.home, away: summary.away } : null}
+            ratings={{ net: snapshot.net_rating, off: snapshot.off_rating, def: snapshot.def_rating }}
+          />
         )}
-      </div>
-      <PlayerTrendsTable players={data.player_trends} />
-      {teamInsights.length > 0 && (
-        <InsightTileArea insights={teamInsights} className="h-[200px]" />
+      </section>
+
+      {last10.length > 0 && (
+        <section className="enter" style={{ ['--i' as string]: 1 }}>
+          <LastTenPanel games={last10} />
+        </section>
       )}
-      <PointDiffChart games={last10Games} />
+
+      <section className="enter grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 2 }}>
+        {leaders.length > 0 && (
+          <div>
+            <Eyebrow aside={isPastSeason ? 'final 10 games' : 'last 10 games'}>Player trends</Eyebrow>
+            <PlayerLeaders players={leaders} />
+          </div>
+        )}
+        {insights.length > 0 && (
+          <div>
+            <Eyebrow aside={`${insights.length} verified`}>Insights</Eyebrow>
+            <InsightStack insights={insights} />
+          </div>
+        )}
+      </section>
+
+      {upcoming.length > 1 && (
+        <section className="enter" style={{ ['--i' as string]: 3 }}>
+          <Eyebrow aside="all times PT">Up next</Eyebrow>
+          <UpNextList games={upcoming.slice(1, 5)} />
+        </section>
+      )}
+      {home.meta?.last_sync_at && (
+        <p className="m-0 font-mono text-[11.5px] text-dim">Data synced {ageLabel(home.meta.last_sync_at)} ago</p>
+      )}
     </div>
   )
 }

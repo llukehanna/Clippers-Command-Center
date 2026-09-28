@@ -1,13 +1,7 @@
-import { cn } from "@/lib/utils"
+import type * as React from 'react'
+import { cn } from '@/lib/utils'
 
-function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="skeleton"
-      className={cn("animate-pulse rounded-md bg-accent", className)}
-      {...props}
-    />
-  )
+/** Shimmering placeholder block. Size it with className. */
+export function Skeleton({ className, style }: { className?: string; style?: React.CSSProperties }) {
+  return <div aria-hidden style={style} className={cn('shimmer rounded-[12px]', className)} />
 }
-
-export { Skeleton }
