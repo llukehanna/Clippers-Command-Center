@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { hubSocketUrl, isFlapping, isPushFresh, needsBackup, pickSource, pushIsCurrent, reconnectDelay, streamGameId } from './stream';
+import {
+  PING_EVERY_MS,
+  hubSocketUrl,
+  isFlapping,
+  isPushFresh,
+  needsBackup,
+  pickSource,
+  pushIsCurrent,
+  reconnectDelay,
+  socketIsSilent,
+  streamGameId,
+} from './stream';
 import type { LivePayload } from '../ui/types';
 
 const payload = (over: Partial<LivePayload>): LivePayload =>
@@ -53,6 +64,18 @@ describe('stream helpers', () => {
     expect(pushIsCurrent({ fetched_at: 'garbage' }, payload({ snapshot_captured_at: '2026-10-21T03:00:05.000Z' }))).toBe(false);
   });
 
+  it('while the server reports DATA_DELAYED, overlays push only when it is strictly newer than the stale snapshot', () => {
+    const doc = { fetched_at: '2026-10-21T03:00:10.000Z' };
+    const delayed = (at: string) => payload({ state: 'DATA_DELAYED', snapshot_captured_at: at });
+    // The same doc the server already calls stale (e.g. replayed by the hub) is not live.
+    expect(pushIsCurrent(doc, delayed('2026-10-21T03:00:10.000Z'))).toBe(false);
+    expect(pushIsCurrent(doc, delayed('2026-10-21T03:00:20.000Z'))).toBe(false);
+    // The runner came back: its new doc beats the stale snapshot.
+    expect(pushIsCurrent(doc, delayed('2026-10-21T03:00:05.000Z'))).toBe(true);
+    // Not delayed: equal timestamps still overlay (the >= rule).
+    expect(pushIsCurrent(doc, payload({ state: 'LIVE', snapshot_captured_at: '2026-10-21T03:00:10.000Z' }))).toBe(true);
+  });
+
   it('picks the source: idle with no live game, then backup, then fresh push, then poll', () => {
     const at = Date.parse('2026-10-21T03:00:00.000Z');
     const fetched = '2026-10-21T03:00:00.000Z';
@@ -65,6 +88,12 @@ describe('stream helpers', () => {
     expect(pickSource({ shown: undefined, pushFetchedAt: null, now: at, backup: false })).toBe('idle');
     // The buzzer has gone: nothing is streaming any more.
     expect(pickSource({ shown: payload({ game: game('final') }), pushFetchedAt: fetched, now: at, backup: false })).toBe('idle');
+  });
+
+  it('treats a socket as dead after two ping intervals with no message or pong', () => {
+    const heard = 1_000_000;
+    expect(socketIsSilent(heard, heard + 2 * PING_EVERY_MS - 1)).toBe(false);
+    expect(socketIsSilent(heard, heard + 2 * PING_EVERY_MS)).toBe(true);
   });
 
   it('wants the ESPN backup only when the feed is delayed, push is not fresh, and the game is live', () => {

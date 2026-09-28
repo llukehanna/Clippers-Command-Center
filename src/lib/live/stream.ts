@@ -16,6 +16,8 @@ export const PUSH_FRESH_MS = 30_000;
 export const CLOCK_SKEW_TOLERANCE_MS = 15_000;
 export const HIDDEN_CLOSE_MS = 30_000;
 export const PING_EVERY_MS = 25_000;
+/** No message and no 'pong' for two ping intervals: the socket is dead even if it looks open. */
+export const SOCKET_SILENT_MS = 2 * PING_EVERY_MS;
 export const BACKUP_POLL_MS = 5_000;
 /** Pre-tip → tip: how often /live refetches /api/live until it has the game. */
 export const TIP_REFETCH_MS = 5_000;
@@ -26,6 +28,10 @@ export function reconnectDelay(attempt: number): number {
 
 export function isFlapping(drops: number[], now: number): boolean {
   return drops.filter((t) => now - t < FLAP_WINDOW_MS).length >= FLAP_LIMIT;
+}
+
+export function socketIsSilent(lastHeardAt: number, now: number): boolean {
+  return now - lastHeardAt >= SOCKET_SILENT_MS;
 }
 
 export function hubSocketUrl(hub: string, nbaGameId: string): string {
@@ -55,12 +61,18 @@ export function isPushFresh(doc: { fetched_at: string } | null | undefined, now:
   return Number.isFinite(built) && now - built < PUSH_FRESH_MS + CLOCK_SKEW_TOLERANCE_MS;
 }
 
-/** Overlay push only when it's at least as new as the polled snapshot (both server clocks). */
+/**
+ * Overlay push only when it's at least as new as the polled snapshot (both
+ * server clocks). While the server reports DATA_DELAYED, the pushed doc must
+ * be strictly newer: a doc no newer than the snapshot the server already calls
+ * stale (a hub replay, or a device clock that runs slow) isn't live.
+ */
 export function pushIsCurrent(doc: { fetched_at: string }, base: LivePayload): boolean {
   const pushed = Date.parse(doc.fetched_at);
   if (!Number.isFinite(pushed)) return false;
   const polled = base.snapshot_captured_at ? Date.parse(base.snapshot_captured_at) : NaN;
-  return !Number.isFinite(polled) || pushed >= polled;
+  if (!Number.isFinite(polled)) return true;
+  return base.state === 'DATA_DELAYED' ? pushed > polled : pushed >= polled;
 }
 
 /**
