@@ -250,6 +250,8 @@ export async function GET(): Promise<NextResponse> {
       {
         meta: buildMeta('mixed', 5, false, null),
         state: 'LIVE',
+        // /live overlays a pushed doc only when it's at least this new.
+        snapshot_captured_at: snap.captured_at,
         game: gameData,
         key_metrics: keyMetrics,
         box_score: boxScore,
