@@ -44,7 +44,12 @@ export async function saveLiveState(sql: Sql, gameDbId: string, doc: LiveStateDo
   return true;
 }
 
-/** A compact live_snapshots row at a period end or the final buzzer (insight proofs read these). */
+/**
+ * A compact live_snapshots row at a period end or the final buzzer (insight
+ * proofs read these). The cron route builds a fresh poller per request, so the
+ * poller's in-memory dedup can't be trusted alone — insert only if no row for
+ * this game/reason/period exists yet, so a re-offered moment is a no-op.
+ */
 export async function saveLiveMoment(
   sql: Sql,
   gameDbId: string,
@@ -54,7 +59,11 @@ export async function saveLiveMoment(
   const payload = { reason, seq: doc.seq, status: doc.status, status_text: doc.status_text, periods: doc.periods };
   await sql`
     INSERT INTO live_snapshots (game_id, captured_at, provider_ts, period, clock, home_score, away_score, payload)
-    VALUES (${gameDbId}::bigint, now(), ${doc.observed_at}, ${doc.period}, ${doc.clock},
-            ${doc.home_score}, ${doc.away_score}, ${sql.json(payload as unknown as Json)})
+    SELECT ${gameDbId}::bigint, now(), ${doc.observed_at}, ${doc.period}, ${doc.clock},
+           ${doc.home_score}, ${doc.away_score}, ${sql.json(payload as unknown as Json)}
+    WHERE NOT EXISTS (
+      SELECT 1 FROM live_snapshots
+      WHERE game_id = ${gameDbId}::bigint AND payload->>'reason' = ${reason} AND period = ${doc.period}
+    )
   `;
 }
