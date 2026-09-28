@@ -24,8 +24,18 @@ export function deriveGameFlow(events: PbpEvent[], lacIsHome: boolean): GameFlow
   const series: [number, number][] = [[0, 0]];
   const best = { lac: 0, opp: 0 };
   let run: { side: 'lac' | 'opp' | null; pts: number } = { side: null, pts: 0 };
+  let runStartBest = 0;               // best[run.side] snapshotted when the current run began
+  let prevHome = 0;
+  let prevAway = 0;
 
   for (const e of events) {
+    const dHome = e.scoreHome - prevHome;
+    const dAway = e.scoreAway - prevAway;
+    prevHome = e.scoreHome;
+    prevAway = e.scoreAway;
+    const dLac = lacIsHome ? dHome : dAway;
+    const dOpp = lacIsHome ? dAway : dHome;
+
     if (e.points === 0) continue;
     const m = lacIsHome ? e.scoreHome - e.scoreAway : e.scoreAway - e.scoreHome;
     if (m !== margin) {
@@ -40,8 +50,20 @@ export function deriveGameFlow(events: PbpEvent[], lacIsHome: boolean): GameFlow
     }
     if (e.points > 0 && e.scoringSide) {
       const side = (e.scoringSide === 'home') === lacIsHome ? 'lac' : 'opp';
+      if (run.side !== side) runStartBest = best[side];
       run = run.side === side ? { side, pts: run.pts + e.points } : { side, pts: e.points };
       best[side] = Math.max(best[side], run.pts);
+    } else if (run.side) {
+      // Score-correction event (points < 0): only a correction to the run's own
+      // side affects it — subtract the drop, floor at 0, and recompute the side's
+      // best from what it was before this run started (never lower an earlier run).
+      const side = run.side;
+      const delta = side === 'lac' ? dLac : dOpp;
+      if (delta < 0) {
+        const pts = Math.max(0, run.pts + delta);
+        run = { side, pts };
+        best[side] = Math.max(runStartBest, pts);
+      }
     }
   }
 
