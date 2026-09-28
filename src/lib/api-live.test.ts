@@ -189,7 +189,7 @@ const gameRow = {
 describe('GET /api/live', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('returns state:"NO_ACTIVE_GAME" with game:null when live_snapshots is empty', async () => {
+  it('returns state:"NO_ACTIVE_GAME" with game:null when there is no live state', async () => {
     mockedSql.mockResolvedValueOnce([]); // snapshot query → no rows
 
     const response = await GET();
@@ -344,17 +344,60 @@ describe('GET /api/live', () => {
     expect(queryText).toMatch(/interval '30 minutes'/);
   });
 
-  it('treats a 90s-old snapshot as LIVE (runner polls every 12s, backs off to 60s; stale threshold is 2 min)', async () => {
-    const snap = { ...makeFreshSnapRow(), captured_at: new Date(Date.now() - 90_000).toISOString() };
-    mockedSql
-      .mockResolvedValueOnce([snap])
-      .mockResolvedValueOnce([gameRow]);
-
-    const response = await GET();
-    const body = await response.json();
-
+  it('is LIVE while the state is younger than max(30 s, cadence + 20 s)', async () => {
+    const fresh = makeFreshSnapRow();
+    const snap = {
+      ...fresh,
+      captured_at: new Date(Date.now() - 25_000).toISOString(),
+      payload: { ...fresh.payload, cadence: { phase: 'LIVE', next_ms: 3_000 } },
+    };
+    mockedSql.mockResolvedValueOnce([snap]).mockResolvedValueOnce([gameRow]);
+    const body = await (await GET()).json();
     expect(body.state).toBe('LIVE');
-    expect(body.meta.stale).toBe(false);
+    expect(body.cadence).toEqual({ phase: 'LIVE', next_ms: 3_000 });
+  });
+
+  it('is DATA_DELAYED once the state outlives its cadence', async () => {
+    const fresh = makeFreshSnapRow();
+    const snap = {
+      ...fresh,
+      captured_at: new Date(Date.now() - 40_000).toISOString(),
+      payload: { ...fresh.payload, cadence: { phase: 'LIVE', next_ms: 3_000 } },
+    };
+    mockedSql.mockResolvedValueOnce([snap]).mockResolvedValueOnce([gameRow]);
+    const body = await (await GET()).json();
+    expect(body.state).toBe('DATA_DELAYED');
+    expect(body.meta.stale_reason).toBe('poll daemon offline');
+  });
+
+  it('allows a slow halftime cadence', async () => {
+    const fresh = makeFreshSnapRow();
+    const snap = {
+      ...fresh,
+      captured_at: new Date(Date.now() - 45_000).toISOString(),
+      payload: { ...fresh.payload, cadence: { phase: 'HALFTIME', next_ms: 30_000 } },
+    };
+    mockedSql.mockResolvedValueOnce([snap]).mockResolvedValueOnce([gameRow]);
+    expect((await (await GET()).json()).state).toBe('LIVE');
+  });
+
+  it('lets the Vercel CDN cache live responses for 2 s and idle ones for 30 s, never the browser', async () => {
+    mockedSql.mockResolvedValueOnce([makeFreshSnapRow()]).mockResolvedValueOnce([gameRow]);
+    const live = await GET();
+    expect(live.headers.get('Vercel-CDN-Cache-Control')).toBe('max-age=2, stale-while-revalidate=10');
+    expect(live.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
+
+    mockedSql.mockResolvedValueOnce([]);
+    const idle = await GET();
+    expect(idle.headers.get('Vercel-CDN-Cache-Control')).toBe('max-age=30, stale-while-revalidate=60');
+  });
+
+  it('never caches errors', async () => {
+    mockedSql.mockRejectedValueOnce(new Error('boom'));
+    const res = await GET();
+    expect(res.status).toBe(500);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    expect(res.headers.get('Vercel-CDN-Cache-Control')).toBeNull();
   });
 
   it('passes through real status, line score and other_games from runner snapshots', async () => {

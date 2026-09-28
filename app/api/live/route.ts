@@ -1,7 +1,8 @@
 // app/api/live/route.ts
 // GET /api/live — Live Game Dashboard endpoint.
 // Returns current Clippers game state: NO_ACTIVE_GAME, DATA_DELAYED, or LIVE.
-// All data comes from live_snapshots table (no CDN calls from this route).
+// All data comes from the live_state row the game-night runner writes
+// (scripts/lib/live-poller.ts); no CDN calls from this route.
 // advanced_stats table is NOT queried — key_metrics computed on the fly.
 
 import { NextResponse } from 'next/server';
@@ -9,6 +10,7 @@ import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { getLatestOdds } from '@/src/lib/odds';
 import { generateLiveInsights } from '@/src/lib/insights/live';
+import { staleThresholdMs } from '@/src/lib/live-utils';
 import type { BoxscoreTeam, BoxscorePlayer, TeamStatistics } from '@/src/lib/types/live';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -24,6 +26,9 @@ interface SnapshotPayload {
   status_text?: string;
   periods?: Array<{ period: number; home: number; away: number }>;
   other_games?: unknown[];
+  // The live_state.state document is a superset of this payload — cadence is
+  // written by the game-night runner and absent on older snapshots.
+  cadence?: { phase: string; next_ms: number };
 }
 
 interface SnapRow {
@@ -257,23 +262,29 @@ function buildBoxScore(
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 const NO_STORE = { headers: { 'Cache-Control': 'no-store' } };
-
-/**
- * A snapshot older than this is treated as DATA_DELAYED. The game-night runner
- * (.github/workflows/game-night.yml) polls every 12 seconds and backs off to at
- * most 60 seconds on errors, so two minutes without a snapshot means the feed
- * is down. Final games are never stale — polling stops at the buzzer.
- */
-const STALE_THRESHOLD_MS = 2 * 60_000;
+// Vercel's CDN absorbs polling: every fan in a region shares one function call
+// per 2 s during games (spec §6.2); browsers always revalidate.
+const CDN_LIVE = {
+  headers: {
+    'Cache-Control': 'public, max-age=0, must-revalidate',
+    'Vercel-CDN-Cache-Control': 'max-age=2, stale-while-revalidate=10',
+  },
+};
+const CDN_IDLE = {
+  headers: {
+    'Cache-Control': 'public, max-age=0, must-revalidate',
+    'Vercel-CDN-Cache-Control': 'max-age=30, stale-while-revalidate=60',
+  },
+};
 
 /** Tonight's other games are shown only from a reasonably fresh snapshot. */
 const OTHER_GAMES_MAX_AGE_MS = 15 * 60_000;
 
 export async function GET(): Promise<NextResponse> {
   try {
-    // ── Step 1: Fetch most recent snapshot for an actually-live LAC game ───
-    // Only consider snapshots whose game is still in progress, or that were
-    // captured in the last 30 minutes (covers the final snapshot right after
+    // ── Step 1: Fetch most recent live_state row for an actually-live LAC game ─
+    // Only consider live states whose game is still in progress, or that were
+    // written in the last 30 minutes (covers the final state right after
     // the buzzer). The in_progress branch is capped at 12h so a game row that
     // was never marked final can't pin the page to an old game forever.
     // Anything else falls through to NO_ACTIVE_GAME.
@@ -281,27 +292,27 @@ export async function GET(): Promise<NextResponse> {
 
     const [snap] = await sql<SnapRow[]>`
       SELECT
-        ls.snapshot_id,
+        ls.seq                    AS snapshot_id,
         ls.game_id::text          AS game_id,
-        ls.period,
-        ls.clock,
-        ls.home_score,
-        ls.away_score,
+        (ls.state->>'period')::int       AS period,
+        ls.state->>'clock'               AS clock,
+        (ls.state->>'home_score')::int   AS home_score,
+        (ls.state->>'away_score')::int   AS away_score,
         g.home_team_id::text      AS home_team_id,
         g.away_team_id::text      AS away_team_id,
-        to_char(ls.captured_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS captured_at,
+        to_char(ls.fetched_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS captured_at,
         lac.team_id::text         AS lac_team_id,
         lower(g.status)           AS game_status,
-        ls.payload
-      FROM live_snapshots ls
+        ls.state                  AS payload
+      FROM live_state ls
       JOIN games g ON g.game_id = ls.game_id
       JOIN teams lac ON lac.nba_team_id = ${LAC_NBA_TEAM_ID}
       WHERE (g.home_team_id = lac.team_id OR g.away_team_id = lac.team_id)
         AND (
-          (lower(g.status) = 'in_progress' AND ls.captured_at > now() - interval '12 hours')
-          OR ls.captured_at > now() - interval '30 minutes'
+          (lower(g.status) = 'in_progress' AND ls.fetched_at > now() - interval '12 hours')
+          OR ls.fetched_at > now() - interval '30 minutes'
         )
-      ORDER BY ls.captured_at DESC
+      ORDER BY ls.fetched_at DESC
       LIMIT 1
     `;
 
@@ -325,8 +336,9 @@ export async function GET(): Promise<NextResponse> {
           insights: [],
           other_games: otherGames,
           odds: null,
+          cadence: null,
         },
-        NO_STORE
+        CDN_IDLE
       );
     }
 
@@ -337,9 +349,10 @@ export async function GET(): Promise<NextResponse> {
     const status: LiveStatus =
       payload.status ?? (snap.game_status === 'final' ? 'final' : 'in_progress');
 
-    // Time-based stale check: if the newest snapshot is older than the poll
-    // interval allows, the poller is offline regardless of the payload flag.
-    const isAgeStale = status !== 'final' && snapshotAgeMs > STALE_THRESHOLD_MS;
+    // Time-based stale check: the runner rewrites live_state at least every
+    // 15 s and polls at cadence.next_ms; older than that plus a grace period
+    // means it stopped.
+    const isAgeStale = status !== 'final' && snapshotAgeMs > staleThresholdMs(payload.cadence);
     const isStale = payload.is_stale || isAgeStale;
     const staleReason = isStale
       ? (payload.stale_reason ?? (isAgeStale ? 'poll daemon offline' : null))
@@ -392,8 +405,9 @@ export async function GET(): Promise<NextResponse> {
           insights: [],
           other_games: otherGames,
           odds: staleOdds,
+          cadence: payload.cadence ?? null,
         },
-        NO_STORE
+        CDN_LIVE
       );
     }
 
@@ -466,8 +480,9 @@ export async function GET(): Promise<NextResponse> {
         insights,
         other_games: otherGames,
         odds,
+        cadence: payload.cadence ?? null,
       },
-      NO_STORE
+      CDN_LIVE
     );
   } catch (err) {
     // Log details server-side only — never echo internal error text to clients.

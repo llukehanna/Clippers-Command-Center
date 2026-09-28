@@ -208,6 +208,19 @@ CREATE TABLE IF NOT EXISTS live_snapshots (
 CREATE INDEX IF NOT EXISTS idx_live_snapshots_game_time ON live_snapshots (game_id, captured_at DESC);
 CREATE INDEX IF NOT EXISTS idx_live_snapshots_captured ON live_snapshots (captured_at DESC);
 
+-- Live v2: the game-night runner's latest derived state, one row per game,
+-- rewritten on every change (and at least every 15 s). Read by /api/live.
+-- live_snapshots now only gets a row per period end and at final.
+CREATE TABLE IF NOT EXISTS live_state (
+  game_id          BIGINT PRIMARY KEY REFERENCES games(game_id) ON DELETE CASCADE,
+  seq              INTEGER NOT NULL,              -- +1 per saved change
+  state            JSONB NOT NULL,                -- src/lib/types/live-state.ts LiveStateDoc
+  fetched_at       TIMESTAMPTZ NOT NULL,          -- when the runner built the state
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_live_state_fetched ON live_state (fetched_at DESC);
+
 -- =============================================================================
 -- Derived / advanced stats
 -- =============================================================================

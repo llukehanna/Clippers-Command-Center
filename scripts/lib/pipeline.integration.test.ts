@@ -250,4 +250,68 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     expect(byId[stale[1].game_id]).toBe('referenced by odds_snapshots.game_id');
     expect((await findLikelyDuplicates(2024)).map((d) => d.stale_id)).toEqual([stale[1].game_id]);
   }, TIMEOUT);
+
+  it('stores live state: newer seq wins, games row follows, moments go to live_snapshots', async () => {
+    const { saveLiveState, saveLiveMoment, loadLiveSeq } = await import('./live-store');
+    const { liveDoc } = await import('./live-fixtures');
+    const [game] = await sql<{ game_id: string; status: string; period: number | null; clock: string | null; home_score: number | null; away_score: number | null }[]>`
+      SELECT g.game_id::text, g.status, g.period, g.clock, g.home_score, g.away_score
+      FROM games g JOIN teams t ON t.abbreviation = 'LAC' AND t.team_id IN (g.home_team_id, g.away_team_id)
+      WHERE g.status <> 'final' ORDER BY g.game_date LIMIT 1`;
+    const [priorKv] = await sql<{ value: unknown }[]>`SELECT value FROM app_kv WHERE key = 'live:last_poll_at'`;
+    try {
+      expect(await loadLiveSeq(sql, game.game_id)).toBe(0);
+      expect(await saveLiveState(sql, game.game_id, liveDoc(2, { home_score: 10, away_score: 8, clock: '6:00' }))).toBe(true);
+      expect(await saveLiveState(sql, game.game_id, liveDoc(1, { home_score: 99 }))).toBe(false);   // older: ignored
+      expect(await loadLiveSeq(sql, game.game_id)).toBe(2);
+
+      const [row] = await sql<{ seq: number; home: number }[]>`
+        SELECT seq, (state->>'home_score')::int AS home FROM live_state WHERE game_id = ${game.game_id}::bigint`;
+      expect(row).toEqual({ seq: 2, home: 10 });
+      const [g] = await sql<{ status: string; clock: string; home_score: number }[]>`
+        SELECT status, clock, home_score FROM games WHERE game_id = ${game.game_id}::bigint`;
+      expect(g).toEqual({ status: 'in_progress', clock: '6:00', home_score: 10 });
+
+      await saveLiveMoment(sql, game.game_id, liveDoc(3, { period: 2, clock: '0:00' }), 'period_end');
+      const [snap] = await sql<{ period: number; reason: string }[]>`
+        SELECT period, payload->>'reason' AS reason FROM live_snapshots
+        WHERE game_id = ${game.game_id}::bigint ORDER BY captured_at DESC LIMIT 1`;
+      expect(snap).toEqual({ period: 2, reason: 'period_end' });
+
+      // A cron route makes a fresh poller per request, so the same period-end
+      // moment can be offered more than once — the store, not just the poller's
+      // in-memory dedup, must be the one that stops duplicate rows.
+      await saveLiveMoment(sql, game.game_id, liveDoc(4, { period: 2, clock: '0:00' }), 'period_end');
+      const [dupeCount] = await sql<{ n: number }[]>`
+        SELECT COUNT(*)::int AS n FROM live_snapshots
+        WHERE game_id = ${game.game_id}::bigint AND payload->>'reason' = 'period_end' AND period = 2`;
+      expect(dupeCount.n).toBe(1);
+
+      // A different reason/period is not deduped against it.
+      await saveLiveMoment(sql, game.game_id, liveDoc(5, { period: 4, clock: '0:00' }), 'final');
+      const [totalCount] = await sql<{ n: number }[]>`
+        SELECT COUNT(*)::int AS n FROM live_snapshots WHERE game_id = ${game.game_id}::bigint`;
+      expect(totalCount.n).toBe(2);
+
+      // A game can't go back from final on a stale read: live_state still takes
+      // the newer seq, but the games row (already final) is left untouched.
+      await sql`UPDATE games SET status = 'final', home_score = 120 WHERE game_id = ${game.game_id}::bigint`;
+      expect(await saveLiveState(sql, game.game_id, liveDoc(10, { status: 'in_progress', home_score: 50 }))).toBe(true);
+      const [finalGame] = await sql<{ status: string; home_score: number }[]>`
+        SELECT status, home_score FROM games WHERE game_id = ${game.game_id}::bigint`;
+      expect(finalGame).toEqual({ status: 'final', home_score: 120 });
+    } finally {
+      await sql`DELETE FROM live_state WHERE game_id = ${game.game_id}::bigint`;
+      await sql`DELETE FROM live_snapshots WHERE game_id = ${game.game_id}::bigint`;
+      await sql`UPDATE games SET status = ${game.status}, period = ${game.period}, clock = ${game.clock},
+                home_score = ${game.home_score}, away_score = ${game.away_score}
+                WHERE game_id = ${game.game_id}::bigint`;
+      if (priorKv) {
+        await sql`UPDATE app_kv SET value = ${sql.json(priorKv.value as Parameters<typeof sql.json>[0])}, updated_at = now()
+                  WHERE key = 'live:last_poll_at'`;
+      } else {
+        await sql`DELETE FROM app_kv WHERE key = 'live:last_poll_at'`;
+      }
+    }
+  });
 });

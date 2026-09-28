@@ -3,9 +3,9 @@
 //
 // 1. Looks for a Clippers game that isn't final and tips within the next
 //    LEAD_MINUTES (or tipped in the last 4 hours). None → exits in seconds.
-// 2. Sleeps until ~10 minutes before tip, then polls every 12 seconds via the
-//    shared live cycle (scripts/lib/live-cycle.ts), matching the scoreboard by
-//    NBA game id.
+// 2. Sleeps until ~10 minutes before tip, then polls with the adaptive cadence
+//    in scripts/lib/live-cadence.ts (2–30 s by game phase) via
+//    scripts/lib/live-poller.ts, writing live_state on every change.
 // 3. When the scoreboard says Final, finalizes the game (box scores, stints,
 //    advanced stats) and exits. The nightly post-game workflow still runs the
 //    league sync, stats and insights.
@@ -14,12 +14,13 @@
 // group, so a later launch just finds the game already final and exits.
 
 import { sql } from './lib/db.js';
-import { calculateBackoff } from './lib/poll-live-logic.js';
-import { findLiveCandidates, runLiveCycle, type LiveCandidate } from './lib/live-cycle.js';
+import { findLiveCandidates, type LiveCandidate } from './lib/live-cycle.js';
+import { createPoller } from './lib/live-poller.js';
+import { nbaPollerDeps } from './lib/live-deps.js';
+import { loadLiveSeq } from './lib/live-store.js';
 import { finalizeGame } from './lib/finalize.js';
-import { parseNBAClock } from './lib/nba-live-client.js';
+import { decideGameNightAction, FINAL_SAVE_MAX_ATTEMPTS } from './lib/game-night-logic.js';
 
-const POLL_INTERVAL_MS = 12_000;
 const LEAD_MINUTES = Number(process.env.GAME_NIGHT_LEAD_MINUTES ?? 75);
 const PRE_TIP_MS = 10 * 60_000;
 // Stop before the workflow's timeout so the job ends cleanly (the next hourly
@@ -54,63 +55,81 @@ async function main(): Promise<void> {
 }
 
 async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<void> {
-  let failures = 0;
-  let snapshots = 0;
+  const initialSeq = await loadLiveSeq(sql, candidate.game_id);
+  const poller = createPoller(candidate.nba_game_id, tip?.getTime() ?? null, nbaPollerDeps(sql, candidate.game_id), initialSeq);
   let notListedSince: number | null = null;
+  let saves = 0;
+  let finalAttempts = 0;
 
   while (Date.now() - startedAt < MAX_RUNTIME_MS) {
-    let delay = POLL_INTERVAL_MS;
-    try {
-      const result = await runLiveCycle(sql, candidate);
-      failures = 0;
+    const r = await poller.tick();
 
-      if (result.state === 'NOT_ON_SCOREBOARD') {
-        // The CDN scoreboard rolls over mid-morning ET; before tip the game can
-        // legitimately be missing for a while. Long after tip, stop.
-        notListedSince ??= Date.now();
-        const pastTip = !tip || Date.now() > tip.getTime();
-        if (pastTip && Date.now() - notListedSince > NOT_LISTED_GIVE_UP_MS) {
-          console.warn('[game-night] Game not on the scoreboard for 30 min after tip. Stopping.');
-          return;
-        }
-        delay = 60_000;
-      } else {
-        notListedSince = null;
-        const { game } = result;
-        snapshots++;
-        if (snapshots === 1 || snapshots % 25 === 0 || game.gameStatus === 3) {
-          console.log(
-            `[game-night] #${snapshots} ${game.gameStatusText} ` +
-              `${game.awayTeam.teamTricode} ${game.awayTeam.score} @ ${game.homeTeam.teamTricode} ${game.homeTeam.score}` +
-              (game.gameStatus === 2 ? ` (Q${game.period} ${parseNBAClock(game.gameClock)})` : '')
-          );
-        }
-        if (game.gameStatus === 3) {
-          console.log('[game-night] Final. Finalizing…');
-          try {
-            await finalizeGame(candidate.game_id, game.gameId);
-            await sql`
-              INSERT INTO app_kv (key, value, updated_at)
-              VALUES ('pipeline:last_sync_at', ${sql.json(new Date().toISOString())}, now())
-              ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
-            `;
-            console.log('[game-night] Finalization complete.');
-          } catch (err) {
-            // The nightly post-game pipeline retries games without box scores.
-            console.error(`[game-night] Finalization failed: ${(err as Error).message}`);
-            process.exitCode = 1;
-          }
-          return;
-        }
-        // Pre-game: poll gently until tip.
-        if (game.gameStatus === 1) delay = 60_000;
+    if (r.status === 'not_on_scoreboard') {
+      // The CDN scoreboard rolls over mid-morning ET; before tip the game can
+      // legitimately be missing for a while. Long after tip, stop.
+      notListedSince ??= Date.now();
+      const pastTip = !tip || Date.now() > tip.getTime();
+      if (pastTip && Date.now() - notListedSince > NOT_LISTED_GIVE_UP_MS) {
+        console.warn('[game-night] Game not on the scoreboard for 30 min after tip. Stopping.');
+        return;
       }
-    } catch (err) {
-      failures++;
-      delay = calculateBackoff(failures, POLL_INTERVAL_MS);
-      console.warn(`[game-night] Poll failed (${failures}x): ${(err as Error).message}. Retry in ${delay}ms`);
+    } else if (r.status === 'ok') {
+      notListedSince = null;
     }
-    await sleep(delay);
+
+    if (r.saved && r.doc) {
+      saves++;
+      if (saves === 1 || saves % 50 === 0 || r.final) {
+        const d = r.doc;
+        console.log(
+          `[game-night] seq ${d.seq} ${d.status_text} ${d.away_score}-${d.home_score} ` +
+            `Q${d.period} ${d.clock} · ${r.phase} next ${r.delayMs}ms`
+        );
+      }
+    }
+
+    // Only finalize on a FINAL tick whose save actually succeeded (or after
+    // FINAL_SAVE_MAX_ATTEMPTS unsaved final ticks) — otherwise live_state would
+    // be left on the pre-buzzer doc. See scripts/lib/game-night-logic.ts.
+    const decision = decideGameNightAction(
+      { final: r.final, saved: r.saved, hasDoc: r.doc !== null, delayMs: r.delayMs },
+      finalAttempts
+    );
+    finalAttempts = decision.finalAttempts;
+
+    if (decision.action.type === 'finalize') {
+      // Guaranteed by decideGameNightAction: it only returns 'finalize' when hasDoc was true.
+      const finalDoc = r.doc!;
+      if (decision.action.forced) {
+        console.warn(
+          `[game-night] Final tick's save never succeeded after ${finalAttempts} attempts; finalizing anyway.`
+        );
+      }
+      console.log('[game-night] Final. Finalizing…');
+      try {
+        await finalizeGame(candidate.game_id, finalDoc.nba_game_id);
+        await sql`
+          INSERT INTO app_kv (key, value, updated_at)
+          VALUES ('pipeline:last_sync_at', ${sql.json(new Date().toISOString())}, now())
+          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+        `;
+        console.log('[game-night] Finalization complete.');
+      } catch (err) {
+        // The nightly post-game pipeline retries games without box scores.
+        console.error(`[game-night] Finalization failed: ${(err as Error).message}`);
+        process.exitCode = 1;
+      }
+      return;
+    }
+
+    if (r.final) {
+      console.warn(
+        `[game-night] Final tick's save failed (attempt ${finalAttempts}/${FINAL_SAVE_MAX_ATTEMPTS}); ` +
+          `retrying in ${decision.action.sleepMs}ms.`
+      );
+    }
+
+    await sleep(decision.action.sleepMs);
   }
   console.warn('[game-night] Max runtime reached; the next hourly launch continues.');
 }
