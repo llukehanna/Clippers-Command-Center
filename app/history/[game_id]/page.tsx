@@ -1,6 +1,11 @@
 import { notFound } from 'next/navigation'
 import { GameHeader } from '@/components/history/GameHeader'
 import { HistoryGameDetail } from '@/components/history/HistoryGameDetail'
+import { loadHistoryGame } from '@/src/lib/data/history-game'
+import { okBody } from '@/src/lib/data/result'
+
+// Rendered per request: data is read straight from the database.
+export const dynamic = 'force-dynamic'
 
 export default async function HistoryGamePage({
   params,
@@ -8,12 +13,8 @@ export default async function HistoryGamePage({
   params: Promise<{ game_id: string }>
 }) {
   const { game_id } = await params
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-
-  const res = await fetch(`${baseUrl}/api/history/games/${game_id}`, { cache: 'no-store' })
-  if (!res.ok) notFound()
-
-  const data = await res.json()
+  const data = okBody(await loadHistoryGame(game_id))
+  if (!data) notFound()
   const { game, box_score, insights: rawInsights } = data
 
   // CRITICAL: Map proof.summary → category (InsightTileArea expects category at top level)

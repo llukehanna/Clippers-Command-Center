@@ -5,20 +5,20 @@ import { PlayerTrendsTable } from '@/components/home/PlayerTrendsTable'
 import { InsightTileArea } from '@/components/live/InsightTileArea'
 import { PointDiffChart } from '@/components/home/PointDiffChart'
 import { formatSeasonLabel } from '@/src/lib/home-utils'
+import { loadHome } from '@/src/lib/data/home'
+import { loadInsights } from '@/src/lib/data/insights'
+import { okBody } from '@/src/lib/data/result'
+
+// Rendered per request: data is read straight from the database.
+export const dynamic = 'force-dynamic'
 
 async function getHomeData() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-  const res = await fetch(`${baseUrl}/api/home`, { cache: 'no-store' })
-  if (!res.ok) return null
-  return res.json()
+  return okBody(await loadHome())
 }
 
 async function getTeamInsights() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-  const res = await fetch(`${baseUrl}/api/insights?scope=between_games`, { cache: 'no-store' })
-  if (!res.ok) return []
-  const body = await res.json()
-  return body.insights ?? []
+  const body = okBody(await loadInsights(new URL('http://internal/api/insights?scope=between_games')))
+  return body?.insights ?? []
 }
 
 export default async function HomePage() {

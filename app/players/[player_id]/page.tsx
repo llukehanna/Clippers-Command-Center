@@ -4,6 +4,11 @@ import { RollingAveragesTable } from '@/components/players/RollingAveragesTable'
 import { TrendChartSection } from '@/components/players/TrendChartSection'
 import { SplitsDisplay } from '@/components/players/SplitsDisplay'
 import { GameLogSection } from '@/components/players/GameLogSection'
+import { loadPlayer } from '@/src/lib/data/player'
+import { okBody } from '@/src/lib/data/result'
+
+// Rendered per request: data is read straight from the database.
+export const dynamic = 'force-dynamic'
 
 export default async function PlayerDetailPage({
   params,
@@ -11,12 +16,8 @@ export default async function PlayerDetailPage({
   params: Promise<{ player_id: string }>
 }) {
   const { player_id } = await params
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-
-  const res = await fetch(`${baseUrl}/api/players/${player_id}`, { cache: 'no-store' })
-  if (!res.ok) notFound()
-
-  const data = await res.json()
+  const data = okBody(await loadPlayer(player_id, new URL(`http://internal/api/players/${player_id}`)))
+  if (!data) notFound()
 
   return (
     <div className="px-6 py-6 max-w-[1440px] mx-auto space-y-6">

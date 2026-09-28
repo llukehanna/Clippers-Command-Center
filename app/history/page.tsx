@@ -2,6 +2,12 @@ import { SeasonControls } from '@/components/history/SeasonControls'
 import { SeasonSummaryBar } from '@/components/history/SeasonSummaryBar'
 import { GameListTable } from '@/components/history/GameListTable'
 import type { GameItem } from '@/src/lib/history-utils'
+import { loadHistorySeasons } from '@/src/lib/data/history-seasons'
+import { loadHistoryGames } from '@/src/lib/data/history-games'
+import { okBody } from '@/src/lib/data/result'
+
+// Rendered per request: data is read straight from the database.
+export const dynamic = 'force-dynamic'
 
 export default async function HistoryPage({
   searchParams,
@@ -9,12 +15,9 @@ export default async function HistoryPage({
   searchParams: Promise<{ season_id?: string; home_away?: string; result?: string }>
 }) {
   const params = await searchParams
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-
-  // 1. Fetch available seasons
-  const seasonsRes = await fetch(`${baseUrl}/api/history/seasons`, { cache: 'no-store' })
-  const seasonsData = await seasonsRes.json()
-  const seasons: Array<{ season_id: number; label: string }> = seasonsData.seasons ?? []
+  // 1. Available seasons
+  const seasonsData = okBody(await loadHistorySeasons())
+  const seasons: Array<{ season_id: number; label: string }> = seasonsData?.seasons ?? []
 
   // 2. Default to most recent season (seasons are ordered ascending — last is newest)
   const seasonId = params.season_id ?? String(seasons.at(-1)?.season_id ?? '')
@@ -22,14 +25,11 @@ export default async function HistoryPage({
   // 3. Fetch ALL games for the season (unfiltered, limit=200) — used for W-L summary AND filtered list
   let allGames: GameItem[] = []
   if (seasonId) {
-    const gamesRes = await fetch(
-      `${baseUrl}/api/history/games?season_id=${seasonId}&limit=200`,
-      { cache: 'no-store' }
-    )
-    if (gamesRes.ok) {
-      const gamesData = await gamesRes.json()
-      allGames = gamesData.games ?? []
-    }
+    const url = new URL('http://internal/api/history/games')
+    url.searchParams.set('season_id', seasonId)
+    url.searchParams.set('limit', '200')
+    const gamesData = okBody(await loadHistoryGames(url))
+    allGames = gamesData?.games ?? []
   }
 
   // 4. Apply display filters in RSC (W-L summary always uses allGames)
