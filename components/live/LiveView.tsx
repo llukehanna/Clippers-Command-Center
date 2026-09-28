@@ -9,6 +9,7 @@ import { LineScore } from '@/components/game/LineScore'
 import { InsightCard } from '@/components/insights/InsightCard'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { Panel } from '@/components/ui/panel'
+import { Segmented } from '@/components/ui/segmented'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useNow } from '@/hooks/useNow'
@@ -19,6 +20,7 @@ import { LiveTabTitle } from './LiveTabTitle'
 import { IdleState } from './IdleState'
 import { FeedSource } from './FeedSource'
 import { GameFlow } from './GameFlow'
+import { Clipboard } from './Clipboard'
 import { resolveLiveState } from '@/src/lib/ui/live'
 import { BACKUP_STALE_REASON } from '@/src/lib/live/espn-backup'
 import { RUNNER_NOT_STARTED_REASON } from '@/src/lib/live/payload'
@@ -47,6 +49,7 @@ export function LiveView({ data, error, source }: { data: LivePayload | undefine
   const now = useNow(5_000)
   const wide = useMediaQuery('(min-width: 640px)')
   const [flowOpen, setFlowOpen] = React.useState(false)
+  const [panel, setPanel] = React.useState<'box' | 'rotation'>('box')
 
   if (error && !data) {
     return (
@@ -178,8 +181,25 @@ export function LiveView({ data, error, source }: { data: LivePayload | undefine
 
       <section className="enter grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 3 }}>
         <div className="min-w-0">
-          <Eyebrow aside={pausedNote}>Box score</Eyebrow>
-          {data.box_score ? (
+          <Eyebrow aside={pausedNote}>{panel === 'rotation' && data.lineups ? 'Rotation' : 'Box score'}</Eyebrow>
+          {data.lineups && (
+            <Segmented
+              className="mb-3"
+              size="sm"
+              ariaLabel="Box score or rotation"
+              value={panel}
+              onChange={setPanel}
+              options={[
+                { value: 'box', label: 'Box score' },
+                { value: 'rotation', label: 'Rotation' },
+              ]}
+            />
+          )}
+          {panel === 'rotation' && data.lineups ? (
+            <Panel className="p-4 sm:p-5">
+              <Clipboard lineups={data.lineups} lacAbbr={lac.abbr ?? 'LAC'} oppAbbr={oppAbbr} />
+            </Panel>
+          ) : data.box_score ? (
             <BoxScore teams={data.box_score.teams} playerIdsAreNba />
           ) : (
             <Panel className="p-6 text-[14px] text-mute">The box score appears after the first stats come in.</Panel>
