@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { blueskyToItems } from './bluesky';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { blueskyToItems, fetchBlueskyTop } from './bluesky';
 
 const p = (over: Record<string, unknown>) => ({
   uri: 'at://did:plc:abc/app.bsky.feed.post/3kxyz',
@@ -22,5 +22,41 @@ describe('blueskyToItems', () => {
   });
   it('returns nothing for an unexpected payload', () => {
     expect(blueskyToItems({})).toEqual([]);
+  });
+});
+
+describe('fetchBlueskyTop', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('creates a session with the credentials, then searches with the bearer token', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === 'https://bsky.social/xrpc/com.atproto.server.createSession') {
+        expect(init?.method).toBe('POST');
+        expect(JSON.parse(init?.body as string)).toEqual({ identifier: 'clippers.bsky.social', password: 'app-pass-123' });
+        return new Response(JSON.stringify({ accessJwt: 'jwt-abc' }), { status: 200 });
+      }
+      if (url.startsWith('https://bsky.social/xrpc/app.bsky.feed.searchPosts')) {
+        expect((init?.headers as Record<string, string>)?.Authorization).toBe('Bearer jwt-abc');
+        expect(url).toContain('q=clippers');
+        return new Response(JSON.stringify({ posts: [] }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchBlueskyTop({ handle: 'clippers.bsky.social', appPassword: 'app-pass-123' }, new Date('2026-10-21T00:00:00.000Z'));
+
+    expect(result).toEqual({ posts: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws when the session request is not OK', async () => {
+    const fetchMock = vi.fn(async () => new Response('nope', { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchBlueskyTop({ handle: 'clippers.bsky.social', appPassword: 'bad' })).rejects.toThrow('bluesky session HTTP 401');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
