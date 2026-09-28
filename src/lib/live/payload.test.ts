@@ -3,8 +3,7 @@ import { overlayLiveDoc, notStartedPayload, RUNNER_NOT_STARTED_REASON } from './
 import { box, liveDoc } from '../../../scripts/lib/live-fixtures';
 import { needsBackup } from './stream';
 import { overlayEspn } from './espn-backup';
-import type { LivePayload } from '../ui/types';
-import type { LiveGame } from '../ui/types';
+import type { LivePayload, LiveGame } from '../ui/types';
 
 function base(over: Partial<LivePayload> = {}): LivePayload {
   return {
