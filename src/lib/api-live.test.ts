@@ -146,7 +146,7 @@ function makeStaleSnapRow_flag() {
   };
 }
 
-/** Snap that is 8 minutes old — triggers time-based stale (>7 min poll threshold) */
+/** Snap that is 8 minutes old — triggers time-based stale (>2 min poll threshold) */
 function makeStaleSnapRow_age() {
   return {
     snapshot_id: 2,
@@ -160,7 +160,7 @@ function makeStaleSnapRow_age() {
     captured_at: new Date(Date.now() - 8 * 60_000).toISOString(),
     lac_team_id: '13',
     payload: {
-      is_stale: false, // flag NOT set, but age > 7 min triggers stale
+      is_stale: false, // flag NOT set, but age > 2 min triggers stale
       stale_reason: null,
       home_box: null,
       away_box: null,
@@ -344,7 +344,7 @@ describe('GET /api/live', () => {
     expect(queryText).toMatch(/interval '30 minutes'/);
   });
 
-  it('treats a 90s-old snapshot as LIVE (poller runs every 5 min; stale threshold is 7 min)', async () => {
+  it('treats a 90s-old snapshot as LIVE (runner polls every 12s, backs off to 60s; stale threshold is 2 min)', async () => {
     const snap = { ...makeFreshSnapRow(), captured_at: new Date(Date.now() - 90_000).toISOString() };
     mockedSql
       .mockResolvedValueOnce([snap])
@@ -355,6 +355,66 @@ describe('GET /api/live', () => {
 
     expect(body.state).toBe('LIVE');
     expect(body.meta.stale).toBe(false);
+  });
+
+  it('passes through real status, line score and other_games from runner snapshots', async () => {
+    const base = makeFreshSnapRow();
+    const other = { game_id: '0022400002', status: 'in_progress', home: { abbreviation: 'BOS', score: 50 }, away: { abbreviation: 'NYK', score: 48 } };
+    const snap = {
+      ...base,
+      game_status: 'in_progress',
+      payload: {
+        ...base.payload,
+        status: 'in_progress',
+        status_text: 'Q3 5:00',
+        periods: [{ period: 1, home: 30, away: 28 }, { period: 2, home: 29, away: 27 }],
+        other_games: [other],
+      },
+    };
+    mockedSql.mockResolvedValueOnce([snap]).mockResolvedValueOnce([gameRow]);
+
+    const body = await (await GET()).json();
+
+    expect(body.state).toBe('LIVE');
+    expect(body.game.status).toBe('in_progress');
+    expect(body.game.status_text).toBe('Q3 5:00');
+    expect(body.game.periods).toEqual([{ period: 1, home: 30, away: 28 }, { period: 2, home: 29, away: 27 }]);
+    expect(body.other_games).toEqual([other]);
+  });
+
+  it('a final game is not stale after polling stops', async () => {
+    const base = makeFreshSnapRow();
+    const snap = {
+      ...base,
+      captured_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+      game_status: 'final',
+      payload: { ...base.payload, status: 'final' },
+    };
+    mockedSql.mockResolvedValueOnce([snap]).mockResolvedValueOnce([gameRow]);
+
+    const body = await (await GET()).json();
+
+    expect(body.state).toBe('LIVE');
+    expect(body.meta.stale).toBe(false);
+    expect(body.game.status).toBe('final');
+  });
+
+  it('a pre-tip snapshot is NO_ACTIVE_GAME but still feeds other_games', async () => {
+    const base = makeFreshSnapRow();
+    const other = { game_id: '0022400002', status: 'final' };
+    const snap = {
+      ...base,
+      period: 0,
+      game_status: 'scheduled',
+      payload: { ...base.payload, home_box: null, away_box: null, status: 'scheduled', other_games: [other] },
+    };
+    mockedSql.mockResolvedValueOnce([snap]);
+
+    const body = await (await GET()).json();
+
+    expect(body.state).toBe('NO_ACTIVE_GAME');
+    expect(body.game).toBeNull();
+    expect(body.other_games).toEqual([other]);
   });
 
   it('returns 500 without leaking internal error text', async () => {

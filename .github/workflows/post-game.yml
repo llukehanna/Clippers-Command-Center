@@ -63,3 +63,16 @@ jobs:
         run: npm run verify-insights
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Read by /api/home as meta.last_sync_at.
+      # Line scores for Clippers games finalized before they were stored
+      # (bounded per night; a no-op once the backlog is done).
+      - name: Backfill line scores
+        run: node node_modules/.bin/tsx scripts/backfill-periods.ts --limit 150
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Record last sync time
+        run: node node_modules/.bin/tsx scripts/record-sync.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

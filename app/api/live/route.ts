@@ -16,9 +16,14 @@ import type { BoxscoreTeam, BoxscorePlayer, TeamStatistics } from '@/src/lib/typ
 interface SnapshotPayload {
   is_stale: boolean;
   stale_reason: string | null;
-  home_box: BoxscoreTeam;
-  away_box: BoxscoreTeam;
-  recent_scoring: Array<{ team_id: string; points: number; event_time_seconds: number }>;
+  home_box: BoxscoreTeam | null;
+  away_box: BoxscoreTeam | null;
+  recent_scoring: Array<{ team_id: string; team_tricode?: string; points: number; event_time_seconds: number }>;
+  // Written by the game-night runner (scripts/lib/live-cycle.ts); absent on older snapshots.
+  status?: 'scheduled' | 'in_progress' | 'final';
+  status_text?: string;
+  periods?: Array<{ period: number; home: number; away: number }>;
+  other_games?: unknown[];
 }
 
 interface SnapRow {
@@ -32,8 +37,11 @@ interface SnapRow {
   away_team_id: string;
   captured_at: string;
   lac_team_id: string | null;
+  game_status: string;
   payload: SnapshotPayload;
 }
+
+type LiveStatus = 'scheduled' | 'in_progress' | 'final';
 
 interface GameRow {
   game_id: string;
@@ -190,6 +198,7 @@ function buildPlayerRow(player: BoxscorePlayer): Record<string, unknown> {
   const s = player.statistics;
   return {
     player_id: player.personId,
+    nba_person_id: player.personId,
     name: player.name,
     starter: player.starter === '1',
     MIN: parseMinutesToDisplay(s.minutes),
@@ -250,11 +259,15 @@ function buildBoxScore(
 const NO_STORE = { headers: { 'Cache-Control': 'no-store' } };
 
 /**
- * A snapshot older than this is treated as DATA_DELAYED. The poller runs every
- * 5 minutes (GitHub Actions cron → /api/cron/poll-live), so allow one missed
- * beat plus jitter before flagging the feed as stale.
+ * A snapshot older than this is treated as DATA_DELAYED. The game-night runner
+ * (.github/workflows/game-night.yml) polls every 12 seconds and backs off to at
+ * most 60 seconds on errors, so two minutes without a snapshot means the feed
+ * is down. Final games are never stale — polling stops at the buzzer.
  */
-const STALE_THRESHOLD_MS = 7 * 60_000;
+const STALE_THRESHOLD_MS = 2 * 60_000;
+
+/** Tonight's other games are shown only from a reasonably fresh snapshot. */
+const OTHER_GAMES_MAX_AGE_MS = 15 * 60_000;
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -278,6 +291,7 @@ export async function GET(): Promise<NextResponse> {
         g.away_team_id::text      AS away_team_id,
         to_char(ls.captured_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS captured_at,
         lac.team_id::text         AS lac_team_id,
+        lower(g.status)           AS game_status,
         ls.payload
       FROM live_snapshots ls
       JOIN games g ON g.game_id = ls.game_id
@@ -292,8 +306,15 @@ export async function GET(): Promise<NextResponse> {
     `;
 
     // ── Step 2: NO_ACTIVE_GAME ─────────────────────────────────────────────
+    // A pre-tip snapshot (the runner starts ~10 minutes before tip) isn't a
+    // live game yet, but its scoreboard still feeds other_games.
 
-    if (!snap) {
+    const payload = snap ? (snap.payload as SnapshotPayload) : null;
+    const snapshotAgeMs = snap ? Date.now() - new Date(snap.captured_at).getTime() : Infinity;
+    const otherGames =
+      payload && snapshotAgeMs <= OTHER_GAMES_MAX_AGE_MS ? (payload.other_games ?? []) : [];
+
+    if (!snap || !payload || payload.status === 'scheduled') {
       return NextResponse.json(
         {
           meta: buildMeta('mixed', 60),
@@ -302,7 +323,7 @@ export async function GET(): Promise<NextResponse> {
           key_metrics: [],
           box_score: null,
           insights: [],
-          other_games: [],
+          other_games: otherGames,
           odds: null,
         },
         NO_STORE
@@ -311,19 +332,21 @@ export async function GET(): Promise<NextResponse> {
 
     // ── Step 3: DATA_DELAYED ───────────────────────────────────────────────
 
-    const payload = snap.payload as SnapshotPayload;
+    // The payload's scoreboard status is authoritative; older snapshots fall
+    // back to the games row.
+    const status: LiveStatus =
+      payload.status ?? (snap.game_status === 'final' ? 'final' : 'in_progress');
 
     // Time-based stale check: if the newest snapshot is older than the poll
     // interval allows, the poller is offline regardless of the payload flag.
-    const snapshotAgeMs = Date.now() - new Date(snap.captured_at).getTime();
-    const isAgeStale = snapshotAgeMs > STALE_THRESHOLD_MS;
+    const isAgeStale = status !== 'final' && snapshotAgeMs > STALE_THRESHOLD_MS;
     const isStale = payload.is_stale || isAgeStale;
     const staleReason = isStale
       ? (payload.stale_reason ?? (isAgeStale ? 'poll daemon offline' : null))
       : null;
 
     // Fetch game details (teams table join) — shared by DATA_DELAYED and LIVE
-    const gameData = await fetchGameDetails(snap.game_id, snap);
+    const gameData = await fetchGameDetails(snap.game_id, snap, status, payload);
 
     // Determine which box is LAC and which is opponent
     const lacIsHome = snap.home_team_id === snap.lac_team_id;
@@ -367,7 +390,7 @@ export async function GET(): Promise<NextResponse> {
           key_metrics: staleKeyMetrics,
           box_score: staleBoxScore,
           insights: [],
-          other_games: [],
+          other_games: otherGames,
           odds: staleOdds,
         },
         NO_STORE
@@ -441,7 +464,7 @@ export async function GET(): Promise<NextResponse> {
         key_metrics: keyMetrics,
         box_score: boxScore,
         insights,
-        other_games: [],
+        other_games: otherGames,
         odds,
       },
       NO_STORE
@@ -463,7 +486,17 @@ export async function GET(): Promise<NextResponse> {
  * Returns a structured game object matching the API_SPEC.md shape,
  * or null if the game record doesn't exist yet.
  */
-async function fetchGameDetails(gameId: string, snap: SnapRow) {
+async function fetchGameDetails(
+  gameId: string,
+  snap: SnapRow,
+  status: LiveStatus,
+  payload: SnapshotPayload
+) {
+  const extras = {
+    status_text: payload.status_text ?? null,
+    // Line score: [{ period, home, away }] — empty on snapshots from before the runner.
+    periods: payload.periods ?? [],
+  };
   const rows = await sql<GameRow[]>`
     SELECT
       g.game_id::text          AS game_id,
@@ -493,9 +526,10 @@ async function fetchGameDetails(gameId: string, snap: SnapRow) {
       season_id: null,
       game_date: null,
       start_time_utc: null,
-      status: 'in_progress',
+      status,
       period: snap.period,
       clock: snap.clock,
+      ...extras,
       home: {
         team_id: snap.home_team_id,
         abbreviation: null,
@@ -519,9 +553,10 @@ async function fetchGameDetails(gameId: string, snap: SnapRow) {
     season_id: row.season_id,
     game_date: row.game_date,
     start_time_utc: row.start_time_utc,
-    status: 'in_progress',
+    status,
     period: snap.period,
     clock: snap.clock,
+    ...extras,
     home: {
       team_id: row.home_team_id,
       abbreviation: row.home_abbr,
