@@ -124,8 +124,11 @@ export async function finalizeGame(
     const awayTeamDbId = await resolveTeamDbId(tx, awayTeam, game.away_team_id, 'away', gid);
 
     // Write team box scores (use NBA-provided team aggregates directly)
-    await upsertTeamBoxScore(gameDbId, homeTeamDbId, true, homeTeam.statistics, JSON.stringify(homeTeam.statistics), tx);
-    await upsertTeamBoxScore(gameDbId, awayTeamDbId, false, awayTeam.statistics, JSON.stringify(awayTeam.statistics), tx);
+    // raw_payload keeps the team statistics plus the per-period line score
+    // (read by /api/history/games/[id] as game.periods).
+    const teamPayload = (t: typeof homeTeam) => JSON.stringify({ ...t.statistics, periods: t.periods ?? [] });
+    await upsertTeamBoxScore(gameDbId, homeTeamDbId, true, homeTeam.statistics, teamPayload(homeTeam), tx);
+    await upsertTeamBoxScore(gameDbId, awayTeamDbId, false, awayTeam.statistics, teamPayload(awayTeam), tx);
 
     const resolver = new PlayerResolver(tx);
     let written = 0;

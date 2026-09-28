@@ -10,57 +10,33 @@
 import { sql, LAC_NBA_TEAM_ID } from './db';
 
 /**
- * How far ahead (in days) the next scheduled LAC game may be for its season to
- * become the display season. Keeps the dashboard on last season's numbers
- * through the offseason and flips to the new season about two weeks before
- * opening night.
- */
-export const UPCOMING_SEASON_LOOKAHEAD_DAYS = 14;
-
-/**
- * Pure calendar-based season id. January–July belong to the season that
- * started the previous calendar year (the Finals can run into late June).
- * Used only as a fallback when the DB has no LAC games at all, and as a cheap
- * "is this season still in play" check for cache headers.
+ * Pure calendar-based season id. Seasons roll over on July 1 (after the
+ * Finals), the same rule as seasonStartYear() and the pipeline's
+ * currentSeasonId(). Used only as a fallback when the DB has no completed
+ * LAC games.
  */
 export function calendarSeasonId(now: Date = new Date()): number {
-  return now.getUTCMonth() < 7 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
+  return now.getUTCMonth() < 6 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
 }
 
 /**
- * DB-derived season to display across the app:
- *   1. the season of the next non-final LAC game dated within the next
- *      UPCOMING_SEASON_LOOKAHEAD_DAYS days (US Eastern calendar date), else
- *   2. the most recent season with at least one final LAC game.
- * The greater of the two wins (Postgres GREATEST ignores NULLs).
- * Falls back to calendarSeasonId() when the DB has neither.
+ * Season whose numbers the app shows (record, ratings, roster, player pages):
+ * the most recent season with a completed Clippers game that has a box score.
+ * Through the offseason and the preseason window this stays on last season —
+ * the pages label which season they show — and it flips the morning after the
+ * opener is finalized. (Flipping earlier would show an empty roster and 0-0:
+ * rosters are built from games played.) The schedule is season-independent.
  */
 export async function getDisplaySeasonId(): Promise<number> {
   const rows = await sql<{ display_season_id: number | null }[]>`
-    SELECT GREATEST(
-      (
-        SELECT g.season_id
-        FROM games g
-        WHERE (
-          g.home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
-          OR g.away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
-        )
-          AND lower(g.status) <> 'final'
-          AND g.game_date >= (now() AT TIME ZONE 'America/New_York')::date
-          AND g.game_date <= (now() AT TIME ZONE 'America/New_York')::date + ${UPCOMING_SEASON_LOOKAHEAD_DAYS}::int
-        ORDER BY g.game_date ASC
-        LIMIT 1
-      ),
-      (
-        SELECT MAX(g.season_id)
-        FROM games g
-        WHERE (
-          g.home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
-          OR g.away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
-        )
-          AND lower(g.status) = 'final'
+    SELECT MAX(g.season_id)::int AS display_season_id
+    FROM games g
+    WHERE (
+        g.home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+        OR g.away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
       )
-    )::int AS display_season_id
+      AND lower(g.status) = 'final'
+      AND EXISTS (SELECT 1 FROM game_team_box_scores b WHERE b.game_id = g.game_id)
   `;
   const value = rows[0]?.display_season_id;
   return typeof value === 'number' && Number.isFinite(value) ? value : calendarSeasonId();

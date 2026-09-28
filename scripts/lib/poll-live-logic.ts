@@ -69,3 +69,132 @@ export async function runPollCycle(
     return previousFailureCount + 1; // failure → increment counter
   }
 }
+
+// ── Game matching, clock math, snapshot extras ──────────────────────────────
+
+/**
+ * The scoreboard game for a specific games row, matched on the official NBA
+ * game id (games.nba_game_id is stored without leading zeros). Never falls
+ * back to "any Clippers game": on back-to-back nights that would write
+ * tonight's score onto yesterday's row.
+ */
+export function matchScoreboardGame(
+  games: ScoreboardGame[],
+  nbaGameId: string | number | bigint
+): ScoreboardGame | null {
+  const target = Number(nbaGameId);
+  if (!Number.isFinite(target)) return null;
+  return games.find((g) => Number(g.gameId) === target) ?? null;
+}
+
+const REGULATION_PERIOD_SECONDS = 12 * 60;
+const OVERTIME_PERIOD_SECONDS = 5 * 60;
+
+/** "PT04M32.00S" → 272 (seconds remaining in the period); '' → 0. */
+export function clockSecondsRemaining(isoClock: string | null | undefined): number {
+  const m = /PT(?:(\d+)M)?(?:([\d.]+)S)?/.exec(isoClock ?? '');
+  if (!m || (!m[1] && !m[2])) return 0;
+  return Number(m[1] ?? 0) * 60 + Math.floor(Number(m[2] ?? 0));
+}
+
+/** Seconds of game time elapsed at (period, clock). Overtime periods are 5 minutes. */
+export function gameElapsedSeconds(period: number, isoClock: string | null | undefined): number {
+  if (period <= 0) return 0;
+  const length = period <= 4 ? REGULATION_PERIOD_SECONDS : OVERTIME_PERIOD_SECONDS;
+  const before =
+    Math.min(period - 1, 4) * REGULATION_PERIOD_SECONDS +
+    Math.max(0, period - 5) * OVERTIME_PERIOD_SECONDS;
+  return before + (length - Math.min(length, clockSecondsRemaining(isoClock)));
+}
+
+export interface PlayByPlayActionLike {
+  actionNumber: number;
+  period: number;
+  clock: string;
+  teamId: number;
+  teamTricode?: string;
+  scoreHome: string;
+  scoreAway: string;
+}
+
+const MAX_POINTS_PER_PLAY = 4;
+
+export interface RecentScoringEvent {
+  team_id: string;
+  team_tricode?: string;
+  points: number;
+  event_time_seconds: number;
+}
+
+/**
+ * Scoring plays in the last `lookbackSeconds` of game time. Points come from
+ * the change in the running score (scoreHome/scoreAway) between actions — the
+ * CDN's pointsTotal is a player's running total, not points on the play — and
+ * each action's time uses its OWN period.
+ */
+export function extractRecentScoring(
+  actions: PlayByPlayActionLike[],
+  current: { period: number; clock: string },
+  teams: { homeTeamId: number; awayTeamId: number; homeTricode?: string; awayTricode?: string },
+  lookbackSeconds = 120
+): RecentScoringEvent[] {
+  const cutoff = gameElapsedSeconds(current.period, current.clock) - lookbackSeconds;
+  const events: RecentScoringEvent[] = [];
+  let home = 0;
+  let away = 0;
+  for (const a of [...actions].sort((x, y) => x.actionNumber - y.actionNumber)) {
+    const h = Number.parseInt(a.scoreHome, 10);
+    const w = Number.parseInt(a.scoreAway, 10);
+    if (!Number.isFinite(h) || !Number.isFinite(w)) continue;
+    const t = gameElapsedSeconds(a.period, a.clock);
+    // No single play is worth more than 4 points; a bigger jump means the feed
+    // started mid-game (or skipped actions), so just re-baseline.
+    if (h - home > MAX_POINTS_PER_PLAY || w - away > MAX_POINTS_PER_PLAY) {
+      home = Math.max(home, h);
+      away = Math.max(away, w);
+      continue;
+    }
+    if (h > home && t >= cutoff) {
+      events.push({ team_id: String(teams.homeTeamId), team_tricode: teams.homeTricode, points: h - home, event_time_seconds: t });
+    }
+    if (w > away && t >= cutoff) {
+      events.push({ team_id: String(teams.awayTeamId), team_tricode: teams.awayTricode, points: w - away, event_time_seconds: t });
+    }
+    home = Math.max(home, h);
+    away = Math.max(away, w);
+  }
+  return events;
+}
+
+export interface OtherGame {
+  game_id: string;
+  status: 'scheduled' | 'in_progress' | 'final';
+  status_text: string;
+  period: number;
+  clock: string;
+  start_time_utc: string | null;
+  home: { abbreviation: string; score: number };
+  away: { abbreviation: string; score: number };
+}
+
+/** Tonight's other NBA games from the scoreboard, for the live page's ticker. */
+export function summarizeOtherGames(games: ScoreboardGame[], excludeGameId: string): OtherGame[] {
+  return games
+    .filter((g) => g.gameId !== excludeGameId)
+    .map((g) => ({
+      game_id: g.gameId,
+      status: g.gameStatus === 3 ? 'final' : g.gameStatus === 2 ? 'in_progress' : 'scheduled',
+      status_text: g.gameStatusText,
+      period: g.period,
+      clock: g.gameClock,
+      start_time_utc: g.gameTimeUTC || null,
+      home: { abbreviation: g.homeTeam.teamTricode, score: g.homeTeam.score },
+      away: { abbreviation: g.awayTeam.teamTricode, score: g.awayTeam.score },
+    }));
+}
+
+/** Per-period line score from the scoreboard teams: [{ period, home, away }]. */
+export function lineScore(game: ScoreboardGame): { period: number; home: number; away: number }[] {
+  const away = new Map((game.awayTeam.periods ?? []).map((p) => [p.period, p.score]));
+  return (game.homeTeam.periods ?? []).map((p) => ({ period: p.period, home: p.score, away: away.get(p.period) ?? 0 }));
+}

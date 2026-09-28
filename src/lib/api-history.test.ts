@@ -27,6 +27,8 @@ vi.mock('./db.js', () => ({
       return Reflect.apply(target, thisArg, args);
     },
     get(target: typeof mockHistorySqlFn, prop: string | symbol) {
+      // sql.unsafe(fragment) — shared raw SQL fragments (game type, minutes)
+      if (prop === 'unsafe') return (fragment: string) => fragment;
       return (target as unknown as Record<string | symbol, unknown>)[prop];
     },
   }),

@@ -488,7 +488,7 @@ async function nbaGet<T>(path: string): Promise<T> {
       headers: NBA_CDN_HEADERS,
     });
     if (!res.ok) throw new Error(`NBA CDN ${res.status}: ${path}`);
-    return res.json() as Promise<T>;
+    return (await res.json()) as T;
   } catch (err) {
     if ((err as Error).name === 'AbortError') {
       throw new Error(`TIMEOUT after ${REQUEST_TIMEOUT_MS}ms: ${path}`);

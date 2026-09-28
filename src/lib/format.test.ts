@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatClock, insightCategoryLabel } from './format'
+import { formatClock, formatSignedLine, insightCategoryLabel } from './format'
 
 describe('formatClock', () => {
   it('converts PT05M30.00S to 5:30', () => {
@@ -39,5 +39,17 @@ describe('insightCategoryLabel', () => {
   it('title-cases unknown categories', () => {
     expect(insightCategoryLabel('new_thing')).toBe('New Thing')
     expect(insightCategoryLabel('')).toBe('')
+  })
+})
+
+describe('formatSignedLine', () => {
+  it('adds a plus sign to positive lines only', () => {
+    expect(formatSignedLine('3.5')).toBe('+3.5')
+    expect(formatSignedLine(150)).toBe('+150')
+    expect(formatSignedLine('-110')).toBe('-110')
+    expect(formatSignedLine('+120')).toBe('+120')
+    expect(formatSignedLine('0')).toBe('0')
+    expect(formatSignedLine('PK')).toBe('PK')
+    expect(formatSignedLine(null)).toBeNull()
   })
 })

@@ -4,6 +4,7 @@
 // don't depend on the order in which the route issues its queries.
 
 import { buildMeta } from './api-utils.js';
+import { REGULAR_SEASON_SQL } from './game-type';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Smoke test (passes immediately) ─────────────────────────────────────────
@@ -24,7 +25,8 @@ type SqlArgs = [readonly string[], ...unknown[]];
 const mockSqlFn = vi.fn<(...args: SqlArgs) => Promise<unknown[]>>();
 
 vi.mock('@/src/lib/db', () => ({
-  sql: (...args: SqlArgs) => mockSqlFn(...args),
+  // sql.unsafe(fragment) is used for shared raw SQL fragments (game type, minutes)
+  sql: Object.assign((...args: SqlArgs) => mockSqlFn(...args), { unsafe: (fragment: string) => fragment }),
   LAC_NBA_TEAM_ID: 13,
 }));
 
@@ -72,12 +74,12 @@ async function getHome() {
 }
 
 describe('GET /api/home', () => {
-  it('team_snapshot has conference_seed:null (no standings table in DB)', async () => {
+  it('team_snapshot.conference_seed is null when standings are unavailable', async () => {
     const body = await (await getHome()).json();
     expect(body.team_snapshot.conference_seed).toBeNull();
   });
 
-  it('team_snapshot.net_rating is null when rolling_team_stats has no LAC rows', async () => {
+  it('team_snapshot.net_rating is null when LAC has no advanced stats for the season', async () => {
     const body = await (await getHome()).json();
     expect(body.team_snapshot.net_rating).toBeNull();
     expect(body.team_snapshot.off_rating).toBeNull();
@@ -133,15 +135,19 @@ describe('GET /api/home', () => {
     const body = await (await getHome()).json();
     expect(body.team_snapshot.season_id).toBe(DISPLAY_SEASON);
 
-    const recordCall = findCall(/NOT is_playoffs/);
+    // Record: regular season only — the shared predicate excludes playoffs and play-in.
+    const recordCall = findCall(/g\.home_score IS NOT NULL AND g\.away_score IS NOT NULL/);
     expect(recordCall).toBeDefined();
     expect(recordCall!.slice(1)).toContain(DISPLAY_SEASON);
+    expect(recordCall!.slice(1)).toContain(REGULAR_SEASON_SQL);
 
     const last10Call = findCall(/home_abbr[\s\S]*lower\(g\.status\) = 'final'/);
     expect(last10Call!.slice(1)).toContain(DISPLAY_SEASON);
 
-    const ratingsCall = findCall(/FROM rolling_team_stats/);
+    // Ratings: possession-weighted regular-season numbers for the same season.
+    const ratingsCall = findCall(/FROM advanced_team_game_stats/);
     expect(ratingsCall!.slice(1)).toContain(DISPLAY_SEASON);
+    expect(ratingsCall!.slice(1)).toContain(REGULAR_SEASON_SQL);
   });
 
   it('compares game_date against the US Eastern date, not CURRENT_DATE', async () => {

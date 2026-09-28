@@ -36,6 +36,7 @@ export interface LiveSnapshot {
 
 export interface ScoringEvent {
   team_id: string;
+  team_tricode?: string;       // e.g. 'LAC' — present on snapshots written since the game-night runner
   points: number;
   event_time_seconds: number;  // seconds elapsed in game
 }
@@ -57,6 +58,7 @@ export interface InsightCandidate {
 
 interface ScoringRun {
   team_id: string;
+  team_tricode?: string;
   points: number;
   start_event_index: number;
   end_event_index: number;
@@ -99,6 +101,7 @@ export function detectScoringRun(events: ScoringEvent[]): ScoringRun | null {
       if (!bestRun || runPoints > bestRun.points) {
         bestRun = {
           team_id: runTeam,
+          team_tricode: events[startIdx].team_tricode,
           points: runPoints,
           start_event_index: startIdx,
           end_event_index: endIdx,
@@ -128,8 +131,10 @@ function buildRunInsight(run: ScoringRun, snapshot: LiveSnapshot): InsightCandid
 
   return {
     category: 'run',
-    headline: `${run.points}-0 scoring run`,
-    detail: `Team ${run.team_id} has scored ${run.points} unanswered points`,
+    headline: run.team_tricode
+      ? `${run.team_tricode} on a ${run.points}-0 run`
+      : `${run.points}-0 scoring run`,
+    detail: `${run.team_tricode ?? 'One team'} has scored ${run.points} unanswered points`,
     importance: 85,
     proof_sql:
       'SELECT team_id, SUM(points) AS run_points FROM recent_scoring WHERE game_id = $1 AND event_time_seconds BETWEEN $2 AND $3 GROUP BY team_id',
