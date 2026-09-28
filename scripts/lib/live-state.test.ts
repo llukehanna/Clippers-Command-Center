@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { buildLiveState, fingerprint, lastPlays, type StateInputs } from './live-state.js';
+import { buildLiveState, defaultModel, fingerprint, lastPlays, type StateInputs, type ModelContext } from './live-state.js';
 import { action, box, GAME_ID, sbGame } from './live-fixtures.js';
+import { DEFAULT_SIGMA, normalCdf, winProbability } from '../../src/lib/live/win-prob.js';
 
 const NOW = Date.UTC(2026, 9, 22, 2, 45, 0);
 const other = sbGame({ gameId: '0022600094', status: 2, home: 50, away: 48 });
@@ -108,5 +109,46 @@ describe('fingerprint', () => {
     expect(fingerprint({ ...a, cadence: { phase: 'STOPPAGE', next_ms: 3000 } })).not.toBe(fingerprint(a));
     const b = buildLiveState(inputs({ actions: [action(1), action(2)] }));
     expect(fingerprint(b)).not.toBe(fingerprint(a));
+  });
+});
+
+const MODEL: ModelContext = {
+  expected: 4.5,
+  expectedSource: 'spread',
+  sigma: 12,
+  calibration: null,
+  usualMin: {},
+};
+
+describe('buildLiveState — Plan 3 fields', () => {
+  it('gives the pregame win probability before tip, and no flow or lineups', () => {
+    const body = buildLiveState(inputs({ sbGame: sbGame({ status: 1 }), phase: 'PREGAME', nextMs: 30_000, model: MODEL }));
+    expect(body.wp).toMatchObject({ model: 'stern-v1', sigma: 12, expected_margin: 4.5, expected_source: 'spread', calibration: null });
+    expect(body.wp!.lac).toBeCloseTo(normalCdf(4.5 / 12), 3);
+    expect(body.flow).toBeNull();
+    expect(body.lineups).toBeNull();
+  });
+
+  it('gives the live win probability from the current margin and clock', () => {
+    const body = buildLiveState(inputs({
+      box: box({ period: 2, clock: 'PT04M32.00S', home: 30, away: 28 }),
+      actions: [action(1, { clock: 'PT04M32.00S', period: 2, scoreHome: '30', scoreAway: '28' })],
+      model: MODEL,
+    }));
+    const expected = winProbability({ margin: 2, period: 2, clockSec: 272, expected: 4.5, sigma: 12 });
+    expect(body.wp!.lac).toBeCloseTo(expected, 3);
+    expect(body.flow!.points.at(-1)).toMatchObject({ m: 2, a: 1 });
+    expect(body.lineups).toMatchObject({ on_court: { lac: [], opp: [] } });
+  });
+
+  it('settles the win probability at the final buzzer', () => {
+    const body = buildLiveState(inputs({ box: box({ status: 3, period: 4, clock: 'PT00M00.00S', home: 101, away: 99 }), model: MODEL }));
+    expect(body.wp!.lac).toBe(1);
+  });
+
+  it('uses the default model without a context: home court and the default σ', () => {
+    const body = buildLiveState(inputs({ sbGame: sbGame({ status: 1 }), phase: 'PREGAME' }));
+    expect(body.wp).toMatchObject({ sigma: DEFAULT_SIGMA, expected_margin: 2.5, expected_source: 'home_court' });
+    expect(defaultModel(false).expected).toBe(-2.5);
   });
 });

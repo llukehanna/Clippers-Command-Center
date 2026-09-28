@@ -253,6 +253,14 @@ describe('createPoller', () => {
     expect(deps.fetchScoreboard).toHaveBeenCalledTimes(2); // attempted, but failed and swallowed
   });
 
+  it('builds docs with the model it was given', async () => {
+    const { deps } = harness();
+    const model = { expected: -3, expectedSource: 'spread' as const, sigma: 11, calibration: null, usualMin: {} };
+    const r = await createPoller(GAME_ID, TIP, deps, 0, model).tick();
+    expect(r.doc?.wp).toMatchObject({ sigma: 11, expected_margin: -3, expected_source: 'spread' });
+    expect(r.doc?.flow?.points.length).toBeGreaterThan(0);
+  });
+
   it('a failed period-end moment save is retried until it succeeds, then stops', async () => {
     const { h, deps } = harness();
     deps.saveMoment.mockRejectedValueOnce(new Error('db down'));
