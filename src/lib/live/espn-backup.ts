@@ -9,7 +9,7 @@ export const ESPN_SCOREBOARD_URL = 'https://site.api.espn.com/apis/site/v2/sport
 export const BACKUP_STALE_REASON = 'backup feed (ESPN)';
 
 // ESPN abbreviations that differ from NBA tricodes.
-const ESPN_TO_NBA: Record<string, string> = { GS: 'GSW', NY: 'NYK', SA: 'SAS', NO: 'NOP', UTAH: 'UTA', WSH: 'WAS', PHO: 'PHX' };
+const ESPN_TO_NBA: Record<string, string> = { GS: 'GSW', NY: 'NYK', SA: 'SAS', NO: 'NOP', UTAH: 'UTA', WSH: 'WAS' };
 
 export interface EspnScore {
   home: number;
@@ -21,7 +21,7 @@ export interface EspnScore {
 }
 
 interface EspnCompetitor { homeAway?: string; score?: string; team?: { abbreviation?: string } }
-interface EspnStatus { period?: number; displayClock?: string; type?: { state?: string; shortDetail?: string } }
+interface EspnStatus { period?: number; displayClock?: string; type?: { state?: string; shortDetail?: string; completed?: boolean } }
 interface EspnEvent { competitions?: Array<{ competitors?: EspnCompetitor[]; status?: EspnStatus }>; status?: EspnStatus }
 
 const tricode = (abbr: string | undefined) => (abbr ? ESPN_TO_NBA[abbr] ?? abbr : '');
@@ -40,6 +40,8 @@ export function parseEspnScoreboard(json: unknown, homeTricode: string, awayTric
     if (tricode(home.team?.abbreviation) !== homeTricode || tricode(away.team?.abbreviation) !== awayTricode) continue;
     const st = comp?.status ?? e.status ?? {};
     const state = st.type?.state;
+    // Reject postponed/cancelled games (post without completed flag)
+    if (state === 'post' && !st.type?.completed) continue;
     return {
       home: Number(home.score) || 0,
       away: Number(away.score) || 0,
@@ -54,6 +56,18 @@ export function parseEspnScoreboard(json: unknown, homeTricode: string, awayTric
 
 export function overlayEspn(p: LivePayload, s: EspnScore): LivePayload {
   if (!p.game) return p;
+
+  // Never go backward: if ESPN is behind what we already have, return unchanged
+  const payloadHomeScore = p.game.home.score ?? 0;
+  const payloadAwayScore = p.game.away.score ?? 0;
+  const payloadTotal = payloadHomeScore + payloadAwayScore;
+  const espnTotal = s.home + s.away;
+
+  // If ESPN period is lower, or ESPN total score is lower, payload is fresher
+  if (s.period < (p.game.period ?? 0) || espnTotal < payloadTotal) {
+    return p;
+  }
+
   return {
     ...p,
     state: 'DATA_DELAYED',
