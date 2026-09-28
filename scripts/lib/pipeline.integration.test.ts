@@ -6,6 +6,9 @@
 //   FIXTURE_DATABASE_URL=postgres://postgres@127.0.0.1:5432/fixture npx vitest run scripts/lib/pipeline
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type { NBABoxscoreResponse, BoxscorePlayer, BoxscoreTeam } from '../../src/lib/types/live';
 
 const url = process.env.FIXTURE_DATABASE_URL;
@@ -253,6 +256,51 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
                WHERE a.game_id = ${gameId}::bigint AND t.abbreviation <> 'LAC') AS other_player_adv
     `;
     expect(derived).toEqual({ team_adv: 2, lac_player_adv: 2, other_player_adv: 0 });
+  }, TIMEOUT);
+
+  it('ingests play-by-play for a Clippers game: flow, periods, clutch, raw events', async () => {
+    const [game] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM games WHERE nba_game_id = 22600077`;
+    // DEN home, LAC away. LAC 3 (0-3), DEN 2+2 (4-3), LAC FT in the clutch (4-4), LAC 2 (4-6).
+    const a = (n: number, clock: string, period: number, tri: string | null, person: number, type: string, result: string | null, h: number, w: number, extra: Record<string, unknown> = {}) =>
+      ({ actionNumber: n, clock, period, teamTricode: tri, personId: person, actionType: type, shotResult: result, scoreHome: String(h), scoreAway: String(w), description: '', ...extra });
+    const pbp = { game: { gameId: '0022600077', actions: [
+      a(1, 'PT12M00.00S', 1, null, 0, 'period', null, 0, 0),
+      a(2, 'PT11M40.00S', 1, 'LAC', 1_000_001, '3pt', 'Made', 0, 3, { assistPersonId: 1_000_002 }),
+      a(3, 'PT11M00.00S', 1, 'DEN', 1_000_049, '2pt', 'Made', 2, 3),
+      a(4, 'PT03M20.00S', 4, 'DEN', 1_000_049, '2pt', 'Made', 4, 3),
+      a(5, 'PT02M00.00S', 4, 'LAC', 1_000_001, 'freethrow', 'Made', 4, 4),
+      a(6, 'PT01M00.00S', 4, 'LAC', 1_000_001, '2pt', 'Made', 4, 6),
+    ] } };
+    const file = path.join(os.tmpdir(), `pbp-${Date.now()}.json`);
+    fs.writeFileSync(file, JSON.stringify(pbp));
+
+    const out = run('scripts/ingest-pbp.ts', {}, [`--game=${game.game_id}`, `--from-file=${file}`, '--format=cdn', '--keep-raw']);
+    expect(out).toContain('1 ingested');
+
+    const [flow] = await sql`SELECT lac_largest_lead, lac_largest_deficit, lead_changes, times_tied, lac_best_run, opp_best_run, comeback_margin, source
+                             FROM game_flow WHERE game_id = ${game.game_id}::bigint`;
+    expect(flow).toEqual({ lac_largest_lead: 3, lac_largest_deficit: 1, lead_changes: 2, times_tied: 1, lac_best_run: 3, opp_best_run: 4, comeback_margin: 1, source: 'cdn' });
+
+    const star = await sql<{ period: number; pts: number; fg3m: number }[]>`
+      SELECT pp.period, pp.pts, pp.fg3m FROM period_player_stats pp JOIN players p ON p.player_id = pp.player_id
+      WHERE pp.game_id = ${game.game_id}::bigint AND p.display_name = 'Star Clipper' ORDER BY pp.period`;
+    expect(star).toEqual([{ period: 1, pts: 3, fg3m: 1 }, { period: 4, pts: 3, fg3m: 0 }]);
+
+    const [clutch] = await sql`SELECT c.pts, c.ftm FROM clutch_stats c JOIN teams t ON t.team_id = c.team_id
+                               WHERE c.game_id = ${game.game_id}::bigint AND t.abbreviation = 'LAC' AND c.player_id IS NULL`;
+    expect(clutch).toEqual({ pts: 3, ftm: 1 });
+
+    const counts = async () => (await sql<{ events: number; periods: number }[]>`
+      SELECT (SELECT COUNT(*)::int FROM pbp_events WHERE game_id = ${game.game_id}::bigint) AS events,
+             (SELECT COUNT(*)::int FROM period_team_stats WHERE game_id = ${game.game_id}::bigint) AS periods`)[0];
+    expect(await counts()).toEqual({ events: 6, periods: 4 });
+
+    // Already ingested → skipped; --force rewrites the same rows.
+    expect(run('scripts/ingest-pbp.ts', {}, [`--game=${game.game_id}`, `--from-file=${file}`, '--format=cdn'])).toContain('0 game(s) to ingest');
+    run('scripts/ingest-pbp.ts', {}, [`--game=${game.game_id}`, `--from-file=${file}`, '--format=cdn', '--force']);
+    expect(await counts()).toEqual({ events: 6, periods: 4 });   // rows flagged keep by --keep-raw are stored again
+    const [kept] = await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM pbp_events WHERE game_id = ${game.game_id}::bigint AND keep`;
+    expect(kept.n).toBe(6);
   }, TIMEOUT);
 
   it('finds stale duplicate rows and removes only the safe ones', async () => {
