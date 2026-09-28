@@ -1,14 +1,13 @@
 'use client'
 
 import useSWR from 'swr'
+import { livePollInterval } from '@/src/lib/live-utils'
 import type { LivePayload } from '@/src/lib/ui/types'
 
 /** Shape returned by the /api/live endpoint */
 export type LiveDashboardPayload = LivePayload
 
 const FETCH_TIMEOUT_MS = 15_000
-const LIVE_POLL_MS = 12_000
-const IDLE_POLL_MS = 300_000
 
 // Abort hung requests so the page can't sit on its loading skeleton forever.
 const fetcher = (url: string): Promise<LivePayload> =>
@@ -17,12 +16,32 @@ const fetcher = (url: string): Promise<LivePayload> =>
     return res.json()
   })
 
-/** Shared live feed — the TopBar and the Live page read the same SWR key. */
-export function useLiveData() {
+export interface UseLiveDataOptions {
+  /**
+   * Which polling budget to follow (src/lib/live-utils.ts, spec §6.2):
+   * - 'chip' (default): a flat 30 s while LIVE/DATA_DELAYED. Every page mounts
+   *   the TopBar, so this is what keeps the site's Vercel request volume from
+   *   scaling with page views.
+   * - 'cadence': follows the game-night runner's adaptive cadence (2–30 s by
+   *   game phase, clamped to ≥ 4 s). Only the /live page — the one place a fan
+   *   is actually watching live — opts into this.
+   */
+  follow?: 'cadence' | 'chip'
+}
+
+/**
+ * Shared live feed — the TopBar and the Live page read the same SWR key, but
+ * each hook instance keeps its own refresh timer (SWR schedules polling per
+ * hook, not per key), so the TopBar's slower 'chip' cadence never throttles
+ * the /live page's 'cadence' polling, or vice versa — see live-utils.test.ts
+ * and the Live v2 plan 1 report for the SWR internals this relies on.
+ * SWR pauses polling while the tab is hidden and refetches on focus.
+ */
+export function useLiveData(options: UseLiveDataOptions = {}) {
+  const follow = options.follow ?? 'chip'
   return useSWR<LivePayload>('/api/live', fetcher, {
-    // Poll fast only while a game is (or may be) in progress; back off when idle.
-    refreshInterval: (d) => (d?.state === 'NO_ACTIVE_GAME' ? IDLE_POLL_MS : LIVE_POLL_MS),
+    refreshInterval: (d) => livePollInterval(d, follow),
     revalidateOnFocus: true,
-    dedupingInterval: 6_000,
+    dedupingInterval: 2_000,
   })
 }

@@ -153,6 +153,8 @@ export interface PlayByPlayAction {
   scoreHome: string;       // e.g. "87"
   scoreAway: string;       // e.g. "82"
   pointsTotal: number;     // points scored on this action (0 for misses/fouls)
+  timeActual?: string;     // wall-clock time of the real play, ISO 8601 (cdn only)
+  shotResult?: string;     // "Made" | "Missed" on shots
 }
 
 // ── Application-level type ────────────────────────────────────────────────────
