@@ -61,6 +61,13 @@ export interface ReliabilityBin {
 }
 
 /** The fitted model, stored in app_kv 'wp:model' by scripts/calibrate-wp.ts. */
+/** σ fitted over the games whose pregame expectation came from one source. */
+export interface SourceFit {
+  sigma: number;
+  brier: number;
+  n_games: number;
+}
+
 export interface WpCalibration {
   sigma: number;
   brier: number;
@@ -68,6 +75,12 @@ export interface WpCalibration {
   n_samples: number;
   fitted_at: string;
   reliability: ReliabilityBin[];
+  /**
+   * σ per source of E, for each source with enough games. A home-court E
+   * (±2.5) is a poorer guess than a closing spread, which inflates σ; a game
+   * with a spread uses the spread-only fit. Absent in fits stored before it.
+   */
+  sigma_by_source?: Partial<Record<'spread' | 'home_court', SourceFit>>;
 }
 
 export interface LiveWinProb {
