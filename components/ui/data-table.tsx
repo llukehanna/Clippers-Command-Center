@@ -36,7 +36,7 @@ export function Th({
       className={cn(
         'whitespace-nowrap px-2.5 pb-2 pt-3 font-mono text-[10.5px] font-normal uppercase tracking-[0.12em] text-dim first:pl-4 last:pr-4 sm:first:pl-5 sm:last:pr-5',
         alignClass(align),
-        sticky && 'sticky left-0 z-[1] bg-ink-1',
+        sticky && 'max-md:sticky max-md:left-0 max-md:z-[1] max-md:bg-ink-1',
         className,
       )}
       {...rest}
@@ -60,7 +60,7 @@ export function Td({
       className={cn(
         'whitespace-nowrap border-t border-line px-2.5 py-2.5 first:pl-4 last:pr-4 sm:first:pl-5 sm:last:pr-5',
         alignClass(align),
-        sticky && 'sticky left-0 z-[1] bg-ink-1',
+        sticky && 'max-md:sticky max-md:left-0 max-md:z-[1] max-md:bg-ink-1',
         strong && 'font-semibold text-text',
         muted && 'text-mute',
         className,
