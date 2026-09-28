@@ -57,7 +57,8 @@ Desktop/laptop only for MVP.
 Pick one of these two:
 
 ### Option A (fastest)
-- Web + API: Vercel
+- Web + API: Vercel, served at clippers.lukeghanna.com (the `*.vercel.app` URL redirects there)
+- Jobs (sync, live polling, finalization, stats, insights): GitHub Actions
 - Postgres: Neon (or Supabase Postgres)
 - Cron: GitHub Actions scheduled workflows (free)
 
