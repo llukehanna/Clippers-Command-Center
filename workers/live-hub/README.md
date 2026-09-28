@@ -51,9 +51,17 @@ npx wrangler deploy
 ```
 
 **2. Set the secret:**
+
+Generate it once and use the same value in all three places:
+
 ```bash
-openssl rand -hex 32 | npx wrangler secret put LIVE_HUB_SECRET
+SECRET=$(openssl rand -hex 32)
+echo "$SECRET" | npx wrangler secret put LIVE_HUB_SECRET   # the Worker
+echo "$SECRET"                                             # copy for the next two
 ```
+
+- **GitHub Actions:** repo secret `LIVE_HUB_SECRET` (the game-night runner publishes with it).
+- **Vercel:** env var `LIVE_HUB_SECRET` (manual `/api/cron/poll-live` ticks publish with it).
 
 ### Health & Monitoring
 

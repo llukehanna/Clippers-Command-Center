@@ -2079,9 +2079,9 @@ Run the README's publish `curl` and the browser-console socket check from https:
 - **GitHub:**
   - Repo variable `LIVE_HUB_URL=https://live.lukeghanna.com`.
   - Secrets: `LIVE_HUB_SECRET` (same value), `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit; Zone DNS: Edit on lukeghanna.com) and `CLOUDFLARE_ACCOUNT_ID`.
-- **Vercel** (Production + Preview):
-  - `NEXT_PUBLIC_LIVE_HUB_URL=wss://live.lukeghanna.com`.
-  - `LIVE_HUB_URL` and `LIVE_HUB_SECRET`, so manual cron-route ticks publish too.
+- **Vercel:**
+  - `NEXT_PUBLIC_LIVE_HUB_URL=wss://live.lukeghanna.com` — **Production only** (not Preview or Development). The hub's `ALLOWED_ORIGINS` admits only `https://clippers.lukeghanna.com` (plus `http://localhost:3000` for local testing via `.env.local`), so preview deployments leave it unset and poll `/api/live`.
+  - `LIVE_HUB_URL` and `LIVE_HUB_SECRET` (Production + Preview), so manual cron-route ticks publish too. `LIVE_HUB_SECRET` is the same value as the Worker's and the GitHub secret (see `workers/live-hub/README.md`).
 
 - [ ] **Step 5: Merge and verify**
 
