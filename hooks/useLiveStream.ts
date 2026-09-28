@@ -193,12 +193,18 @@ export function useLiveStream(): LiveStream {
   // Tier 3: ESPN backup while our runner is stale.
   const backupWanted = needsBackup(base, pushLive)
   const backupGame = backupWanted ? base?.game ?? null : null
+  // Primitive deps: every poll hands back a new game object, and restarting
+  // (and clearing) the backup on each one would flicker the ESPN score.
+  const backupId = backupGame?.game_id ?? null
+  const backupDate = backupGame?.game_date ?? null
+  const backupHome = backupGame?.home.abbreviation ?? null
+  const backupAway = backupGame?.away.abbreviation ?? null
   React.useEffect(() => {
-    const g = backupGame
-    if (!g?.game_date || !g.home.abbreviation || !g.away.abbreviation) return
-    const { game_id, game_date } = g
-    const home = g.home.abbreviation
-    const away = g.away.abbreviation
+    if (!backupId || !backupDate || !backupHome || !backupAway) return
+    const game_id = backupId
+    const game_date = backupDate
+    const home = backupHome
+    const away = backupAway
     let stopped = false
     const tick = async () => {
       try {
@@ -215,8 +221,11 @@ export function useLiveStream(): LiveStream {
     return () => {
       stopped = true
       clearInterval(id)
+      // Backup no longer needed (or a different game): drop the cached ESPN
+      // score so a later backup episode can't flash an old one.
+      setEspn(null)
     }
-  }, [backupGame])
+  }, [backupId, backupDate, backupHome, backupAway])
 
   const backupScore = backupWanted && espn && espn.gameId === base?.game?.game_id ? espn.score : null
 

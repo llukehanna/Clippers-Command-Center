@@ -54,6 +54,13 @@ export function parseEspnScoreboard(json: unknown, homeTricode: string, awayTric
   return null;
 }
 
+/** Seconds left in the period from "4:32", "0:45.2" or ESPN's sub-minute "45.2"; NaN if unreadable. */
+export function clockSecondsLeft(clock: string | null | undefined): number {
+  const m = /^\s*(?:(\d+):)?(\d+(?:\.\d+)?)\s*$/.exec(clock ?? '');
+  if (!m) return NaN;
+  return (m[1] ? Number(m[1]) * 60 : 0) + Number(m[2]);
+}
+
 export function overlayEspn(p: LivePayload, s: EspnScore): LivePayload {
   if (!p.game) return p;
 
@@ -68,6 +75,12 @@ export function overlayEspn(p: LivePayload, s: EspnScore): LivePayload {
     return p;
   }
 
+  // Same period with more time left on ESPN's clock: its clock is behind ours.
+  const clockBehind =
+    s.period === p.game.period && clockSecondsLeft(s.clock) > clockSecondsLeft(p.game.clock);
+  // Behind on the clock and nothing new on the scoreboard: ESPN has nothing to add.
+  if (clockBehind && espnTotal === payloadTotal) return p;
+
   return {
     ...p,
     state: 'DATA_DELAYED',
@@ -75,9 +88,10 @@ export function overlayEspn(p: LivePayload, s: EspnScore): LivePayload {
     game: {
       ...p.game,
       status: s.status,
-      status_text: s.status_text,
+      // Keep our clock (and the status text that names it) rather than rewind it.
+      status_text: clockBehind ? p.game.status_text : s.status_text,
       period: s.period,
-      clock: s.clock,
+      clock: clockBehind ? p.game.clock : s.clock,
       home: { ...p.game.home, score: s.home },
       away: { ...p.game.away, score: s.away },
     },
