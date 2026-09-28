@@ -37,7 +37,6 @@ function Score({ value, trailing }: { value: number | null; trailing: boolean })
   React.useEffect(() => {
     if (prev.current !== value && prev.current != null) {
       // Visual acknowledgement of a live score change.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFlash(true)
       const id = setTimeout(() => setFlash(false), 1200)
       prev.current = value
