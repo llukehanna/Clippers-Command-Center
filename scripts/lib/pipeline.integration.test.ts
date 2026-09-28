@@ -278,6 +278,21 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
         WHERE game_id = ${game.game_id}::bigint ORDER BY captured_at DESC LIMIT 1`;
       expect(snap).toEqual({ period: 2, reason: 'period_end' });
 
+      // A cron route makes a fresh poller per request, so the same period-end
+      // moment can be offered more than once — the store, not just the poller's
+      // in-memory dedup, must be the one that stops duplicate rows.
+      await saveLiveMoment(sql, game.game_id, liveDoc(4, { period: 2, clock: '0:00' }), 'period_end');
+      const [dupeCount] = await sql<{ n: number }[]>`
+        SELECT COUNT(*)::int AS n FROM live_snapshots
+        WHERE game_id = ${game.game_id}::bigint AND payload->>'reason' = 'period_end' AND period = 2`;
+      expect(dupeCount.n).toBe(1);
+
+      // A different reason/period is not deduped against it.
+      await saveLiveMoment(sql, game.game_id, liveDoc(5, { period: 4, clock: '0:00' }), 'final');
+      const [totalCount] = await sql<{ n: number }[]>`
+        SELECT COUNT(*)::int AS n FROM live_snapshots WHERE game_id = ${game.game_id}::bigint`;
+      expect(totalCount.n).toBe(2);
+
       // A game can't go back from final on a stale read: live_state still takes
       // the newer seq, but the games row (already final) is left untouched.
       await sql`UPDATE games SET status = 'final', home_score = 120 WHERE game_id = ${game.game_id}::bigint`;

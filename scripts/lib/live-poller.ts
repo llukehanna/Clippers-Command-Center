@@ -67,17 +67,35 @@ export function createPoller(nbaGameId: string, tipAt: number | null, deps: Poll
   let pbpValidators: Validators | undefined;
   let boxValidators: Validators | undefined;
   let notBefore = 0;
+  // Set whenever something means the box is (or may be) stale; cleared only once
+  // a box fetch actually succeeds, so a failed attempt or a quiet pbp tick don't
+  // lose the signal that a refetch is still owed.
+  let boxDue = false;
   const moments = new Set<string>();
 
   const started = () => Math.max(sbGame?.gameStatus ?? 0, box?.gameStatus ?? 0) >= 2;
 
+  function isGameEnd(a: PlayByPlayAction | null | undefined): boolean {
+    return !!a && a.actionType.toLowerCase() === 'game' && (a.subType ?? '').toLowerCase() === 'end';
+  }
+
   async function refreshFeeds(now: number): Promise<void> {
-    if (!sbGame || !started() || now - sbAt >= SCOREBOARD_EVERY_MS) {
-      const sb = await deps.fetchScoreboard();
-      sbGames = sb.scoreboard.games;
-      sbAt = now;
-      // Late West Coast games can outlive the scoreboard's rollover: keep the last match.
-      sbGame = matchScoreboardGame(sbGames, nbaGameId) ?? sbGame;
+    const needsScoreboard = !sbGame || !started() || now - sbAt >= SCOREBOARD_EVERY_MS;
+    if (needsScoreboard) {
+      // Only a periodic refresh while already live may fail without failing the
+      // tick — pre-tip/tip-watch, the scoreboard is the only feed there is.
+      const priorlyStarted = sbGame !== null && started();
+      try {
+        const sb = await deps.fetchScoreboard();
+        sbGames = sb.scoreboard.games;
+        sbAt = now;
+        // Late West Coast games can outlive the scoreboard's rollover: keep the last match.
+        sbGame = matchScoreboardGame(sbGames, nbaGameId) ?? sbGame;
+      } catch (err) {
+        if (!priorlyStarted) throw err;
+        log(`scoreboard fetch failed, keeping cached data: ${(err as Error).message}`);
+        // Leave sbAt as-is so the periodic refresh is retried next tick.
+      }
     }
     if (!sbGame || !started()) return;
 
@@ -86,16 +104,24 @@ export function createPoller(nbaGameId: string, tipAt: number | null, deps: Poll
     if (pbp.freshness.maxAgeMs !== null) {
       notBefore = now + Math.max(0, pbp.freshness.maxAgeMs - pbp.freshness.ageMs);
     }
-    let advanced = false;
     if (pbp.status === 200) {
       const newest = pbp.body.game.actions.at(-1)?.actionNumber ?? -1;
-      advanced = newest !== (actions.at(-1)?.actionNumber ?? -1);
+      const advanced = newest !== (actions.at(-1)?.actionNumber ?? -1);
       actions = pbp.body.game.actions;
+      if (advanced) boxDue = true;
     }
-    if (advanced || !box) {
+    if (!box) boxDue = true;
+    // The box can lag behind a game-end action (no further pbp action will ever
+    // arrive to trigger a refetch) or behind the scoreboard going final ahead of
+    // it — either way, keep asking until the box itself reports final.
+    if (isGameEnd(actions.at(-1)) && (box?.gameStatus ?? 0) < 3) boxDue = true;
+    if (sbGame.gameStatus > (box?.gameStatus ?? 0)) boxDue = true;
+
+    if (boxDue) {
       const b = await deps.fetchBox(sbGame.gameId, boxValidators);
       boxValidators = b.validators;
       if (b.status === 200) box = b.body.game;
+      boxDue = false;
     }
   }
 
@@ -159,9 +185,9 @@ export function createPoller(nbaGameId: string, tipAt: number | null, deps: Poll
 
   async function recordMoment(key: string, d: LiveStateDoc, reason: 'period_end' | 'final'): Promise<void> {
     if (moments.has(key)) return;
-    moments.add(key);
     try {
       await deps.saveMoment(d, reason);
+      moments.add(key); // only after success, so a failed save is retried on a later tick
     } catch (err) {
       log(`moment ${key} not saved: ${(err as Error).message}`);
     }

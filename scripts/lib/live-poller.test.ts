@@ -148,4 +148,100 @@ describe('createPoller', () => {
     expect(retry.saved).toBe(true);
     expect(retry.doc?.seq).toBe(2);
   });
+
+  // ── Fix round 1 ──────────────────────────────────────────────────────────
+
+  it('reaches FINAL from a lagging box after a game-end action, even once the scoreboard rolls the game off (frozen sbGame)', async () => {
+    const { h, deps } = harness();
+    const poller = createPoller(GAME_ID, TIP, deps);
+
+    // Tick 1: establish sbGame + box caches at LIVE (status 2 both).
+    await poller.tick();
+
+    // Tick 2: the game-end action arrives; the box fetched right after still reads status 2 (lagging).
+    h.t += 3_000;
+    h.pbp = ok(pbpOf(action(1), action(2, { actionType: 'game', subType: 'end', period: 4 })));
+    h.box = ok(boxOf(box({ period: 4 })));
+    const afterEnd = await poller.tick();
+    expect(afterEnd.final).toBe(false);
+    expect(afterEnd.phase).not.toBe('FINAL');
+    expect(deps.fetchBox).toHaveBeenCalledTimes(2);
+
+    // Tick 3: past the 60 s scoreboard cadence, the scoreboard rolls the game off entirely.
+    // sbGame stays frozen at the last known (still-status-2) entry via the `?? sbGame` fallback.
+    // No new pbp action arrives (304) — the box must still be retried because the last action was a game end.
+    h.t += 60_000;
+    h.sb = scoreboard(sbGame({ gameId: '0022600001' }));
+    h.pbp = notModified();
+    const stillLagging = await poller.tick();
+    expect(stillLagging.status).toBe('ok');
+    expect(stillLagging.final).toBe(false);
+    expect(deps.fetchBox).toHaveBeenCalledTimes(3); // refetched despite no pbp advance
+
+    // Tick 4: the box source finally reports final.
+    h.t += 3_000;
+    h.box = ok(boxOf(box({ status: 3, period: 4, home: 110, away: 101 })));
+    const final = await poller.tick();
+    expect(final).toMatchObject({ phase: 'FINAL', final: true });
+    expect(final.doc?.status).toBe('final');
+    expect(final.doc).toMatchObject({ home_score: 110, away_score: 101 });
+    expect(deps.saveMoment).toHaveBeenCalledWith(expect.anything(), 'final');
+  });
+
+  it('retries the box fetch on a later tick after a failed fetch, even without a new pbp advance', async () => {
+    const { h, deps } = harness();
+    const poller = createPoller(GAME_ID, TIP, deps, 41);
+    await poller.tick(); // establish caches (box already fetched once)
+    expect(deps.fetchBox).toHaveBeenCalledTimes(1);
+
+    h.t += 3_000;
+    h.pbp = ok(pbpOf(action(1), action(2, { scoreHome: '4' }))); // basket, pbp advances
+    deps.fetchBox.mockRejectedValueOnce(new Error('NBA CDN 503'));
+    const errored = await poller.tick();
+    expect(errored.status).toBe('error');
+    expect(deps.fetchBox).toHaveBeenCalledTimes(2); // attempted, but failed
+
+    h.t += 3_000;
+    h.pbp = notModified(); // no further pbp advance
+    h.box = ok(boxOf(box({ home: 4 })));
+    const recovered = await poller.tick();
+    expect(recovered.status).toBe('ok');
+    expect(recovered.saved).toBe(true);
+    expect(deps.fetchBox).toHaveBeenCalledTimes(3); // retried despite the 304
+    expect(recovered.doc).toMatchObject({ home_score: 4 });
+  });
+
+  it('keeps polling play-by-play when the periodic scoreboard refresh fails once live', async () => {
+    const { h, deps } = harness();
+    const poller = createPoller(GAME_ID, TIP, deps);
+    await poller.tick(); // establishes started() state (sbGame + box both status 2)
+
+    h.t += 60_000; // due for the periodic scoreboard refresh
+    deps.fetchScoreboard.mockRejectedValueOnce(new Error('NBA CDN 503'));
+    h.pbp = ok(pbpOf(action(1), action(2, { scoreHome: '4' })));
+    h.box = ok(boxOf(box({ home: 4 })));
+    const r = await poller.tick();
+    expect(r.status).toBe('ok');
+    expect(r.saved).toBe(true);
+    expect(deps.fetchPbp).toHaveBeenCalledTimes(2);
+    expect(deps.fetchScoreboard).toHaveBeenCalledTimes(2); // attempted, but failed and swallowed
+  });
+
+  it('a failed period-end moment save is retried until it succeeds, then stops', async () => {
+    const { h, deps } = harness();
+    deps.saveMoment.mockRejectedValueOnce(new Error('db down'));
+    const poller = createPoller(GAME_ID, TIP, deps);
+    h.pbp = ok(pbpOf(action(1), action(2, { actionType: 'period', subType: 'end', period: 1, clock: 'PT00M00.00S' })));
+    h.box = ok(boxOf(box({ period: 1, clock: 'PT00M00.00S' })));
+    await poller.tick();
+    expect(deps.saveMoment).toHaveBeenCalledTimes(1);
+
+    h.t += 8_000;
+    await poller.tick();
+    expect(deps.saveMoment).toHaveBeenCalledTimes(2);
+
+    h.t += 8_000;
+    await poller.tick();
+    expect(deps.saveMoment).toHaveBeenCalledTimes(2); // deduped after the successful save
+  });
 });
