@@ -73,7 +73,7 @@ npm run poll-live            # game-night live poller (GitHub Actions: game-nigh
 npm run backfill-schedule-nba          # attach official NBA game ids to Clippers games
 npm run sync-league-games              # every NBA game from the last 3 days (nightly)
 npm run sync-league-games -- --season=2025-26   # load a whole past season, league-wide
-# Seasons before 2019-20 aren't in the cdn.nba.com archive and load from stats.nba.com,
+# Seasons before 2020-21 aren't (fully) in the cdn.nba.com archive and load from stats.nba.com,
 # which blocks cloud IPs — run them from a home network, e.g.:
 DB_POOL_MAX=10 npm run sync-league-games -- --season=2012-13
 npm run finalize-games                 # lock Clippers box scores after each game

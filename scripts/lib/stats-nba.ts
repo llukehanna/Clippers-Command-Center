@@ -1,6 +1,6 @@
 // scripts/lib/stats-nba.ts
 // Past-season box scores from stats.nba.com, for seasons older than the
-// cdn.nba.com box score archive (which starts with 2019-20).
+// complete cdn.nba.com box score archive (which starts with 2020-21).
 //
 // Two sources, both converted to the CDN NBABoxscoreResponse shape so
 // ingestBoxscore/finalizeGame write them like any other game:

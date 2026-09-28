@@ -12,7 +12,7 @@
 //                      past-season schedule is only on stats.nba.com, which
 //                      blocks cloud IPs. Games that already have player box
 //                      scores are skipped unless --force.
-//                      Seasons before 2019-20 are not in the cdn.nba.com archive
+//                      Seasons before 2020-21 are not (fully) in the cdn.nba.com archive
 //                      and come from stats.nba.com instead (see lib/stats-nba.ts):
 //                      season game logs for every game, full per-game box
 //                      scores for Clippers games. stats.nba.com blocks most
@@ -48,8 +48,11 @@ import { boxscoresFromSeasonLogs, fetchSeasonLogs, fetchStatsBoxscore } from './
 
 const FETCH_CONCURRENCY = 8;
 const CHUNK_SIZE = 64; // fetch a chunk in parallel, then write it sequentially
-/** First season whose box scores cdn.nba.com still serves. */
-const CDN_FIRST_SEASON = 2019;
+/**
+ * First season cdn.nba.com serves completely. Its 2019-20 archive is partial:
+ * many games 403, and Feb–Mar 2020 files use an old status format ("finalbox").
+ */
+const CDN_FIRST_SEASON = 2020;
 const LAC_TRICODE = 'LAC';
 /** Concurrent game writes (one transaction each) for stats.nba.com seasons; needs DB_POOL_MAX above it. */
 const WRITE_CONCURRENCY = Number(process.env.WRITE_CONCURRENCY ?? 6);
