@@ -72,23 +72,30 @@ CREATE TABLE IF NOT EXISTS clutch_stats (
 );
 
 -- Raw normalized events: current season (live receipts, replay) + games flagged keep.
+-- event_num is the feed order and may shift while a game is live (the provider
+-- inserts or deletes actions); action_number is the stable provider id (cdn
+-- actionNumber, stats.nba.com v3 actionId). The rewrite at final is authoritative.
 CREATE TABLE IF NOT EXISTS pbp_events (
-  game_id      BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
-  event_num    INTEGER NOT NULL,                  -- 1-based order within the game
-  period       SMALLINT NOT NULL,
-  clock_sec    SMALLINT NOT NULL,                 -- seconds left in the period
-  elapsed_sec  INTEGER NOT NULL,                  -- seconds since tip
-  team_id      BIGINT REFERENCES teams(team_id),
-  player_id    BIGINT REFERENCES players(player_id),
-  kind         TEXT NOT NULL,                     -- fg | ft | rebound | turnover | steal | block | other
-  made         BOOLEAN,
-  shot_value   SMALLINT,
-  points       SMALLINT NOT NULL,                 -- score change on this event
-  score_home   SMALLINT NOT NULL,
-  score_away   SMALLINT NOT NULL,
-  description  TEXT,
-  keep         BOOLEAN NOT NULL DEFAULT FALSE,    -- survives season-rollover pruning
-  PRIMARY KEY (game_id, event_num)
+  game_id       BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  event_num     INTEGER NOT NULL,                 -- 1-based feed order within the game
+  action_number INTEGER NOT NULL,                 -- stable provider id (unique per game)
+  action_type   TEXT NOT NULL DEFAULT '',         -- raw provider actionType
+  sub_type      TEXT NOT NULL DEFAULT '',         -- raw provider subType
+  period        SMALLINT NOT NULL,
+  clock_sec     SMALLINT NOT NULL,                -- seconds left in the period
+  elapsed_sec   INTEGER NOT NULL,                 -- seconds since tip
+  team_id       BIGINT REFERENCES teams(team_id),
+  player_id     BIGINT REFERENCES players(player_id),
+  kind          TEXT NOT NULL,                    -- fg | ft | rebound | turnover | steal | block | other
+  made          BOOLEAN,
+  shot_value    SMALLINT,
+  points        SMALLINT NOT NULL,                -- score change on this event
+  score_home    SMALLINT NOT NULL,
+  score_away    SMALLINT NOT NULL,
+  description   TEXT,
+  keep          BOOLEAN NOT NULL DEFAULT FALSE,   -- survives season-rollover pruning
+  PRIMARY KEY (game_id, event_num),
+  CONSTRAINT uq_pbp_events_action UNIQUE (game_id, action_number)
 );
 
 -- =============================================================================

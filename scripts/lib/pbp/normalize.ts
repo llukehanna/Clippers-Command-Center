@@ -60,6 +60,16 @@ function parseScore(v: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** First and last NBA team ids — v3 team events (team rebounds, team turnovers) put the team id in personId. */
+const FIRST_TEAM_ID = 1610612737;
+const LAST_TEAM_ID = 1610612766;
+
+/** A real player id, or null for missing/0 and team ids. */
+function playerId(id: number | null | undefined): number | null {
+  if (!id) return null;
+  return id >= FIRST_TEAM_ID && id <= LAST_TEAM_ID ? null : id;
+}
+
 /** Normalizes a game's actions in provider order (both providers list them chronologically). */
 export function normalizePbp(raw: RawPlayByPlay, source: PbpSource): NormalizedPbp {
   let home = 0;
@@ -72,13 +82,16 @@ export function normalizePbp(raw: RawPlayByPlay, source: PbpSource): NormalizedP
     const cls = source === 'cdn' ? classifyCdn(a) : classifyStats(a);
     events.push({
       seq: events.length + 1,
+      actionNumber: source === 'stats_pbp' ? a.actionId ?? a.actionNumber : a.actionNumber,
+      actionType: a.actionType ?? '',
+      subType: a.subType ?? '',
       period: a.period,
       clockSec,
       elapsedSec: elapsedSeconds(a.period, clockSec),
       teamTricode: a.teamTricode ? normalizeTricode(a.teamTricode) : null,
-      personId: a.personId ? a.personId : null,
+      personId: playerId(a.personId),
       ...cls,
-      assistPersonId: source === 'cdn' && a.assistPersonId ? a.assistPersonId : null,
+      assistPersonId: source === 'cdn' ? playerId(a.assistPersonId) : null,
       points: nextHome - home + (nextAway - away),
       scoringSide: nextHome > home ? 'home' : nextAway > away ? 'away' : null,
       scoreHome: nextHome,

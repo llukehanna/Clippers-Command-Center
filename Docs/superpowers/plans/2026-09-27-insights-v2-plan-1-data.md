@@ -2359,11 +2359,11 @@ No code. Each step that writes to production waits for Luke's explicit "go" in c
 
 - [ ] **Step 1: Open the PR and get CI green**
 
-Push `insights/espn-engine`, open a PR to `main`, and confirm `ci.yml` (typecheck, lint, unit + fixture integration tests) passes.
+Push `insights/v2-build`, open a PR to `main`, and confirm `ci.yml` (typecheck, lint, unit + fixture integration tests) passes.
 
 - [ ] **Step 2: Apply the migration (Luke approves)**
 
-After merge: `gh workflow run db-migrate.yml -f file=2026-10-insights-v2-data.sql -f confirm=migrate`, then `gh run watch`. Expected: "Apply migration" succeeds. Verify: `psql "$DATABASE_URL" -c "\dt rb_*"` lists `rb_game_highs`, `rb_streaks`.
+Apply the migration BEFORE the PR merges — the nightly workflow runs from `main`, and its new play-by-play and record-book steps need the tables. The migration file is not on `main` yet, so run the workflow from the PR branch: `gh workflow run db-migrate.yml --ref insights/v2-build -f file=2026-10-insights-v2-data.sql -f confirm=migrate`, then `gh run watch`. Expected: "Apply migration" succeeds. Verify: `psql "$DATABASE_URL" -c "\dt rb_*"` lists `rb_game_highs`, `rb_streaks`.
 
 - [ ] **Step 3: Reclaim the old player payloads (Luke approves; run off-hours)**
 

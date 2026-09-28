@@ -28,7 +28,7 @@ const CDN: RawPlayByPlay = { game: { gameId: '0022500001', actions: [
 ] } };
 
 const STATS: RawPlayByPlay = { game: { gameId: '0020500001', actions: [
-  { actionNumber: 2, clock: 'PT11M40.00S', period: 1, teamTricode: 'LAC', personId: 1, actionType: 'Made Shot', subType: 'Jump Shot', shotValue: 3, scoreHome: '3', scoreAway: '0', description: "Brand 26' 3PT Jump Shot (3 PTS) (Cassell 1 AST)" },
+  { actionNumber: 2, actionId: 10, clock: 'PT11M40.00S', period: 1, teamTricode: 'LAC', personId: 1, actionType: 'Made Shot', subType: 'Jump Shot', shotValue: 3, scoreHome: '3', scoreAway: '0', description: "Brand 26' 3PT Jump Shot (3 PTS) (Cassell 1 AST)" },
   { actionNumber: 3, clock: 'PT11M20.00S', period: 1, teamTricode: 'NJN', personId: 2, actionType: 'Missed Shot', subType: 'Layup', shotValue: 2, scoreHome: '', scoreAway: '', description: 'MISS Kidd Layup' },
   { actionNumber: 4, clock: 'PT11M10.00S', period: 1, teamTricode: 'NJN', personId: 2, actionType: 'Free Throw', subType: 'Free Throw 1 of 2', scoreHome: '', scoreAway: '', description: 'MISS Kidd Free Throw 1 of 2' },
   { actionNumber: 5, clock: 'PT11M10.00S', period: 1, teamTricode: 'NJN', personId: 2, actionType: 'Free Throw', subType: 'Free Throw 2 of 2', scoreHome: '3', scoreAway: '1', description: 'Kidd Free Throw 2 of 2 (1 PTS)' },
@@ -41,6 +41,11 @@ describe('normalizePbp (cdn)', () => {
     expect(pbp.events.map((e) => e.kind)).toEqual(['other', 'fg', 'fg', 'rebound', 'ft']);
     expect(pbp.events[1]).toMatchObject({ seq: 2, made: true, shotValue: 3, teamTricode: 'LAC', personId: 202695, assistPersonId: 201935, points: 3, scoringSide: 'home', elapsedSec: 20 });
     expect(pbp.events[2]).toMatchObject({ made: false, shotValue: 2, points: 0, scoringSide: null });
+  });
+  it('carries the provider action number, type and subtype', () => {
+    expect(pbp.events.map((e) => [e.actionNumber, e.actionType, e.subType])).toEqual([
+      [1, 'period', 'start'], [4, '3pt', ''], [5, '2pt', ''], [6, 'rebound', 'defensive'], [7, 'freethrow', '1 of 2'],
+    ]);
   });
   it('handles overtime clocks and away scoring', () => {
     expect(pbp.events[4]).toMatchObject({ period: 5, elapsedSec: 2880, made: true, shotValue: 1, points: 1, scoringSide: 'away', scoreHome: 3, scoreAway: 1 });
@@ -61,6 +66,26 @@ describe('normalizePbp (stats v3)', () => {
   it('normalizes historical tricodes', () => {
     expect(pbp.events[1].teamTricode).toBe('BKN');
   });
+  it('uses v3 actionId (unique) as the action number, falling back to actionNumber', () => {
+    expect(pbp.events.map((e) => [e.actionNumber, e.actionType, e.subType])).toEqual([
+      [10, 'Made Shot', 'Jump Shot'], [3, 'Missed Shot', 'Layup'], [4, 'Free Throw', 'Free Throw 1 of 2'], [5, 'Free Throw', 'Free Throw 2 of 2'],
+    ]);
+  });
+});
+
+describe('normalizePbp team ids in person fields', () => {
+  it('treats a team id in personId / assistPersonId as no player', () => {
+    const raw: RawPlayByPlay = { game: { gameId: '0022500002', actions: [
+      { actionNumber: 1, actionId: 1, clock: 'PT11M00.00S', period: 1, teamTricode: '', personId: 1610612746, actionType: 'Rebound', subType: 'Unknown', scoreHome: '', scoreAway: '', description: 'Clippers Rebound' },
+      { actionNumber: 2, actionId: 2, clock: 'PT10M00.00S', period: 1, teamTricode: 'LAC', personId: 1610612766, actionType: 'Turnover', subType: 'Shot Clock', scoreHome: '', scoreAway: '', description: 'Team Turnover' },
+    ] } };
+    const cdn: RawPlayByPlay = { game: { gameId: '0022500003', actions: [
+      { actionNumber: 1, clock: 'PT11M40.00S', period: 1, teamTricode: 'LAC', personId: 1610612737, actionType: '2pt', shotResult: 'Made', assistPersonId: 1610612746, scoreHome: '2', scoreAway: '0' },
+      { actionNumber: 2, clock: 'PT11M20.00S', period: 1, teamTricode: 'LAC', personId: 1610612767, actionType: '2pt', shotResult: 'Made', assistPersonId: 1610612736, scoreHome: '4', scoreAway: '0' },
+    ] } };
+    expect(normalizePbp(raw, 'stats_pbp').events.map((e) => e.personId)).toEqual([null, null]);
+    expect(normalizePbp(cdn, 'cdn').events.map((e) => [e.personId, e.assistPersonId])).toEqual([[null, null], [1610612767, 1610612736]]);
+  });
 });
 
 // Real samples saved by scripts/dev/capture-pbp-fixture.ts. Every made shot and
@@ -76,6 +101,14 @@ describe.skipIf(real.length === 0)('normalizePbp on captured games', () => {
       const fromShots = pbp.events.reduce((s, e) => s + (e.made ? (e.shotValue ?? 0) : 0), 0);
       expect(pbp.events.length).toBeGreaterThan(300);
       expect(fromShots).toBe(last.scoreHome + last.scoreAway);
+    });
+
+    it(`${file}: action numbers are unique and no person field holds a team id`, () => {
+      const source = file.startsWith('cdn-') ? 'cdn' : 'stats_pbp';
+      const pbp = normalizePbp(JSON.parse(fs.readFileSync(path.join(FIXTURES, file), 'utf8')), source);
+      expect(new Set(pbp.events.map((e) => e.actionNumber)).size).toBe(pbp.events.length);
+      const teamId = (id: number | null) => id !== null && id >= 1610612737 && id <= 1610612766;
+      expect(pbp.events.filter((e) => teamId(e.personId) || teamId(e.assistPersonId))).toEqual([]);
     });
 
     it(`${file}: period team points sum to the final score`, async () => {

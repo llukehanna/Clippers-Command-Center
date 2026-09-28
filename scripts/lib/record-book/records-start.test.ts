@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveRecordsStart } from './records-start';
+import { resolvePbpRecordsStart, resolveRecordsStart } from './records-start';
 
 const cov = (pairs: [number, number][]) => pairs.map(([season_id, games_with_box]) => ({ season_id, games_with_box }));
 
@@ -18,5 +18,30 @@ describe('resolveRecordsStart', () => {
   });
   it('is null with no complete season', () => {
     expect(resolveRecordsStart(cov([[2026, 40]]), null)).toBeNull();
+  });
+});
+
+const pbp = (rows: [number, number, number][]) => rows.map(([season_id, games, with_flow]) => ({ season_id, games, with_flow }));
+
+describe('resolvePbpRecordsStart', () => {
+  it('walks back from the latest complete season while the previous season is complete', () => {
+    expect(resolvePbpRecordsStart(pbp([[2023, 82, 82], [2024, 82, 80], [2025, 82, 82], [2026, 10, 10]]))).toBe(2023);
+  });
+  it('stops at a gap (a season with no Clippers games counted)', () => {
+    expect(resolvePbpRecordsStart(pbp([[2020, 72, 72], [2022, 82, 82], [2023, 82, 82]]))).toBe(2022);
+  });
+  it('a season below 95% coverage breaks the chain', () => {
+    // 77/82 = 93.9%
+    expect(resolvePbpRecordsStart(pbp([[2021, 82, 82], [2022, 82, 77], [2023, 82, 82], [2024, 82, 82]]))).toBe(2023);
+  });
+  it('the latest season can be incomplete; the chain ends at the latest complete one', () => {
+    expect(resolvePbpRecordsStart(pbp([[2024, 82, 82], [2025, 82, 82], [2026, 20, 5]]))).toBe(2024);
+  });
+  it('ignores seasons without games', () => {
+    expect(resolvePbpRecordsStart(pbp([[2025, 0, 0], [2026, 1, 1]]))).toBe(2026);
+  });
+  it('is null when no season is complete', () => {
+    expect(resolvePbpRecordsStart(pbp([[2025, 82, 40]]))).toBeNull();
+    expect(resolvePbpRecordsStart([])).toBeNull();
   });
 });
