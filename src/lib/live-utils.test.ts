@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeFtEdge, getNextIndex } from './live-utils'
+import { computeFtEdge, getNextIndex, livePollInterval, staleThresholdMs } from './live-utils'
 
 describe('computeFtEdge', () => {
   it('returns positive delta when LAC has more FT made', () => {
@@ -42,5 +42,35 @@ describe('getNextIndex', () => {
 
   it('wraps last index to 0 in array of length 5', () => {
     expect(getNextIndex(4, 5)).toBe(0)
+  })
+})
+
+describe('staleThresholdMs', () => {
+  it('is 30 s at live cadence and cadence + 20 s when slower', () => {
+    expect(staleThresholdMs({ next_ms: 3_000 })).toBe(30_000)
+    expect(staleThresholdMs({ next_ms: 30_000 })).toBe(50_000)
+  })
+
+  it('assumes the old 12 s runner when there is no cadence', () => {
+    expect(staleThresholdMs(null)).toBe(32_000)
+    expect(staleThresholdMs(undefined)).toBe(32_000)
+  })
+})
+
+describe('livePollInterval', () => {
+  it('polls every 5 minutes with no game and every minute after the final', () => {
+    expect(livePollInterval({ state: 'NO_ACTIVE_GAME' })).toBe(300_000)
+    expect(livePollInterval({ state: 'LIVE', game: { status: 'final' } })).toBe(60_000)
+  })
+
+  it('follows the runner cadence, clamped to 4–30 s', () => {
+    expect(livePollInterval({ state: 'LIVE', cadence: { next_ms: 3_000 } })).toBe(4_000)
+    expect(livePollInterval({ state: 'LIVE', cadence: { next_ms: 8_000 } })).toBe(8_000)
+    expect(livePollInterval({ state: 'DATA_DELAYED', cadence: { next_ms: 60_000 } })).toBe(30_000)
+  })
+
+  it('falls back to 12 s while loading or without a cadence', () => {
+    expect(livePollInterval(undefined)).toBe(12_000)
+    expect(livePollInterval({ state: 'LIVE' })).toBe(12_000)
   })
 })
