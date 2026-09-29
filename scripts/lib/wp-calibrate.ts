@@ -135,11 +135,15 @@ const validSigma = (s: number | undefined): s is number => typeof s === 'number'
 
 /**
  * The σ the runner uses for a game: the fit for its source of E when there is
- * a valid one, else the overall fit, else the default.
+ * a valid one, else the overall fit, else the default. A spread game never
+ * borrows the overall fit from a per-source calibration: that fit is mostly
+ * home-court games, whose σ absorbs the team-strength gap the spread already
+ * accounts for (2019–26 Clippers games fit ≈ 22), and would flatten its odds.
  */
 export function modelSigma(calibration: WpCalibration | null, source: ExpectedSource): number {
   const bySource = calibration?.sigma_by_source?.[source]?.sigma;
   if (validSigma(bySource)) return bySource;
+  if (source === 'spread' && calibration?.sigma_by_source) return DEFAULT_SIGMA;
   if (validSigma(calibration?.sigma)) return calibration.sigma;
   return DEFAULT_SIGMA;
 }
