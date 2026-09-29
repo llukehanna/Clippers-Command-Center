@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { buildLiveState, defaultModel, fingerprint, lastPlays, type StateInputs, type ModelContext } from './live-state.js';
 import { action, box, GAME_ID, sbGame } from './live-fixtures.js';
 import { DEFAULT_SIGMA, normalCdf, winProbability } from '../../src/lib/live/win-prob.js';
@@ -134,16 +134,23 @@ describe('buildLiveState — observed_at never dates a basket early', () => {
 });
 
 describe('buildLiveState — a failing derivation', () => {
-  it('drops only the lineups when the box score is malformed', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('drops only the lineups when the box score is malformed, and says so once', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const b = box({ home: 2, away: 0 });
     const malformed = { ...b, homeTeam: { ...b.homeTeam, players: undefined as unknown as typeof b.homeTeam.players } };
     const body = buildLiveState(inputs({ box: malformed, actions: [action(1)] }));
     expect(body.lineups).toBeNull();
     expect(body.flow).not.toBeNull();
     expect(body.home_score).toBe(2);
+    buildLiveState(inputs({ box: malformed, actions: [action(1)] }));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatch(/^\[live\] lineups: /);
   });
 
   it('drops the play-by-play derivations, not the doc, when a play is malformed', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const bad = action(2, { actionType: undefined as unknown as string, scoreHome: '2', scoreAway: '0' });
     const body = buildLiveState(inputs({ box: box({ home: 2, away: 0 }), actions: [action(1), bad] }));
     expect(body.flow).toBeNull();

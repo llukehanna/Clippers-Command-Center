@@ -14,7 +14,7 @@ import {
   YAxis,
 } from 'recharts'
 import { axisTick } from '@/components/charts/chart-theme'
-import { formatGameTime } from '@/src/lib/live/win-prob'
+import { DEFAULT_SIGMA, formatGameTime } from '@/src/lib/live/win-prob'
 import {
   flowDomainEnd,
   flowRows,
@@ -23,6 +23,7 @@ import {
   marginDomain,
   marginText,
   markersOf,
+  modelFitNote,
   periodTicks,
   tickLabel,
   type FlowRow,
@@ -51,6 +52,7 @@ function FlowTooltip({ row, oppAbbr }: { row: FlowRow | undefined; oppAbbr: stri
 function ModelNote({ wp }: { wp: LiveWinProb }) {
   const [open, setOpen] = React.useState(false)
   const c = wp.calibration
+  const note = modelFitNote(wp)
   return (
     <div className="mt-2 font-mono text-[11px] text-dim">
       <button
@@ -68,12 +70,21 @@ function ModelNote({ wp }: { wp: LiveWinProb }) {
             expectation for the time left, with spread σ = {wp.sigma}. Pregame expectation: LAC {signed(wp.expected_margin)} (
             {wp.expected_source === 'spread' ? 'closing spread' : 'home-court default'}).
           </p>
-          {c ? (
+          {note.kind === 'default_until_spread_fit' && c && (
+            <p className="m-0">
+              Games with a closing spread use the default σ {DEFAULT_SIGMA} until about 50 of them have been fitted. The σ fitted
+              on past games without a stored spread ({c.sigma}) doesn&apos;t apply here: it absorbs the team-strength gap the spread
+              already accounts for.
+            </p>
+          )}
+          {note.kind === 'fit' && c && (
             <>
               <p className="m-0">
-                Fitted on {c.n_games.toLocaleString()} Clippers games ({c.n_samples.toLocaleString()} minute-by-minute moments) ·
-                Brier score {c.brier.toFixed(3)} · updated {new Date(c.fitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                Fitted on {note.n_games.toLocaleString()} Clippers games
+                {note.basis === 'spread' ? ' with a closing spread' : note.basis === 'home_court' ? ' without a stored spread' : ''} ·
+                Brier score {note.brier.toFixed(3)} · updated {new Date(c.fitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               </p>
+              <p className="m-0 font-mono text-[11px] text-dim">All fitted games (σ {c.sigma}):</p>
               <table className="w-full max-w-[320px] font-mono text-[11px] tabular-nums">
                 <thead className="text-dim">
                   <tr>
@@ -93,9 +104,8 @@ function ModelNote({ wp }: { wp: LiveWinProb }) {
                 </tbody>
               </table>
             </>
-          ) : (
-            <p className="m-0">Not calibrated yet — using the default σ.</p>
           )}
+          {note.kind === 'uncalibrated' && <p className="m-0">Not calibrated yet — using the default σ.</p>}
         </div>
       )}
     </div>
