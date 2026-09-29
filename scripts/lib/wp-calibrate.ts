@@ -9,7 +9,8 @@ import type { ReliabilityBin, SourceFit, WpCalibration } from '../../src/lib/typ
 /** app_kv key holding the fitted model (a WpCalibration). The runner reads it. */
 export const WP_MODEL_KEY = 'wp:model';
 export const SAMPLE_EVERY_SECS = 60;
-export const SIGMA_GRID = { min: 8, max: 18, step: 0.1 } as const;
+/** Wide enough for games without a closing spread, whose team-strength gap lands in σ (fits of 18–22 seen). */
+export const SIGMA_GRID = { min: 8, max: 30, step: 0.1 } as const;
 /** A new fit may be at most this much worse (Brier) than the stored one. */
 export const BRIER_TOLERANCE = 0.005;
 /** Fewest games worth fitting σ over (overall, and per source of E). */
