@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { flowDomainEnd, flowRows, flowSummary, largestLeadText, marginDomain, marginText, markersOf, periodTicks, tickLabel } from './flow-view';
-import type { LiveFlow } from '../types/live-state';
+import { flowDomainEnd, flowRows, flowSummary, largestLeadText, marginDomain, marginText, markersOf, modelFitNote, periodTicks, tickLabel } from './flow-view';
+import type { LiveFlow, LiveWinProb, WpCalibration } from '../types/live-state';
 
 const flow = (ts: [number, number][], markers: LiveFlow['markers'] = []): LiveFlow => ({
   points: ts.map(([t, m]) => ({ t, m, wp: 0.625, a: t, d: `play ${t}` })),
@@ -57,5 +57,29 @@ describe('flow-view', () => {
     expect(largestLeadText({ leadChanges: 0, lac, opp: null }, 'SAC')).toBe('Largest lead LAC +9');
     expect(largestLeadText({ leadChanges: 0, lac: null, opp }, 'SAC')).toBe('Largest lead SAC +4');
     expect(largestLeadText({ leadChanges: 0, lac: null, opp: null }, 'SAC')).toBeNull();
+  });
+});
+
+describe('modelFitNote', () => {
+  const cal = (over: Partial<WpCalibration> = {}): WpCalibration => ({
+    sigma: 21.8, brier: 0.178, n_games: 576, n_samples: 27_648, fitted_at: '2026-09-29T09:40:00Z', reliability: [], ...over,
+  });
+  const wp = (over: Partial<LiveWinProb> = {}): LiveWinProb => ({
+    lac: 0.6, model: 'stern-v1', sigma: 12.5, expected_margin: 3.5, expected_source: 'spread', calibration: null, ...over,
+  });
+  const homeFit = { sigma: 21.7, brier: 0.1781, n_games: 573 };
+
+  it("names the fit for the game's source of E", () => {
+    expect(modelFitNote(wp({ expected_source: 'home_court', sigma: 21.7, calibration: cal({ sigma_by_source: { home_court: homeFit } }) })))
+      .toEqual({ kind: 'fit', basis: 'home_court', n_games: 573, brier: 0.1781 });
+  });
+  it("says a spread game is on the default σ until spread games have their own fit", () => {
+    expect(modelFitNote(wp({ calibration: cal({ sigma_by_source: { home_court: homeFit } }) }))).toEqual({ kind: 'default_until_spread_fit' });
+  });
+  it('falls back to the overall fit for a calibration without per-source fits', () => {
+    expect(modelFitNote(wp({ sigma: 21.8, calibration: cal() }))).toEqual({ kind: 'fit', basis: 'all', n_games: 576, brier: 0.178 });
+  });
+  it('is uncalibrated without a calibration', () => {
+    expect(modelFitNote(wp())).toEqual({ kind: 'uncalibrated' });
   });
 });

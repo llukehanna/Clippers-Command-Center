@@ -1,7 +1,7 @@
 // src/lib/live/flow-view.ts
 // Pure helpers behind components/live/GameFlow.tsx: chart rows, axes, labels.
 
-import type { FlowMarker, LiveFlow } from '../types/live-state';
+import type { FlowMarker, LiveFlow, LiveWinProb } from '../types/live-state';
 import { OT_SECS, PERIOD_SECS, REGULATION_SECS } from './win-prob';
 
 export interface FlowRow {
@@ -82,4 +82,22 @@ export function largestLeadText(summary: FlowSummary, oppAbbr: string): string |
 
 export function markersOf<K extends FlowMarker['kind']>(flow: LiveFlow, kind: K): Extract<FlowMarker, { kind: K }>[] {
   return flow.markers.filter((m): m is Extract<FlowMarker, { kind: K }> => m.kind === kind);
+}
+
+/** Which fit produced the σ behind a game's win probability (mirrors the runner's modelSigma). */
+export type ModelFitNote =
+  | { kind: 'fit'; basis: 'spread' | 'home_court' | 'all'; n_games: number; brier: number }
+  | { kind: 'default_until_spread_fit' }
+  | { kind: 'uncalibrated' };
+
+const validSigma = (s: number | undefined): s is number => typeof s === 'number' && Number.isFinite(s) && s > 0;
+
+export function modelFitNote(wp: LiveWinProb): ModelFitNote {
+  const c = wp.calibration;
+  if (!c) return { kind: 'uncalibrated' };
+  const own = c.sigma_by_source?.[wp.expected_source];
+  if (own && validSigma(own.sigma)) return { kind: 'fit', basis: wp.expected_source, n_games: own.n_games, brier: own.brier };
+  if (wp.expected_source === 'spread' && c.sigma_by_source) return { kind: 'default_until_spread_fit' };
+  if (validSigma(c.sigma)) return { kind: 'fit', basis: 'all', n_games: c.n_games, brier: c.brier };
+  return { kind: 'uncalibrated' };
 }
