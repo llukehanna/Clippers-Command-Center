@@ -123,13 +123,22 @@ function observedAt(actions: PlayByPlayAction[], homeScore: number, awayScore: n
  * A derived field (flow, lineups) that fails on odd feed data is left out
  * (null) rather than failing the tick: the score must still go out.
  */
-function derive<T>(build: () => T): T | null {
+function derive<T>(name: string, build: () => T): T | null {
   try {
     return build();
-  } catch {
+  } catch (err) {
+    // Logged once per distinct failure: a feed-format change would otherwise
+    // empty the panel silently for the whole game, or log every tick.
+    const msg = `${name}: ${(err as Error)?.message ?? String(err)}`;
+    if (!warnedDerivations.has(msg)) {
+      warnedDerivations.add(msg);
+      console.warn(`[live] ${msg} — left out of the live state`);
+    }
     return null;
   }
 }
+
+const warnedDerivations = new Set<string>();
 
 function statusOf(code: number): LiveStateDoc['status'] {
   return code >= 3 ? 'final' : code === 2 ? 'in_progress' : 'scheduled';
@@ -192,10 +201,10 @@ export function buildLiveState(i: StateInputs): LiveStateBody {
     is_stale: false,
     stale_reason: null,
     wp: liveWinProb(status, period, clockSec, lacIsHome ? homeScore - awayScore : awayScore - homeScore, model),
-    flow: status === 'scheduled' ? null : derive(() => buildFlow(i.actions, lacIsHome, model)),
+    flow: status === 'scheduled' ? null : derive('flow', () => buildFlow(i.actions, lacIsHome, model)),
     lineups:
       status !== 'scheduled' && b
-        ? derive(() => buildLineups({
+        ? derive('lineups', () => buildLineups({
             actions: i.actions,
             lacBox: lacIsHome ? b.homeTeam : b.awayTeam,
             oppBox: lacIsHome ? b.awayTeam : b.homeTeam,
