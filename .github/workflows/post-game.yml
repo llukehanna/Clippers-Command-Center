@@ -101,3 +101,20 @@ jobs:
         run: node node_modules/.bin/tsx scripts/record-sync.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Refit the live win-probability model with last night's games (Live v2
+      # spec §7.1). Exits 1 — a red run — if the fit got worse by more than
+      # 0.005 Brier; the stored model is kept. Storing the fit writes
+      # production app_kv, so it's a dry run (fit, print, check) until the
+      # repository variable WP_CALIBRATE_WRITE is set to 'true'.
+      - name: Calibrate win probability
+        run: |
+          if [ "$WP_CALIBRATE_WRITE" = "true" ]; then
+            npm run calibrate-wp
+          else
+            echo "WP_CALIBRATE_WRITE is not 'true': dry run, the fit is not stored."
+            npm run calibrate-wp -- --dry
+          fi
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          WP_CALIBRATE_WRITE: ${{ vars.WP_CALIBRATE_WRITE }}

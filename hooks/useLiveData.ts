@@ -10,12 +10,29 @@ export type LiveDashboardPayload = LivePayload
 
 const FETCH_TIMEOUT_MS = 15_000
 
+// When each payload reached this device (device clock), recorded by the
+// fetcher: render code can't read the clock, and /live's spoiler sync needs to
+// know when a payload arrived, not when the page next re-rendered. Keyed by
+// the payload object, which SWR keeps (and hands to every reader) as long as
+// the data is unchanged, so a stamp never changes once set.
+const receivedAt = new WeakMap<LivePayload, number>()
+
+/** When `payload` reached this device (ms, device clock); undefined if it didn't come from the fetcher. */
+export function payloadReceivedAt(payload: LivePayload): number | undefined {
+  return receivedAt.get(payload)
+}
+
 // Abort hung requests so the page can't sit on its loading skeleton forever.
 const fetcher = (url: string): Promise<LivePayload> =>
-  fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }).then((res) => {
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return res.json()
-  })
+  fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json() as Promise<LivePayload>
+    })
+    .then((payload) => {
+      if (payload && typeof payload === 'object') receivedAt.set(payload, Date.now())
+      return payload
+    })
 
 export interface UseLiveDataOptions {
   /**

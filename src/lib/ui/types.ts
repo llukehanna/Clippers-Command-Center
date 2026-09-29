@@ -2,7 +2,7 @@
 // app/api/**/route.ts on main exactly — the UI never reshapes the API.
 
 import type { MetaEnvelope } from '@/src/lib/api-utils'
-import type { LivePhase } from '../types/live-state'
+import type { LineupState, LivePhase, LiveFlow, LiveWinProb } from '../types/live-state'
 
 export type HomeAway = 'home' | 'away'
 
@@ -196,6 +196,14 @@ export interface LivePayload {
   cadence?: { phase: LivePhase; next_ms: number } | null
   /** Pre-tip: the game the runner is already watching, so clients can connect early. */
   upcoming?: { nba_game_id: string } | null
+  /** Game flow series + markers (Live v2 Plan 3); null before tip. */
+  flow?: LiveFlow | null
+  /** Model win probability; a model estimate, labeled as one. */
+  wp?: LiveWinProb | null
+  /** Rotation clipboard; null until both box scores exist. */
+  lineups?: LineupState | null
+  /** NBA wall-clock time of the newest play in this state (spoiler sync). */
+  observed_at?: string | null
 }
 
 export interface ChartPoint {

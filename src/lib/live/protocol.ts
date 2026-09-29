@@ -6,7 +6,7 @@
 // score. Pure — shared by scripts/ (publisher) and the browser (hook).
 
 import type { BoxscorePlayer, BoxscoreTeam } from '../types/live';
-import type { LiveStateDoc } from '../types/live-state';
+import type { FlowMarker, FlowPoint, LiveFlow, LiveStateDoc } from '../types/live-state';
 
 /** A changed box score team: header/statistics whole, player rows only if changed. */
 export interface TeamPatch {
@@ -14,6 +14,13 @@ export interface TeamPatch {
   players: BoxscorePlayer[];
   /** true → `players` is the complete list (a player disappeared). */
   replace?: true;
+}
+
+/** New flow points on top of a series of `from` points; markers are sent whole (there are few). */
+export interface FlowAppend {
+  from: number;
+  points: FlowPoint[];
+  markers: FlowMarker[];
 }
 
 export interface KeyframeMessage {
@@ -30,6 +37,8 @@ export interface DeltaMessage {
   patch: Partial<Omit<LiveStateDoc, 'seq' | 'home_box' | 'away_box'>>;
   /** Key present → that box changed; null → it became null. */
   box?: { home?: TeamPatch | null; away?: TeamPatch | null };
+  /** The flow series grew: append these instead of patching `flow` whole. */
+  flow_append?: FlowAppend;
   hub_at?: number;
 }
 
@@ -63,11 +72,23 @@ function diffTeam(prev: BoxscoreTeam | null, next: BoxscoreTeam | null): TeamPat
   return { team, players: changed };
 }
 
+function flowAppend(prev: LiveFlow | null | undefined, next: LiveFlow | null | undefined): FlowAppend | undefined {
+  if (!prev || !next || next.points.length < prev.points.length) return undefined;
+  if (!same(prev.points, next.points.slice(0, prev.points.length))) return undefined;
+  return { from: prev.points.length, points: next.points.slice(prev.points.length), markers: next.markers };
+}
+
 export function diffDocs(prev: LiveStateDoc, next: LiveStateDoc): DeltaMessage {
   const patch: Record<string, unknown> = {};
+  let append: FlowAppend | undefined;
   for (const key of Object.keys(next) as (keyof LiveStateDoc)[]) {
     if (key === 'seq' || key === 'home_box' || key === 'away_box') continue;
-    if (!same(prev[key], next[key])) patch[key] = next[key];
+    if (same(prev[key], next[key])) continue;
+    if (key === 'flow') {
+      append = flowAppend(prev.flow, next.flow);
+      if (append) continue;
+    }
+    patch[key] = next[key];
   }
   const box: NonNullable<DeltaMessage['box']> = {};
   const home = diffTeam(prev.home_box, next.home_box);
@@ -80,6 +101,7 @@ export function diffDocs(prev: LiveStateDoc, next: LiveStateDoc): DeltaMessage {
     base_seq: prev.seq,
     patch: patch as DeltaMessage['patch'],
     ...(Object.keys(box).length > 0 ? { box } : {}),
+    ...(append ? { flow_append: append } : {}),
   };
 }
 
@@ -104,6 +126,11 @@ export function applyMessage(state: LiveStateDoc | null, msg: LiveMessage): Appl
   if (msg.seq <= state.seq) return { state, applied: false, needKeyframe: false };
   if (msg.base_seq !== state.seq) return { state, applied: false, needKeyframe: true };
   const next = { ...state, ...msg.patch, seq: msg.seq } as LiveStateDoc;
+  if (msg.flow_append) {
+    const flow = state.flow;
+    if (!flow || flow.points.length !== msg.flow_append.from) return { state, applied: false, needKeyframe: true };
+    next.flow = { points: [...flow.points, ...msg.flow_append.points], markers: msg.flow_append.markers };
+  }
   if (msg.box && 'home' in msg.box) next.home_box = applyTeam(state.home_box, msg.box.home ?? null);
   if (msg.box && 'away' in msg.box) next.away_box = applyTeam(state.away_box, msg.box.away ?? null);
   return { state: next, applied: true, needKeyframe: false };

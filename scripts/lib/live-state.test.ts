@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { buildLiveState, fingerprint, lastPlays, type StateInputs } from './live-state.js';
+import { buildLiveState, defaultModel, fingerprint, lastPlays, type StateInputs, type ModelContext } from './live-state.js';
 import { action, box, GAME_ID, sbGame } from './live-fixtures.js';
+import { DEFAULT_SIGMA, normalCdf, winProbability } from '../../src/lib/live/win-prob.js';
 
 const NOW = Date.UTC(2026, 9, 22, 2, 45, 0);
 const other = sbGame({ gameId: '0022600094', status: 2, home: 50, away: 48 });
@@ -101,12 +102,118 @@ describe('buildLiveState', () => {
   });
 });
 
+describe('buildLiveState — observed_at never dates a basket early', () => {
+  it("is the newest play's time when the header score matches play-by-play", () => {
+    const actions = [action(1), action(2, { scoreHome: '4', scoreAway: '0' })];
+    const body = buildLiveState(inputs({ box: box({ home: 4, away: 0 }), actions }));
+    expect(body.observed_at).toBe(actions[1].timeActual);
+  });
+
+  it('is the fetch time when the box score is ahead of play-by-play', () => {
+    // The box already has the next basket (6–0); play-by-play still ends at 4–0.
+    // Dating the doc by action 2 would let a spoiler delay show the 6–0 early.
+    const actions = [action(1), action(2, { scoreHome: '4', scoreAway: '0' })];
+    const body = buildLiveState(inputs({ box: box({ home: 6, away: 0 }), actions }));
+    expect(body.home_score).toBe(6);
+    expect(body.observed_at).toBe(new Date(NOW).toISOString());
+  });
+
+  it('reads the newest play with readable scores, skipping ones without', () => {
+    const actions = [
+      action(1, { scoreHome: '4', scoreAway: '3' }),
+      action(2, { scoreHome: '', scoreAway: '' }),
+    ];
+    const body = buildLiveState(inputs({ box: box({ home: 4, away: 3 }), actions }));
+    expect(body.observed_at).toBe(actions[1].timeActual);
+  });
+
+  it('is the fetch time when the scoreboard shows points but play-by-play has none yet', () => {
+    const body = buildLiveState(inputs({ sbGame: sbGame({ status: 2, home: 2, away: 0 }) }));
+    expect(body.observed_at).toBe(new Date(NOW).toISOString());
+  });
+});
+
+describe('buildLiveState — a failing derivation', () => {
+  it('drops only the lineups when the box score is malformed', () => {
+    const b = box({ home: 2, away: 0 });
+    const malformed = { ...b, homeTeam: { ...b.homeTeam, players: undefined as unknown as typeof b.homeTeam.players } };
+    const body = buildLiveState(inputs({ box: malformed, actions: [action(1)] }));
+    expect(body.lineups).toBeNull();
+    expect(body.flow).not.toBeNull();
+    expect(body.home_score).toBe(2);
+  });
+
+  it('drops the play-by-play derivations, not the doc, when a play is malformed', () => {
+    const bad = action(2, { actionType: undefined as unknown as string, scoreHome: '2', scoreAway: '0' });
+    const body = buildLiveState(inputs({ box: box({ home: 2, away: 0 }), actions: [action(1), bad] }));
+    expect(body.flow).toBeNull();
+    expect(body.lineups).toBeNull(); // substitution tracking reads actionType too
+    expect(body.home_score).toBe(2);
+    expect(body.wp).not.toBeNull();
+    expect(body.last_plays).toHaveLength(2);
+  });
+});
+
 describe('fingerprint', () => {
   it('ignores fetched_at and next_ms, but not phase or content', () => {
-    const a = buildLiveState(inputs({ actions: [action(1)] }));
+    // Header and play-by-play agree (2–0), so observed_at is the play's time.
+    const a = buildLiveState(inputs({ box: box({ home: 2, away: 0 }), actions: [action(1)] }));
+    expect(a.observed_at).toBe(action(1).timeActual);
     expect(fingerprint({ ...a, fetched_at: 'later', cadence: { phase: 'LIVE', next_ms: 5000 } })).toBe(fingerprint(a));
     expect(fingerprint({ ...a, cadence: { phase: 'STOPPAGE', next_ms: 3000 } })).not.toBe(fingerprint(a));
-    const b = buildLiveState(inputs({ actions: [action(1), action(2)] }));
+    const b = buildLiveState(inputs({ box: box({ home: 2, away: 0 }), actions: [action(1), action(2)] }));
     expect(fingerprint(b)).not.toBe(fingerprint(a));
+  });
+
+  it('does not change on every tick while the box score is ahead of play-by-play (observed_at = fetch time)', () => {
+    const over = { box: box({ home: 6, away: 0 }), actions: [action(1, { scoreHome: '4', scoreAway: '0' })] };
+    const a = buildLiveState(inputs(over));
+    const b = buildLiveState(inputs({ ...over, now: NOW + 3_000 }));
+    expect(b.observed_at).not.toBe(a.observed_at);
+    expect(fingerprint(b)).toBe(fingerprint(a));
+    // Once play-by-play catches up, the real play time is new content.
+    const c = buildLiveState(inputs({ ...over, actions: [...over.actions, action(2, { scoreHome: '6', scoreAway: '0' })] }));
+    expect(fingerprint(c)).not.toBe(fingerprint(a));
+  });
+});
+
+const MODEL: ModelContext = {
+  expected: 4.5,
+  expectedSource: 'spread',
+  sigma: 12,
+  calibration: null,
+  usualMin: {},
+};
+
+describe('buildLiveState — Plan 3 fields', () => {
+  it('gives the pregame win probability before tip, and no flow or lineups', () => {
+    const body = buildLiveState(inputs({ sbGame: sbGame({ status: 1 }), phase: 'PREGAME', nextMs: 30_000, model: MODEL }));
+    expect(body.wp).toMatchObject({ model: 'stern-v1', sigma: 12, expected_margin: 4.5, expected_source: 'spread', calibration: null });
+    expect(body.wp!.lac).toBeCloseTo(normalCdf(4.5 / 12), 3);
+    expect(body.flow).toBeNull();
+    expect(body.lineups).toBeNull();
+  });
+
+  it('gives the live win probability from the current margin and clock', () => {
+    const body = buildLiveState(inputs({
+      box: box({ period: 2, clock: 'PT04M32.00S', home: 30, away: 28 }),
+      actions: [action(1, { clock: 'PT04M32.00S', period: 2, scoreHome: '30', scoreAway: '28' })],
+      model: MODEL,
+    }));
+    const expected = winProbability({ margin: 2, period: 2, clockSec: 272, expected: 4.5, sigma: 12 });
+    expect(body.wp!.lac).toBeCloseTo(expected, 3);
+    expect(body.flow!.points.at(-1)).toMatchObject({ m: 2, a: 1 });
+    expect(body.lineups).toMatchObject({ on_court: { lac: [], opp: [] } });
+  });
+
+  it('settles the win probability at the final buzzer', () => {
+    const body = buildLiveState(inputs({ box: box({ status: 3, period: 4, clock: 'PT00M00.00S', home: 101, away: 99 }), model: MODEL }));
+    expect(body.wp!.lac).toBe(1);
+  });
+
+  it('uses the default model without a context: home court and the default σ', () => {
+    const body = buildLiveState(inputs({ sbGame: sbGame({ status: 1 }), phase: 'PREGAME' }));
+    expect(body.wp).toMatchObject({ sigma: DEFAULT_SIGMA, expected_margin: 2.5, expected_source: 'home_court' });
+    expect(defaultModel(false).expected).toBe(-2.5);
   });
 });

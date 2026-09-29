@@ -5,6 +5,7 @@
 
 import { vi, describe, it, expect, beforeEach, type Mock } from 'vitest';
 import { buildMeta, buildError } from './api-utils.js';
+import { RUNNER_NOT_STARTED_REASON } from './live/payload.js';
 
 // ── Module mocks (hoisted by Vitest before any imports below) ─────────────────
 
@@ -190,7 +191,9 @@ describe('GET /api/live', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('returns state:"NO_ACTIVE_GAME" with game:null when there is no live state', async () => {
-    mockedSql.mockResolvedValueOnce([]); // snapshot query → no rows
+    mockedSql
+      .mockResolvedValueOnce([]) // snapshot query → no rows
+      .mockResolvedValueOnce([]); // fetchMissedGame → no rows
 
     const response = await GET();
     const body = await response.json();
@@ -274,7 +277,7 @@ describe('GET /api/live', () => {
 
   it('meta.ttl_seconds is 5 for LIVE state, 60 for NO_ACTIVE_GAME state', async () => {
     // NO_ACTIVE_GAME → ttl=60
-    mockedSql.mockResolvedValueOnce([]);
+    mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     const noGameRes = await GET();
     const noGameBody = await noGameRes.json();
     expect(noGameBody.meta.ttl_seconds).toBe(60);
@@ -292,7 +295,7 @@ describe('GET /api/live', () => {
   });
 
   it('meta envelope has generated_at, source, stale, stale_reason, ttl_seconds on all responses', async () => {
-    mockedSql.mockResolvedValueOnce([]);
+    mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const response = await GET();
     const body = await response.json();
@@ -308,7 +311,7 @@ describe('GET /api/live', () => {
   });
 
   it('box_score is null when state is NO_ACTIVE_GAME', async () => {
-    mockedSql.mockResolvedValueOnce([]);
+    mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const response = await GET();
     const body = await response.json();
@@ -331,7 +334,7 @@ describe('GET /api/live', () => {
   });
 
   it('other_games array is empty array (not null) when no other games are active', async () => {
-    mockedSql.mockResolvedValueOnce([]);
+    mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const response = await GET();
     const body = await response.json();
@@ -343,18 +346,69 @@ describe('GET /api/live', () => {
   it('returns NO_ACTIVE_GAME when the only LAC snapshot is old and its game is not in_progress', async () => {
     // The snapshot query filters to in_progress games or snapshots captured in the
     // last 30 minutes, so an old snapshot from a finished game yields no row.
-    mockedSql.mockResolvedValueOnce([]);
+    // With no snapshot at all, the route also checks for a missed (runner-never-
+    // started) game before giving up — here that check finds nothing either.
+    mockedSql
+      .mockResolvedValueOnce([]) // snapshot query → no rows
+      .mockResolvedValueOnce([]); // fetchMissedGame → no rows
 
     const response = await GET();
     const body = await response.json();
 
     expect(body.state).toBe('NO_ACTIVE_GAME');
     expect(body.game).toBeNull();
-    // Exactly one query: no follow-up game/team lookups for a non-live game
-    expect(mockedSql).toHaveBeenCalledTimes(1);
+    // Exactly two queries: the snapshot lookup and the missed-game check — no
+    // further game/team lookups for a non-live game.
+    expect(mockedSql).toHaveBeenCalledTimes(2);
     const queryText = (mockedSql.mock.calls[0][0] as string[]).join('?');
     expect(queryText).toMatch(/lower\(g\.status\) = 'in_progress'/);
     expect(queryText).toMatch(/interval '30 minutes'/);
+  });
+
+  it('serves a DATA_DELAYED shell for a Clippers game the runner never started', async () => {
+    // No live_state row at all, but fetchMissedGame finds a non-final LAC game
+    // whose tip was 10 minutes to 4 hours ago — the runner's cron never ran.
+    const missedGameRow = {
+      game_id: '8888',
+      nba_game_id: '0022600093',
+      season_id: 2026,
+      game_date: '2026-10-21',
+      start_time_utc: '2026-10-22T02:30:00Z',
+      home_team_id: '13',
+      home_abbr: 'LAC',
+      home_name: 'Clippers',
+      away_team_id: '24',
+      away_abbr: 'SAC',
+      away_name: 'Kings',
+    };
+    mockedSql
+      .mockResolvedValueOnce([])              // snapshot query → no rows
+      .mockResolvedValueOnce([missedGameRow]); // fetchMissedGame → one row
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(body.state).toBe('DATA_DELAYED');
+    expect(body.meta.stale).toBe(true);
+    expect(body.meta.stale_reason).toBe(RUNNER_NOT_STARTED_REASON);
+    expect(body.game).toMatchObject({
+      game_id: '8888',
+      nba_game_id: '0022600093',
+      status: 'in_progress',
+      period: null,
+      clock: null,
+      home: { abbreviation: 'LAC', name: 'Clippers', score: null },
+      away: { abbreviation: 'SAC', name: 'Kings', score: null },
+    });
+    expect(body.key_metrics).toEqual([]);
+    expect(body.box_score).toBeNull();
+    expect(response.headers.get('Vercel-CDN-Cache-Control')).toContain('max-age=2');
+
+    // The missed-game query is the second call, and targets the 10-minute grace window.
+    const queryText = (mockedSql.mock.calls[1][0] as string[]).join('?');
+    expect(queryText).toMatch(/interval '10 minutes'/);
+    // A game whose live_state already says final isn't "missed", whatever the games row lags at.
+    expect(queryText).toMatch(/NOT EXISTS \(SELECT 1 FROM live_state ls WHERE ls\.game_id = g\.game_id AND ls\.state->>'status' = 'final'\)/);
   });
 
   it('is LIVE while the state is younger than max(30 s, cadence + 20 s)', async () => {
@@ -400,7 +454,7 @@ describe('GET /api/live', () => {
     expect(live.headers.get('Vercel-CDN-Cache-Control')).toBe('max-age=2, stale-while-revalidate=10');
     expect(live.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
 
-    mockedSql.mockResolvedValueOnce([]);
+    mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     const idle = await GET();
     expect(idle.headers.get('Vercel-CDN-Cache-Control')).toBe('max-age=30, stale-while-revalidate=60');
   });
@@ -508,7 +562,7 @@ describe('GET /api/live', () => {
   });
 
   it('/api/live NO_ACTIVE_GAME path completes in under 200ms (wall-clock, mocked DB)', async () => {
-    mockedSql.mockResolvedValueOnce([]);
+    mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const start = Date.now();
     await GET();
