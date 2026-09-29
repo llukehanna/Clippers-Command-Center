@@ -152,11 +152,17 @@ describe('modelSigma', () => {
     expect(modelSigma(cal({ sigma_by_source: bySource }), 'spread')).toBe(11.5);
     expect(modelSigma(cal({ sigma_by_source: bySource }), 'home_court')).toBe(14);
   });
-  it('falls back to the overall σ when that source has no (valid) fit', () => {
-    expect(modelSigma(cal({ sigma_by_source: { home_court: bySource.home_court } }), 'spread')).toBe(13);
-    expect(modelSigma(cal({ sigma_by_source: { spread: { ...bySource.spread, sigma: 0 } } }), 'spread')).toBe(13);
-    expect(modelSigma(cal({ sigma_by_source: { spread: { ...bySource.spread, sigma: Number.NaN } } }), 'spread')).toBe(13);
+  it("keeps a spread game on the default σ until spread games have their own fit", () => {
+    // The overall fit is mostly home-court games, whose σ absorbs the team-strength
+    // gap a spread already accounts for; it would flatten a spread game's odds.
+    expect(modelSigma(cal({ sigma_by_source: { home_court: bySource.home_court } }), 'spread')).toBe(DEFAULT_SIGMA);
+    expect(modelSigma(cal({ sigma_by_source: { spread: { ...bySource.spread, sigma: 0 } } }), 'spread')).toBe(DEFAULT_SIGMA);
+    expect(modelSigma(cal({ sigma_by_source: { spread: { ...bySource.spread, sigma: Number.NaN } } }), 'spread')).toBe(DEFAULT_SIGMA);
+  });
+  it('falls back to the overall σ for a home-court game, or for a calibration without per-source fits', () => {
+    expect(modelSigma(cal({ sigma_by_source: { spread: bySource.spread } }), 'home_court')).toBe(13);
     expect(modelSigma(cal(), 'spread')).toBe(13);
+    expect(modelSigma(cal(), 'home_court')).toBe(13);
   });
   it('falls back to the default σ without a (valid) calibration', () => {
     expect(modelSigma(null, 'spread')).toBe(DEFAULT_SIGMA);
