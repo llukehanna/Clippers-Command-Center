@@ -5,7 +5,8 @@
 
 import type { BoxscorePlayer, BoxscoreTeam, TeamStatistics } from '../types/live';
 import type { LiveStateDoc } from '../types/live-state';
-import type { BoxScorePlayer, BoxValue, Insight, KeyMetric, LivePayload } from '../ui/types';
+import type { BoxScorePlayer, BoxValue, Insight, KeyMetric, LiveGame, LivePayload } from '../ui/types';
+import type { MetaEnvelope } from '../api-utils';
 import { generateLiveInsights } from '../insights/live';
 
 // ── Key metrics computation ───────────────────────────────────────────────────
@@ -274,5 +275,45 @@ export function overlayLiveDoc(base: LivePayload, doc: LiveStateDoc): LivePayloa
     }),
     other_games: doc.other_games,
     cadence: doc.cadence,
+    flow: doc.flow ?? null,
+    wp: doc.wp ?? null,
+    lineups: doc.lineups ?? null,
+    observed_at: doc.observed_at,
+  };
+}
+
+/** meta.stale_reason when a game should be on but the runner has written nothing (spec §9). */
+export const RUNNER_NOT_STARTED_REASON = 'live feed not started';
+
+/**
+ * A game that should have tipped but has no live state at all: the runner
+ * never started (its cron was delayed or dropped). DATA_DELAYED with only the
+ * game's identity, so /live shows the game and the browser's ESPN backup tier
+ * fills in the score (spec §9).
+ */
+export function notStartedPayload(game: LiveGame, meta: MetaEnvelope, otherGames: unknown[] = []): LivePayload {
+  return {
+    meta,
+    state: 'DATA_DELAYED',
+    game: {
+      ...game,
+      status: 'in_progress',
+      status_text: null,
+      period: null,
+      clock: null,
+      periods: [],
+      home: { ...game.home, score: null },
+      away: { ...game.away, score: null },
+    },
+    key_metrics: [],
+    box_score: null,
+    insights: [],
+    other_games: otherGames,
+    odds: null,
+    cadence: null,
+    flow: null,
+    wp: null,
+    lineups: null,
+    observed_at: null,
   };
 }

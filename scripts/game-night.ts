@@ -18,7 +18,7 @@ import { findLiveCandidates, type LiveCandidate } from './lib/live-cycle.js';
 import { createPoller } from './lib/live-poller.js';
 import { nbaPollerDeps } from './lib/live-deps.js';
 import type { Publisher } from './lib/live-publish.js';
-import { loadLiveSeq } from './lib/live-store.js';
+import { loadLiveSeq, loadModelContext } from './lib/live-store.js';
 import { finalizeGame } from './lib/finalize.js';
 import { decideGameNightAction, FINAL_SAVE_MAX_ATTEMPTS } from './lib/game-night-logic.js';
 import { ingestGamePbp } from './lib/pbp/ingest.js';
@@ -66,7 +66,18 @@ async function main(): Promise<void> {
 async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<void> {
   const initialSeq = await loadLiveSeq(sql, candidate.game_id);
   const deps = nbaPollerDeps(sql, candidate.game_id, candidate.nba_game_id);
-  const poller = createPoller(candidate.nba_game_id, tip?.getTime() ?? null, deps, initialSeq);
+  // Best-effort: without it the runner uses home court and the default σ.
+  const model = await loadModelContext(sql, candidate.game_id).catch((err: unknown) => {
+    console.warn(`[game-night] Model inputs unavailable, using defaults: ${(err as Error).message}`);
+    return null;
+  });
+  if (model) {
+    console.log(
+      `[game-night] Win prob: E ${model.expected} (${model.expectedSource}), σ ${model.sigma}` +
+        `${model.calibration ? '' : ' (default)'}; usual minutes for ${Object.keys(model.usualMin).length} players`
+    );
+  }
+  const poller = createPoller(candidate.nba_game_id, tip?.getTime() ?? null, deps, initialSeq, model ?? undefined);
   let notListedSince: number | null = null;
   let saves = 0;
   let finalAttempts = 0;

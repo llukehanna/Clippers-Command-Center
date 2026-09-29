@@ -14,7 +14,7 @@ import { findLiveCandidates } from '../../../../scripts/lib/live-cycle';
 import { createPoller } from '../../../../scripts/lib/live-poller';
 import { nbaPollerDeps } from '../../../../scripts/lib/live-deps';
 import type { Publisher } from '../../../../scripts/lib/live-publish';
-import { loadLiveSeq } from '../../../../scripts/lib/live-store';
+import { loadLiveSeq, loadModelContext } from '../../../../scripts/lib/live-store';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -64,11 +64,13 @@ export async function GET(request: Request): Promise<NextResponse> {
     const initialSeq = await loadLiveSeq(sql, candidate.game_id);
     const deps = nbaPollerDeps(sql, candidate.game_id, candidate.nba_game_id);
     hub = deps.hub;
+    const model = await loadModelContext(sql, candidate.game_id).catch(() => null);
     const poller = createPoller(
       candidate.nba_game_id,
       candidate.start_time_utc?.getTime() ?? null,
       deps,
-      initialSeq
+      initialSeq,
+      model ?? undefined
     );
     const result = await poller.tick();
     if (result.status === 'error') {

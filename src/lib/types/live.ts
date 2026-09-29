@@ -66,6 +66,8 @@ export interface BoxscoreTeam {
   periods: Array<{ period: number; periodType: string; score: number }>;
   statistics: TeamStatistics;
   players: BoxscorePlayer[];
+  timeoutsRemaining?: number; // the CDN box score has these; the stats.nba.com fallback doesn't
+  inBonus?: string;           // "1" | "0"
 }
 
 export interface BoxscorePlayer {

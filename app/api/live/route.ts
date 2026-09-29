@@ -9,9 +9,10 @@ import { NextResponse } from 'next/server';
 import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { getLatestOdds } from '@/src/lib/odds';
-import { computeKeyMetrics, buildBoxScore, liveInsights } from '@/src/lib/live/payload';
+import { computeKeyMetrics, buildBoxScore, liveInsights, notStartedPayload, RUNNER_NOT_STARTED_REASON } from '@/src/lib/live/payload';
 import { staleThresholdMs } from '@/src/lib/live-utils';
 import type { LiveStateDoc } from '@/src/lib/types/live-state';
+import type { LiveGame } from '@/src/lib/ui/types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -117,6 +118,17 @@ export async function GET(): Promise<NextResponse> {
       payload && snapshotAgeMs <= OTHER_GAMES_MAX_AGE_MS ? (payload.other_games ?? []) : [];
 
     if (!snap || !payload || payload.status === 'scheduled') {
+      // No live state at all, but a game should be on: the runner never
+      // started. Serve the game so the browser's ESPN backup can take over.
+      if (!snap) {
+        const missed = await fetchMissedGame();
+        if (missed) {
+          return NextResponse.json(
+            notStartedPayload(missed, buildMeta('mixed', 5, true, RUNNER_NOT_STARTED_REASON)),
+            CDN_LIVE
+          );
+        }
+      }
       const upcoming = payload?.status === 'scheduled' && payload.nba_game_id ? { nba_game_id: payload.nba_game_id } : null;
       return NextResponse.json(
         {
@@ -201,6 +213,10 @@ export async function GET(): Promise<NextResponse> {
           other_games: otherGames,
           odds: staleOdds,
           cadence: payload.cadence ?? null,
+          flow: payload.flow ?? null,
+          wp: payload.wp ?? null,
+          lineups: payload.lineups ?? null,
+          observed_at: payload.observed_at ?? null,
         },
         CDN_LIVE
       );
@@ -259,6 +275,10 @@ export async function GET(): Promise<NextResponse> {
         other_games: otherGames,
         odds,
         cadence: payload.cadence ?? null,
+        flow: payload.flow ?? null,
+        wp: payload.wp ?? null,
+        lineups: payload.lineups ?? null,
+        observed_at: payload.observed_at ?? null,
       },
       CDN_LIVE
     );
@@ -364,5 +384,51 @@ async function fetchGameDetails(
       score: snap.away_score,
       is_home: false,
     },
+  };
+}
+
+/**
+ * A non-final Clippers game whose tip was 10 minutes to 4 hours ago. Only
+ * consulted when no recent live_state row exists: the runner never started.
+ * A game the runner already took to final (its live_state says so, even if
+ * the games row lags) isn't missed.
+ */
+async function fetchMissedGame(): Promise<LiveGame | null> {
+  const [row] = await sql<GameRow[]>`
+    SELECT
+      g.game_id::text          AS game_id,
+      g.nba_game_id::text      AS nba_game_id,
+      g.season_id,
+      g.game_date::text        AS game_date,
+      to_char(g.start_time_utc AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS start_time_utc,
+      g.home_team_id::text     AS home_team_id,
+      ht.abbreviation          AS home_abbr,
+      ht.name                  AS home_name,
+      g.away_team_id::text     AS away_team_id,
+      at.abbreviation          AS away_abbr,
+      at.name                  AS away_name
+    FROM games g
+    JOIN teams ht ON ht.team_id = g.home_team_id
+    JOIN teams at ON at.team_id = g.away_team_id
+    JOIN teams lac ON lac.nba_team_id = ${LAC_NBA_TEAM_ID}
+    WHERE (g.home_team_id = lac.team_id OR g.away_team_id = lac.team_id)
+      AND lower(g.status) <> 'final'
+      AND NOT EXISTS (SELECT 1 FROM live_state ls WHERE ls.game_id = g.game_id AND ls.state->>'status' = 'final')
+      AND g.start_time_utc BETWEEN now() - interval '4 hours' AND now() - interval '10 minutes'
+    ORDER BY g.start_time_utc DESC
+    LIMIT 1
+  `;
+  if (!row) return null;
+  return {
+    game_id: row.game_id,
+    nba_game_id: row.nba_game_id,
+    season_id: row.season_id,
+    game_date: row.game_date,
+    start_time_utc: row.start_time_utc,
+    status: 'in_progress',
+    period: null,
+    clock: null,
+    home: { team_id: row.home_team_id, abbreviation: row.home_abbr, name: row.home_name, score: null, is_home: true },
+    away: { team_id: row.away_team_id, abbreviation: row.away_abbr, name: row.away_name, score: null, is_home: false },
   };
 }

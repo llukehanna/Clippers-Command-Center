@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { overlayLiveDoc } from './payload';
+import { overlayLiveDoc, notStartedPayload, RUNNER_NOT_STARTED_REASON } from './payload';
 import { box, liveDoc } from '../../../scripts/lib/live-fixtures';
-import type { LivePayload } from '../ui/types';
+import { needsBackup } from './stream';
+import { overlayEspn } from './espn-backup';
+import type { LivePayload, LiveGame } from '../ui/types';
 
 function base(over: Partial<LivePayload> = {}): LivePayload {
   return {
@@ -56,5 +58,45 @@ describe('overlayLiveDoc', () => {
     const out = overlayLiveDoc(base(), liveDoc(9, { period: 4, clock: '3:00', home_score: 100, away_score: 98 }));
     expect(out.insights.some((i) => i.category === 'clutch')).toBe(true);
     expect(out.insights.every((i) => i.insight_id.startsWith('live-9999-'))).toBe(true);
+  });
+
+  it('carries flow, win probability, lineups and observed_at', () => {
+    const flow = { points: [{ t: 0, m: 0, wp: 0.6, a: 0, d: '' }], markers: [] };
+    const wp = { lac: 0.62, model: 'stern-v1' as const, sigma: 12, expected_margin: 3, expected_source: 'spread' as const, calibration: null };
+    const lineups = {
+      on_court: { lac: [], opp: [] }, current_unit: { lac_plus_minus: 0, secs_together: 0 },
+      units_tonight: [], timeouts: { lac: 7, opp: 7 }, bonus: { lac: false, opp: false },
+    };
+    const out = overlayLiveDoc(base(), liveDoc(9, { flow, wp, lineups, observed_at: '2026-10-22T02:41:00.000Z' }));
+    expect(out.flow).toEqual(flow);
+    expect(out.wp).toEqual(wp);
+    expect(out.lineups).toEqual(lineups);
+    expect(out.observed_at).toBe('2026-10-22T02:41:00.000Z');
+  });
+});
+
+describe('notStartedPayload', () => {
+  const game: LiveGame = {
+    game_id: '77', nba_game_id: '0022600093', season_id: 2026, game_date: '2026-10-21', start_time_utc: '2026-10-22T02:30:00Z',
+    status: 'scheduled', period: null, clock: null,
+    home: { team_id: '13', abbreviation: 'LAC', name: 'Clippers', score: null, is_home: true },
+    away: { team_id: '24', abbreviation: 'SAC', name: 'Kings', score: null, is_home: false },
+  };
+  const meta = { generated_at: '2026-10-22T02:45:00.000Z', source: 'mixed' as const, stale: true, stale_reason: RUNNER_NOT_STARTED_REASON, ttl_seconds: 5 };
+
+  it('is a delayed, in-progress game with nothing but its identity', () => {
+    const p = notStartedPayload(game, meta);
+    expect(p.state).toBe('DATA_DELAYED');
+    expect(p.meta.stale_reason).toBe(RUNNER_NOT_STARTED_REASON);
+    expect(p.game).toMatchObject({ game_id: '77', status: 'in_progress', period: null, clock: null });
+    expect(p.game!.home.score).toBeNull();
+    expect(p).toMatchObject({ key_metrics: [], box_score: null, insights: [], odds: null, flow: null, wp: null, lineups: null });
+  });
+
+  it('switches the browser to the ESPN backup, which fills in the score', () => {
+    const p = notStartedPayload(game, meta);
+    expect(needsBackup(p, false)).toBe(true);
+    const shown = overlayEspn(p, { status: 'in_progress', status_text: 'Q1 8:12', period: 1, clock: '8:12', home: 9, away: 7 });
+    expect(shown.game).toMatchObject({ period: 1, clock: '8:12', home: { score: 9 }, away: { score: 7 } });
   });
 });
