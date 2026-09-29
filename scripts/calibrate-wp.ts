@@ -11,7 +11,7 @@
 
 import { sql } from './lib/db.js';
 import { BRIER_TOLERANCE, calibrate, MIN_GAMES, WP_MODEL_KEY, type CalGame } from './lib/wp-calibrate.js';
-import { expectedLacMargin } from '../src/lib/live/win-prob.js';
+import { DEFAULT_SIGMA, expectedLacMargin } from '../src/lib/live/win-prob.js';
 import type { WpCalibration } from '../src/lib/types/live-state.js';
 
 type Json = Parameters<typeof sql.json>[0];
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
     console.log(
       fit
         ? `  ${source}: σ ${fit.sigma}, Brier ${fit.brier}, ${fit.n_games} games`
-        : `  ${source}: ${n} games (need ${MIN_GAMES}); uses the overall σ`
+        : `  ${source}: ${n} games (need ${MIN_GAMES}); uses ${source === 'spread' ? `the default σ ${DEFAULT_SIGMA}` : 'the overall σ'}`
     );
   }
   console.log('  predicted     actual   n');
