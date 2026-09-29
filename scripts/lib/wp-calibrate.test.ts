@@ -82,6 +82,11 @@ describe('fitSigma', () => {
     expect(Math.abs(fitSigma(simulate(1500, 12, 7).flatMap(samplesFor)).sigma - 12)).toBeLessThan(1);
     expect(Math.abs(fitSigma(simulate(1500, 15, 11).flatMap(samplesFor)).sigma - 15)).toBeLessThan(1);
   });
+
+  it('reaches the high σ that swingy games without a spread produce', () => {
+    // 2024-26 Clippers games with only a home-court expectation fit σ ≈ 18–22.
+    expect(Math.abs(fitSigma(simulate(1500, 24, 13).flatMap(samplesFor)).sigma - 24)).toBeLessThan(1.5);
+  });
 });
 
 describe('reliability', () => {
@@ -104,7 +109,7 @@ describe('calibrate', () => {
     expect(r.n_games).toBe(100);
     expect(r.n_samples).toBe(4800);
     expect(r.sigma).toBeGreaterThanOrEqual(8);
-    expect(r.sigma).toBeLessThanOrEqual(18);
+    expect(r.sigma).toBeLessThanOrEqual(30);
     expect(r.brier).toBeGreaterThan(0);
     expect(r.reliability.length).toBeGreaterThan(0);
   });
