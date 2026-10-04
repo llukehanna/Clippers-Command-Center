@@ -1,0 +1,8 @@
+# Meta's AI-training crawler walked every game and player page on 2026-10-04
+# (~23.7k requests in a day), burning through the Hobby plan's limits.
+# robots.txt is only a request; a Vercel Firewall rule denying this user agent enforces it.
+User-Agent: meta-externalagent
+Disallow: /
+
+User-Agent: *
+Allow: /
