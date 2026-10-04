@@ -7,10 +7,11 @@ const nextConfig: NextConfig = {
     staleTimes: { dynamic: 30, static: 180 },
   },
   images: {
-    // Player headshots from the NBA's public CDN (keyed by nba_player_id).
-    remotePatterns: [
-      { protocol: "https", hostname: "cdn.nba.com", pathname: "/headshots/**" },
-    ],
+    // Serve images as-is. Headshots come pre-sized from the NBA's CDN and team
+    // logos are small PNGs, so Vercel's optimizer adds little — and the CDN's
+    // 12h max-age meant every viewed headshot re-billed a transformation twice
+    // a day, blowing through the Hobby plan's 5,000/month.
+    unoptimized: true,
   },
 };
 
