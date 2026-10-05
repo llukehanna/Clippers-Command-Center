@@ -124,6 +124,15 @@ CREATE TABLE IF NOT EXISTS all_games (
 
 ALTER TABLE all_games ADD COLUMN IF NOT EXISTS is_preseason BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- Keep the id sequence's original name (renamed databases still have it) so
+-- fresh installs match production.
+DO $$
+BEGIN
+  IF to_regclass('public.games_game_id_seq') IS NULL AND to_regclass('public.all_games_game_id_seq') IS NOT NULL THEN
+    ALTER SEQUENCE public.all_games_game_id_seq RENAME TO games_game_id_seq;
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_games_date ON all_games (game_date);
 CREATE INDEX IF NOT EXISTS idx_games_season ON all_games (season_id);
 CREATE INDEX IF NOT EXISTS idx_games_home ON all_games (home_team_id);
