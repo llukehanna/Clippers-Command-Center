@@ -1,0 +1,51 @@
+name: Deploy app
+
+# Builds the Next.js app with OpenNext and deploys it to the Cloudflare Worker
+# `clippers-command-center` (wrangler.jsonc) on every push to main — what
+# Vercel's Git integration used to do. Needs repo secrets CLOUDFLARE_API_TOKEN
+# (Workers Scripts: Edit; plus Zone DNS: Edit on lukeghanna.com once custom
+# domains are in wrangler.jsonc) and CLOUDFLARE_ACCOUNT_ID. Until the token is
+# set, the job still builds and skips the deploy (green).
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['workers/live-hub/**', 'docs/**', 'Docs/**', '.planning/**', '**/*.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Secrets can't be read in step `if:` conditions; this boolean can.
+      HAS_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build (OpenNext)
+        run: npx opennextjs-cloudflare build
+
+      - name: Skip deploy (no Cloudflare token)
+        if: env.HAS_CLOUDFLARE_TOKEN != 'true'
+        run: echo "::notice title=App not deployed::CLOUDFLARE_API_TOKEN is not set; skipping deploy."
+
+      - name: Deploy
+        if: env.HAS_CLOUDFLARE_TOKEN == 'true'
+        run: npx opennextjs-cloudflare deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
