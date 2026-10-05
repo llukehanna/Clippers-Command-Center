@@ -13,7 +13,8 @@ vi.mock('@/src/lib/db', () => {
   const sqlMock = vi.fn();
   // sql.json is used in poll-live.ts payload serialization — stub it out
   (sqlMock as unknown as { json: ReturnType<typeof vi.fn> }).json = vi.fn((v: unknown) => v);
-  return { sql: sqlMock, LAC_NBA_TEAM_ID: 1610612746 };
+  // The live route reads through liveSql (uncached on Workers); same mock.
+  return { sql: sqlMock, liveSql: sqlMock, LAC_NBA_TEAM_ID: 1610612746 };
 });
 
 vi.mock('@/src/lib/odds', () => ({
@@ -402,7 +403,7 @@ describe('GET /api/live', () => {
     });
     expect(body.key_metrics).toEqual([]);
     expect(body.box_score).toBeNull();
-    expect(response.headers.get('Vercel-CDN-Cache-Control')).toContain('max-age=2');
+    expect(response.headers.get('CDN-Cache-Control')).toContain('max-age=2');
 
     // The missed-game query is the second call, and targets the 10-minute grace window.
     const queryText = (mockedSql.mock.calls[1][0] as string[]).join('?');
@@ -451,12 +452,12 @@ describe('GET /api/live', () => {
   it('lets the Vercel CDN cache live responses for 2 s and idle ones for 30 s, never the browser', async () => {
     mockedSql.mockResolvedValueOnce([makeFreshSnapRow()]).mockResolvedValueOnce([gameRow]);
     const live = await GET();
-    expect(live.headers.get('Vercel-CDN-Cache-Control')).toBe('max-age=2, stale-while-revalidate=10');
+    expect(live.headers.get('CDN-Cache-Control')).toBe('max-age=2, stale-while-revalidate=10');
     expect(live.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
 
     mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     const idle = await GET();
-    expect(idle.headers.get('Vercel-CDN-Cache-Control')).toBe('max-age=30, stale-while-revalidate=60');
+    expect(idle.headers.get('CDN-Cache-Control')).toBe('max-age=30, stale-while-revalidate=60');
   });
 
   it('never caches errors', async () => {
@@ -464,7 +465,7 @@ describe('GET /api/live', () => {
     const res = await GET();
     expect(res.status).toBe(500);
     expect(res.headers.get('Cache-Control')).toBe('no-store');
-    expect(res.headers.get('Vercel-CDN-Cache-Control')).toBeNull();
+    expect(res.headers.get('CDN-Cache-Control')).toBeNull();
   });
 
   it('passes through real status, line score and other_games from runner snapshots', async () => {
@@ -544,7 +545,7 @@ describe('GET /api/live', () => {
     mockedSql.mockResolvedValueOnce([snap]);
     const res = await GET();
     expect((await res.json()).upcoming).toEqual({ nba_game_id: '0022600093' });
-    expect(res.headers.get('Vercel-CDN-Cache-Control')).toBe('max-age=2, stale-while-revalidate=10');
+    expect(res.headers.get('CDN-Cache-Control')).toBe('max-age=2, stale-while-revalidate=10');
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
   });
 
