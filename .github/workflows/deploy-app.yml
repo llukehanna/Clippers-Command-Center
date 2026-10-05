@@ -36,8 +36,10 @@ jobs:
 
       - run: npm ci
 
+      # cf-build = opennextjs-cloudflare build + scripts/cloudflare/strip-env.mjs,
+      # which keeps non-public .env values out of the Worker bundle.
       - name: Build (OpenNext)
-        run: npx opennextjs-cloudflare build
+        run: npm run cf-build
 
       - name: Skip deploy (no Cloudflare token)
         if: env.HAS_CLOUDFLARE_TOKEN != 'true'
