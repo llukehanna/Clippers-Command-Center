@@ -130,7 +130,15 @@ export function LiveView({
       {/* z-10: .enter's animation gives every section its own stacking context; the
           spoiler control's popover has to paint over the sections below. */}
       <section aria-label="Scoreboard" ref={scoreRef} className="enter relative z-10">
-        <Scoreboard lac={lac} opp={opp} lacHome={lacHome} mode={delayed ? 'delayed' : 'live'} period={game.period} clock={game.clock}>
+        <Scoreboard
+          lac={lac}
+          opp={opp}
+          lacHome={lacHome}
+          mode={delayed ? 'delayed' : 'live'}
+          period={game.period}
+          clock={game.clock}
+          tag={game.is_preseason ? 'Preseason' : null}
+        >
           <LineScore periods={game.periods ?? []} lacHome={lacHome} oppAbbr={oppAbbr} />
           {odds && (
             <div className="relative border-t border-line px-3 py-3 sm:px-6">

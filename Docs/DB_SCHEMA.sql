@@ -82,7 +82,19 @@ CREATE INDEX IF NOT EXISTS idx_stints_season ON player_team_stints (season_id);
 -- =============================================================================
 
 -- We store all league games for ingested seasons so Clippers context can use league comparisons.
-CREATE TABLE IF NOT EXISTS games (
+-- all_games also holds Clippers preseason games (is_preseason), which only the
+-- live path reads. Everything else reads the `games` view below, which leaves
+-- them out (Docs/migrations/2026-10-preseason.sql).
+
+-- Databases from before the preseason migration: the table was named games.
+DO $$
+BEGIN
+  IF to_regclass('public.all_games') IS NULL AND to_regclass('public.games') IS NOT NULL THEN
+    ALTER TABLE public.games RENAME TO all_games;
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS all_games (
   game_id          BIGSERIAL PRIMARY KEY,
   nba_game_id      BIGINT UNIQUE NOT NULL,       -- official NBA game id without leading zeros (22501199), or a legacy balldontlie id
   season_id        SMALLINT REFERENCES seasons(season_id),
@@ -99,6 +111,7 @@ CREATE TABLE IF NOT EXISTS games (
   clock           TEXT,                          -- provider clock string if in progress (e.g., "05:32")
   is_playoffs      BOOLEAN NOT NULL DEFAULT FALSE,
   arena           TEXT,
+  is_preseason     BOOLEAN NOT NULL DEFAULT FALSE,
 
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -109,10 +122,29 @@ CREATE TABLE IF NOT EXISTS games (
   CONSTRAINT uq_games_date_home_away UNIQUE (game_date, home_team_id, away_team_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_games_date ON games (game_date);
-CREATE INDEX IF NOT EXISTS idx_games_season ON games (season_id);
-CREATE INDEX IF NOT EXISTS idx_games_home ON games (home_team_id);
-CREATE INDEX IF NOT EXISTS idx_games_away ON games (away_team_id);
+ALTER TABLE all_games ADD COLUMN IF NOT EXISTS is_preseason BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Keep the id sequence's original name (renamed databases still have it) so
+-- fresh installs match production.
+DO $$
+BEGIN
+  IF to_regclass('public.games_game_id_seq') IS NULL AND to_regclass('public.all_games_game_id_seq') IS NOT NULL THEN
+    ALTER SEQUENCE public.all_games_game_id_seq RENAME TO games_game_id_seq;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_games_date ON all_games (game_date);
+CREATE INDEX IF NOT EXISTS idx_games_season ON all_games (season_id);
+CREATE INDEX IF NOT EXISTS idx_games_home ON all_games (home_team_id);
+CREATE INDEX IF NOT EXISTS idx_games_away ON all_games (away_team_id);
+
+-- Every game that counts. Automatically updatable, so writes through it work.
+CREATE OR REPLACE VIEW games AS
+  SELECT game_id, nba_game_id, season_id, game_date, start_time_utc, status,
+         home_team_id, away_team_id, home_score, away_score, period, clock,
+         is_playoffs, arena, created_at, updated_at
+  FROM all_games
+  WHERE NOT is_preseason;
 
 -- =============================================================================
 -- Box score: per-team per-game + per-player per-game (historical/final)
@@ -120,7 +152,7 @@ CREATE INDEX IF NOT EXISTS idx_games_away ON games (away_team_id);
 
 CREATE TABLE IF NOT EXISTS game_team_box_scores (
   game_team_box_score_id BIGSERIAL PRIMARY KEY,
-  game_id          BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  game_id          BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
   team_id          BIGINT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
   is_home          BOOLEAN NOT NULL,
   minutes          SMALLINT,                     -- team minutes (often 240 regulation)
@@ -153,7 +185,7 @@ CREATE INDEX IF NOT EXISTS idx_team_box_team ON game_team_box_scores (team_id);
 
 CREATE TABLE IF NOT EXISTS game_player_box_scores (
   game_player_box_score_id BIGSERIAL PRIMARY KEY,
-  game_id          BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  game_id          BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
   team_id          BIGINT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
   player_id        BIGINT NOT NULL REFERENCES players(player_id) ON DELETE CASCADE,
   starter          BOOLEAN,
@@ -194,7 +226,7 @@ CREATE INDEX IF NOT EXISTS idx_player_box_team ON game_player_box_scores (team_i
 -- Store dense snapshots for later debugging + replay. Keep extracted fields for query speed.
 CREATE TABLE IF NOT EXISTS live_snapshots (
   snapshot_id      BIGSERIAL PRIMARY KEY,
-  game_id          BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  game_id          BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
   captured_at      TIMESTAMPTZ NOT NULL,          -- when CCC captured it
   provider_ts      TIMESTAMPTZ,                   -- if provider includes a timestamp
   period           SMALLINT,
@@ -212,7 +244,7 @@ CREATE INDEX IF NOT EXISTS idx_live_snapshots_captured ON live_snapshots (captur
 -- rewritten on every change (and at least every 15 s). Read by /api/live.
 -- live_snapshots now only gets a row per period end and at final.
 CREATE TABLE IF NOT EXISTS live_state (
-  game_id          BIGINT PRIMARY KEY REFERENCES games(game_id) ON DELETE CASCADE,
+  game_id          BIGINT PRIMARY KEY REFERENCES all_games(game_id) ON DELETE CASCADE,
   seq              INTEGER NOT NULL,              -- +1 per saved change
   state            JSONB NOT NULL,                -- src/lib/types/live-state.ts LiveStateDoc
   fetched_at       TIMESTAMPTZ NOT NULL,          -- when the runner built the state
@@ -228,7 +260,7 @@ CREATE INDEX IF NOT EXISTS idx_live_state_fetched ON live_state (fetched_at DESC
 -- Per team per game derived metrics (can be computed after final box score or incrementally)
 CREATE TABLE IF NOT EXISTS advanced_team_game_stats (
   advanced_team_game_stat_id BIGSERIAL PRIMARY KEY,
-  game_id          BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  game_id          BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
   team_id          BIGINT NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,
 
   possessions      REAL,
@@ -253,7 +285,7 @@ CREATE INDEX IF NOT EXISTS idx_adv_team_game_game ON advanced_team_game_stats (g
 -- Per player per game derived metrics (optional MVP but table reserved)
 CREATE TABLE IF NOT EXISTS advanced_player_game_stats (
   advanced_player_game_stat_id BIGSERIAL PRIMARY KEY,
-  game_id          BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  game_id          BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
   player_id        BIGINT NOT NULL REFERENCES players(player_id) ON DELETE CASCADE,
   team_id          BIGINT REFERENCES teams(team_id),
 
@@ -323,7 +355,7 @@ CREATE INDEX IF NOT EXISTS idx_rolling_player_lookup ON rolling_player_stats (pl
 -- Store odds snapshots. We keep provider and captured_at so you can switch providers later.
 CREATE TABLE IF NOT EXISTS odds_snapshots (
   odds_snapshot_id BIGSERIAL PRIMARY KEY,
-  game_id          BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  game_id          BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
   provider         TEXT NOT NULL,                 -- e.g., "theoddsapi", "sportsdataio"
   captured_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
@@ -354,7 +386,7 @@ CREATE TABLE IF NOT EXISTS insights (
   insight_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   scope            TEXT NOT NULL,                 -- "live" | "between_games" | "historical"
   team_id          BIGINT REFERENCES teams(team_id),   -- usually Clippers
-  game_id          BIGINT REFERENCES games(game_id),   -- nullable for macro insights
+  game_id          BIGINT REFERENCES all_games(game_id),   -- nullable for macro insights
   player_id        BIGINT REFERENCES players(player_id), -- nullable
   season_id        SMALLINT REFERENCES seasons(season_id),
 
@@ -407,7 +439,7 @@ CREATE TABLE IF NOT EXISTS app_kv (
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS game_flow (
-  game_id             BIGINT PRIMARY KEY REFERENCES games(game_id) ON DELETE CASCADE,
+  game_id             BIGINT PRIMARY KEY REFERENCES all_games(game_id) ON DELETE CASCADE,
   lac_largest_lead    SMALLINT NOT NULL,
   lac_largest_deficit SMALLINT NOT NULL,          -- positive number of points
   lead_changes        SMALLINT NOT NULL,
@@ -421,7 +453,7 @@ CREATE TABLE IF NOT EXISTS game_flow (
 );
 
 CREATE TABLE IF NOT EXISTS period_team_stats (
-  game_id  BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  game_id  BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
   team_id  BIGINT NOT NULL REFERENCES teams(team_id),
   period   SMALLINT NOT NULL,
   pts      SMALLINT NOT NULL,
@@ -438,7 +470,7 @@ CREATE TABLE IF NOT EXISTS period_team_stats (
 );
 
 CREATE TABLE IF NOT EXISTS period_player_stats (
-  game_id   BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  game_id   BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
   player_id BIGINT NOT NULL REFERENCES players(player_id),
   team_id   BIGINT NOT NULL REFERENCES teams(team_id),
   period    SMALLINT NOT NULL,
@@ -456,7 +488,7 @@ CREATE INDEX IF NOT EXISTS idx_period_player_player ON period_player_stats (play
 
 -- Clutch = last 5:00 of the 4th/OT with the margin <= 5 before the event.
 CREATE TABLE IF NOT EXISTS clutch_stats (
-  game_id   BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  game_id   BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
   team_id   BIGINT NOT NULL REFERENCES teams(team_id),
   player_id BIGINT REFERENCES players(player_id),  -- NULL = team row
   pts       SMALLINT NOT NULL,
@@ -474,7 +506,7 @@ CREATE TABLE IF NOT EXISTS clutch_stats (
 -- inserts or deletes actions); action_number is the stable provider id (cdn
 -- actionNumber, stats.nba.com v3 actionId). The rewrite at final is authoritative.
 CREATE TABLE IF NOT EXISTS pbp_events (
-  game_id       BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  game_id       BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
   event_num     INTEGER NOT NULL,                 -- 1-based feed order within the game
   action_number INTEGER NOT NULL,                 -- stable provider id (unique per game)
   action_type   TEXT NOT NULL DEFAULT '',         -- raw provider actionType
@@ -506,7 +538,7 @@ CREATE TABLE IF NOT EXISTS rb_game_highs (
   stat_key   TEXT NOT NULL,       -- pts, reb, ast, fg3m, stl, blk, team_pts, margin, opp_pts_low, q_pts, ...
   rank       SMALLINT NOT NULL,
   value      NUMERIC NOT NULL,
-  game_id    BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  game_id    BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
   game_date  DATE NOT NULL,
   player_id  BIGINT REFERENCES players(player_id),
   team_id    BIGINT REFERENCES teams(team_id),
@@ -520,8 +552,8 @@ CREATE TABLE IF NOT EXISTS rb_streaks (
   length        SMALLINT NOT NULL,
   start_date    DATE NOT NULL,
   end_date      DATE NOT NULL,
-  start_game_id BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
-  end_game_id   BIGINT NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+  start_game_id BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
+  end_game_id   BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
   is_active     BOOLEAN NOT NULL,
   team_id       BIGINT REFERENCES teams(team_id),  -- team during the streak (streaks break on team change)
   PRIMARY KEY (entity_type, entity_id, streak_key, start_game_id)

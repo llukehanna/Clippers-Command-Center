@@ -8,7 +8,8 @@
 //    scripts/lib/live-poller.ts, writing live_state on every change.
 // 3. When the scoreboard says Final, finalizes the game (box scores, stints,
 //    advanced stats) and exits. The nightly post-game workflow still runs the
-//    league sync, stats and insights.
+//    league sync, stats and insights. Preseason games (all_games.is_preseason)
+//    are polled the same way but never finalized: they don't count anywhere.
 //
 // Overlapping hourly launches are serialized by the workflow's concurrency
 // group, so a later launch just finds the game already final and exits.
@@ -126,6 +127,13 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
         console.warn(
           `[game-night] Final tick's save never succeeded after ${finalAttempts} attempts; finalizing anyway.`
         );
+      }
+      // Preseason games are live-page only: no box scores, play-by-play or
+      // stats (live_state already marked the all_games row final).
+      if (candidate.is_preseason) {
+        console.log('[game-night] Final (preseason). Nothing to finalize.');
+        await flushHub(deps.hub);
+        return;
       }
       console.log('[game-night] Final. Finalizing…');
       try {
