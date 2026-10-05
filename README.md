@@ -2,6 +2,8 @@
 
 **Live:** [clippers.lukeghanna.com](https://clippers.lukeghanna.com)
 
+![Clippers Command Center home screen](.github/screenshot.webp)
+
 A desktop analytics dashboard for avid LA Clippers fans. Three modes that blend into one continuous experience:
 
 - **Live Game Mode** — dense box score, rotating "provable" insights, league-context side panels, Vegas odds, polling every ~12s during Clippers games.
