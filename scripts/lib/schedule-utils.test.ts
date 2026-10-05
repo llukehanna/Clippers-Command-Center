@@ -6,6 +6,7 @@ import {
   isNbaFormatGameId,
   toNbaGameId10,
   isPlayoffNbaGameId,
+  isPreseasonNbaGameId,
   normalizeGameStatus,
   easternDateOf,
 } from './schedule-utils';
@@ -63,6 +64,15 @@ describe('game ids', () => {
   it('detects playoff ids', () => {
     expect(isPlayoffNbaGameId('0042500401')).toBe(true);
     expect(isPlayoffNbaGameId('0022500401')).toBe(false);
+  });
+
+  it('detects preseason ids for the season', () => {
+    expect(isPreseasonNbaGameId('0012600012', 2026)).toBe(true);
+    expect(isPreseasonNbaGameId(12600012, 2026)).toBe(true);
+    expect(isPreseasonNbaGameId('0012500012', 2026)).toBe(false); // last season's
+    expect(isPreseasonNbaGameId('0022600012', 2026)).toBe(false); // regular season
+    expect(isPreseasonNbaGameId(17195500, 2024)).toBe(false); // a balldontlie id in the range
+    expect(isPreseasonNbaGameId(null, 2026)).toBe(false);
   });
 });
 

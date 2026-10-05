@@ -23,6 +23,8 @@ export interface ScheduleGame {
   odds: GameOdds | null
   home_team?: TeamRef
   away_team?: TeamRef
+  /** Preseason: can be the next game, never part of the schedule or record. */
+  is_preseason?: boolean
 }
 
 export interface TeamRef {
@@ -152,6 +154,8 @@ export interface LiveGame {
   clock: string | null
   status_text?: string | null
   periods?: LinePeriod[]
+  /** Preseason: shown live, but never counted in records or stats. */
+  is_preseason?: boolean
   home: LiveSide
   away: LiveSide
 }
