@@ -7,7 +7,8 @@
 // advanced_stats table is NOT queried — key_metrics computed on the fly.
 
 import { NextResponse } from 'next/server';
-import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
+// liveSql: never served from Hyperdrive's query cache (live state changes every few seconds).
+import { liveSql as sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { getLatestOdds } from '@/src/lib/odds';
 import { computeKeyMetrics, buildBoxScore, liveInsights, notStartedPayload, RUNNER_NOT_STARTED_REASON } from '@/src/lib/live/payload';
@@ -56,18 +57,20 @@ interface GameRow {
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 const NO_STORE = { headers: { 'Cache-Control': 'no-store' } };
-// Vercel's CDN absorbs polling: every fan in a region shares one function call
-// per 2 s during games (spec §6.2); browsers always revalidate.
+// The edge absorbs polling: every fan in a region shares one render per 2 s
+// during games (spec §6.2); browsers always revalidate. CDN-Cache-Control is
+// read by the Worker's edge cache (worker.ts → src/lib/edge-cache.ts). No
+// stale-while-revalidate: live state is never served past its max-age.
 const CDN_LIVE = {
   headers: {
     'Cache-Control': 'public, max-age=0, must-revalidate',
-    'Vercel-CDN-Cache-Control': 'max-age=2, stale-while-revalidate=10',
+    'CDN-Cache-Control': 'max-age=2',
   },
 };
 const CDN_IDLE = {
   headers: {
     'Cache-Control': 'public, max-age=0, must-revalidate',
-    'Vercel-CDN-Cache-Control': 'max-age=30, stale-while-revalidate=60',
+    'CDN-Cache-Control': 'max-age=30',
   },
 };
 

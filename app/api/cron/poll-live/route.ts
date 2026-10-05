@@ -9,7 +9,7 @@
 
 import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { sql } from '@/src/lib/db';
+import { getSql } from '@/src/lib/db';
 import { findLiveCandidates } from '../../../../scripts/lib/live-cycle';
 import { createPoller } from '../../../../scripts/lib/live-poller';
 import { nbaPollerDeps } from '../../../../scripts/lib/live-deps';
@@ -22,7 +22,7 @@ export const maxDuration = 60;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Best-effort: give a queued hub publish a chance to go out before returning.
-// Vercel can freeze/suspend the function once its response promise resolves,
+// The runtime can freeze/suspend the request once its response promise resolves,
 // so an unawaited publish() here (unlike the long-running game-night runner,
 // which flushes only when the whole process is about to exit) can be dropped
 // silently. Bounded so a stuck hub never holds the response open for long.
@@ -57,6 +57,8 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   let hub: Publisher | null = null;
   try {
+    // Uncached connection: this route reads fresh state and writes live_state.
+    const sql = getSql('HYPERDRIVE_LIVE');
     const [candidate] = await findLiveCandidates(sql);
     if (!candidate) {
       return NextResponse.json({ state: 'NO_ACTIVE_GAME' }, { status: 200 });
