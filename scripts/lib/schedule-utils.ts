@@ -36,10 +36,26 @@ export function seasonIdFromSeasonYear(seasonYear: string | null | undefined): n
 // NBA format (10 chars): "00" + T + YY + NNNNN, where T is the game type
 // (2 = regular season, 3 = All-Star, 4 = playoffs, 5 = play-in) and YY the
 // season start year mod 100. Numerically that is 20_000_000..59_999_999.
-// Preseason (T=1) is intentionally excluded — preseason games are not stored.
+// Preseason (T=1) is excluded here: LAC preseason games are stored in
+// all_games with is_preseason for the live page only, never in the `games`
+// view these helpers serve (see isPreseasonNbaGameId).
 
 const NBA_ID_MIN = 20_000_000;
 const NBA_ID_MAX = 59_999_999;
+
+/**
+ * True when `id` is an official NBA preseason game id ("0012600012", or
+ * 12600012 without the leading zeros) for `seasonId`. The season check is
+ * required: legacy balldontlie ids also fall in 10,000,000–19,999,999.
+ */
+export function isPreseasonNbaGameId(id: string | number | bigint | null | undefined, seasonId: number): boolean {
+  if (id === null || id === undefined) return false;
+  const s = String(id).trim();
+  if (!/^\d+$/.test(s)) return false;
+  const n = Number(s);
+  if (!Number.isSafeInteger(n) || n < 10_000_000 || n > 19_999_999) return false;
+  return Math.floor(n / 100_000) % 100 === seasonId % 100;
+}
 
 /**
  * True when `id` looks like an official NBA game id (see above). When

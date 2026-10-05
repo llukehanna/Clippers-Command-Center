@@ -26,7 +26,7 @@ interface ScoreboardProps {
   status?: string | null
   /** Final mode: formatted date line. */
   dateLabel?: string
-  /** Final mode: extra label such as Play-In or Playoffs. */
+  /** Extra label such as Preseason, Play-In or Playoffs. */
   tag?: string | null
   children?: React.ReactNode
   className?: string
@@ -105,10 +105,13 @@ export function Scoreboard({ lac, opp, lacHome, mode, period, clock, status, dat
             </>
           ) : (
             <>
-              <Chip tone={mode === 'delayed' ? 'warn' : 'live'}>
-                <StatusDot tone={mode === 'delayed' ? 'warn' : 'live'} />
-                {mode === 'delayed' ? 'Delayed' : 'Live'}
-              </Chip>
+              <span className="flex gap-1.5">
+                <Chip tone={mode === 'delayed' ? 'warn' : 'live'}>
+                  <StatusDot tone={mode === 'delayed' ? 'warn' : 'live'} />
+                  {mode === 'delayed' ? 'Delayed' : 'Live'}
+                </Chip>
+                {tag && <Chip tone="blue">{tag}</Chip>}
+              </span>
               <span className="text-[26px] font-semibold leading-none tracking-[-0.03em] tabular-nums sm:text-[34px]">
                 {clockLabel(clock) || '—'}
               </span>

@@ -1,8 +1,10 @@
 // scripts/backfill-schedule-nba.ts
 // Seeds / refreshes the games table from the NBA CDN league schedule (no BDL
-// required). Upserts all LAC non-preseason games of the CURRENT season as
-// published by the CDN; the season is derived from the response's
-// leagueSchedule.seasonYear (e.g. "2026-27" → 2026), never hardcoded.
+// required). Upserts all LAC games of the CURRENT season as published by the
+// CDN; the season is derived from the response's leagueSchedule.seasonYear
+// (e.g. "2026-27" → 2026), never hardcoded. Preseason games go to all_games
+// with is_preseason (upsertPreseasonGame) — the live page polls them, but the
+// `games` view every other reader uses leaves them out.
 //
 // Why this matters: finalization calls cdn.nba.com with the official NBA game
 // id, so every LAC game needs an NBA-format nba_game_id. Rows first inserted
@@ -22,12 +24,13 @@
 // Safe to re-run — idempotent upserts, never creates duplicate game rows.
 
 import { sql } from './lib/db.js';
-import { upsertSeasons, upsertGameRow } from './lib/upserts.js';
+import { upsertSeasons, upsertGameRow, upsertPreseasonGame } from './lib/upserts.js';
 import {
   currentSeasonId,
   easternDateOf,
   isNbaFormatGameId,
   isPlayoffNbaGameId,
+  isPreseasonNbaGameId,
   seasonIdFromSeasonYear,
   seasonLabel,
 } from './lib/schedule-utils.js';
@@ -142,14 +145,19 @@ async function main(): Promise<void> {
     );
   }
 
-  // Collect all LAC non-preseason games
+  // Collect all LAC games; preseason ones (current season only) separately
   const lacGames: NBAScheduleGame[] = [];
+  const preseasonGames: NBAScheduleGame[] = [];
   for (const day of data.leagueSchedule.gameDates) {
     for (const g of day.games) {
       const isLAC =
         g.homeTeam.teamTricode === LAC_TRICODE || g.awayTeam.teamTricode === LAC_TRICODE;
+      if (!isLAC) continue;
       const isPreseason = g.gameLabel?.toLowerCase().includes('preseason') || g.gameId.startsWith('001');
-      if (!isLAC || isPreseason) continue;
+      if (isPreseason) {
+        if (!seasonArg && isPreseasonNbaGameId(g.gameId, seasonId)) preseasonGames.push(g);
+        continue;
+      }
       // Only ids finalization can use (regular season / play-in / playoffs).
       // Skips e.g. the NBA Cup final ("006…"), which doesn't count in stats.
       if (!isNbaFormatGameId(g.gameId, seasonId)) {
@@ -160,7 +168,7 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(`[backfill-schedule-nba] Found ${lacGames.length} LAC games`);
+  console.log(`[backfill-schedule-nba] Found ${lacGames.length} LAC games, ${preseasonGames.length} preseason`);
 
   // games.season_id REFERENCES seasons — ensure the row exists first.
   await upsertSeasons([seasonId]);
@@ -225,6 +233,48 @@ async function main(): Promise<void> {
   }
 
   console.log(`[backfill-schedule-nba] Done: ${inserted} inserted, ${updated} updated, ${skipped} skipped`);
+
+  // Preseason: live page only. Opponents outside the teams table (international
+  // clubs) are skipped — the live page has no logo or name for them anyway.
+  const pre = { inserted: 0, updated: 0, skipped: 0 };
+  for (const g of preseasonGames) {
+    const teams = await sql<{ abbreviation: string; team_id: string }[]>`
+      SELECT abbreviation, team_id::text FROM teams
+      WHERE abbreviation IN (${g.homeTeam.teamTricode}, ${g.awayTeam.teamTricode})
+    `;
+    const home = teams.find((t) => t.abbreviation === g.homeTeam.teamTricode);
+    const away = teams.find((t) => t.abbreviation === g.awayTeam.teamTricode);
+    if (!home || !away) {
+      console.warn(`  Skipping preseason ${g.gameId}: team not in DB (home=${g.homeTeam.teamTricode}, away=${g.awayTeam.teamTricode})`);
+      pre.skipped++;
+      continue;
+    }
+    const status = gameStatusToInternal(g.gameStatus);
+    const isFinal = status === 'final';
+    try {
+      const result = await upsertPreseasonGame({
+        nbaGameId: g.gameId,
+        seasonId,
+        gameDate: g.gameDateEst.slice(0, 10),
+        status,
+        startTimeUtc: g.gameDateTimeUTC || null,
+        homeTeamId: home.team_id,
+        awayTeamId: away.team_id,
+        homeScore: isFinal ? (g.homeTeam.score ?? null) : null,
+        awayScore: isFinal ? (g.awayTeam.score ?? null) : null,
+      });
+      pre[result]++;
+    } catch (err) {
+      // e.g. the same date and teams as a stored regular-season game
+      console.warn(`  Skipping preseason ${g.gameId}: ${(err as Error).message}`);
+      pre.skipped++;
+    }
+  }
+  if (preseasonGames.length) {
+    console.log(
+      `[backfill-schedule-nba] Preseason: ${pre.inserted} inserted, ${pre.updated} updated, ${pre.skipped} skipped`
+    );
+  }
 
   await sql.end();
 }

@@ -11,6 +11,8 @@ export interface LiveCandidate {
   home_team_id: string;
   away_team_id: string;
   start_time_utc: Date | null;
+  /** Preseason: polled for the live page, but never finalized into stats. */
+  is_preseason: boolean;
 }
 
 export function scoreboardStatus(gameStatus: number): 'scheduled' | 'in_progress' | 'final' {
@@ -20,13 +22,14 @@ export function scoreboardStatus(gameStatus: number): 'scheduled' | 'in_progress
 /**
  * Clippers games that may be live now: not final, tipping within the next
  * `leadMinutes`, or tipped within the last 4 hours (overtime + delays).
- * Rows with no start time fall back to today's US Eastern date.
+ * Rows with no start time fall back to today's US Eastern date. Reads
+ * all_games: preseason games go live too.
  */
 export async function findLiveCandidates(sql: Sql, leadMinutes = 30): Promise<LiveCandidate[]> {
   return sql<LiveCandidate[]>`
     SELECT g.game_id::text, g.nba_game_id::text, g.home_team_id::text, g.away_team_id::text,
-           g.start_time_utc
-    FROM games g
+           g.start_time_utc, g.is_preseason
+    FROM all_games g
     JOIN teams lac ON lac.abbreviation = 'LAC'
       AND lac.team_id IN (g.home_team_id, g.away_team_id)
     WHERE g.status <> 'final'
