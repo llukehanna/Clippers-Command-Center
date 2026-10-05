@@ -2,7 +2,8 @@
 // GET /api/live — Live Game Dashboard endpoint.
 // Returns current Clippers game state: NO_ACTIVE_GAME, DATA_DELAYED, or LIVE.
 // All data comes from the live_state row the game-night runner writes
-// (scripts/lib/live-poller.ts); no CDN calls from this route.
+// (scripts/lib/live-poller.ts); no CDN calls from this route. Reads all_games,
+// not the games view: preseason games go live too (flagged is_preseason).
 // advanced_stats table is NOT queried — key_metrics computed on the fly.
 
 import { NextResponse } from 'next/server';
@@ -49,6 +50,7 @@ interface GameRow {
   away_team_id: string;
   away_abbr: string;
   away_name: string;
+  is_preseason: boolean;
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────
@@ -97,7 +99,7 @@ export async function GET(): Promise<NextResponse> {
         lower(g.status)           AS game_status,
         ls.state                  AS payload
       FROM live_state ls
-      JOIN games g ON g.game_id = ls.game_id
+      JOIN all_games g ON g.game_id = ls.game_id
       JOIN teams lac ON lac.nba_team_id = ${LAC_NBA_TEAM_ID}
       WHERE (g.home_team_id = lac.team_id OR g.away_team_id = lac.team_id)
         AND (
@@ -322,8 +324,9 @@ async function fetchGameDetails(
       ht.name                  AS home_name,
       g.away_team_id::text     AS away_team_id,
       at.abbreviation          AS away_abbr,
-      at.name                  AS away_name
-    FROM games g
+      at.name                  AS away_name,
+      g.is_preseason
+    FROM all_games g
     JOIN teams ht ON ht.team_id = g.home_team_id
     JOIN teams at ON at.team_id = g.away_team_id
     WHERE g.game_id = ${gameId}::bigint
@@ -369,6 +372,7 @@ async function fetchGameDetails(
     status,
     period: snap.period,
     clock: snap.clock,
+    is_preseason: row.is_preseason,
     ...extras,
     home: {
       team_id: row.home_team_id,
@@ -406,8 +410,9 @@ async function fetchMissedGame(): Promise<LiveGame | null> {
       ht.name                  AS home_name,
       g.away_team_id::text     AS away_team_id,
       at.abbreviation          AS away_abbr,
-      at.name                  AS away_name
-    FROM games g
+      at.name                  AS away_name,
+      g.is_preseason
+    FROM all_games g
     JOIN teams ht ON ht.team_id = g.home_team_id
     JOIN teams at ON at.team_id = g.away_team_id
     JOIN teams lac ON lac.nba_team_id = ${LAC_NBA_TEAM_ID}
@@ -428,6 +433,7 @@ async function fetchMissedGame(): Promise<LiveGame | null> {
     status: 'in_progress',
     period: null,
     clock: null,
+    is_preseason: row.is_preseason,
     home: { team_id: row.home_team_id, abbreviation: row.home_abbr, name: row.home_name, score: null, is_home: true },
     away: { team_id: row.away_team_id, abbreviation: row.away_abbr, name: row.away_name, score: null, is_home: false },
   };

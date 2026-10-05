@@ -263,6 +263,44 @@ export async function upsertGameRow(
   return 'updated';
 }
 
+/**
+ * Insert or update one Clippers preseason game in all_games (is_preseason).
+ * Preseason games come only from the NBA CDN schedule, so nba_game_id is the
+ * key. They are invisible through the `games` view — only the live path reads
+ * them — so this writes all_games directly. Like upsertGameRow, it never
+ * regresses a final game and never touches a regular-season row.
+ */
+export async function upsertPreseasonGame(
+  g: Omit<GameRowInput, 'period' | 'clock' | 'isPlayoffs'>,
+  db: Db = sql
+): Promise<'inserted' | 'updated' | 'skipped'> {
+  const status = normalizeGameStatus(g.status);
+  const regress = status !== 'final';
+  const rows = await db<{ inserted: boolean }[]>`
+    INSERT INTO all_games (
+      nba_game_id, season_id, game_date, status, start_time_utc,
+      home_team_id, away_team_id, home_score, away_score, is_preseason
+    )
+    VALUES (
+      ${g.nbaGameId}, ${g.seasonId}, ${g.gameDate}::date, ${status}, ${g.startTimeUtc},
+      ${g.homeTeamId}::bigint, ${g.awayTeamId}::bigint, ${g.homeScore}, ${g.awayScore}, TRUE
+    )
+    ON CONFLICT (nba_game_id) DO UPDATE SET
+      game_date      = EXCLUDED.game_date,
+      start_time_utc = COALESCE(EXCLUDED.start_time_utc, all_games.start_time_utc),
+      status         = CASE WHEN all_games.status = 'final' AND ${regress} THEN 'final' ELSE EXCLUDED.status END,
+      home_score     = CASE WHEN all_games.status = 'final' AND ${regress} THEN all_games.home_score
+                            ELSE COALESCE(EXCLUDED.home_score, all_games.home_score) END,
+      away_score     = CASE WHEN all_games.status = 'final' AND ${regress} THEN all_games.away_score
+                            ELSE COALESCE(EXCLUDED.away_score, all_games.away_score) END,
+      updated_at     = now()
+    WHERE all_games.is_preseason
+    RETURNING (xmax = 0) AS inserted
+  `;
+  if (rows.length === 0) return 'skipped';
+  return rows[0].inserted ? 'inserted' : 'updated';
+}
+
 /** Upsert balldontlie games (see upsertGameRow for duplicate handling). */
 export async function upsertGames(games: BDLGame[], seasonId: number): Promise<void> {
   for (const g of games) {

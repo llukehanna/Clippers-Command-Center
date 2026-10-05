@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { Panel } from '@/components/ui/panel'
+import { Chip } from '@/components/ui/chip'
 import { TeamMark } from '@/components/ui/team-mark'
 import { Countdown } from './Countdown'
 import { OddsStrip } from './OddsStrip'
@@ -40,7 +41,7 @@ export function NextGamePanel({ game, context, eyebrow = 'Next game', className 
       <div className="relative p-5 sm:p-7">
         <div className="flex items-center justify-between gap-3">
           <p className="label-mono !text-mute">{eyebrow}</p>
-          {context}
+          {game.is_preseason ? <Chip tone="blue">Preseason</Chip> : context}
         </div>
 
         <div className="my-6 grid grid-cols-1 items-center gap-4 sm:my-7 sm:grid-cols-[1fr_auto_1fr] sm:gap-5">
@@ -62,7 +63,8 @@ export function NextGamePanel({ game, context, eyebrow = 'Next game', className 
             <div className="text-[26px] font-semibold leading-tight tracking-[-0.03em] sm:text-[30px]">{formatDay(game.game_date)}</div>
             <div className="mt-1 text-[14.5px] text-mute">
               {formatTip(game.start_time_utc)}
-              {home ? ' · Intuit Dome' : ''}
+              {/* Preseason "home" games are often at neutral sites. */}
+              {home && !game.is_preseason ? ' · Intuit Dome' : ''}
             </div>
           </div>
           <Countdown tipoff={game.start_time_utc} />

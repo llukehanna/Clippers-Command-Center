@@ -18,8 +18,8 @@ export async function loadLiveSeq(sql: Sql, gameDbId: string): Promise<number> {
 
 /**
  * Upserts the game's live state if `doc.seq` is newer than what's stored, then
- * mirrors status/score/clock onto the games row. Returns false when a newer
- * state was already stored (nothing written).
+ * mirrors status/score/clock onto the all_games row (preseason games included).
+ * Returns false when a newer state was already stored (nothing written).
  */
 export async function saveLiveState(sql: Sql, gameDbId: string, doc: LiveStateDoc): Promise<boolean> {
   const written = await sql`
@@ -34,7 +34,7 @@ export async function saveLiveState(sql: Sql, gameDbId: string, doc: LiveStateDo
 
   // A game can't go back from final on a stale read.
   await sql`
-    UPDATE games SET
+    UPDATE all_games SET
       status = ${doc.status}, period = ${doc.period}, clock = ${doc.clock},
       home_score = ${doc.home_score}, away_score = ${doc.away_score}, updated_at = now()
     WHERE game_id = ${gameDbId}::bigint AND status <> 'final'
@@ -66,7 +66,7 @@ export async function loadModelContext(sql: Sql, gameDbId: string): Promise<Mode
           AND (g.start_time_utc IS NULL OR o.captured_at <= g.start_time_utc)
         ORDER BY o.captured_at DESC
         LIMIT 1)                     AS lac_spread
-    FROM games g
+    FROM all_games g
     JOIN teams lac ON lac.abbreviation = 'LAC'
     WHERE g.game_id = ${gameDbId}::bigint
   `;

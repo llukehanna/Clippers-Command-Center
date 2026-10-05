@@ -97,6 +97,11 @@ interface InsightRow {
   proof_result: unknown;
 }
 
+/** Sort key for "which game is next": tip time, else the game date. */
+function tipKey(g: { game_date: string; start_time_utc: string | null }): string {
+  return g.start_time_utc ?? `${g.game_date}T23:59:59Z`;
+}
+
 // ─── GET handler ──────────────────────────────────────────────────────────────
 
 export async function loadHome(): Promise<ApiResult> {
@@ -120,6 +125,7 @@ export async function loadHome(): Promise<ApiResult> {
       seedRows,
       insightRows,
       lastSyncRows,
+      preseasonRows,
     ] = await Promise.all([
       // 0: LAC team record (need abbreviation and internal id for opponent lookup)
       sql`
@@ -306,6 +312,33 @@ export async function loadHome(): Promise<ApiResult> {
             (SELECT MAX(created_at) FROM game_team_box_scores)
           ) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_sync_at
       ` as Promise<{ last_sync_at: string | null }[]>,
+
+      // I: Next preseason game. all_games, not the games view: preseason games
+      //    can be the next game (the live page polls them) but stay out of the
+      //    upcoming schedule, records and everything else.
+      sql`
+        SELECT
+          g.game_id::text AS game_id,
+          g.game_date::text AS game_date,
+          to_char(g.start_time_utc AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS start_time_utc,
+          g.home_team_id::text AS home_team_id,
+          g.away_team_id::text AS away_team_id,
+          ht.abbreviation AS home_abbr,
+          at.abbreviation AS away_abbr,
+          g.status
+        FROM all_games g
+        JOIN teams ht ON ht.team_id = g.home_team_id
+        JOIN teams at ON at.team_id = g.away_team_id
+        WHERE g.is_preseason
+          AND (
+            g.home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+            OR g.away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
+          )
+          AND g.game_date >= (now() AT TIME ZONE 'America/New_York')::date
+          AND lower(g.status) <> 'final'
+        ORDER BY g.start_time_utc ASC NULLS LAST, g.game_date ASC
+        LIMIT 1
+      ` as Promise<UpcomingGameRow[]>,
     ]);
 
     // ── team_snapshot ─────────────────────────────────────────────────────────
@@ -398,7 +431,24 @@ export async function loadHome(): Promise<ApiResult> {
       })
     );
 
-    const nextGame = upcomingWithOdds[0] ?? null;
+    // A preseason game is the next game when it comes first (no odds: books
+    // rarely post preseason lines and odds sync never matches them).
+    const preseasonRow = preseasonRows[0];
+    const preseasonNext = preseasonRow
+      ? {
+          game_id: parseInt(preseasonRow.game_id, 10),
+          game_date: preseasonRow.game_date,
+          start_time_utc: preseasonRow.start_time_utc,
+          opponent_abbr: preseasonRow.home_team_id === lacTeamIdStr ? preseasonRow.away_abbr : preseasonRow.home_abbr,
+          home_away: preseasonRow.home_team_id === lacTeamIdStr ? 'home' : 'away',
+          status: preseasonRow.status,
+          odds: null,
+          is_preseason: true,
+        }
+      : null;
+    const regularNext = upcomingWithOdds[0] ?? null;
+    const nextGame =
+      preseasonNext && (!regularNext || tipKey(preseasonNext) < tipKey(regularNext)) ? preseasonNext : regularNext;
 
     // ── player_trends ─────────────────────────────────────────────────────────
     // Average minutes computed in JavaScript from the raw text array to avoid

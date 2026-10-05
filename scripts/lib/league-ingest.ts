@@ -122,12 +122,13 @@ export async function removeStaleDuplicate(d: LikelyDuplicate, seasonId: number)
     `;
     if (Number(boxes.n) > 0) return 'has box scores';
 
+    // Foreign keys point at the all_games table, not the games view.
     const refs = await tx<{ tbl: string; col: string }[]>`
       SELECT cl.relname AS tbl, att.attname AS col
       FROM pg_constraint c
       JOIN pg_class cl ON cl.oid = c.conrelid
       JOIN pg_attribute att ON att.attrelid = c.conrelid AND att.attnum = ANY (c.conkey)
-      WHERE c.contype = 'f' AND c.confrelid = 'games'::regclass
+      WHERE c.contype = 'f' AND c.confrelid = 'all_games'::regclass
     `;
     for (const { tbl, col } of refs) {
       const [row] = await tx.unsafe<{ n: string }[]>(
