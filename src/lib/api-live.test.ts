@@ -452,12 +452,12 @@ describe('GET /api/live', () => {
   it('lets the Vercel CDN cache live responses for 2 s and idle ones for 30 s, never the browser', async () => {
     mockedSql.mockResolvedValueOnce([makeFreshSnapRow()]).mockResolvedValueOnce([gameRow]);
     const live = await GET();
-    expect(live.headers.get('CDN-Cache-Control')).toBe('max-age=2, stale-while-revalidate=10');
+    expect(live.headers.get('CDN-Cache-Control')).toBe('max-age=2');
     expect(live.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
 
     mockedSql.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     const idle = await GET();
-    expect(idle.headers.get('CDN-Cache-Control')).toBe('max-age=30, stale-while-revalidate=60');
+    expect(idle.headers.get('CDN-Cache-Control')).toBe('max-age=30');
   });
 
   it('never caches errors', async () => {
@@ -545,7 +545,7 @@ describe('GET /api/live', () => {
     mockedSql.mockResolvedValueOnce([snap]);
     const res = await GET();
     expect((await res.json()).upcoming).toEqual({ nba_game_id: '0022600093' });
-    expect(res.headers.get('CDN-Cache-Control')).toBe('max-age=2, stale-while-revalidate=10');
+    expect(res.headers.get('CDN-Cache-Control')).toBe('max-age=2');
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=0, must-revalidate');
   });
 
