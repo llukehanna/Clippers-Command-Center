@@ -3,6 +3,9 @@
   // Clippers Command Center on Cloudflare Workers (free plan), built with
   // OpenNext: `npm run deploy` = opennextjs-cloudflare build + deploy.
   "name": "clippers-command-center",
+  "routes": [
+    { "pattern": "clippers.lukeghanna.com", "custom_domain": true }
+  ],
   // worker.ts wraps the OpenNext worker (.open-next/worker.js) with the
   // ccc.lukeghanna.com redirect and the /api/live edge cache.
   "main": "worker.ts",
