@@ -61,7 +61,7 @@ echo "$SECRET"                                             # copy for the next t
 ```
 
 - **GitHub Actions:** repo secret `LIVE_HUB_SECRET` (the game-night runner publishes with it).
-- **Vercel:** env var `LIVE_HUB_SECRET` (manual `/api/cron/poll-live` ticks publish with it).
+- **App Worker:** `npx wrangler secret put LIVE_HUB_SECRET` in the repo root (worker `clippers-command-center`; manual `/api/cron/poll-live` ticks publish with it).
 
 ### Health & Monitoring
 

@@ -25,7 +25,7 @@ A desktop analytics dashboard for avid LA Clippers fans. Three modes that blend 
 - Tailwind v4 with a small in-house component set (Geist type, Clippers palette), Recharts, `cmdk`
 - **SWR** for client data, `tsx` for ops scripts
 - **Vitest** for unit tests
-- Served at **clippers.lukeghanna.com** (Vercel project `clippers-command-center`; the `*.vercel.app` and `ccc.` hosts redirect there); every data job runs on GitHub Actions
+- Served at **clippers.lukeghanna.com** from a Cloudflare Worker (`clippers-command-center`, built with [OpenNext](https://opennext.js.org/cloudflare); `ccc.` redirects there); Neon is reached through Hyperdrive; every data job runs on GitHub Actions
 
 ## Data sources
 
@@ -65,6 +65,16 @@ npm run lint
 # End-to-end pipeline test against a throwaway LOCAL Postgres (wiped):
 FIXTURE_DATABASE_URL=postgres://postgres@127.0.0.1:5432/fixture npm test
 ```
+
+Deploy (Cloudflare Workers, `wrangler.jsonc`):
+
+```bash
+npm run deploy               # opennextjs-cloudflare build + deploy (needs `wrangler login`)
+npx wrangler secret put CRON_SECRET        # runtime secrets: CRON_SECRET, LIVE_HUB_SECRET
+```
+
+The database is bound through two Hyperdrive configs (`HYPERDRIVE` caches reads for 60 s,
+`HYPERDRIVE_LIVE` never caches); `next dev` keeps using `DATABASE_URL` from `.env.local`.
 
 Data-pipeline scripts:
 

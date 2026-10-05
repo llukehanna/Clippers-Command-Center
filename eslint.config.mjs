@@ -20,6 +20,8 @@ const eslintConfig = defineConfig([
     "full logo packs/**",
     "design-system/**",
     "workers/**",
+    ".open-next/**",
+    ".wrangler/**",
   ]),
 ]);
 

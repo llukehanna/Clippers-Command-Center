@@ -1,0 +1,48 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Clippers Command Center on Cloudflare Workers (free plan), built with
+  // OpenNext: `npm run deploy` = opennextjs-cloudflare build + deploy.
+  "name": "clippers-command-center",
+  "routes": [
+    { "pattern": "clippers.lukeghanna.com", "custom_domain": true }
+  ],
+  // worker.ts wraps the OpenNext worker (.open-next/worker.js) with the
+  // ccc.lukeghanna.com redirect and the /api/live edge cache.
+  "main": "worker.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  // Neon through Hyperdrive (pooled connections near the database).
+  // HYPERDRIVE caches read queries for 60 s (max_age 60, swr 15); the live
+  // endpoints use HYPERDRIVE_LIVE, which never caches. See src/lib/db.ts.
+  // localConnectionString is only for local `wrangler dev`/`npm run preview`
+  // (override with CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
+  // and ..._HYPERDRIVE_LIVE); deploys ignore it.
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "3a00e4bf82d741e9a53a144303d57fc8",
+      "localConnectionString": "postgres://postgres:postgres@127.0.0.1:5432/ccc"
+    },
+    {
+      "binding": "HYPERDRIVE_LIVE",
+      "id": "2733a88caee8446f95ed2200d6951676",
+      "localConnectionString": "postgres://postgres:postgres@127.0.0.1:5432/ccc"
+    }
+  ],
+  "vars": {
+    // Runner + cron route publish here (non-secret). LIVE_HUB_SECRET,
+    // CRON_SECRET are Worker secrets (`wrangler secret put`).
+    "LIVE_HUB_URL": "https://live.lukeghanna.com"
+  },
+  "observability": { "enabled": true },
+  // Deployed to workers.dev only for now. At DNS cutover add:
+  // "routes": [
+  //   { "pattern": "clippers.lukeghanna.com", "custom_domain": true },
+  //   { "pattern": "ccc.lukeghanna.com", "custom_domain": true }
+  // ],
+  "workers_dev": true
+}

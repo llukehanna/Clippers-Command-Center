@@ -33,9 +33,16 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+# non-secret build-time values for production builds (NEXT_PUBLIC_*)
+!.env.production
 
 # vercel
 .vercel
+
+# cloudflare (OpenNext build output, wrangler state, local secrets)
+.open-next
+.wrangler
+.dev.vars*
 
 # typescript
 *.tsbuildinfo
