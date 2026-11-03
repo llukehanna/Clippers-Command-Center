@@ -30,7 +30,8 @@ A desktop analytics dashboard for avid LA Clippers fans. Three modes that blend 
 ## Data sources
 
 - `balldontlie.io` — NBA schedule, games, box scores (historical + finalization)
-- `stats.nba.com` / NBA CDN — live in-game polling and schedule backfill
+- `stats.nba.com` / NBA CDN — schedule backfill and league box scores (live polling tries the CDN first)
+- ESPN public API — live in-game polling (cdn.nba.com liveData has refused every client since late October 2026) and the browser-side backup score
 - `the-odds-api.com` — Vegas odds (display + insight annotation; no betting)
 
 ## Repo layout
