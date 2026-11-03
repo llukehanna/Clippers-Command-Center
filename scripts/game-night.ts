@@ -3,6 +3,9 @@
 //
 // 1. Looks for a Clippers game that isn't final and tips within the next
 //    LEAD_MINUTES (or tipped in the last 4 hours). None → exits in seconds.
+//    The lead is long because GitHub drops scheduled runs at busy times —
+//    whole evenings of the hourly cron have gone missing — so any launch that
+//    does fire in the hours before tip catches the game and sleeps until then.
 // 2. Sleeps until ~10 minutes before tip, then polls with the adaptive cadence
 //    in scripts/lib/live-cadence.ts (2–30 s by game phase) via
 //    scripts/lib/live-poller.ts, writing live_state on every change.
@@ -12,7 +15,11 @@
 //    are polled the same way but never finalized: they don't count anywhere.
 //
 // Overlapping hourly launches are serialized by the workflow's concurrency
-// group, so a later launch just finds the game already final and exits.
+// group, so a later launch just finds the game already final and exits. A run
+// that hits its time limit mid-game asks the workflow for a successor
+// (continue=true in $GITHUB_OUTPUT) rather than trusting the next hourly cron.
+
+import { appendFileSync } from 'node:fs';
 
 import { sql } from './lib/db.js';
 import { findLiveCandidates, type LiveCandidate } from './lib/live-cycle.js';
@@ -24,10 +31,10 @@ import { finalizeGame } from './lib/finalize.js';
 import { decideGameNightAction, FINAL_SAVE_MAX_ATTEMPTS } from './lib/game-night-logic.js';
 import { ingestGamePbp } from './lib/pbp/ingest.js';
 
-const LEAD_MINUTES = Number(process.env.GAME_NIGHT_LEAD_MINUTES ?? 75);
+const LEAD_MINUTES = Number(process.env.GAME_NIGHT_LEAD_MINUTES ?? 300);
 const PRE_TIP_MS = 10 * 60_000;
-// Stop before the workflow's timeout so the job ends cleanly (the next hourly
-// launch picks the game back up if it's somehow still going).
+// Stop before the workflow's timeout so the job ends cleanly; a successor run
+// picks the game back up (see requestSuccessor).
 const MAX_RUNTIME_MS = Number(process.env.GAME_NIGHT_MAX_MINUTES ?? 330) * 60_000;
 // Scoreboard hasn't listed the game for this long after tip → give up.
 const NOT_LISTED_GIVE_UP_MS = 30 * 60_000;
@@ -40,6 +47,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function flushHub(hub: Publisher | null): Promise<void> {
   if (!hub) return;
   await Promise.race([hub.flush(), sleep(5_000)]);
+}
+
+/** Tell the workflow to dispatch another run that continues this game. */
+function requestSuccessor(): void {
+  const out = process.env.GITHUB_OUTPUT;
+  if (out) appendFileSync(out, 'continue=true\n');
 }
 
 async function main(): Promise<void> {
@@ -176,7 +189,8 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
 
     await sleep(decision.action.sleepMs);
   }
-  console.warn('[game-night] Max runtime reached; the next hourly launch continues.');
+  console.warn('[game-night] Max runtime reached; a successor run continues the game.');
+  requestSuccessor();
   await flushHub(deps.hub);
 }
 

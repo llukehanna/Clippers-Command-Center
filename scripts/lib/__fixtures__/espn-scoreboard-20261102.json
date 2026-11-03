@@ -1,0 +1,214 @@
+{
+ "events": [
+  {
+   "id": "401909920",
+   "date": "2026-11-03T03:00Z",
+   "competitions": [
+    {
+     "date": "2026-11-03T03:00Z",
+     "status": {
+      "clock": 720.0,
+      "displayClock": "12:00",
+      "period": 4,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "118",
+       "linescores": [
+        {
+         "value": 33.0,
+         "displayValue": "33",
+         "period": 1
+        },
+        {
+         "value": 30.0,
+         "displayValue": "30",
+         "period": 2
+        },
+        {
+         "value": 28.0,
+         "displayValue": "28",
+         "period": 3
+        },
+        {
+         "value": 27.0,
+         "displayValue": "27",
+         "period": 4
+        }
+       ],
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "Game",
+         "type": "total",
+         "summary": "1-6"
+        }
+       ],
+       "team": {
+        "id": "12",
+        "abbreviation": "LAC",
+        "name": "Clippers",
+        "location": "LA"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "125",
+       "linescores": [
+        {
+         "value": 22.0,
+         "displayValue": "22",
+         "period": 1
+        },
+        {
+         "value": 30.0,
+         "displayValue": "30",
+         "period": 2
+        },
+        {
+         "value": 26.0,
+         "displayValue": "26",
+         "period": 3
+        },
+        {
+         "value": 47.0,
+         "displayValue": "47",
+         "period": 4
+        }
+       ],
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "Game",
+         "type": "total",
+         "summary": "4-3"
+        }
+       ],
+       "team": {
+        "id": "28",
+        "abbreviation": "TOR",
+        "name": "Raptors",
+        "location": "Toronto"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909910",
+   "date": "2026-11-03T00:30Z",
+   "competitions": [
+    {
+     "date": "2026-11-03T00:30Z",
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0.0",
+      "period": 4,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "103",
+       "linescores": [
+        {
+         "value": 27.0,
+         "displayValue": "27",
+         "period": 1
+        },
+        {
+         "value": 24.0,
+         "displayValue": "24",
+         "period": 2
+        },
+        {
+         "value": 24.0,
+         "displayValue": "24",
+         "period": 3
+        },
+        {
+         "value": 28.0,
+         "displayValue": "28",
+         "period": 4
+        }
+       ],
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "Game",
+         "type": "total",
+         "summary": "3-4"
+        }
+       ],
+       "team": {
+        "id": "18",
+        "abbreviation": "NY",
+        "name": "Knicks",
+        "location": "New York"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "90",
+       "linescores": [
+        {
+         "value": 21.0,
+         "displayValue": "21",
+         "period": 1
+        },
+        {
+         "value": 23.0,
+         "displayValue": "23",
+         "period": 2
+        },
+        {
+         "value": 35.0,
+         "displayValue": "35",
+         "period": 3
+        },
+        {
+         "value": 11.0,
+         "displayValue": "11",
+         "period": 4
+        }
+       ],
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "Game",
+         "type": "total",
+         "summary": "1-6"
+        }
+       ],
+       "team": {
+        "id": "17",
+        "abbreviation": "BKN",
+        "name": "Nets",
+        "location": "Brooklyn"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
