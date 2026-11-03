@@ -47,11 +47,22 @@ const nbaFeeds: Feeds = {
 const ESPN_SUMMARY_REUSE_MS = 1_500;
 const ESPN_MIN_INTERVAL_MS = 3_000;
 
-interface EspnGameContext {
+export interface EspnGameContext {
   homeTricode: string;
   awayTricode: string;
   gameDate: string; // US Eastern, YYYY-MM-DD
   resolve: PersonIdResolver;
+}
+
+/** ESPN athlete → NBA personId by name, from the players table. */
+export async function loadPersonIdResolver(sql: Sql): Promise<PersonIdResolver> {
+  // Active, recently updated rows win a (rare) name collision.
+  const players = await sql<{ nba_person_id: number; display_name: string }[]>`
+    SELECT nba_person_id, display_name FROM players
+    WHERE nba_person_id IS NOT NULL
+    ORDER BY is_active, updated_at
+  `;
+  return nameResolver(new Map(players.map((p) => [normalizeName(p.display_name), p.nba_person_id])));
 }
 
 async function loadEspnContext(sql: Sql, gameDbId: string): Promise<EspnGameContext> {
@@ -63,19 +74,17 @@ async function loadEspnContext(sql: Sql, gameDbId: string): Promise<EspnGameCont
     WHERE g.game_id = ${gameDbId}::bigint
   `;
   if (!game) throw new Error(`game ${gameDbId} not found`);
-  // Active, recently updated rows win a (rare) name collision.
-  const players = await sql<{ nba_person_id: number; display_name: string }[]>`
-    SELECT nba_person_id, display_name FROM players
-    WHERE nba_person_id IS NOT NULL
-    ORDER BY is_active, updated_at
-  `;
-  const byName = new Map(players.map((p) => [normalizeName(p.display_name), p.nba_person_id]));
-  return { homeTricode: game.home, awayTricode: game.away, gameDate: game.game_date, resolve: nameResolver(byName) };
+  return { homeTricode: game.home, awayTricode: game.away, gameDate: game.game_date, resolve: await loadPersonIdResolver(sql) };
 }
 
 export function espnFeeds(sql: Sql, gameDbId: string, nbaGameId: string, now: () => number = Date.now): Feeds {
+  return espnFeedsWith(() => loadEspnContext(sql, gameDbId), nbaGameId, now);
+}
+
+/** ESPN feeds for any game the context names (the dry run uses this for games not in all_games). */
+export function espnFeedsWith(load: () => Promise<EspnGameContext>, nbaGameId: string, now: () => number = Date.now): Feeds {
   let context: Promise<EspnGameContext> | null = null;
-  const ctx = () => (context ??= loadEspnContext(sql, gameDbId).catch((err) => {
+  const ctx = () => (context ??= load().catch((err) => {
     context = null; // retry next tick
     throw err;
   }));
