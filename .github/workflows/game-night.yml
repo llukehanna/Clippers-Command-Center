@@ -1,8 +1,9 @@
 name: Game Night (live)
 
 # Hourly launcher for scripts/game-night.ts. With no Clippers game tipping in
-# the next ~75 minutes it exits in seconds. Otherwise it sleeps until just
-# before tip, then polls with the adaptive cadence (2-30 s by game phase,
+# the next 5 hours it exits in seconds. Otherwise it sleeps until just before
+# tip (GitHub drops many scheduled runs, so the first one that fires holds on),
+# then polls with the adaptive cadence (2-30 s by game phase,
 # scripts/lib/live-cadence.ts), writing live_state on every change, and
 # finalizes the game when it goes Final.
 #
@@ -16,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  actions: write # dispatch a successor run when one hits its time limit mid-game
 
 # One runner at a time; a launch that fires mid-game waits, then finds the game
 # final (or still live, and continues it).
@@ -39,8 +41,17 @@ jobs:
       - run: npm ci
 
       - name: Run game-night poller
+        id: poll
         run: node node_modules/.bin/tsx scripts/game-night.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           LIVE_HUB_URL: ${{ vars.LIVE_HUB_URL }}
           LIVE_HUB_SECRET: ${{ secrets.LIVE_HUB_SECRET }}
+
+      # Waits in the concurrency group until this run exits, then resumes the
+      # game from live_state (scripts/game-night.ts continues seq).
+      - name: Dispatch successor
+        if: steps.poll.outputs.continue == 'true'
+        run: gh workflow run game-night.yml --ref "$GITHUB_REF_NAME"
+        env:
+          GH_TOKEN: ${{ github.token }}
