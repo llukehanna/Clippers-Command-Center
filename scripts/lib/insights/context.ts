@@ -17,10 +17,14 @@ export { REGULAR_SEASON };
 export const MIN_SEASON_GAMES = 10;
 
 /**
- * SQL subquery selecting the season's Clippers players: players whose most
- * recent game of the season was for the Clippers. A player traded away
- * mid-season is excluded; one acquired mid-season is included. `season` and
- * `team` are the proof query's placeholders (e.g. '$1', '$2').
+ * SQL subquery selecting the season's Clippers players who are still
+ * Clippers: their most recent game of the season was for the Clippers (a
+ * player traded away mid-season is excluded; one acquired mid-season is
+ * included), and so was their most recent game of the team's latest season.
+ * The second test only matters while insights still describe last season
+ * (the first weeks of a new one): it drops players who have left — or not
+ * played yet this season — instead of headlining them. `season` and `team`
+ * are the proof query's placeholders (e.g. '$1', '$2').
  */
 export function clippersSeasonPlayers(season: string, team: string): string {
   return `(
@@ -31,7 +35,19 @@ export function clippersSeasonPlayers(season: string, team: string): string {
     WHERE cg.season_id = ${season}::int
     ORDER BY cp.player_id, cg.game_date DESC, cg.game_id DESC
   ) last_game
+  JOIN (
+    SELECT DISTINCT ON (np.player_id) np.player_id, np.team_id
+    FROM game_player_box_scores np
+    JOIN games ng ON ng.game_id = np.game_id
+    WHERE ng.season_id = (
+      SELECT MAX(tg.season_id) FROM games tg
+      JOIN game_player_box_scores tp ON tp.game_id = tg.game_id
+      WHERE tp.team_id = ${team}::bigint
+    )
+    ORDER BY np.player_id, ng.game_date DESC, ng.game_id DESC
+  ) latest ON latest.player_id = last_game.player_id
   WHERE last_game.team_id = ${team}::bigint
+    AND latest.team_id = ${team}::bigint
 )`;
 }
 
