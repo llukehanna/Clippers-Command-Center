@@ -20,6 +20,7 @@ import {
   rankPercentile,
   fmt,
   pct,
+  proofValue,
 } from './proof-utils.js';
 import { clippersSeasonPlayers, InsightContext, REGULAR_SEASON, runProof } from './context.js';
 
@@ -38,14 +39,17 @@ export interface TeamMetric {
 }
 
 // Ratings are possession-weighted (points per 100 possessions over the whole
-// season), not averages of per-game ratings.
+// season), not averages of per-game ratings. The columns are `real`: SUM(real)
+// adds in single precision, where row order (which Postgres doesn't fix)
+// changes the 5th significant digit, so sums are taken in float8 and every
+// proof value is rounded (proofValue) — a re-run must reproduce it exactly.
 export const TEAM_METRICS: TeamMetric[] = [
   { key: 'off_rating', label: 'offensive rating', higherIsBetter: true,
-    aggregate: 'SUM(a.off_rating * a.possessions) / NULLIF(SUM(a.possessions), 0)', format: (v) => fmt(v) },
+    aggregate: 'SUM(a.off_rating::float8 * a.possessions) / NULLIF(SUM(a.possessions::float8), 0)', format: (v) => fmt(v) },
   { key: 'def_rating', label: 'defensive rating', higherIsBetter: false,
-    aggregate: 'SUM(a.def_rating * a.possessions) / NULLIF(SUM(a.possessions), 0)', format: (v) => fmt(v) },
+    aggregate: 'SUM(a.def_rating::float8 * a.possessions) / NULLIF(SUM(a.possessions::float8), 0)', format: (v) => fmt(v) },
   { key: 'net_rating', label: 'net rating', higherIsBetter: true,
-    aggregate: 'SUM(a.net_rating * a.possessions) / NULLIF(SUM(a.possessions), 0)',
+    aggregate: 'SUM(a.net_rating::float8 * a.possessions) / NULLIF(SUM(a.possessions::float8), 0)',
     format: (v) => (v > 0 ? `+${fmt(v)}` : fmt(v)) },
   { key: 'efg_pct', label: 'effective FG%', higherIsBetter: true, aggregate: 'AVG(a.efg_pct)', format: (v) => pct(v) },
   { key: 'tov_pct', label: 'turnover rate', higherIsBetter: false, aggregate: 'AVG(a.tov_pct)', format: (v) => pct(v) },
@@ -56,7 +60,7 @@ export const TEAM_METRICS: TeamMetric[] = [
 function teamRankSql(m: TeamMetric): string {
   return `
     WITH team_values AS (
-      SELECT a.team_id, (${m.aggregate})::float8 AS value, COUNT(*)::int AS games
+      SELECT a.team_id, ${proofValue(m.aggregate)} AS value, COUNT(*)::int AS games
       FROM advanced_team_game_stats a
       JOIN games g ON g.game_id = a.game_id
       WHERE g.season_id = $1::int AND ${REGULAR_SEASON}
@@ -159,7 +163,7 @@ export const PLAYER_METRICS: PlayerMetric[] = [
 function playerRanksSql(m: PlayerMetric): string {
   return `
     WITH per_player AS (
-      SELECT pb.player_id, COUNT(*)::int AS games, (${m.expr})::float8 AS value
+      SELECT pb.player_id, COUNT(*)::int AS games, ${proofValue(m.expr)} AS value
       FROM game_player_box_scores pb
       JOIN games g ON g.game_id = pb.game_id
       WHERE g.season_id = $1::int AND ${REGULAR_SEASON}
