@@ -17,7 +17,7 @@ on:
 
 permissions:
   contents: read
-  actions: write # dispatch a successor run when one hits its time limit mid-game
+  actions: write # dispatch a successor run (time limit mid-game) and post-game after a final
 
 # One runner at a time; a launch that fires mid-game waits, then finds the game
 # final (or still live, and continues it).
@@ -47,6 +47,14 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           LIVE_HUB_URL: ${{ vars.LIVE_HUB_URL }}
           LIVE_HUB_SECRET: ${{ secrets.LIVE_HUB_SECRET }}
+
+      # Stats, insights and the league sync minutes after the buzzer instead
+      # of whenever GitHub gets to post-game's nightly cron.
+      - name: Start post-game pipeline
+        if: steps.poll.outputs.postgame == 'true'
+        run: gh workflow run post-game.yml --ref "$GITHUB_REF_NAME"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       # Waits in the concurrency group until this run exits, then resumes the
       # game from live_state (scripts/game-night.ts continues seq).

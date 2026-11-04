@@ -1,8 +1,13 @@
 name: Sync Media
 
+# GitHub runs short-interval crons far less often than asked (the old
+# */15 schedule fired about 4 times a day), so each run syncs every 15
+# minutes for ~5.5 hours and the hourly cron only has to fire now and then:
+# a launch that arrives mid-loop waits in the concurrency group and takes
+# over when the loop ends. A manual dispatch syncs once.
 on:
   schedule:
-    - cron: '*/15 * * * *'   # every 15 minutes (GitHub may delay scheduled runs)
+    - cron: '7 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -15,12 +20,12 @@ permissions:
 
 concurrency:
   group: sync-media
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   sync-media:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 350
 
     steps:
       - uses: actions/checkout@v5
@@ -32,8 +37,23 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run sync-media -- ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+      - name: Sync media
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            npm run sync-media -- $DRY_RUN_FLAG
+            exit $?
+          fi
+          end=$((SECONDS + 330 * 60))
+          ok=0; failed=0
+          while [ $SECONDS -lt $end ]; do
+            if npm run sync-media; then ok=$((ok + 1)); else failed=$((failed + 1)); fi
+            [ $((SECONDS + 15 * 60)) -lt $end ] || break
+            sleep 900
+          done
+          echo "synced $ok time(s), $failed failed"
+          [ $ok -gt 0 ]
         env:
+          DRY_RUN_FLAG: ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
           REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
