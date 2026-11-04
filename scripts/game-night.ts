@@ -10,8 +10,9 @@
 //    in scripts/lib/live-cadence.ts (2–30 s by game phase) via
 //    scripts/lib/live-poller.ts, writing live_state on every change.
 // 3. When the scoreboard says Final, finalizes the game (box scores, stints,
-//    advanced stats) and exits. The nightly post-game workflow still runs the
-//    league sync, stats and insights. Preseason games (all_games.is_preseason)
+//    advanced stats), asks the workflow to start the post-game pipeline
+//    (league sync, stats, insights — postgame=true in $GITHUB_OUTPUT; its
+//    nightly cron runs hours late) and exits. Preseason games (all_games.is_preseason)
 //    are polled the same way but never finalized: they don't count anywhere.
 //
 // Overlapping hourly launches are serialized by the workflow's concurrency
@@ -49,11 +50,14 @@ async function flushHub(hub: Publisher | null): Promise<void> {
   await Promise.race([hub.flush(), sleep(5_000)]);
 }
 
-/** Tell the workflow to dispatch another run that continues this game. */
-function requestSuccessor(): void {
+/** Set a step output for the workflow (no-op outside GitHub Actions). */
+function setOutput(key: 'continue' | 'postgame'): void {
   const out = process.env.GITHUB_OUTPUT;
-  if (out) appendFileSync(out, 'continue=true\n');
+  if (out) appendFileSync(out, `${key}=true\n`);
 }
+
+/** Tell the workflow to dispatch another run that continues this game. */
+const requestSuccessor = () => setOutput('continue');
 
 async function main(): Promise<void> {
   const [candidate] = await findLiveCandidates(sql, LEAD_MINUTES);
@@ -157,6 +161,7 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
         `;
         console.log('[game-night] Finalization complete.');
+        setOutput('postgame');
         // Play-by-play → game flow / period / clutch tables, so postgame
         // insights can run minutes after the buzzer. Non-fatal: the nightly
         // pipeline picks up any game without a game_flow row.
