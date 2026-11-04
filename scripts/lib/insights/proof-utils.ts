@@ -175,6 +175,14 @@ export function pct(value: number, digits = 1): string {
 // ── Proof verification (pure; used by verify.ts) ─────────────────────────────
 
 /** Canonical JSON (sorted keys) so row comparison ignores key order. */
+/**
+ * A float aggregate as a proof column: rounded to 6 decimals, so float noise
+ * from row order can't make a re-run of the proof differ from the stored rows.
+ */
+export function proofValue(expr: string): string {
+  return `ROUND((${expr})::numeric, 6)::float8`;
+}
+
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (value !== null && typeof value === 'object') {

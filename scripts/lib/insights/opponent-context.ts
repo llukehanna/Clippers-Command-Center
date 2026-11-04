@@ -18,6 +18,7 @@ import {
   ordinal,
   rankPercentile,
   fmt,
+  proofValue,
 } from './proof-utils.js';
 import { InsightContext, REGULAR_SEASON, runProof } from './context.js';
 import { sql } from '../db.js';
@@ -29,7 +30,7 @@ function oppRankSql(metric: 'off_rating' | 'def_rating'): string {
   return `
     WITH team_values AS (
       SELECT a.team_id,
-             (SUM(a.${metric} * a.possessions) / NULLIF(SUM(a.possessions), 0))::float8 AS value
+             ${proofValue(`SUM(a.${metric}::float8 * a.possessions) / NULLIF(SUM(a.possessions::float8), 0)`)} AS value
       FROM advanced_team_game_stats a
       JOIN games g ON g.game_id = a.game_id
       WHERE g.season_id = $1::int AND ${REGULAR_SEASON}

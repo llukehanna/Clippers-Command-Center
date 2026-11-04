@@ -15,6 +15,7 @@ import {
   computeImportance,
   isReportableLeagueRank,
   ordinal,
+  proofValue,
 } from './proof-utils.js';
 import { clippersSeasonPlayers, InsightContext, REGULAR_SEASON, runProof } from './context.js';
 import { MIN_TEAM_GAMES, PLAYER_METRICS, TEAM_METRICS, type PlayerMetric } from './league-comparisons.js';
@@ -39,7 +40,7 @@ const YOY_TEAM_METRICS = TEAM_METRICS.filter((m) => ['off_rating', 'def_rating',
 function teamRankSql(aggregate: string, higherIsBetter: boolean): string {
   return `
     WITH team_values AS (
-      SELECT g.season_id, a.team_id, (${aggregate})::float8 AS value
+      SELECT g.season_id, a.team_id, ${proofValue(aggregate)} AS value
       FROM advanced_team_game_stats a
       JOIN games g ON g.game_id = a.game_id
       WHERE g.season_id IN ($1::int, $2::int) AND ${REGULAR_SEASON}
@@ -74,7 +75,7 @@ const RECORD_SQL = `
 function playerRiseSql(m: PlayerMetric): string {
   return `
     WITH per_season AS (
-      SELECT pb.player_id, g.season_id, COUNT(*)::int AS games, (${m.expr})::float8 AS value
+      SELECT pb.player_id, g.season_id, COUNT(*)::int AS games, ${proofValue(m.expr)} AS value
       FROM game_player_box_scores pb
       JOIN games g ON g.game_id = pb.game_id
       WHERE g.season_id IN ($1::int, $2::int) AND ${REGULAR_SEASON}
