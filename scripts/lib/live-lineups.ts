@@ -25,7 +25,7 @@ export interface LineupInputs {
   lacIsHome: boolean;
   period: number;              // game clock now
   clockSec: number;
-  usualMin: Record<string, number>; // NBA personId → last-10-game average minutes
+  usualMin: Record<string, number>; // NBA personId → last-10-game average minutes (last 5 early in a season)
   /** Scoreboard values, for a box score without timeouts/bonus. */
   fallback?: { timeouts: { lac: number | null; opp: number | null }; bonus: { lac: boolean; opp: boolean } };
 }
