@@ -36,7 +36,7 @@ export interface ModelContext {
   expectedSource: 'spread' | 'home_court';
   sigma: number;
   calibration: WpCalibration | null;
-  usualMin: Record<string, number>;          // NBA personId → last-10-game average minutes
+  usualMin: Record<string, number>;          // NBA personId → last-10 (early season: last-5) avg minutes
 }
 
 export function defaultModel(lacIsHome: boolean): ModelContext {
