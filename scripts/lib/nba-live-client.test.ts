@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { parseNBAClock, clockToSecondsRemaining, nbaGetConditional, parseFreshness, NbaHttpError } from './nba-live-client.js';
+import { parseNBAClock, clockToSecondsRemaining, nbaGetConditional, parseFreshness, NbaHttpError, fetchScoreboard } from './nba-live-client.js';
 
 describe('parseNBAClock', () => {
   it('converts ISO 8601 clock to MM:SS', () => {
@@ -82,5 +82,17 @@ describe('nbaGetConditional', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('denied', { status: 403 })));
     await expect(nbaGetConditional('/x.json')).rejects.toBeInstanceOf(NbaHttpError);
     await expect(nbaGetConditional('/x.json')).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe('fetchScoreboard', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // fallbackFeeds switches to ESPN only on an NbaHttpError 403; the scoreboard
+  // is the first fetch of every tick, so a plain Error kept the runner on the CDN.
+  it('throws NbaHttpError carrying the status on 403', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('denied', { status: 403 })));
+    await expect(fetchScoreboard()).rejects.toBeInstanceOf(NbaHttpError);
+    await expect(fetchScoreboard()).rejects.toMatchObject({ status: 403 });
   });
 });

@@ -553,7 +553,7 @@ async function nbaGet<T>(path: string): Promise<T> {
       signal: controller.signal,
       headers: NBA_CDN_HEADERS,
     });
-    if (!res.ok) throw new Error(`NBA CDN ${res.status}: ${path}`);
+    if (!res.ok) throw new NbaHttpError(res.status, path);
     return (await res.json()) as T;
   } catch (err) {
     if ((err as Error).name === 'AbortError') {
