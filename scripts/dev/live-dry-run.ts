@@ -6,10 +6,16 @@
 //   npx tsx scripts/dev/live-dry-run.ts --espn=DET@PHI [--date=2026-11-04] [--minutes=20]
 // --publish also pushes each save to LIVE_HUB_URL (if set) — pushes any live
 // NBA game to the hub during preseason, independent of Clippers game-night.
+//   npx tsx scripts/dev/live-dry-run.ts --prod=CHI@PHI [--force-cdn-403] [--nba-game=0022600201]
 // --espn polls ESPN (the runner's fallback since cdn.nba.com liveData went
 // 403) for that matchup on that US Eastern date (default today); with
 // DATABASE_URL set, players are mapped to NBA ids as the runner does. Each save
 // also prints on-court counts, box players and the newest play.
+// --prod runs the runner's exact feed stack instead — NBA CDN first, ESPN after
+// the first 403 (live-deps fallbackFeeds) — which --espn skips; that's where
+// the Nov 4 bug was. --force-cdn-403 answers every NBA request with a 403 so
+// the switch is exercised even when the CDN lets us in. --nba-game is only
+// needed for the CDN to match the game (default: found on the CDN scoreboard).
 
 import {
   fetchBoxscoreConditional,
@@ -18,7 +24,7 @@ import {
 } from '../lib/nba-live-client.js';
 import { createPoller, type PollerDeps } from '../lib/live-poller.js';
 import { hubPublisherFromEnv } from '../lib/live-publish.js';
-import { espnFeedsWith, loadPersonIdResolver } from '../lib/live-deps.js';
+import { espnFeedsWith, fallbackFeeds, loadPersonIdResolver, nbaFeeds } from '../lib/live-deps.js';
 import { nameResolver } from '../lib/espn-live-client.js';
 import type { LiveStateDoc } from '../../src/lib/types/live-state.js';
 
@@ -29,7 +35,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const etToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 
-async function espnSetup(matchup: string): Promise<{ feeds: Pick<PollerDeps, 'fetchScoreboard' | 'fetchPbp' | 'fetchBox'>; end: () => Promise<void> }> {
+async function espnSetup(matchup: string, nbaGameId = '0'): Promise<{ feeds: Pick<PollerDeps, 'fetchScoreboard' | 'fetchPbp' | 'fetchBox'>; end: () => Promise<void> }> {
   const [awayTricode, homeTricode] = matchup.toUpperCase().split('@');
   if (!awayTricode || !homeTricode) throw new Error('--espn wants AWAY@HOME, e.g. DET@PHI');
   const gameDate = arg('date', etToday());
@@ -43,7 +49,7 @@ async function espnSetup(matchup: string): Promise<{ feeds: Pick<PollerDeps, 'fe
     console.log('[dry-run] No DATABASE_URL: players keep ESPN ids (negative).');
   }
   console.log(`[dry-run] ESPN ${awayTricode} @ ${homeTricode} on ${gameDate}`);
-  return { feeds: espnFeedsWith(async () => ({ homeTricode, awayTricode, gameDate, resolve }), '0'), end };
+  return { feeds: espnFeedsWith(async () => ({ homeTricode, awayTricode, gameDate, resolve }), nbaGameId), end };
 }
 
 function detail(d: LiveStateDoc): string {
@@ -58,6 +64,8 @@ function detail(d: LiveStateDoc): string {
 async function main(): Promise<void> {
   const espn = arg('espn', '');
   if (espn) return espnRun(espn);
+  const prod = arg('prod', '');
+  if (prod) return espnRun(prod, true);
   let gameId = arg('nba-game', 'auto');
   if (gameId === 'auto') {
     const games = (await fetchScoreboard()).scoreboard.games;
@@ -102,12 +110,42 @@ async function main(): Promise<void> {
 }
 
 /** Poll one ESPN game through the real poller and report problems at the end. */
-async function espnRun(matchup: string): Promise<void> {
-  const { feeds, end: close } = await espnSetup(matchup);
+/** Every NBA CDN / stats request answers 403, as cdn.nba.com liveData has since late October. */
+function forceCdn403(): void {
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (/nba\.com|mediaops-stats/.test(url)) return new Response('Access Denied', { status: 403 });
+    return real(input, init);
+  }) as typeof fetch;
+}
+
+/** The game's id on the CDN scoreboard by matchup, or '0' when the CDN refuses us (ESPN doesn't need it). */
+async function cdnGameId(matchup: string): Promise<string> {
+  const [away, home] = matchup.toUpperCase().split('@');
+  try {
+    const g = (await fetchScoreboard()).scoreboard.games.find(
+      (x) => x.awayTeam.teamTricode === away && x.homeTeam.teamTricode === home
+    );
+    return g?.gameId ?? '0';
+  } catch {
+    return '0';
+  }
+}
+
+async function espnRun(matchup: string, prodPath = false): Promise<void> {
+  if (prodPath && flag('force-cdn-403')) forceCdn403();
+  const nbaGameId = prodPath ? arg('nba-game', '') || (await cdnGameId(matchup)) : '0';
+  const { feeds: espnFeeds, end: close } = await espnSetup(matchup, nbaGameId);
+  let switched = false;
+  const feeds = prodPath
+    ? fallbackFeeds(nbaFeeds, espnFeeds, false, (m) => { switched = true; console.log(`[dry-run] ${m}`); })
+    : espnFeeds;
+  if (prodPath) console.log(`[dry-run] production feed stack (NBA CDN → ESPN), NBA game id ${nbaGameId}`);
   const end = Date.now() + Number(arg('minutes', '20')) * 60_000;
   const problems = new Set<string>();
   let saves = 0;
-  const poller = createPoller('0', null, {
+  const poller = createPoller(nbaGameId, null, {
     ...feeds,
     saveState: async (d) => {
       saves++;
@@ -129,11 +167,12 @@ async function espnRun(matchup: string): Promise<void> {
   });
   while (Date.now() < end) {
     const r = await poller.tick();
-    if (r.status === 'not_on_scoreboard') problems.add('game not found on the ESPN scoreboard');
+    if (r.status === 'not_on_scoreboard') problems.add('game not found on the scoreboard (CDN: today only; ESPN: --date)');
     if (r.final) break;
     await sleep(r.delayMs);
   }
   await close();
+  if (prodPath) console.log(`[dry-run] source: ${switched ? 'ESPN (switched after an NBA 403)' : 'NBA CDN'}`);
   console.log(`[dry-run] ${saves} saves; ${problems.size ? `PROBLEMS:\n  - ${[...problems].join('\n  - ')}` : 'no problems'}`);
   if (problems.size) process.exitCode = 1;
 }
