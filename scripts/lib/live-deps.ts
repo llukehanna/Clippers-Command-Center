@@ -35,7 +35,7 @@ export interface NbaPollerDeps extends PollerDeps {
 
 type Feeds = Pick<PollerDeps, 'fetchScoreboard' | 'fetchPbp' | 'fetchBox'>;
 
-const nbaFeeds: Feeds = {
+export const nbaFeeds: Feeds = {
   fetchScoreboard,
   fetchPbp: fetchPlayByPlayConditional,
   fetchBox: fetchBoxscoreConditional,
