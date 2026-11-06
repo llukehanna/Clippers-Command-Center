@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { decideGameNightAction, FINAL_SAVE_MAX_ATTEMPTS, type GameNightTick } from './game-night-logic.js';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  decideGameNightAction,
+  FINAL_SAVE_MAX_ATTEMPTS,
+  mainHasNewRunnerCode,
+  RUNNER_CODE_PATHS,
+  type GameNightTick,
+} from './game-night-logic.js';
 
 function tick(over: Partial<GameNightTick> = {}): GameNightTick {
   return { final: false, saved: false, hasDoc: true, delayMs: 3_000, ...over };
@@ -65,5 +71,26 @@ describe('decideGameNightAction', () => {
   it('treats a final tick with no doc yet as not-final (defensive: keeps ticking, resets attempts)', () => {
     const d = decideGameNightAction(tick({ final: true, hasDoc: false, delayMs: 0 }), 2);
     expect(d).toEqual({ action: { type: 'continue', sleepMs: 0 }, finalAttempts: 0 });
+  });
+});
+
+describe('mainHasNewRunnerCode', () => {
+  const git = (fetch: number, diff: number) =>
+    vi.fn(async (args: string[]) => (args[0] === 'fetch' ? fetch : diff));
+
+  it('is true when the runner paths differ from origin/main', async () => {
+    const g = git(0, 1);
+    expect(await mainHasNewRunnerCode(g)).toBe(true);
+    expect(g).toHaveBeenLastCalledWith(['diff', '--quiet', 'HEAD', 'FETCH_HEAD', '--', ...RUNNER_CODE_PATHS]);
+  });
+
+  it('is false when nothing the runner uses changed', async () => {
+    expect(await mainHasNewRunnerCode(git(0, 0))).toBe(false);
+  });
+
+  it('is false when the fetch fails, without diffing', async () => {
+    const g = git(128, 1);
+    expect(await mainHasNewRunnerCode(g)).toBe(false);
+    expect(g).toHaveBeenCalledTimes(1);
   });
 });

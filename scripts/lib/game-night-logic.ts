@@ -60,3 +60,23 @@ export function decideGameNightAction(r: GameNightTick, finalAttempts: number): 
     finalAttempts: attempts,
   };
 }
+
+// ── Picking up fixes mid-run ─────────────────────────────────────────────────
+// A run checks out main at launch and can then sleep for hours before tip, so
+// a fix merged after launch would never reach it (on Nov 4 one landed 28
+// minutes after tip and the game stayed dark). The runner polls origin/main
+// and, when runner code changed, hands the game to a successor run on the new
+// code (it resumes from live_state).
+
+/** Paths whose change means a running runner is on stale code. */
+export const RUNNER_CODE_PATHS = ['scripts', 'src/lib', 'package.json', 'package-lock.json'];
+export const CODE_CHECK_MS = 2 * 60_000;
+
+/** Runs git with these args and resolves to its exit code. */
+export type Git = (args: string[]) => Promise<number>;
+
+/** True when origin/main has runner code this checkout doesn't. A failed fetch is "no". */
+export async function mainHasNewRunnerCode(git: Git): Promise<boolean> {
+  if ((await git(['fetch', '--quiet', '--depth=1', 'origin', 'main'])) !== 0) return false;
+  return (await git(['diff', '--quiet', 'HEAD', 'FETCH_HEAD', '--', ...RUNNER_CODE_PATHS])) === 1;
+}
