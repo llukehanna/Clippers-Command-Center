@@ -19,7 +19,11 @@
 // group, so a later launch just finds the game already final and exits. A run
 // that hits its time limit mid-game asks the workflow for a successor
 // (continue=true in $GITHUB_OUTPUT) rather than trusting the next hourly cron.
+// So does a run that sees new runner code on main (mainHasNewRunnerCode, checked
+// every 2 minutes while sleeping and polling), so a fix merged during a game
+// reaches it within minutes.
 
+import { execFile } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 
 import { sql } from './lib/db.js';
@@ -29,7 +33,12 @@ import { nbaPollerDeps } from './lib/live-deps.js';
 import type { Publisher } from './lib/live-publish.js';
 import { loadLiveSeq, loadModelContext } from './lib/live-store.js';
 import { finalizeGame } from './lib/finalize.js';
-import { decideGameNightAction, FINAL_SAVE_MAX_ATTEMPTS } from './lib/game-night-logic.js';
+import {
+  CODE_CHECK_MS,
+  decideGameNightAction,
+  FINAL_SAVE_MAX_ATTEMPTS,
+  mainHasNewRunnerCode,
+} from './lib/game-night-logic.js';
 import { ingestGamePbp } from './lib/pbp/ingest.js';
 
 const LEAD_MINUTES = Number(process.env.GAME_NIGHT_LEAD_MINUTES ?? 300);
@@ -59,6 +68,20 @@ function setOutput(key: 'continue' | 'postgame'): void {
 /** Tell the workflow to dispatch another run that continues this game. */
 const requestSuccessor = () => setOutput('continue');
 
+const git = (args: string[]) =>
+  new Promise<number>((resolve) => {
+    execFile('git', args, { timeout: 30_000 }, (err) => resolve(err ? (typeof err.code === 'number' ? err.code : -1) : 0));
+  });
+
+/** True (and a successor requested) when main has runner code this run lacks. Only on a main run in Actions. */
+async function handOffIfMainMoved(): Promise<boolean> {
+  if (process.env.GITHUB_ACTIONS !== 'true' || process.env.GITHUB_REF_NAME !== 'main') return false;
+  if (!(await mainHasNewRunnerCode(git))) return false;
+  console.warn('[game-night] main has new runner code; handing the game to a successor run on it.');
+  requestSuccessor();
+  return true;
+}
+
 async function main(): Promise<void> {
   const [candidate] = await findLiveCandidates(sql, LEAD_MINUTES);
   if (!candidate) {
@@ -74,7 +97,10 @@ async function main(): Promise<void> {
     const wait = tip.getTime() - PRE_TIP_MS - Date.now();
     if (wait > 0) {
       console.log(`[game-night] Sleeping ${Math.round(wait / 60_000)} min until 10 min before tip.`);
-      await sleep(wait);
+      for (let left = wait; left > 0; left = tip.getTime() - PRE_TIP_MS - Date.now()) {
+        await sleep(Math.min(left, CODE_CHECK_MS));
+        if (await handOffIfMainMoved()) return;
+      }
     }
   }
 
@@ -100,7 +126,15 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
   let saves = 0;
   let finalAttempts = 0;
 
+  let codeCheckedAt = Date.now();
   while (Date.now() - startedAt < MAX_RUNTIME_MS) {
+    if (Date.now() - codeCheckedAt >= CODE_CHECK_MS) {
+      codeCheckedAt = Date.now();
+      if (await handOffIfMainMoved()) {
+        await flushHub(deps.hub);
+        return;
+      }
+    }
     const r = await poller.tick();
 
     if (r.status === 'not_on_scoreboard') {
