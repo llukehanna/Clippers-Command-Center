@@ -12,7 +12,7 @@ import {
   type EspnSummaryJson,
 } from './espn-live-client';
 import { fallbackFeeds } from './live-deps';
-import { NbaHttpError } from './nba-live-client';
+import { fetchBoxscoreConditional, fetchPlayByPlayConditional, fetchScoreboard, NbaHttpError } from './nba-live-client';
 import { LAC_TEAM_ID, matchScoreboardGame } from './poll-live-logic';
 
 // TOR 125 @ LAC 118, 2026-11-02 (ESPN 401909920, NBA 0022600171), trimmed.
@@ -116,6 +116,23 @@ describe('fallbackFeeds', () => {
     fetchScoreboard: vi.fn(async () => tag as never),
     fetchPbp: vi.fn(async () => tag as never),
     fetchBox: vi.fn(async () => tag as never),
+  });
+
+  // The real fetchers, not mocks: on Nov 4 the fallback never fired because
+  // the scoreboard fetcher threw a plain Error while every test here mocked
+  // the NbaHttpError the fallback expects.
+  it('switches when the real NBA fetchers get a 403 response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('Access Denied', { status: 403 })));
+    try {
+      const espn = feeds('espn');
+      const real = { fetchScoreboard, fetchPbp: fetchPlayByPlayConditional, fetchBox: fetchBoxscoreConditional };
+      for (const k of ['fetchScoreboard', 'fetchPbp', 'fetchBox'] as const) {
+        const f = fallbackFeeds(real, espn);
+        expect(await (f[k] as (id?: string) => Promise<unknown>)('0022600186')).toBe('espn');
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('stays on the NBA CDN while it answers', async () => {
