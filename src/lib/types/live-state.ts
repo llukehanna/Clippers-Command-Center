@@ -102,7 +102,7 @@ export interface StintPlayer {
   pf: number;
   foul_trouble: boolean;
   min: number;                 // minutes tonight, 1 decimal
-  usual_min: number | null;    // last-10-game average
+  usual_min: number | null;    // last-10-game average (last 5 early in a season)
   pace: 'over' | 'under' | null;
 }
 
