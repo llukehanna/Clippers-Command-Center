@@ -37,6 +37,7 @@ import {
   CODE_CHECK_MS,
   decideGameNightAction,
   FINAL_SAVE_MAX_ATTEMPTS,
+  finalizeRetryDelay,
   mainHasNewRunnerCode,
 } from './lib/game-night-logic.js';
 import { ingestGamePbp } from './lib/pbp/ingest.js';
@@ -80,6 +81,30 @@ async function handOffIfMainMoved(): Promise<boolean> {
   console.warn('[game-night] main has new runner code; handing the game to a successor run on it.');
   requestSuccessor();
   return true;
+}
+
+/**
+ * Finalizes the game, retrying every 15 minutes while the run has time: the
+ * NBA often refuses box scores for a while after the buzzer. Out of time is
+ * a warning, not a failure — the nightly post-game pipeline finalizes any
+ * game still without box scores.
+ */
+async function finalizeWithRetries(gameDbId: string, nbaGameId: string): Promise<boolean> {
+  for (;;) {
+    try {
+      await finalizeGame(gameDbId, nbaGameId);
+      return true;
+    } catch (err) {
+      const msg = (err as Error).message;
+      const delay = finalizeRetryDelay(Date.now() - startedAt, MAX_RUNTIME_MS);
+      if (delay === null) {
+        console.log(`::warning title=Game not finalized::${msg} — the nightly post-game pipeline will finalize it.`);
+        return false;
+      }
+      console.warn(`[game-night] Finalization failed (${msg}); retrying in ${delay / 60_000} min.`);
+      await sleep(delay);
+    }
+  }
 }
 
 async function main(): Promise<void> {
@@ -187,8 +212,8 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
         return;
       }
       console.log('[game-night] Final. Finalizing…');
-      try {
-        await finalizeGame(candidate.game_id, finalDoc.nba_game_id);
+      await flushHub(deps.hub);
+      if (await finalizeWithRetries(candidate.game_id, finalDoc.nba_game_id)) {
         await sql`
           INSERT INTO app_kv (key, value, updated_at)
           VALUES ('pipeline:last_sync_at', ${sql.json(new Date().toISOString())}, now())
@@ -210,12 +235,7 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
         } catch (err) {
           console.error(`[game-night] Play-by-play ingest failed: ${(err as Error).message}`);
         }
-      } catch (err) {
-        // The nightly post-game pipeline retries games without box scores.
-        console.error(`[game-night] Finalization failed: ${(err as Error).message}`);
-        process.exitCode = 1;
       }
-      await flushHub(deps.hub);
       return;
     }
 
