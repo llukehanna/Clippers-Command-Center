@@ -80,3 +80,18 @@ export async function mainHasNewRunnerCode(git: Git): Promise<boolean> {
   if ((await git(['fetch', '--quiet', '--depth=1', 'origin', 'main'])) !== 0) return false;
   return (await git(['diff', '--quiet', 'HEAD', 'FETCH_HEAD', '--', ...RUNNER_CODE_PATHS])) === 1;
 }
+
+// ── Finalizing when the NBA refuses box scores ───────────────────────────────
+// Right after some games cdn.nba.com answers the box score with a 403 and the
+// stats.nba.com fallback times out from cloud IPs (Nov 13 and Nov 15); hours
+// later the nightly post-game pipeline gets it. So the runner keeps retrying
+// while it has time left, and gives up quietly when it doesn't.
+
+export const FINALIZE_RETRY_MS = 15 * 60_000;
+/** Time kept back after the last retry for the job to finish cleanly. */
+const FINALIZE_MARGIN_MS = 5 * 60_000;
+
+/** Delay before the next finalize attempt, or null when the run is out of time. */
+export function finalizeRetryDelay(elapsedMs: number, maxRuntimeMs: number): number | null {
+  return maxRuntimeMs - elapsedMs >= FINALIZE_RETRY_MS + FINALIZE_MARGIN_MS ? FINALIZE_RETRY_MS : null;
+}

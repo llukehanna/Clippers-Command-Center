@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   decideGameNightAction,
+  FINALIZE_RETRY_MS,
+  finalizeRetryDelay,
   FINAL_SAVE_MAX_ATTEMPTS,
   mainHasNewRunnerCode,
   RUNNER_CODE_PATHS,
@@ -92,5 +94,19 @@ describe('mainHasNewRunnerCode', () => {
     const g = git(128, 1);
     expect(await mainHasNewRunnerCode(g)).toBe(false);
     expect(g).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('finalizeRetryDelay', () => {
+  const MAX = 330 * 60_000;
+
+  it('waits 15 minutes while the run has time for another attempt', () => {
+    expect(finalizeRetryDelay(180 * 60_000, MAX)).toBe(FINALIZE_RETRY_MS);
+    expect(finalizeRetryDelay(MAX - 20 * 60_000, MAX)).toBe(FINALIZE_RETRY_MS);
+  });
+
+  it('gives up when an attempt plus the shutdown margin would not fit', () => {
+    expect(finalizeRetryDelay(MAX - 19 * 60_000, MAX)).toBeNull();
+    expect(finalizeRetryDelay(MAX, MAX)).toBeNull();
   });
 });
