@@ -25,6 +25,7 @@ import type {
   ScoreboardTeam,
   TeamStatistics,
 } from '../../src/lib/types/live';
+import { NBA_TEAM_IDS } from './nba-teams';
 
 const ESPN_SITE = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -32,15 +33,8 @@ const REQUEST_TIMEOUT_MS = 15_000;
 // ESPN abbreviation → NBA tricode, where they differ.
 const ESPN_TO_NBA: Record<string, string> = { GS: 'GSW', NY: 'NYK', SA: 'SAS', NO: 'NOP', UTAH: 'UTA', WSH: 'WAS' };
 
-/** NBA team ids (stats.nba.com / cdn.nba.com) by tricode. */
-export const NBA_TEAM_IDS: Record<string, number> = {
-  ATL: 1610612737, BOS: 1610612738, CLE: 1610612739, NOP: 1610612740, CHI: 1610612741,
-  DAL: 1610612742, DEN: 1610612743, GSW: 1610612744, HOU: 1610612745, LAC: 1610612746,
-  LAL: 1610612747, MIA: 1610612748, MIL: 1610612749, MIN: 1610612750, BKN: 1610612751,
-  NYK: 1610612752, ORL: 1610612753, IND: 1610612754, PHI: 1610612755, PHX: 1610612756,
-  POR: 1610612757, SAC: 1610612758, SAS: 1610612759, OKC: 1610612760, TOR: 1610612761,
-  UTA: 1610612762, MEM: 1610612763, WAS: 1610612764, DET: 1610612765, CHA: 1610612766,
-};
+/** Re-exported for existing importers; the map lives in ./nba-teams. */
+export { NBA_TEAM_IDS };
 
 export const tricodeOf = (abbr: string | undefined): string => (abbr ? ESPN_TO_NBA[abbr] ?? abbr : '');
 const teamIdOf = (abbr: string | undefined): number => NBA_TEAM_IDS[tricodeOf(abbr)] ?? 0;
