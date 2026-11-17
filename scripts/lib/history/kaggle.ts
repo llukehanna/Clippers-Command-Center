@@ -159,7 +159,7 @@ export function parseGame(row: Row): KaggleGame | null {
   return {
     nbaGameId,
     seasonId: seasonIdOfGame(nbaGameId),
-    gameDate: (row[c.gameDate] ?? '').trim().slice(0, 10),
+    gameDate: reqDate(row[c.gameDate], 'Games.csv', c.gameDate),
     homeFranchiseId: reqNum(row[c.homeId], 'Games.csv', c.homeId),
     awayFranchiseId: reqNum(row[c.awayId], 'Games.csv', c.awayId),
     homeScore: reqNum(row[c.homeScore], 'Games.csv', c.homeScore),
@@ -170,6 +170,18 @@ export function parseGame(row: Row): KaggleGame | null {
     awayCity: row[c.awayCity] ?? '',
     awayName: row[c.awayName] ?? '',
   };
+}
+
+/**
+ * The leading YYYY-MM-DD of a date or date-time cell. Throws KaggleRowError for
+ * a blank, malformed or impossible date (2019-02-30), so the row is counted and
+ * skipped instead of failing a ::date cast mid-run.
+ */
+function reqDate(cell: string | undefined, file: string, field: string): string {
+  const d = (cell ?? '').trim().slice(0, 10);
+  const t = /^\d{4}-\d{2}-\d{2}$/.test(d) ? Date.parse(`${d}T00:00:00Z`) : NaN;
+  if (Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== d) throw new KaggleRowError(file, field, cell ?? '');
+  return d;
 }
 
 /** Decimal minutes ("34.5") to "MM:SS"; blank -> null. */
@@ -188,14 +200,36 @@ function reqHome(cell: string | undefined): boolean {
   return v;
 }
 
+/**
+ * Untracked stats are null by era. The first season (start year) each stat was
+ * recorded; for earlier games parsePlayerGame forces it to null whatever the
+ * cell says, because NBA.com-derived data can write 0 for "not recorded".
+ * Source: the spec's "Data completeness by era" section
+ * (Docs/superpowers/specs/2026-11-17-history-archive-games-design.md, from
+ * Basketball-Reference's coverage table): steals and blocks start in 1973-74
+ * (offensive/defensive rebounds with them), turnovers in 1977-78, 3-pointers in
+ * 1979-80. Plus-minus is NBA.com's, from 1996-97. Total rebounds, points, FG and
+ * FT are complete for every era and are never masked.
+ */
+export const STAT_TRACKED_FROM_SEASON = {
+  steals: 1973, blocks: 1973, offReb: 1973, defReb: 1973,
+  turnovers: 1977,
+  fg3Made: 1979, fg3Attempted: 1979,
+  plusMinus: 1996,
+} as const satisfies Partial<Record<keyof KagglePlayerGame, number>>;
+
 export function parsePlayerGame(row: Row): KagglePlayerGame {
   const c = PLAYER_STATS_COLUMNS;
+  const nbaGameId = reqNum(row[c.gameId], 'PlayerStatistics.csv', c.gameId);
+  const season = seasonIdOfGame(nbaGameId);
   const n = (k: keyof typeof c) => {
     const h = c[k];
+    const from = (STAT_TRACKED_FROM_SEASON as Partial<Record<string, number>>)[k];
+    if (from !== undefined && season < from) return null;
     return h ? num(row[h]) : null;
   };
   return {
-    nbaGameId: reqNum(row[c.gameId], 'PlayerStatistics.csv', c.gameId),
+    nbaGameId,
     personId: reqNum(row[c.personId], 'PlayerStatistics.csv', c.personId),
     firstName: row[c.firstName] ?? '',
     lastName: row[c.lastName] ?? '',
@@ -221,4 +255,33 @@ export function parsePerson(row: Row): KagglePerson {
     lastName: row[c.lastName] ?? '',
     birthdate: b === '' ? null : b,
   };
+}
+
+// ── Raw-cell report ──────────────────────────────────────────────────────────
+// For the import report: how the CSV writes stats in the partly tracked eras,
+// read from the raw cells BEFORE the era mask, so Luke can judge whether 1973-82
+// seasons use 0 for "not recorded".
+
+export const RAW_CELL_STATS = ['steals', 'blocks', 'turnovers', 'offReb', 'fg3Attempted', 'minutes'] as const;
+export type RawCellStat = (typeof RAW_CELL_STATS)[number];
+export const RAW_CELL_SEASONS = { from: 1970, to: 1985 } as const;
+
+/** blank: empty or unreadable (imported as null); zero: 0; nonZero: any other number. */
+export type CellCounts = { blank: number; zero: number; nonZero: number };
+export type RawCellTally = Record<number, Record<RawCellStat, CellCounts>>;
+
+/** Adds one row's raw cells to the tally when its season is in RAW_CELL_SEASONS. */
+export function tallyRawCells(tally: RawCellTally, row: Row, nbaGameId: number): void {
+  const season = seasonIdOfGame(nbaGameId);
+  if (season < RAW_CELL_SEASONS.from || season > RAW_CELL_SEASONS.to) return;
+  const bySeason = (tally[season] ??= Object.fromEntries(
+    RAW_CELL_STATS.map((k) => [k, { blank: 0, zero: 0, nonZero: 0 }]),
+  ) as Record<RawCellStat, CellCounts>);
+  for (const k of RAW_CELL_STATS) {
+    const v = num(row[PLAYER_STATS_COLUMNS[k]]);
+    const counts = bySeason[k];
+    if (v === null) counts.blank++;
+    else if (v === 0) counts.zero++;
+    else counts.nonZero++;
+  }
 }

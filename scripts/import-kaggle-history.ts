@@ -26,8 +26,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { sql } from './lib/db.js';
 import {
-  streamCsv, assertHeaders, parseGame, parsePlayerGame, parsePerson, KaggleRowError, seasonIdOfGame,
-  REQUIRED_GAMES_COLUMNS, REQUIRED_PLAYER_STATS_COLUMNS, REQUIRED_PLAYERS_COLUMNS, GAMES_COLUMNS,
+  streamCsv, assertHeaders, parseGame, parsePlayerGame, parsePerson, KaggleRowError, seasonIdOfGame, tallyRawCells,
+  RAW_CELL_STATS, RAW_CELL_SEASONS, type RawCellTally, REQUIRED_GAMES_COLUMNS, REQUIRED_PLAYER_STATS_COLUMNS, REQUIRED_PLAYERS_COLUMNS, GAMES_COLUMNS,
   type KaggleGame, type KagglePlayerGame, type KagglePerson,
 } from './lib/history/kaggle.js';
 import { matchPlayers } from './lib/history/match-players.js';
@@ -131,12 +131,22 @@ async function main() {
 
   const rows: KagglePlayerGame[] = [];
   let rowsWithoutGame = 0;
+  // Raw cells (before the era mask) of played rows in 1970-85 games, every team, by season.
+  const rawCells: RawCellTally = {};
   await readCsv(path.join(args.dir, 'PlayerStatistics.csv'), REQUIRED_PLAYER_STATS_COLUMNS, rowErrors, (row) => {
     const r = parsePlayerGame(row);
+    if (parsedGameIds.has(r.nbaGameId) && played(r)) tallyRawCells(rawCells, row, r.nbaGameId);
     if (keptGames.has(r.nbaGameId)) rows.push(r);
     else if (!parsedGameIds.has(r.nbaGameId) && !skippedByDesign.has(r.nbaGameId) && inRange(seasonIdOfGame(r.nbaGameId))) rowsWithoutGame++;
   });
   log(`PlayerStatistics.csv: kept ${rows.length} rows (${rowsWithoutGame} rows have no game in Games.csv)`);
+  const rawSeasons = Object.keys(rawCells).map(Number).sort((a, b) => a - b);
+  if (rawSeasons.length) {
+    log(`Raw cells in played rows, ${RAW_CELL_SEASONS.from}-${RAW_CELL_SEASONS.to} (blank/zero/non-zero, before the era mask):`);
+    for (const s of rawSeasons) {
+      log(`  ${s}: ${RAW_CELL_STATS.map((k) => { const c = rawCells[s][k]; return `${k} ${c.blank}/${c.zero}/${c.nonZero}`; }).join(', ')}`);
+    }
+  }
 
   // ── Checks and matching (read-only) ────────────────────────────────────────
   const db = sql as unknown as Db;
@@ -286,7 +296,11 @@ async function main() {
         birthdate: a.person.birthdate, candidates: a.candidates,
       })),
     },
-    gameMatches: matches, eraProblems: problems, eraTeamsMissing, recordMismatches, pointsVsScore, rowErrors, rowsWithoutGame, recordsStart,
+    gameMatches: matches, eraProblems: problems, eraTeamsMissing, recordMismatches, pointsVsScore,
+    // Per season and stat: blank / zero / non-zero raw cells in played rows, before the era mask
+    // (STAT_TRACKED_FROM_SEASON in kaggle.ts). Shows whether partly tracked seasons write 0 for "not recorded".
+    rawCellsByEra: rawCells,
+    rowErrors, rowsWithoutGame, recordsStart,
   };
   fs.mkdirSync(path.dirname(args.report), { recursive: true });
   fs.writeFileSync(args.report, JSON.stringify(report, null, 2));
