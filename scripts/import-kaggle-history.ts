@@ -36,10 +36,11 @@ import {
 } from './lib/history/season-totals.js';
 import { planLoad, stepGames, guardAllows, estimateBytes, eraProblems, GAP_FILL_SEASON, type LoadStep } from './lib/history/import-plan.js';
 import {
-  type Db, loadTeamIdByFranchise, loadDbPlayers, loadPlayerIdByPerson, databaseBytes, idsWithPlayerBoxScores,
+  type Db, loadTeamIdByFranchise, loadDbPlayers, loadPlayerIdByPerson, databaseBytes, ambiguousMatchOf, type AmbiguousGameMatch,
   writePlayers, upsertSeasonRows, upsertEraNames, writeSeasonGames, replaceSeasonTables, loadCoverage,
   setBackfilledThrough,
 } from './lib/history/write.js';
+import { classifyGames } from './lib/history/match-games.js';
 import { resolveRecordsStart } from './lib/record-book/records-start.js';
 
 const log = (msg: string) => console.log(`[import-kaggle] ${msg}`);
@@ -196,13 +197,12 @@ async function main() {
   }
   if (tableSeasons.length && !stages.some((x) => x.scope === 'tables')) stages.push({ scope: 'tables' });
 
-  const alreadyLoaded = args.dryRun ? await idsWithPlayerBoxScores(db, [...writableGames.keys()]) : new Set<number>();
   const startBytes = await databaseBytes(db);
   let simulatedBytes = startBytes;
   const perSeason: Array<Record<string, unknown>> = [];
   const skippedStages: string[] = [];
   let stopped = false;
-  let reused = 0;
+  const matches = { reused: 0, nearReused: 0, nearSkipped: 0, ambiguous: [] as AmbiguousGameMatch[] };
 
   for (const stage of stages) {
     const label = stage.scope === 'tables' ? 'season tables' : `${stage.seasonId} ${stage.scope}`;
@@ -237,16 +237,28 @@ async function main() {
     }
     const ambiguousRows = stageRows.filter((r) => played(r) && ambiguous.has(r.personId)).length;
     if (args.dryRun) {
-      const pending = stageGames.filter((g) => !alreadyLoaded.has(g.nbaGameId));
-      const pendingIds = new Set(pending.map((g) => g.nbaGameId));
+      // The same read-only matching a real run does.
+      const decided = await classifyGames(db, stageGames, teamIdByFranchise);
+      const count = (pred: (d: (typeof decided)[number]['decision']) => boolean) => decided.filter((c) => pred(c.decision)).length;
+      const pendingIds = new Set(decided.filter((c) => c.decision.action !== 'skip').map((c) => c.game.nbaGameId));
       const playerRows = stageRows.filter((r) => pendingIds.has(r.nbaGameId) && played(r) && !ambiguous.has(r.personId)).length;
-      perSeason.push({ stage: label, games: pending.length, alreadyLoaded: stageGames.length - pending.length, playerRows, teamRows: pending.length * 2, ambiguousRows, estimatedBytes: estimate });
-      log(`${label}: would write ${pending.length} games, ${playerRows} player rows (~${mb(estimate)})`);
+      const stageAmbiguous = decided.map(ambiguousMatchOf).filter((m): m is AmbiguousGameMatch => m !== null);
+      const counts = {
+        games: pendingIds.size, inserted: count((d) => d.action === 'insert'), updated: count((d) => d.action === 'update'),
+        reused: count((d) => d.action === 'reuse' && !d.near), nearReused: count((d) => d.action === 'reuse' && d.near),
+        skipped: count((d) => d.action === 'skip'), alreadyLoaded: count((d) => d.action === 'skip' && d.reason === 'has_box'),
+        nearSkipped: count((d) => d.action === 'skip' && d.reason === 'has_box' && d.near),
+      };
+      matches.reused += counts.reused; matches.nearReused += counts.nearReused; matches.nearSkipped += counts.nearSkipped;
+      matches.ambiguous.push(...stageAmbiguous);
+      perSeason.push({ stage: label, ...counts, ambiguousMatches: stageAmbiguous, playerRows, teamRows: pendingIds.size * 2, ambiguousRows, estimatedBytes: estimate });
+      log(`${label}: would write ${pendingIds.size} games (${counts.nearReused} day-off reuses), ${playerRows} player rows; ${counts.skipped} skipped, ${stageAmbiguous.length} ambiguous matches (~${mb(estimate)})`);
     } else {
       const res = await sql.begin((tx) => writeSeasonGames(tx as unknown as Db, stageGames, stageRows, { teamIdByFranchise, playerIdByPerson }));
-      reused += res.reused;
+      matches.reused += res.reused; matches.nearReused += res.nearReused; matches.nearSkipped += res.nearSkipped;
+      matches.ambiguous.push(...res.ambiguousMatches);
       perSeason.push({ stage: label, ...res, estimatedBytes: estimate });
-      log(`${label}: ${res.inserted} new, ${res.updated} updated, ${res.reused} reused, ${res.skipped} skipped; ${res.playerRows} player rows, ${res.unmappedPlayerRows} skipped (ambiguous). Database ${mb(await databaseBytes(db))}`);
+      log(`${label}: ${res.inserted} new, ${res.updated} updated, ${res.reused} reused, ${res.nearReused} day-off reused, ${res.skipped} skipped (${res.ambiguousMatches.length} ambiguous matches); ${res.playerRows} player rows, ${res.unmappedPlayerRows} skipped (ambiguous). Database ${mb(await databaseBytes(db))}`);
     }
   }
 
@@ -267,12 +279,13 @@ async function main() {
         birthdate: a.person.birthdate, candidates: a.candidates,
       })),
     },
-    reused, eraProblems: problems, eraTeamsMissing, recordMismatches, rowErrors, rowsWithoutGame, recordsStart,
+    gameMatches: matches, eraProblems: problems, eraTeamsMissing, recordMismatches, rowErrors, rowsWithoutGame, recordsStart,
   };
   fs.mkdirSync(path.dirname(args.report), { recursive: true });
   fs.writeFileSync(args.report, JSON.stringify(report, null, 2));
   log(`Players: ${match.matched.size} matched, ${match.toCreate.length} new, ${match.backfillNbaId.length} id backfills, ${match.ambiguous.length} ambiguous`);
   log(`W-L mismatches vs official Clippers records: ${recordMismatches.length}. Row errors: ${Object.entries(rowErrors).map(([f, e]) => `${f} ${e.count}`).join(', ')}`);
+  log(`Existing rows: ${matches.reused} reused, ${matches.nearReused} reused a day off, ${matches.nearSkipped} day-off rows with box scores left alone, ${matches.ambiguous.length} ambiguous (skipped; see report)`);
   log(`Report: ${args.report}`);
 
   if (stopped) {
