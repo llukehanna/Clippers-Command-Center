@@ -20,8 +20,6 @@ interface BoxScoreProps {
   linkPlayers?: boolean
   /** Live box scores carry NBA person ids as player_id — enables headshots. */
   playerIdsAreNba?: boolean
-  /** Show a column total as "—" when any player's cell in it is missing (old eras). */
-  dashNullTotals?: boolean
   /** Era display names by team_abbr (history); falls back to the current-franchise lookup. */
   names?: Record<string, string>
   className?: string
@@ -52,7 +50,7 @@ function shortName(name: string) {
 }
 
 /** Box score with team tabs; starters first, column leaders in bold, totals row. */
-export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, dashNullTotals = false, names, className }: BoxScoreProps) {
+export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, names, className }: BoxScoreProps) {
   const ordered = React.useMemo(
     () => [...teams].sort((a, b) => (isLacTeam(a) ? -1 : isLacTeam(b) ? 1 : 0)),
     [teams],
@@ -149,7 +147,7 @@ export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, d
             </Td>
             {COLS.map((c) => (
               <Td key={c} strong className="border-line-2">
-                {c === '+/-' || c === 'MIN' ? '' : dashNullTotals && players.some((p) => p[c] == null) ? '—' : cell(team.totals[c], '')}
+                {c === '+/-' || c === 'MIN' ? '' : team.totals[c] === null ? '—' : cell(team.totals[c], '')}
               </Td>
             ))}
           </tr>

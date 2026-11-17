@@ -107,7 +107,6 @@ export default async function HistoryGamePage({ params }: Params) {
           {box_score.available && box_score.teams.length ? (
             <BoxScore
               teams={box_score.teams}
-              dashNullTotals
               names={{ [lacTeam.abbreviation]: lac.name, [oppTeam.abbreviation]: teamName(oppTeam.abbreviation, oppTeam.name) }}
             />
           ) : (

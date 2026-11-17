@@ -65,30 +65,57 @@ interface InsightRow {
   proof_result: unknown;
 }
 
-function formatFraction(made: number | null, att: number | null): string {
-  return `${made ?? 0}-${att ?? 0}`;
+function formatFraction(made: number | null, att: number | null): string | null {
+  return made == null || att == null ? null : `${made}-${att}`;
 }
 
-function buildTeamTotals(players: PlayerBoxRow[]): Record<string, unknown> {
-  const pts = players.reduce((sum, p) => sum + (p.points ?? 0), 0);
-  const reb = players.reduce((sum, p) => sum + (p.rebounds ?? 0), 0);
-  const ast = players.reduce((sum, p) => sum + (p.assists ?? 0), 0);
-  const to = players.reduce((sum, p) => sum + (p.turnovers ?? 0), 0);
-  const fgMade = players.reduce((sum, p) => sum + (p.fg_made ?? 0), 0);
-  const fgAtt = players.reduce((sum, p) => sum + (p.fg_attempted ?? 0), 0);
-  const fg3Made = players.reduce((sum, p) => sum + (p.fg3_made ?? 0), 0);
-  const fg3Att = players.reduce((sum, p) => sum + (p.fg3_attempted ?? 0), 0);
-  const ftMade = players.reduce((sum, p) => sum + (p.ft_made ?? 0), 0);
-  const ftAtt = players.reduce((sum, p) => sum + (p.ft_attempted ?? 0), 0);
+/** Seconds from "PT34M12.00S" / "34:12"; null when unparseable. */
+function minutesSeconds(m: string | null): number | null {
+  if (m == null) return null;
+  const iso = m.match(/^PT(?:(\d+)M)?(?:([\d.]+)S)?$/);
+  if (iso) return parseInt(iso[1] ?? '0', 10) * 60 + parseFloat(iso[2] ?? '0');
+  const clock = m.match(/^(\d+):(\d+)/);
+  if (clock) return parseInt(clock[1], 10) * 60 + parseInt(clock[2], 10);
+  return null;
+}
+
+/** Played = minutes above 0, or minutes unknown and points recorded (old eras). */
+function didPlay(p: PlayerBoxRow): boolean {
+  const secs = minutesSeconds(p.minutes);
+  return secs != null ? secs > 0 : p.points != null;
+}
+
+/**
+ * Team totals over the players who played. A total is null when any of them has
+ * that stat untracked (old eras), so the UI shows a dash instead of a false 0.
+ */
+function buildTeamTotals(all: PlayerBoxRow[]): Record<string, unknown> {
+  const players = all.filter(didPlay);
+  const sum = (get: (p: PlayerBoxRow) => number | null): number | null => {
+    let t = 0;
+    for (const p of players) {
+      const v = get(p);
+      if (v == null) return null;
+      t += v;
+    }
+    return t;
+  };
+  const frac = (made: (p: PlayerBoxRow) => number | null, att: (p: PlayerBoxRow) => number | null) => {
+    const m = sum(made);
+    const a = sum(att);
+    return m == null || a == null ? null : `${m}-${a}`;
+  };
 
   return {
-    PTS: pts,
-    REB: reb,
-    AST: ast,
-    TO: to,
-    FG: formatFraction(fgMade, fgAtt),
-    '3PT': formatFraction(fg3Made, fg3Att),
-    FT: formatFraction(ftMade, ftAtt),
+    PTS: sum((p) => p.points),
+    REB: sum((p) => p.rebounds),
+    AST: sum((p) => p.assists),
+    STL: sum((p) => p.steals),
+    BLK: sum((p) => p.blocks),
+    TO: sum((p) => p.turnovers),
+    FG: frac((p) => p.fg_made, (p) => p.fg_attempted),
+    '3PT': frac((p) => p.fg3_made, (p) => p.fg3_attempted),
+    FT: frac((p) => p.ft_made, (p) => p.ft_attempted),
   };
 }
 
