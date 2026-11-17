@@ -291,14 +291,26 @@ async function main(): Promise<void> {
         OR g.home_team_id IN (SELECT team_id FROM teams WHERE abbreviation = 'LAC')
         OR g.away_team_id IN (SELECT team_id FROM teams WHERE abbreviation = 'LAC')
       )
-      -- Pre-2019 (Kaggle history) games: only when both team boxes carry the
-      -- possession inputs. Turnovers and offensive/defensive rebounds were not
-      -- recorded before the late 1970s; JS would read those nulls as 0 and store
-      -- made-up tov_pct / reb_pct / usage. Such games get no advanced rows and,
-      -- by this same filter, are never re-selected.
+      -- Completeness gate (R21): pre-2019 games and every game with a Kaggle team
+      -- box (raw_payload {"source":"kaggle"}, any season) qualify only when both
+      -- team boxes carry the possession inputs. Turnovers and offensive/defensive
+      -- rebounds are null where they weren't recorded (before the late 1970s, or a
+      -- Kaggle side with no player rows); JS would read those nulls as 0 and store
+      -- made-up tov_pct / reb_pct / usage. Such games get no advanced rows and, by
+      -- this same filter, are never re-selected. Live-only 2019+ games and
+      -- null-season games without a Kaggle box are selected exactly as before.
+      -- jsonb_typeof guards rows whose raw_payload is a JSON string, not an object
+      -- (as in periods-candidates.ts).
       AND (
-        g.season_id IS NULL
-        OR g.season_id >= ${FULL_ROLLING_FIRST_SEASON}
+        (
+          (g.season_id IS NULL OR g.season_id >= ${FULL_ROLLING_FIRST_SEASON})
+          AND NOT EXISTS (
+            SELECT 1 FROM game_team_box_scores k
+            WHERE k.game_id = g.game_id
+              AND jsonb_typeof(k.raw_payload) = 'object'
+              AND COALESCE(k.raw_payload->>'source', '') = 'kaggle'
+          )
+        )
         OR (
           SELECT COUNT(*) FROM game_team_box_scores b
           WHERE b.game_id = g.game_id
