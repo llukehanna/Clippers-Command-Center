@@ -5,7 +5,7 @@
 // Insights queried from `insights` table (NOT `generated_insights`).
 
 import { json, type ApiResult } from './result';
-import { sql } from '@/src/lib/db';
+import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { formatClock } from '@/src/lib/format';
 
@@ -25,6 +25,8 @@ interface GameDetailRow {
   away_abbr: string;
   home_name: string;
   away_name: string;
+  home_is_lac: boolean;
+  away_is_lac: boolean;
 }
 
 interface BoxScoreCountRow {
@@ -156,7 +158,9 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
         COALESCE(he.abbreviation, ht.abbreviation) AS home_abbr,
         COALESCE(ae.abbreviation, at.abbreviation) AS away_abbr,
         COALESCE(he.name, ht.name) AS home_name,
-        COALESCE(ae.name, at.name) AS away_name
+        COALESCE(ae.name, at.name) AS away_name,
+        (ht.nba_team_id = ${LAC_NBA_TEAM_ID}) AS home_is_lac,
+        (at.nba_team_id = ${LAC_NBA_TEAM_ID}) AS away_is_lac
       FROM games g
       JOIN teams ht ON g.home_team_id = ht.team_id
       JOIN teams at ON g.away_team_id = at.team_id
@@ -189,6 +193,7 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
       columns: string[];
       teams: Array<{
         team_abbr: string;
+        is_lac: boolean;
         players: ReturnType<typeof mapPlayerRow>[];
         totals: Record<string, unknown>;
       }>;
@@ -233,11 +238,13 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
         teams: [
           {
             team_abbr: game.home_abbr,
+            is_lac: game.home_is_lac,
             players: homePlayers.map(mapPlayerRow),
             totals: buildTeamTotals(homePlayers),
           },
           {
             team_abbr: game.away_abbr,
+            is_lac: game.away_is_lac,
             players: awayPlayers.map(mapPlayerRow),
             totals: buildTeamTotals(awayPlayers),
           },
@@ -249,8 +256,8 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
       boxScore = {
         columns: BOX_SCORE_COLUMNS,
         teams: [
-          { team_abbr: game.home_abbr, players: [], totals: {} },
-          { team_abbr: game.away_abbr, players: [], totals: {} },
+          { team_abbr: game.home_abbr, is_lac: game.home_is_lac, players: [], totals: {} },
+          { team_abbr: game.away_abbr, is_lac: game.away_is_lac, players: [], totals: {} },
         ],
         available: false,
       };
@@ -311,8 +318,8 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
           game_id: game.game_id,
           game_date: game.game_date,
           season_id: game.season_id,
-          home_team: { team_id: game.home_team_id, abbreviation: game.home_abbr, name: game.home_name },
-          away_team: { team_id: game.away_team_id, abbreviation: game.away_abbr, name: game.away_name },
+          home_team: { team_id: game.home_team_id, abbreviation: game.home_abbr, name: game.home_name, is_lac: game.home_is_lac },
+          away_team: { team_id: game.away_team_id, abbreviation: game.away_abbr, name: game.away_name, is_lac: game.away_is_lac },
           status: game.status,
           home_score: game.home_score,
           away_score: game.away_score,

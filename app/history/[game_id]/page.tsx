@@ -37,9 +37,12 @@ export default async function HistoryGamePage({ params }: Params) {
   if (!data) notFound()
 
   const { game, box_score } = data
-  const lacHome = game.home_team.abbreviation === 'LAC'
-  const lac = { abbr: 'LAC', score: lacHome ? game.home_score : game.away_score }
-  const oppAbbr = lacHome ? game.away_team.abbreviation : game.home_team.abbreviation
+  // The Clippers side is identified by team, not tricode (era abbreviations are BUF/SDC/LAC).
+  const lacHome = game.home_team.is_lac ?? game.home_team.abbreviation === 'LAC'
+  const lacTeam = lacHome ? game.home_team : game.away_team
+  const oppTeam = lacHome ? game.away_team : game.home_team
+  const lac = { abbr: lacTeam.abbreviation, name: teamName(lacTeam.abbreviation, lacTeam.name), score: lacHome ? game.home_score : game.away_score }
+  const oppAbbr = oppTeam.abbreviation
   const opp = { abbr: oppAbbr, score: lacHome ? game.away_score : game.home_score }
   const insights: Insight[] = (data.insights ?? []).map((i) => ({ ...i, category: i.category ?? i.proof?.summary ?? '' }))
 
@@ -80,14 +83,14 @@ export default async function HistoryGamePage({ params }: Params) {
       <section className="enter" aria-label="Final score">
         <Scoreboard
           lac={lac}
-          opp={{ ...opp, name: teamName(oppAbbr) }}
+          opp={{ ...opp, name: teamName(oppAbbr, oppTeam.name) }}
           lacHome={lacHome}
           mode="final"
           status={(game.periods?.length ?? 0) > 4 ? 'Final/OT' : game.status}
           dateLabel={formatDayLong(game.game_date)}
           tag={idx >= 0 ? gameTypeLabel(played[idx].game_type) : null}
         >
-          <LineScore periods={game.periods ?? []} lacHome={lacHome} oppAbbr={oppAbbr} />
+          <LineScore periods={game.periods ?? []} lacHome={lacHome} oppAbbr={oppAbbr} lacAbbr={lac.abbr} />
         </Scoreboard>
 
       </section>
@@ -98,8 +101,15 @@ export default async function HistoryGamePage({ params }: Params) {
       >
         <div className="min-w-0">
           <Eyebrow>Box score</Eyebrow>
+          {game.season_id < 1983 && (
+            <p className="m-0 mb-3 text-[13px] text-mute">Box score from historical records; some stats weren&apos;t tracked in this era.</p>
+          )}
           {box_score.available && box_score.teams.length ? (
-            <BoxScore teams={box_score.teams} />
+            <BoxScore
+              teams={box_score.teams}
+              dashNullTotals
+              names={{ [lacTeam.abbreviation]: lac.name, [oppTeam.abbreviation]: teamName(oppTeam.abbreviation, oppTeam.name) }}
+            />
           ) : (
             <EmptyState title="No box score for this game" body="Player stats weren't captured for this game." />
           )}

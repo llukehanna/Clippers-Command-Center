@@ -131,6 +131,8 @@ export interface BoxScorePlayer {
 
 export interface BoxScoreTeam {
   team_abbr: string
+  /** History only: true for the Clippers side, decided by team identity (era abbreviations vary). */
+  is_lac?: boolean
   players: BoxScorePlayer[]
   totals: Record<string, BoxValue>
 }
@@ -261,8 +263,8 @@ export interface HistoryGameDetailPayload {
     game_id: string
     game_date: string
     season_id: number
-    home_team: { team_id: string; abbreviation: string }
-    away_team: { team_id: string; abbreviation: string }
+    home_team: { team_id: string; abbreviation: string; name?: string; is_lac?: boolean }
+    away_team: { team_id: string; abbreviation: string; name?: string; is_lac?: boolean }
     status: string
     home_score: number | null
     away_score: number | null
