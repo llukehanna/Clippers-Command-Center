@@ -15,7 +15,7 @@ import type { PlayerSeasonRow, TeamSeasonRow, LeagueAverageRow } from './season-
 import { played } from './season-totals.js';
 import { teamBoxesForGame, TEAM_BOX_COLUMNS, GAP_FILL_SEASON } from './import-plan.js';
 import { classifyGames, type ClassifiedGame } from './match-games.js';
-import { TEAM_ERAS } from './team-eras.js';
+import { TEAM_ERAS, type TeamEra } from './team-eras.js';
 import { NBA_TEAM_IDS } from '../nba-teams.js';
 import { REGULAR_SEASON } from '../sql-fragments.js';
 import type { SeasonCoverage } from '../record-book/records-start.js';
@@ -96,11 +96,21 @@ export async function upsertSeasonRows(tx: Db, seasonIds: number[]): Promise<voi
   for (const batch of chunks(rows)) await tx`INSERT INTO seasons ${tx(batch)} ON CONFLICT (season_id) DO NOTHING`;
 }
 
-/** Upserts team_era_names from TEAM_ERAS; returns the tricodes with no current teams row. */
-export async function upsertEraNames(tx: Db, teamIdByFranchise: Map<number, string>): Promise<string[]> {
+/**
+ * Replaces team_era_names for every franchise it can map: DELETE that team's
+ * rows, then INSERT the eras. A full replace, not an upsert, so an era whose
+ * first season changed can't leave an old, overlapping row behind (which would
+ * duplicate History rows). Call it inside a transaction, so readers never see
+ * the table half-written. Only teams being written are cleared: a franchise
+ * with no current teams row keeps whatever it has. Returns the tricodes with
+ * no current teams row.
+ */
+export async function replaceEraNames(
+  tx: Db, teamIdByFranchise: Map<number, string>, eras: TeamEra[] = TEAM_ERAS,
+): Promise<string[]> {
   const missing = new Set<string>();
   const rows = [];
-  for (const era of TEAM_ERAS) {
+  for (const era of eras) {
     const teamId = teamIdByFranchise.get(NBA_TEAM_IDS[era.franchiseTricode]);
     if (!teamId) { missing.add(era.franchiseTricode); continue; }
     rows.push({
@@ -108,13 +118,9 @@ export async function upsertEraNames(tx: Db, teamIdByFranchise: Map<number, stri
       abbreviation: era.abbreviation, city: era.city, name: era.name,
     });
   }
-  if (rows.length) {
-    await tx`
-      INSERT INTO team_era_names ${tx(rows)}
-      ON CONFLICT (team_id, first_season_id) DO UPDATE SET
-        last_season_id = EXCLUDED.last_season_id, abbreviation = EXCLUDED.abbreviation,
-        city = EXCLUDED.city, name = EXCLUDED.name`;
-  }
+  const teamIds = [...new Set(rows.map((r) => r.team_id))];
+  if (teamIds.length) await tx`DELETE FROM team_era_names WHERE team_id = ANY(${teamIds}::bigint[])`;
+  for (const batch of chunks(rows)) await tx`INSERT INTO team_era_names ${tx(batch)}`;
   return [...missing].sort();
 }
 
