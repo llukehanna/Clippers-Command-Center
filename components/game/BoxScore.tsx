@@ -20,8 +20,13 @@ interface BoxScoreProps {
   linkPlayers?: boolean
   /** Live box scores carry NBA person ids as player_id — enables headshots. */
   playerIdsAreNba?: boolean
+  /** Era display names by team_abbr (history); falls back to the current-franchise lookup. */
+  names?: Record<string, string>
   className?: string
 }
+
+/** The Clippers side: by identity when the payload says so (history), else the 'LAC' tricode (live). */
+const isLacTeam = (t: BoxScoreTeam) => t.is_lac ?? t.team_abbr === 'LAC'
 
 const num = (v: BoxValue | boolean | undefined) => (typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v)) ? Number(v) : null)
 
@@ -45,9 +50,9 @@ function shortName(name: string) {
 }
 
 /** Box score with team tabs; starters first, column leaders in bold, totals row. */
-export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, className }: BoxScoreProps) {
+export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, names, className }: BoxScoreProps) {
   const ordered = React.useMemo(
-    () => [...teams].sort((a, b) => (a.team_abbr === 'LAC' ? -1 : b.team_abbr === 'LAC' ? 1 : 0)),
+    () => [...teams].sort((a, b) => (isLacTeam(a) ? -1 : isLacTeam(b) ? 1 : 0)),
     [teams],
   )
   const [active, setActive] = React.useState(ordered[0]?.team_abbr ?? '')
@@ -61,7 +66,7 @@ export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, c
   const leaders = Object.fromEntries(
     [...LEADER_COLS].map((c) => [c, Math.max(...players.map((p) => num(p[c]) ?? -Infinity))]),
   )
-  const isLac = team.team_abbr === 'LAC'
+  const isLac = isLacTeam(team)
 
   return (
     <Panel className={cn('overflow-hidden', className)}>
@@ -76,7 +81,7 @@ export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, c
             label: (
               <span className="flex items-center gap-2">
                 <TeamLogo abbr={t.team_abbr} size="xs" />
-                {teamName(t.team_abbr)}
+                {teamName(t.team_abbr, names?.[t.team_abbr])}
               </span>
             ),
           }))}
@@ -142,7 +147,7 @@ export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, c
             </Td>
             {COLS.map((c) => (
               <Td key={c} strong className="border-line-2">
-                {c === '+/-' || c === 'MIN' ? '' : cell(team.totals[c], '')}
+                {c === '+/-' || c === 'MIN' ? '' : team.totals[c] === null ? '—' : cell(team.totals[c], '')}
               </Td>
             ))}
           </tr>

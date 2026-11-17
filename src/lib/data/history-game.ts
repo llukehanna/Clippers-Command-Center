@@ -5,7 +5,7 @@
 // Insights queried from `insights` table (NOT `generated_insights`).
 
 import { json, type ApiResult } from './result';
-import { sql } from '@/src/lib/db';
+import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { formatClock } from '@/src/lib/format';
 
@@ -23,6 +23,10 @@ interface GameDetailRow {
   away_score: number | null;
   home_abbr: string;
   away_abbr: string;
+  home_name: string;
+  away_name: string;
+  home_is_lac: boolean;
+  away_is_lac: boolean;
 }
 
 interface BoxScoreCountRow {
@@ -61,30 +65,57 @@ interface InsightRow {
   proof_result: unknown;
 }
 
-function formatFraction(made: number | null, att: number | null): string {
-  return `${made ?? 0}-${att ?? 0}`;
+function formatFraction(made: number | null, att: number | null): string | null {
+  return made == null || att == null ? null : `${made}-${att}`;
 }
 
-function buildTeamTotals(players: PlayerBoxRow[]): Record<string, unknown> {
-  const pts = players.reduce((sum, p) => sum + (p.points ?? 0), 0);
-  const reb = players.reduce((sum, p) => sum + (p.rebounds ?? 0), 0);
-  const ast = players.reduce((sum, p) => sum + (p.assists ?? 0), 0);
-  const to = players.reduce((sum, p) => sum + (p.turnovers ?? 0), 0);
-  const fgMade = players.reduce((sum, p) => sum + (p.fg_made ?? 0), 0);
-  const fgAtt = players.reduce((sum, p) => sum + (p.fg_attempted ?? 0), 0);
-  const fg3Made = players.reduce((sum, p) => sum + (p.fg3_made ?? 0), 0);
-  const fg3Att = players.reduce((sum, p) => sum + (p.fg3_attempted ?? 0), 0);
-  const ftMade = players.reduce((sum, p) => sum + (p.ft_made ?? 0), 0);
-  const ftAtt = players.reduce((sum, p) => sum + (p.ft_attempted ?? 0), 0);
+/** Seconds from "PT34M12.00S" / "34:12"; null when unparseable. */
+function minutesSeconds(m: string | null): number | null {
+  if (m == null) return null;
+  const iso = m.match(/^PT(?:(\d+)M)?(?:([\d.]+)S)?$/);
+  if (iso) return parseInt(iso[1] ?? '0', 10) * 60 + parseFloat(iso[2] ?? '0');
+  const clock = m.match(/^(\d+):(\d+)/);
+  if (clock) return parseInt(clock[1], 10) * 60 + parseInt(clock[2], 10);
+  return null;
+}
+
+/** Played = minutes above 0, or minutes unknown and points recorded (old eras). */
+function didPlay(p: PlayerBoxRow): boolean {
+  const secs = minutesSeconds(p.minutes);
+  return secs != null ? secs > 0 : p.points != null;
+}
+
+/**
+ * Team totals over the players who played. A total is null when any of them has
+ * that stat untracked (old eras), so the UI shows a dash instead of a false 0.
+ */
+function buildTeamTotals(all: PlayerBoxRow[]): Record<string, unknown> {
+  const players = all.filter(didPlay);
+  const sum = (get: (p: PlayerBoxRow) => number | null): number | null => {
+    let t = 0;
+    for (const p of players) {
+      const v = get(p);
+      if (v == null) return null;
+      t += v;
+    }
+    return t;
+  };
+  const frac = (made: (p: PlayerBoxRow) => number | null, att: (p: PlayerBoxRow) => number | null) => {
+    const m = sum(made);
+    const a = sum(att);
+    return m == null || a == null ? null : `${m}-${a}`;
+  };
 
   return {
-    PTS: pts,
-    REB: reb,
-    AST: ast,
-    TO: to,
-    FG: formatFraction(fgMade, fgAtt),
-    '3PT': formatFraction(fg3Made, fg3Att),
-    FT: formatFraction(ftMade, ftAtt),
+    PTS: sum((p) => p.points),
+    REB: sum((p) => p.rebounds),
+    AST: sum((p) => p.assists),
+    STL: sum((p) => p.steals),
+    BLK: sum((p) => p.blocks),
+    TO: sum((p) => p.turnovers),
+    FG: frac((p) => p.fg_made, (p) => p.fg_attempted),
+    '3PT': frac((p) => p.fg3_made, (p) => p.fg3_attempted),
+    FT: frac((p) => p.ft_made, (p) => p.ft_attempted),
   };
 }
 
@@ -151,11 +182,21 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
         g.status,
         g.home_score,
         g.away_score,
-        ht.abbreviation       AS home_abbr,
-        at.abbreviation       AS away_abbr
+        COALESCE(he.abbreviation, ht.abbreviation) AS home_abbr,
+        COALESCE(ae.abbreviation, at.abbreviation) AS away_abbr,
+        COALESCE(he.name, ht.name) AS home_name,
+        COALESCE(ae.name, at.name) AS away_name,
+        (ht.nba_team_id = ${LAC_NBA_TEAM_ID}) AS home_is_lac,
+        (at.nba_team_id = ${LAC_NBA_TEAM_ID}) AS away_is_lac
       FROM games g
       JOIN teams ht ON g.home_team_id = ht.team_id
       JOIN teams at ON g.away_team_id = at.team_id
+      LEFT JOIN team_era_names he ON he.team_id = ht.team_id
+       AND g.season_id >= he.first_season_id
+       AND (he.last_season_id IS NULL OR g.season_id <= he.last_season_id)
+      LEFT JOIN team_era_names ae ON ae.team_id = at.team_id
+       AND g.season_id >= ae.first_season_id
+       AND (ae.last_season_id IS NULL OR g.season_id <= ae.last_season_id)
       WHERE g.game_id = ${gameIdParam}::bigint
       LIMIT 1
     `;
@@ -179,6 +220,7 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
       columns: string[];
       teams: Array<{
         team_abbr: string;
+        is_lac: boolean;
         players: ReturnType<typeof mapPlayerRow>[];
         totals: Record<string, unknown>;
       }>;
@@ -223,11 +265,13 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
         teams: [
           {
             team_abbr: game.home_abbr,
+            is_lac: game.home_is_lac,
             players: homePlayers.map(mapPlayerRow),
             totals: buildTeamTotals(homePlayers),
           },
           {
             team_abbr: game.away_abbr,
+            is_lac: game.away_is_lac,
             players: awayPlayers.map(mapPlayerRow),
             totals: buildTeamTotals(awayPlayers),
           },
@@ -239,8 +283,8 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
       boxScore = {
         columns: BOX_SCORE_COLUMNS,
         teams: [
-          { team_abbr: game.home_abbr, players: [], totals: {} },
-          { team_abbr: game.away_abbr, players: [], totals: {} },
+          { team_abbr: game.home_abbr, is_lac: game.home_is_lac, players: [], totals: {} },
+          { team_abbr: game.away_abbr, is_lac: game.away_is_lac, players: [], totals: {} },
         ],
         available: false,
       };
@@ -301,8 +345,8 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
           game_id: game.game_id,
           game_date: game.game_date,
           season_id: game.season_id,
-          home_team: { team_id: game.home_team_id, abbreviation: game.home_abbr },
-          away_team: { team_id: game.away_team_id, abbreviation: game.away_abbr },
+          home_team: { team_id: game.home_team_id, abbreviation: game.home_abbr, name: game.home_name, is_lac: game.home_is_lac },
+          away_team: { team_id: game.away_team_id, abbreviation: game.away_abbr, name: game.away_name, is_lac: game.away_is_lac },
           status: game.status,
           home_score: game.home_score,
           away_score: game.away_score,

@@ -33,7 +33,9 @@ export const TEAMS: Record<string, { city: string; name: string }> = {
   WAS: { city: 'Washington', name: 'Wizards' },
 }
 
-export function teamName(abbr: string | null | undefined): string {
+/** Display name; `eraName` (e.g. "SuperSonics") wins over the current-franchise lookup. */
+export function teamName(abbr: string | null | undefined, eraName?: string | null): string {
+  if (eraName) return eraName
   if (!abbr) return 'TBD'
   return TEAMS[abbr.toUpperCase()]?.name ?? abbr
 }

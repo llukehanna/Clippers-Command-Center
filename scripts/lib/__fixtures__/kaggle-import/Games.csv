@@ -1,0 +1,15 @@
+gameId,gameDateTimeEst,hometeamCity,hometeamName,hometeamId,awayteamCity,awayteamName,awayteamId,homeScore,awayScore,gameType
+24600001,1946-11-01T20:00:00,Pittsburgh,Ironmen,1610610031,Boston,Celtics,1610612738,70,60,Regular Season
+27200123,1972-12-05T20:00:00,Buffalo,Braves,1610612746,Boston,Celtics,1610612738,101,99,Regular Season
+28500300,1985-12-10T19:30:00,Los Angeles,Clippers,1610612746,Boston,Celtics,1610612738,98,104,Regular Season
+29700500,1997-12-01T19:00:00,Washington,Wizards,1610612764,Boston,Celtics,1610612738,95,93,Regular Season
+29800101,1998-11-10T22:30:00,Los Angeles,Clippers,1610612746,Phoenix,Suns,1610612756,90,95,Regular Season
+29800102,1998-11-12T21:00:00,Phoenix,Suns,1610612756,Los Angeles,Clippers,1610612746,101,88,Regular Season
+29800103,1998-11-14T22:30:00,Los Angeles,Clippers,1610612746,Boston,Celtics,1610612738,99,97,Regular Season
+29800104,1998-11-20T19:30:00,Boston,Celtics,1610612738,Los Angeles,Clippers,1610612746,105,92,Regular Season
+29800105,1998-11-25T21:00:00,Phoenix,Suns,1610612756,Los Angeles,Clippers,1610612746,100,98,Regular Season
+10500012,2005-10-12T19:00:00,Los Angeles,Clippers,1610612746,Denver,Nuggets,1610612743,95,90,Preseason
+30500001,2006-02-19T20:00:00,East,All-Stars,0,West,All-Stars,0,122,120,All-Star Game
+21900100,2019-11-01T22:00:00,Phoenix,Suns,1610612756,Boston,Celtics,1610612738,110,105,Regular Season
+22000100,2020-12-30T22:30:00,Los Angeles,Clippers,1610612746,Phoenix,Suns,1610612756,120,110,Regular Season
+22500010,2025-10-25T22:30:00,Los Angeles,Clippers,1610612746,Phoenix,Suns,1610612756,111,107,Regular Season
