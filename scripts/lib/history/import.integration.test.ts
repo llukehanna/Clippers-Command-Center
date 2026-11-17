@@ -126,6 +126,11 @@ describe.skipIf(!url)('Kaggle history import (fixture DB)', () => {
     expect(report.gameMatches.ambiguous.map((m: { nbaGameId: number }) => m.nbaGameId)).toEqual([29800105]);
     const stage1998 = report.perSeason.find((p: { stage: string }) => p.stage === '1998 clippers');
     expect(stage1998).toMatchObject({ games: 1, reused: 0, nearReused: 1, alreadyLoaded: 3, nearSkipped: 1, skipped: 4 });
+    // Raw cells by era: played rows only (DNPs and the malformed row are left out).
+    expect(Object.keys(report.rawCellsByEra)).toEqual(['1972', '1985']);
+    expect(report.rawCellsByEra['1972'].steals).toEqual({ blank: 4, zero: 0, nonZero: 0 });
+    expect(report.rawCellsByEra['1985'].steals).toEqual({ blank: 0, zero: 1, nonZero: 3 });
+    expect(report.rawCellsByEra['1985'].minutes).toEqual({ blank: 0, zero: 0, nonZero: 4 });
     // Summed player points vs the final score.
     const { mismatches } = report.pointsVsScore;
     expect(mismatches.total).toBe(mismatches.items.length);
