@@ -2,6 +2,11 @@
 // Reads the Kaggle "Historical NBA Data and Player Box Scores" CSVs (CC0) and
 // maps rows to typed records. Pure apart from streamCsv's file read; no DB.
 // Cardinal rule: a stat nobody recorded is null, never 0.
+//
+// Row contract: parseGame returns null ONLY for games skipped by design
+// (preseason, All-Star, Cup final). Any malformed row (missing id/score/personId,
+// unreadable home flag) throws KaggleRowError; the import task catches it per
+// row, counts it and samples it instead of aborting the run.
 import fs from 'node:fs';
 import { parse } from 'csv-parse';
 
@@ -85,6 +90,13 @@ export type KagglePerson = { personId: number; firstName: string; lastName: stri
 
 type Row = Record<string, string>;
 
+export class KaggleRowError extends Error {
+  constructor(readonly file: string, readonly field: string, readonly value: string) {
+    super(`Bad value in ${file}, column ${field}: ${JSON.stringify(value)}`);
+    this.name = 'KaggleRowError';
+  }
+}
+
 export async function* streamCsv(path: string): AsyncIterable<Row> {
   const parser = fs.createReadStream(path).pipe(
     parse({ columns: true, relax_column_count: true, bom: true }),
@@ -107,16 +119,16 @@ function num(cell: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function reqNum(cell: string | undefined, what: string): number {
+function reqNum(cell: string | undefined, file: string, field: string): number {
   const n = num(cell);
-  if (n == null) throw new Error(`Missing or invalid ${what}: ${JSON.stringify(cell)}`);
+  if (n == null) throw new KaggleRowError(file, field, cell ?? '');
   return n;
 }
 
 function bool(cell: string | undefined): boolean | null {
   const v = (cell ?? '').trim().toLowerCase();
-  if (v === '1' || v === 'true') return true;
-  if (v === '0' || v === 'false') return false;
+  if (v === '1' || v === '1.0' || v === 'true') return true;
+  if (v === '0' || v === '0.0' || v === 'false') return false;
   return null;
 }
 
@@ -134,7 +146,7 @@ const TYPE_HINTS: Record<number, RegExp> = {
 
 export function parseGame(row: Row): KaggleGame | null {
   const c = GAMES_COLUMNS;
-  const nbaGameId = reqNum(row[c.gameId], 'gameId');
+  const nbaGameId = reqNum(row[c.gameId], 'Games.csv', c.gameId);
   const t = gameTypeOf(nbaGameId);
   if (t !== 2 && t !== 4 && t !== 5) return null;
   const label = (row[c.gameType] ?? '').trim();
@@ -145,10 +157,10 @@ export function parseGame(row: Row): KaggleGame | null {
     nbaGameId,
     seasonId: seasonIdOfGame(nbaGameId),
     gameDate: (row[c.gameDate] ?? '').trim().slice(0, 10),
-    homeFranchiseId: reqNum(row[c.homeId], 'hometeamId'),
-    awayFranchiseId: reqNum(row[c.awayId], 'awayteamId'),
-    homeScore: reqNum(row[c.homeScore], 'homeScore'),
-    awayScore: reqNum(row[c.awayScore], 'awayScore'),
+    homeFranchiseId: reqNum(row[c.homeId], 'Games.csv', c.homeId),
+    awayFranchiseId: reqNum(row[c.awayId], 'Games.csv', c.awayId),
+    homeScore: reqNum(row[c.homeScore], 'Games.csv', c.homeScore),
+    awayScore: reqNum(row[c.awayScore], 'Games.csv', c.awayScore),
     isPlayoffs: t === 4,
     homeCity: row[c.homeCity] ?? '',
     homeName: row[c.homeName] ?? '',
@@ -167,6 +179,12 @@ export function minutesToClock(decimalMinutes: string): string | null {
   return `${mm}:${String(ss).padStart(2, '0')}`;
 }
 
+function reqHome(cell: string | undefined): boolean {
+  const v = bool(cell);
+  if (v == null) throw new KaggleRowError('PlayerStatistics.csv', PLAYER_STATS_COLUMNS.home, cell ?? '');
+  return v;
+}
+
 export function parsePlayerGame(row: Row): KagglePlayerGame {
   const c = PLAYER_STATS_COLUMNS;
   const n = (k: keyof typeof c) => {
@@ -174,11 +192,11 @@ export function parsePlayerGame(row: Row): KagglePlayerGame {
     return h ? num(row[h]) : null;
   };
   return {
-    nbaGameId: reqNum(row[c.gameId], 'gameId'),
-    personId: reqNum(row[c.personId], 'personId'),
+    nbaGameId: reqNum(row[c.gameId], 'PlayerStatistics.csv', c.gameId),
+    personId: reqNum(row[c.personId], 'PlayerStatistics.csv', c.personId),
     firstName: row[c.firstName] ?? '',
     lastName: row[c.lastName] ?? '',
-    isHome: bool(row[c.home]) ?? false,
+    isHome: reqHome(row[c.home]),
     starter: c.starter ? bool(row[c.starter]) : null,
     minutes: minutesToClock(row[c.minutes] ?? ''),
     points: n('points'), rebounds: n('rebounds'), assists: n('assists'),
@@ -195,7 +213,7 @@ export function parsePerson(row: Row): KagglePerson {
   const c = PLAYERS_COLUMNS;
   const b = (row[c.birthdate] ?? '').trim().slice(0, 10);
   return {
-    personId: reqNum(row[c.personId], 'personId'),
+    personId: reqNum(row[c.personId], 'Players.csv', c.personId),
     firstName: row[c.firstName] ?? '',
     lastName: row[c.lastName] ?? '',
     birthdate: b === '' ? null : b,
