@@ -23,6 +23,8 @@ interface GameDetailRow {
   away_score: number | null;
   home_abbr: string;
   away_abbr: string;
+  home_name: string;
+  away_name: string;
 }
 
 interface BoxScoreCountRow {
@@ -151,11 +153,19 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
         g.status,
         g.home_score,
         g.away_score,
-        ht.abbreviation       AS home_abbr,
-        at.abbreviation       AS away_abbr
+        COALESCE(he.abbreviation, ht.abbreviation) AS home_abbr,
+        COALESCE(ae.abbreviation, at.abbreviation) AS away_abbr,
+        COALESCE(he.name, ht.name) AS home_name,
+        COALESCE(ae.name, at.name) AS away_name
       FROM games g
       JOIN teams ht ON g.home_team_id = ht.team_id
       JOIN teams at ON g.away_team_id = at.team_id
+      LEFT JOIN team_era_names he ON he.team_id = ht.team_id
+       AND g.season_id >= he.first_season_id
+       AND (he.last_season_id IS NULL OR g.season_id <= he.last_season_id)
+      LEFT JOIN team_era_names ae ON ae.team_id = at.team_id
+       AND g.season_id >= ae.first_season_id
+       AND (ae.last_season_id IS NULL OR g.season_id <= ae.last_season_id)
       WHERE g.game_id = ${gameIdParam}::bigint
       LIMIT 1
     `;
@@ -301,8 +311,8 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
           game_id: game.game_id,
           game_date: game.game_date,
           season_id: game.season_id,
-          home_team: { team_id: game.home_team_id, abbreviation: game.home_abbr },
-          away_team: { team_id: game.away_team_id, abbreviation: game.away_abbr },
+          home_team: { team_id: game.home_team_id, abbreviation: game.home_abbr, name: game.home_name },
+          away_team: { team_id: game.away_team_id, abbreviation: game.away_abbr, name: game.away_name },
           status: game.status,
           home_score: game.home_score,
           away_score: game.away_score,

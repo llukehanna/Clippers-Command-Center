@@ -4,6 +4,8 @@ export interface HistoryGame {
   game_id: string
   game_date: string
   opponent_abbr: string
+  opponent_name?: string
+  lac_abbr?: string
   home_away: 'home' | 'away'
   result: 'W' | 'L' | null
   final_score: { team: number; opp: number } | null

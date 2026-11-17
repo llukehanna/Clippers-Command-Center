@@ -92,6 +92,69 @@ describe('GET /api/history/games', () => {
     expect(body.games[2].final_score).toBeNull();
   });
 
+  it('returns the era opponent name and abbreviation', async () => {
+    mockHistorySqlFn.mockImplementation(async (strings: readonly string[]) => {
+      const q = strings.join('?');
+      if (q.includes('FROM teams')) return [{ team_id: '42' }];
+      if (q.includes('FROM games g')) {
+        return [
+          { game_id: '5', game_date: '1979-12-01', home_team_id: '42', away_team_id: '7',
+            status: 'final', home_score: 100, away_score: 98,
+            home_abbr: 'SDC', away_abbr: 'SEA', home_name: 'Clippers', away_name: 'SuperSonics' },
+        ];
+      }
+      return [];
+    });
+    const { GET } = await import('../../app/api/history/games/route.js');
+    const res = await GET(new Request('http://localhost/api/history/games?season_id=1979'));
+    const body = await res.json();
+    expect(body.games[0]).toMatchObject({ opponent_abbr: 'SEA', opponent_name: 'SuperSonics', lac_abbr: 'SDC' });
+    const mainCall = mockHistorySqlFn.mock.calls.find((c) => (c[0] as string[]).join('?').includes('FROM games g'))!;
+    expect((mainCall[0] as string[]).join('?')).toContain('LEFT JOIN team_era_names');
+  });
+
+  it('falls back to the teams abbreviation and name when a game has no era row', async () => {
+    mockHistorySqlFn.mockImplementation(async (strings: readonly string[]) => {
+      const q = strings.join('?');
+      if (q.includes('FROM teams')) return [{ team_id: '42' }];
+      if (q.includes('FROM games g')) {
+        // COALESCE(e.*, t.*) in SQL yields the teams values when era is empty
+        return [
+          { game_id: '6', game_date: '2025-01-01', home_team_id: '9', away_team_id: '42',
+            status: 'final', home_score: 90, away_score: 95,
+            home_abbr: 'GSW', away_abbr: 'LAC', home_name: 'Warriors', away_name: 'Clippers' },
+        ];
+      }
+      return [];
+    });
+    const { GET } = await import('../../app/api/history/games/route.js');
+    const res = await GET(new Request('http://localhost/api/history/games?season_id=2025'));
+    const body = await res.json();
+    expect(body.games[0]).toMatchObject({ opponent_abbr: 'GSW', opponent_name: 'Warriors', lac_abbr: 'LAC' });
+    const mainCall = mockHistorySqlFn.mock.calls.find((c) => (c[0] as string[]).join('?').includes('FROM games g'))!;
+    expect((mainCall[0] as string[]).join('?')).toMatch(/COALESCE\(\w+\.abbreviation, \w+\.abbreviation\)/);
+  });
+
+  it('labels seasons with the Clippers era name', async () => {
+    mockHistorySqlFn.mockImplementation(async (strings: readonly string[]) => {
+      const q = strings.join('?');
+      if (q.includes('DISTINCT g.season_id')) {
+        return [
+          { season_id: 1972, team_name: 'Buffalo Braves' },
+          { season_id: 2019, team_name: 'Los Angeles Clippers' },
+        ];
+      }
+      return [];
+    });
+    const { GET } = await import('../../app/api/history/seasons/route.js');
+    const res = await GET();
+    const body = await res.json();
+    expect(body.seasons).toEqual([
+      { season_id: 1972, label: '1972-73', team_name: 'Buffalo Braves' },
+      { season_id: 2019, label: '2019-20', team_name: 'Los Angeles Clippers' },
+    ]);
+  });
+
   it('applies the result filter in SQL (before LIMIT) and clamps limit to >= 1', async () => {
     const { GET } = await import('../../app/api/history/games/route.js');
     const res = await GET(new Request('http://localhost/api/history/games?season_id=2025&result=W&limit=0'));
