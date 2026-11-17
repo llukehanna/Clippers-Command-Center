@@ -317,9 +317,21 @@ describe.skipIf(!url)('Kaggle history import (fixture DB)', () => {
     // 1997 Wizards-Celtics: two box-scored teams, neither the Clippers.
     expect(await sql`SELECT 1 FROM game_team_box_scores b JOIN all_games g USING (game_id) WHERE g.nba_game_id = 29700500`).not.toHaveLength(0);
     expect(await advancedRows(29700500)).toHaveLength(0);
-    // 1972 Braves (Clippers franchise) game.
-    expect(await advancedRows(27200123)).not.toHaveLength(0);
+    // 1972 Braves (Clippers franchise) game: no turnovers or offensive/defensive
+    // rebounds were recorded, so no advanced rows (no made-up tov_pct/reb_pct/usage).
+    expect(await advancedRows(27200123)).toHaveLength(0);
+    expect(await sql`
+      SELECT 1 FROM advanced_player_game_stats a JOIN all_games g USING (game_id) WHERE g.nba_game_id = 27200123`).toHaveLength(0);
+    // 1985 Clippers game with complete possession inputs on both sides still gets them.
+    expect(await advancedRows(28500300)).toHaveLength(2);
     expect(await advancedRows(92000001)).not.toHaveLength(0);
+    // A re-run selects nothing new: the 1972 game is not picked up again.
+    const rerun = execFileSync('npx', ['tsx', 'scripts/compute-stats.ts'], {
+      encoding: 'utf8',
+      env: { ...process.env, DATABASE_URL: url },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    expect(rerun).toMatch(/for 0 game\(s\)/);
   }, TIMEOUT);
 
   it('keeps Kaggle games out of the periods backfill', async () => {
