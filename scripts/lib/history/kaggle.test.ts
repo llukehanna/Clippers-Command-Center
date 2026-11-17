@@ -43,6 +43,13 @@ describe('kaggle readers', () => {
     }
   });
 
+  it('throws on unknown or malformed game-id prefixes', async () => {
+    const base = (await load('Games.csv'))[0];
+    expect(() => parseGame({ ...base, gameId: '1234' })).toThrow(KaggleRowError);
+    expect(() => parseGame({ ...base, gameId: '90500001' })).toThrow(KaggleRowError);
+    expect(() => parseGame({ ...base, gameId: '7050000' })).toThrow(KaggleRowError);
+  });
+
   it('accepts True/False for home', () => {
     expect(parsePlayerGame({ gameId: '1', personId: '2', home: 'False' }).isHome).toBe(false);
     expect(parsePlayerGame({ gameId: '1', personId: '2', home: 'True' }).isHome).toBe(true);
