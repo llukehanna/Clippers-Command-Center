@@ -117,7 +117,7 @@ export async function finalizeGame(
   const { homeTeam, awayTeam } = boxscore.game;
 
   const playerCount = await db.begin(async (txRaw) => {
-    // Same cast as upsertBoxScoresForGame: TransactionSql loses call signatures via Omit<>.
+    // Cast needed because TransactionSql loses call signatures via Omit<>.
     const tx = txRaw as unknown as Db;
 
     const homeTeamDbId = await resolveTeamDbId(tx, homeTeam, game.home_team_id, 'home', gid);

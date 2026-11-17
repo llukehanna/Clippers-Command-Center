@@ -1,6 +1,6 @@
 // scripts/lib/upserts.ts
 import { sql } from './db.js';
-import type { BDLTeam, BDLPlayer, BDLGame, BDLStat } from '../types/bdl.js';
+import type { BDLTeam, BDLPlayer, BDLGame } from '../types/bdl.js';
 import type { BoxscorePlayer, TeamStatistics } from '../../src/lib/types/live.js';
 import { isNbaFormatGameId, normalizeGameStatus } from './schedule-utils.js';
 
@@ -337,129 +337,6 @@ export async function upsertGames(games: BDLGame[], seasonId: number): Promise<v
       isPlayoffs: nn(g.postseason) ?? false,
     });
   }
-}
-
-// --- Box Scores (team + player, in transaction per game) ---
-// Wraps both team and player box score inserts in a transaction.
-// If player insert fails, team insert is rolled back — no partial writes.
-export async function upsertBoxScoresForGame(
-  gameId: string,
-  teamBoxScores: Array<{ teamId: string; isHome: boolean; stat: BDLStat }>,
-  playerStats: BDLStat[]
-): Promise<void> {
-  // Use sql directly with a transaction
-  await sql.begin(async (tx) => {
-    // txSql is cast via assignment to work around TypeScript Omit<> losing call signatures
-    const txSql = tx as unknown as typeof sql;
-
-    // Upsert team box scores (aggregate per team per game)
-    // Note: BDL /stats gives player-level; team totals must be aggregated from players
-    // We compute team totals here from player stats grouped by team
-    const teamTotals = new Map<number, { bdlTeamId: number; stats: BDLStat[] }>();
-    for (const stat of playerStats) {
-      const tid = stat.team.id;
-      if (!teamTotals.has(tid)) teamTotals.set(tid, { bdlTeamId: tid, stats: [] });
-      teamTotals.get(tid)!.stats.push(stat);
-    }
-
-    for (const [, { bdlTeamId, stats }] of teamTotals) {
-      const [teamRow] = await txSql<{ team_id: string }[]>`
-        SELECT team_id::text FROM teams WHERE nba_team_id = ${bdlTeamId}
-      `;
-      if (!teamRow) continue;
-
-      // Check which team is home from the game record
-      const [gameRow] = await txSql<{ home_team_id: string }[]>`
-        SELECT home_team_id::text FROM games WHERE game_id = ${gameId}::bigint
-      `;
-      const isHome = gameRow ? gameRow.home_team_id === teamRow.team_id : false;
-
-      const sum = (fn: (s: BDLStat) => number | null) =>
-        stats.reduce((acc, s) => acc + (fn(s) ?? 0), 0);
-
-      await txSql`
-        INSERT INTO game_team_box_scores (
-          game_id, team_id, is_home,
-          points, rebounds, assists, steals, blocks, turnovers, fouls,
-          fg_made, fg_attempted, fg3_made, fg3_attempted, ft_made, ft_attempted,
-          offensive_reb, defensive_reb
-        ) VALUES (
-          ${gameId}::bigint, ${teamRow.team_id}::bigint, ${isHome},
-          ${sum(s => s.pts)}, ${sum(s => s.reb)}, ${sum(s => s.ast)},
-          ${sum(s => s.stl)}, ${sum(s => s.blk)}, ${sum(s => s.turnover)}, ${sum(s => s.pf)},
-          ${sum(s => s.fgm)}, ${sum(s => s.fga)}, ${sum(s => s.fg3m)}, ${sum(s => s.fg3a)},
-          ${sum(s => s.ftm)}, ${sum(s => s.fta)},
-          ${sum(s => s.oreb)}, ${sum(s => s.dreb)}
-        )
-        ON CONFLICT (game_id, team_id) DO UPDATE SET
-          points       = EXCLUDED.points,
-          rebounds     = EXCLUDED.rebounds,
-          assists      = EXCLUDED.assists,
-          steals       = EXCLUDED.steals,
-          blocks       = EXCLUDED.blocks,
-          turnovers    = EXCLUDED.turnovers,
-          fouls        = EXCLUDED.fouls,
-          fg_made      = EXCLUDED.fg_made,
-          fg_attempted = EXCLUDED.fg_attempted,
-          fg3_made     = EXCLUDED.fg3_made,
-          fg3_attempted = EXCLUDED.fg3_attempted,
-          ft_made      = EXCLUDED.ft_made,
-          ft_attempted = EXCLUDED.ft_attempted,
-          offensive_reb = EXCLUDED.offensive_reb,
-          defensive_reb = EXCLUDED.defensive_reb
-      `;
-    }
-
-    // Upsert player box scores
-    for (const stat of playerStats) {
-      const [playerRow] = await txSql<{ player_id: string }[]>`
-        SELECT player_id::text FROM players WHERE nba_player_id = ${stat.player.id}
-      `;
-      const [teamRow] = await txSql<{ team_id: string }[]>`
-        SELECT team_id::text FROM teams WHERE nba_team_id = ${stat.team.id}
-      `;
-      if (!playerRow || !teamRow) continue;
-
-      // Serialize stat to JSON string for raw_payload storage
-      const rawPayloadJson = JSON.stringify(stat);
-
-      await txSql`
-        INSERT INTO game_player_box_scores (
-          game_id, team_id, player_id,
-          minutes, points, rebounds, assists, steals, blocks, turnovers, fouls, plus_minus,
-          fg_made, fg_attempted, fg3_made, fg3_attempted, ft_made, ft_attempted,
-          offensive_reb, defensive_reb,
-          raw_payload
-        ) VALUES (
-          ${gameId}::bigint, ${teamRow.team_id}::bigint, ${playerRow.player_id}::bigint,
-          ${nn(stat.min)}, ${stat.pts ?? 0}, ${stat.reb ?? 0}, ${stat.ast ?? 0},
-          ${stat.stl ?? 0}, ${stat.blk ?? 0}, ${stat.turnover ?? 0}, ${stat.pf ?? 0}, ${null},
-          ${stat.fgm ?? 0}, ${stat.fga ?? 0}, ${stat.fg3m ?? 0}, ${stat.fg3a ?? 0},
-          ${stat.ftm ?? 0}, ${stat.fta ?? 0},
-          ${stat.oreb ?? 0}, ${stat.dreb ?? 0},
-          ${rawPayloadJson}::text::jsonb
-        )
-        ON CONFLICT (game_id, player_id) DO UPDATE SET
-          minutes      = EXCLUDED.minutes,
-          points       = EXCLUDED.points,
-          rebounds     = EXCLUDED.rebounds,
-          assists      = EXCLUDED.assists,
-          steals       = EXCLUDED.steals,
-          blocks       = EXCLUDED.blocks,
-          turnovers    = EXCLUDED.turnovers,
-          fouls        = EXCLUDED.fouls,
-          fg_made      = EXCLUDED.fg_made,
-          fg_attempted = EXCLUDED.fg_attempted,
-          fg3_made     = EXCLUDED.fg3_made,
-          fg3_attempted = EXCLUDED.fg3_attempted,
-          ft_made      = EXCLUDED.ft_made,
-          ft_attempted = EXCLUDED.ft_attempted,
-          offensive_reb = EXCLUDED.offensive_reb,
-          defensive_reb = EXCLUDED.defensive_reb,
-          raw_payload  = EXCLUDED.raw_payload
-      `;
-    }
-  });
 }
 
 // --- NBA Live Box Score Upserts ---
