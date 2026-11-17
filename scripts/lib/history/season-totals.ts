@@ -68,7 +68,7 @@ function parseMinutes(m: string | null): N {
 }
 
 // R9: a row is a game played when minutes > 0, or minutes are null and points are not.
-function played(r: KagglePlayerGame): boolean {
+export function played(r: KagglePlayerGame): boolean {
   const mins = parseMinutes(r.minutes);
   if (mins !== null) return mins > 0;
   return r.minutes === null && r.points !== null;
