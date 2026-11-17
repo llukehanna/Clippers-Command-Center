@@ -106,8 +106,19 @@ describe('aggregateTeamSeasons', () => {
     const rows = [row(1, 1), row(1, 3, { isHome: false }), row(2, 1, { steals: null }), row(2, 3, { isHome: false })];
     const lac = aggregateTeamSeasons(games, rows).find((x) => x.nbaFranchiseId === LAC)!;
     expect(lac.steals).toBeNull();
-    expect(lac.points).toBe(20);
-    expect(aggregateTeamSeasons(games, [row(1, 1)])[0].points).toBeNull();
+    expect(lac.rebounds).toBe(10);
+    const sparse = aggregateTeamSeasons(games, [row(1, 1)]).find((x) => x.nbaFranchiseId === LAC)!;
+    expect(sparse.rebounds).toBeNull();
+    expect(sparse.oppRebounds).toBeNull();
+  });
+
+  it('takes team and opponent points from the final scores, not player rows', () => {
+    const games = [game(1, { homeScore: 101, awayScore: 99 }), game(2, { homeScore: 90, awayScore: 95 })];
+    // Game 1 is a player row short (45 of 101); game 2 has no rows at all.
+    const rows = [row(1, 1, { points: 45 }), row(1, 3, { isHome: false, points: 99 })];
+    const t = aggregateTeamSeasons(games, rows);
+    expect(t.find((x) => x.nbaFranchiseId === LAC)).toMatchObject({ points: 191, oppPoints: 194, rebounds: null });
+    expect(t.find((x) => x.nbaFranchiseId === LAL)).toMatchObject({ points: 194, oppPoints: 191 });
   });
 
   it('sets playoffRound from distinct opponents and wonTitle from the last game', () => {
@@ -157,7 +168,7 @@ describe('leagueAverages', () => {
     expect(l.pace).toBeNull();
     expect(l.ortg).toBeNull();
     expect(l.tpg).toBeNull();
-    expect(l.ppg).toBe(10);
+    expect(l.ppg).toBe(95); // from the 100-90 final score
   });
 });
 
