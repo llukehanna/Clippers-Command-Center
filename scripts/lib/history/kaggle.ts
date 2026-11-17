@@ -148,7 +148,10 @@ export function parseGame(row: Row): KaggleGame | null {
   const c = GAMES_COLUMNS;
   const nbaGameId = reqNum(row[c.gameId], 'Games.csv', c.gameId);
   const t = gameTypeOf(nbaGameId);
-  if (t !== 2 && t !== 4 && t !== 5) return null;
+  if (t === 1 || t === 3 || t === 6) return null;
+  if ((t !== 2 && t !== 4 && t !== 5) || !Number.isInteger(nbaGameId) || nbaGameId < 10000000 || nbaGameId > 99999999) {
+    throw new KaggleRowError('Games.csv', c.gameId, row[c.gameId] ?? '');
+  }
   const label = (row[c.gameType] ?? '').trim();
   if (label && !TYPE_HINTS[t].test(label)) {
     console.warn(`Game ${nbaGameId}: type column "${label}" disagrees with id prefix ${t}; trusting the id`);
