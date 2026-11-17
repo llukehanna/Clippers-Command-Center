@@ -167,7 +167,7 @@ export type PointsCheck = {
   noPlayerRows: Array<{ gameId: number; side: 'home' | 'away'; score: number }>;
 };
 
-/** Compares each side's summed player points with its final score, ordered by game id then side. */
+/** Compares each side's summed player points with its final score, ordered by season, game id, then side. */
 export function checkPointsAgainstScores(games: KaggleGame[], rows: KagglePlayerGame[]): PointsCheck {
   const byGame = new Map<number, KagglePlayerGame[]>();
   for (const r of rows) {
@@ -175,7 +175,7 @@ export function checkPointsAgainstScores(games: KaggleGame[], rows: KagglePlayer
     const a = byGame.get(r.nbaGameId); if (a) a.push(r); else byGame.set(r.nbaGameId, [r]);
   }
   const out: PointsCheck = { mismatches: [], noPlayerRows: [] };
-  for (const g of [...games].sort((a, b) => a.nbaGameId - b.nbaGameId)) {
+  for (const g of [...games].sort((a, b) => a.seasonId - b.seasonId || a.nbaGameId - b.nbaGameId)) {
     const counted = byGame.get(g.nbaGameId) ?? [];
     for (const side of ['home', 'away'] as const) {
       const score = side === 'home' ? g.homeScore : g.awayScore;
