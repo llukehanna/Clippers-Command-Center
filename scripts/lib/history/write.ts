@@ -4,7 +4,8 @@
 //
 // Safety rules:
 //   - Writes and lookups use all_games, not the games view, so preseason rows
-//     are seen (and never reused for a regular-season game).
+//     are seen (and never reused for a regular-season game). Which existing
+//     row a game maps to is decided in match-games.ts (id, then ±1 day).
 //   - A game that already has player box scores is not touched at all.
 //   - Box score inserts never overwrite an existing row (ON CONFLICT DO NOTHING).
 import type postgres from 'postgres';
@@ -13,6 +14,7 @@ import type { DbPlayer, MatchResult } from './match-players.js';
 import type { PlayerSeasonRow, TeamSeasonRow, LeagueAverageRow } from './season-totals.js';
 import { played } from './season-totals.js';
 import { teamBoxFromRows, TEAM_BOX_COLUMNS, GAP_FILL_SEASON } from './import-plan.js';
+import { classifyGames, type ClassifiedGame } from './match-games.js';
 import { TEAM_ERAS } from './team-eras.js';
 import { NBA_TEAM_IDS } from '../nba-teams.js';
 import { REGULAR_SEASON } from '../sql-fragments.js';
@@ -63,19 +65,6 @@ export async function loadPlayerIdByPerson(db: Db): Promise<Map<number, string>>
 export async function databaseBytes(db: Db): Promise<number> {
   const [r] = await db<{ bytes: string }[]>`SELECT pg_database_size(current_database())::text AS bytes`;
   return Number(r.bytes);
-}
-
-/** nba_game_ids (of those given) whose game already has player box scores. */
-export async function idsWithPlayerBoxScores(db: Db, nbaGameIds: number[]): Promise<Set<number>> {
-  const out = new Set<number>();
-  for (const batch of chunks(nbaGameIds.map(String), 10_000)) {
-    const rows = await db<{ id: string }[]>`
-      SELECT a.nba_game_id::text AS id FROM all_games a
-      WHERE a.nba_game_id = ANY(${batch}::bigint[])
-        AND EXISTS (SELECT 1 FROM game_player_box_scores pb WHERE pb.game_id = a.game_id)`;
-    for (const r of rows) out.add(Number(r.id));
-  }
-  return out;
 }
 
 // ── Players, seasons, era names ──────────────────────────────────────────────
@@ -131,17 +120,32 @@ export async function upsertEraNames(tx: Db, teamIdByFranchise: Map<number, stri
 
 // ── Per-game rows ────────────────────────────────────────────────────────────
 
-type Existing = { game_id: string; nba_game_id: string; is_preseason: boolean; has_box: boolean; k?: string };
+export type AmbiguousGameMatch = {
+  nbaGameId: number; gameDate: string;
+  candidates: Array<{ game_id: string; nba_game_id: string; game_date: string }>;
+};
 
 export type SeasonWriteResult = {
   inserted: number;      // new all_games rows
   updated: number;       // existing rows (same nba_game_id) without box scores, now loaded
-  reused: number;        // rows found on (date, home, away) under another id, now carrying the NBA id
-  skipped: number;       // already had player box scores (or a preseason/duplicate clash): untouched
+  reused: number;        // same-date row under another id, no box scores: now carries the NBA id
+  nearReused: number;    // as reused, but the row's date was a day off (date corrected)
+  skipped: number;       // untouched: already had player box scores, preseason clash, duplicate or ambiguous
+  nearSkipped: number;   // of skipped: a single row a day off that already had box scores
+  ambiguousMatches: AmbiguousGameMatch[]; // of skipped: two or more candidate rows within ±1 day
   playerRows: number;
   teamRows: number;
   unmappedPlayerRows: number; // played rows whose person has no player_id (ambiguous): not written
 };
+
+export function ambiguousMatchOf(c: ClassifiedGame): AmbiguousGameMatch | null {
+  const d = c.decision;
+  if (d.action !== 'skip' || d.reason !== 'ambiguous') return null;
+  return {
+    nbaGameId: c.game.nbaGameId, gameDate: c.game.gameDate,
+    candidates: d.candidates.map((r) => ({ game_id: r.game_id, nba_game_id: r.nba_game_id, game_date: r.game_date })),
+  };
+}
 
 export async function writeSeasonGames(
   tx: Db,
@@ -149,84 +153,55 @@ export async function writeSeasonGames(
   playerRows: KagglePlayerGame[],
   ids: { teamIdByFranchise: Map<number, string>; playerIdByPerson: Map<number, string> },
 ): Promise<SeasonWriteResult> {
-  const res: SeasonWriteResult = { inserted: 0, updated: 0, reused: 0, skipped: 0, playerRows: 0, teamRows: 0, unmappedPlayerRows: 0 };
-  if (games.length === 0) return res;
+  const res: SeasonWriteResult = {
+    inserted: 0, updated: 0, reused: 0, nearReused: 0, skipped: 0, nearSkipped: 0, ambiguousMatches: [],
+    playerRows: 0, teamRows: 0, unmappedPlayerRows: 0,
+  };
   const live = games.find((g) => g.seasonId > GAP_FILL_SEASON);
   if (live) throw new Error(`Game ${live.nbaGameId} is from ${live.seasonId}: seasons after ${GAP_FILL_SEASON} belong to the live pipeline`);
-  const teamId = (fid: number, g: KaggleGame) => {
-    const t = ids.teamIdByFranchise.get(fid);
-    if (!t) throw new Error(`Game ${g.nbaGameId}: franchise ${fid} has no teams row`);
-    return t;
-  };
-  const natKey = (g: KaggleGame) =>
-    `${g.gameDate}|${teamId(g.homeFranchiseId, g)}|${teamId(g.awayFranchiseId, g)}`;
+  if (games.length === 0) return res;
 
-  // One Kaggle row per game id and per natural key.
-  const unique: KaggleGame[] = [];
-  const seenId = new Set<number>(), seenKey = new Set<string>();
-  for (const g of games) {
-    const k = natKey(g);
-    if (seenId.has(g.nbaGameId) || seenKey.has(k)) { res.skipped++; continue; }
-    seenId.add(g.nbaGameId); seenKey.add(k); unique.push(g);
-  }
-
-  const hasBox = (alias: string) =>
-    tx.unsafe(`EXISTS (SELECT 1 FROM game_player_box_scores pb WHERE pb.game_id = ${alias}.game_id)`);
-  const byId = new Map<string, Existing>();
-  for (const batch of chunks(unique.map((g) => String(g.nbaGameId)))) {
-    const rows = await tx<Existing[]>`
-      SELECT a.game_id::text, a.nba_game_id::text, a.is_preseason, ${hasBox('a')} AS has_box
-      FROM all_games a WHERE a.nba_game_id = ANY(${batch}::bigint[])`;
-    for (const r of rows) byId.set(r.nba_game_id, r);
-  }
-  const byKey = new Map<string, Existing>();
-  const rest = unique.filter((g) => !byId.has(String(g.nbaGameId)));
-  for (const batch of chunks(rest)) {
-    const rows = await tx<Existing[]>`
-      SELECT a.game_id::text, a.nba_game_id::text, a.is_preseason, ${hasBox('a')} AS has_box,
-             a.game_date::text || '|' || a.home_team_id || '|' || a.away_team_id AS k
-      FROM all_games a
-      JOIN unnest(${batch.map((g) => g.gameDate)}::date[],
-                  ${batch.map((g) => teamId(g.homeFranchiseId, g))}::bigint[],
-                  ${batch.map((g) => teamId(g.awayFranchiseId, g))}::bigint[]) AS v(d, h, w)
-        ON a.game_date = v.d AND a.home_team_id = v.h AND a.away_team_id = v.w`;
-    for (const r of rows) byKey.set(r.k!, r);
-  }
-
+  const classified = await classifyGames(tx, games, ids.teamIdByFranchise);
   const gameIdByNba = new Map<number, string>();
-  const toInsert: KaggleGame[] = [];
-  const toUpdate: Array<{ game: KaggleGame; gameId: string }> = [];
-  for (const g of unique) {
-    const viaId = byId.get(String(g.nbaGameId));
-    const existing = viaId ?? byKey.get(natKey(g));
-    if (!existing) { toInsert.push(g); continue; }
-    if (existing.is_preseason) {
-      console.warn(`[import] Game ${g.nbaGameId} matches preseason row ${existing.nba_game_id}; skipped`);
+  const toInsert: ClassifiedGame[] = [];
+  const toUpdate: Array<{ game: KaggleGame; gameId: string; gameDate: string }> = [];
+  for (const c of classified) {
+    const d = c.decision;
+    const g = c.game;
+    if (d.action === 'insert') { toInsert.push(c); continue; }
+    if (d.action === 'skip') {
       res.skipped++;
+      if (d.reason === 'has_box' && d.near) res.nearSkipped++;
+      const amb = ambiguousMatchOf(c);
+      if (amb) res.ambiguousMatches.push(amb);
+      if (d.reason === 'preseason') console.warn(`[import] Game ${g.nbaGameId} matches preseason row ${d.row?.nba_game_id}; skipped`);
       continue;
     }
-    if (existing.has_box) { res.skipped++; continue; }
-    if (viaId) res.updated++; else res.reused++;
-    toUpdate.push({ game: g, gameId: existing.game_id });
-    gameIdByNba.set(g.nbaGameId, existing.game_id);
+    if (d.action === 'update') res.updated++;
+    else if (d.near) res.nearReused++;
+    else res.reused++;
+    // An id match keeps its date; a reused row takes the Kaggle date (fixes a day-off row).
+    toUpdate.push({ game: g, gameId: d.row.game_id, gameDate: d.action === 'update' ? d.row.game_date : g.gameDate });
+    gameIdByNba.set(g.nbaGameId, d.row.game_id);
   }
 
   for (const batch of chunks(toUpdate)) {
     await tx`
       UPDATE all_games a SET
-        nba_game_id = v.nid, season_id = v.sid, status = 'final',
+        nba_game_id = v.nid, game_date = v.gd, season_id = v.sid, status = 'final',
         home_score = v.hs, away_score = v.aws, is_playoffs = v.po, updated_at = now()
       FROM unnest(${batch.map((u) => u.gameId)}::bigint[], ${batch.map((u) => String(u.game.nbaGameId))}::bigint[],
                   ${batch.map((u) => String(u.game.seasonId))}::smallint[], ${batch.map((u) => String(u.game.homeScore))}::smallint[],
-                  ${batch.map((u) => String(u.game.awayScore))}::smallint[], ${batch.map((u) => String(u.game.isPlayoffs))}::boolean[])
-           AS v(gid, nid, sid, hs, aws, po)
+                  ${batch.map((u) => String(u.game.awayScore))}::smallint[], ${batch.map((u) => String(u.game.isPlayoffs))}::boolean[],
+                  ${batch.map((u) => u.gameDate)}::date[])
+           AS v(gid, nid, sid, hs, aws, po, gd)
       WHERE a.game_id = v.gid AND NOT a.is_preseason`;
   }
 
   for (const batch of chunks(toInsert)) {
-    const rows = batch.map((g) => ({
+    const rows = batch.map(({ game: g, homeTeamId, awayTeamId }) => ({
       nba_game_id: g.nbaGameId, season_id: g.seasonId, game_date: g.gameDate, status: 'final',
-      home_team_id: teamId(g.homeFranchiseId, g), away_team_id: teamId(g.awayFranchiseId, g),
+      home_team_id: homeTeamId, away_team_id: awayTeamId,
       home_score: g.homeScore, away_score: g.awayScore, is_playoffs: g.isPlayoffs,
     }));
     const inserted = await tx<{ game_id: string; nba_game_id: string }[]>`
@@ -246,12 +221,13 @@ export async function writeSeasonGames(
   type Cell = string | number | boolean | null | { source: string };
   const teamRows: Array<Record<string, Cell>> = [];
   const playerBoxRows: Array<Record<string, Cell>> = [];
-  for (const g of unique) {
+  for (const { game: g, homeTeamId, awayTeamId, decision } of classified) {
+    if (decision.action === 'skip') continue;
     const gameId = gameIdByNba.get(g.nbaGameId);
     if (!gameId) continue;
     const rows = rowsByGame.get(g.nbaGameId) ?? [];
     for (const isHome of [true, false]) {
-      const team = teamId(isHome ? g.homeFranchiseId : g.awayFranchiseId, g);
+      const team = isHome ? homeTeamId : awayTeamId;
       const side = rows.filter((r) => r.isHome === isHome);
       const box = teamBoxFromRows(side);
       if (box) teamRows.push({ game_id: gameId, team_id: team, is_home: isHome, ...box, raw_payload: { source: 'kaggle' } });
