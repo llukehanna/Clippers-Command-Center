@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import postgres from 'postgres';
+import { periodsBackfillCandidates } from '../periods-candidates.js';
 
 const url = process.env.FIXTURE_DATABASE_URL;
 const TIMEOUT = 180_000;
@@ -299,4 +300,29 @@ describe.skipIf(!url)('Kaggle history import (fixture DB)', () => {
     expect(await counts()).toEqual(before);
     expect(await sql`SELECT nba_game_id::text, home_score, away_score, status FROM all_games ORDER BY nba_game_id`).toEqual(snapshot);
   }, TIMEOUT);
+  it('computes advanced stats only for Clippers games before 2019', async () => {
+    execFileSync('npx', ['tsx', 'scripts/compute-stats.ts'], {
+      encoding: 'utf8',
+      env: { ...process.env, DATABASE_URL: url },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const advancedRows = (nbaGameId: number) => sql`
+      SELECT 1 FROM advanced_team_game_stats a JOIN all_games g USING (game_id) WHERE g.nba_game_id = ${nbaGameId}`;
+    // 1997 Wizards-Celtics: two box-scored teams, neither the Clippers.
+    expect(await sql`SELECT 1 FROM game_team_box_scores b JOIN all_games g USING (game_id) WHERE g.nba_game_id = 29700500`).not.toHaveLength(0);
+    expect(await advancedRows(29700500)).toHaveLength(0);
+    // 1972 Braves (Clippers franchise) game.
+    expect(await advancedRows(27200123)).not.toHaveLength(0);
+  }, TIMEOUT);
+
+  it('keeps Kaggle games out of the periods backfill', async () => {
+    const kaggle = await sql<{ n: number }[]>`
+      SELECT COUNT(*)::int AS n FROM game_team_box_scores WHERE raw_payload->>'source' = 'kaggle'`;
+    expect(kaggle[0].n).toBeGreaterThan(0);
+    const candidates = await periodsBackfillCandidates(sql, 1000);
+    const kaggleGames = await sql<{ game_id: string }[]>`
+      SELECT DISTINCT game_id::text FROM game_team_box_scores WHERE raw_payload->>'source' = 'kaggle'`;
+    const ids = new Set(kaggleGames.map((r) => r.game_id));
+    expect(candidates.filter((c) => ids.has(c.game_id))).toEqual([]);
+  });
 });

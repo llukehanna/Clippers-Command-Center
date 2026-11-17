@@ -10,6 +10,7 @@
 
 import { sql } from './lib/db.js';
 import { fetchCdnBoxscore, mapPool } from './lib/nba-season.js';
+import { periodsBackfillCandidates } from './lib/periods-candidates.js';
 import { toNbaGameId10 } from './lib/schedule-utils.js';
 
 function argValue(flag: string): string | undefined {
@@ -20,19 +21,7 @@ function argValue(flag: string): string | undefined {
 async function main(): Promise<void> {
   const limit = Number(argValue('--limit') ?? 150);
 
-  const games = await sql<{ game_id: string; nba_game_id: string; season_id: number }[]>`
-    SELECT g.game_id::text, g.nba_game_id::text, g.season_id
-    FROM games g
-    JOIN teams lac ON lac.abbreviation = 'LAC' AND lac.team_id IN (g.home_team_id, g.away_team_id)
-    WHERE lower(g.status) = 'final'
-      AND EXISTS (
-        SELECT 1 FROM game_team_box_scores tb
-        WHERE tb.game_id = g.game_id
-          AND (jsonb_typeof(tb.raw_payload) IS DISTINCT FROM 'object' OR NOT (tb.raw_payload ? 'periods'))
-      )
-    ORDER BY g.game_date DESC
-    LIMIT ${limit}
-  `;
+  const games = await periodsBackfillCandidates(sql, limit);
   console.log(`[backfill-periods] ${games.length} game(s) missing line scores`);
 
   let updated = 0;
