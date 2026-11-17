@@ -13,6 +13,9 @@ describe('resolveRecordsStart', () => {
   it('counts a lockout season (725 games) as complete', () => {
     expect(resolveRecordsStart(cov([[1997, 1189], [1998, 725], [1999, 1189]]), null)).toBe(1997);
   });
+  it('never counts a Clippers-only season as complete', () => {
+    expect(resolveRecordsStart(cov([[1975, 82], [1996, 1189]]), null)).toBe(1996);
+  });
   it('never reaches past the last successfully backfilled season', () => {
     expect(resolveRecordsStart(cov([[2008, 1230], [2009, 800], [2010, 1230], [2011, 990]]), 2010)).toBe(2010);
   });
