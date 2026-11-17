@@ -85,6 +85,12 @@ describe.skipIf(!url)('Kaggle history import (fixture DB)', () => {
       INSERT INTO game_player_box_scores (game_id, team_id, player_id, points)
       SELECT g.game_id, ${PHX}, (SELECT player_id FROM players WHERE nba_person_id = 1626164), 20
       FROM all_games g WHERE g.nba_game_id > 91500000`;
+    // Bob McAdoo (no nba_person_id yet) already has a live box score row, so his
+    // name-match backfill is onto a live identity and must be listed for review.
+    await sql`
+      INSERT INTO game_player_box_scores (game_id, team_id, player_id, points)
+      SELECT g.game_id, ${BOS}, (SELECT player_id FROM players WHERE display_name = 'Bob McAdoo'), 12
+      FROM all_games g WHERE g.nba_game_id = 91500001`;
 
     // 1998 matching cases (Kaggle games 29800101-29800105), all season 1998.
     const [{ player_id: legacyPlayer }] = await sql<{ player_id: string }[]>`
@@ -118,10 +124,15 @@ describe.skipIf(!url)('Kaggle history import (fixture DB)', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  it('dry run writes nothing to the database and writes the report', () => {
+  it('dry run writes nothing to the database and writes the report', async () => {
     expect(afterDryRunCounts).toEqual(seededCounts);
     const report = JSON.parse(fs.readFileSync(dryReportPath, 'utf8'));
     expect(report.players.ambiguous.map((a: { name: string }) => a.name)).toEqual(['John Smith']);
+    const [{ player_id: mcadooId }] = await sql<{ player_id: string }[]>`SELECT player_id::text FROM players WHERE display_name = 'Bob McAdoo'`;
+    expect(report.players.backfillsOntoLiveIdentities).toEqual([{
+      name: 'Bob McAdoo', personId: 76001, birthdate: '1951-09-25',
+      playerId: mcadooId, dbName: 'Bob McAdoo', dbBirthdate: '1951-09-25', boxScoreRows: 1, matchedBy: 'name + birthdate',
+    }]);
     expect(report.rowErrors['PlayerStatistics.csv'].count).toBe(1);
     // The dry run runs the same matching: day-off reuse, day-off row left alone, ambiguous match.
     expect(report.gameMatches).toMatchObject({ reused: 1, nearReused: 1, nearSkipped: 1 });

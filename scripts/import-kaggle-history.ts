@@ -96,6 +96,46 @@ async function readCsv(file: string, required: string[], errors: RowErrors, each
   if (first) throw new Error(`${name} has no rows`);
 }
 
+type LiveIdentityBackfill = {
+  name: string; personId: number; birthdate: string | null;
+  playerId: string; dbName: string; dbBirthdate: string | null;
+  boxScoreRows: number; matchedBy: 'name + birthdate' | 'name only';
+};
+
+/** Every planned nba_person_id backfill whose player_id already has game_player_box_scores rows. */
+async function liveIdentityBackfills(
+  db: Db,
+  backfills: Array<{ player_id: string; nba_person_id: number }>,
+  people: Map<number, KagglePerson>,
+  dbPlayers: Array<{ player_id: string; display_name: string; birthdate: string | null }>,
+): Promise<LiveIdentityBackfill[]> {
+  if (backfills.length === 0) return [];
+  const boxRows = new Map<string, number>();
+  for (let i = 0; i < backfills.length; i += 1000) {
+    const ids = backfills.slice(i, i + 1000).map((b) => b.player_id);
+    const counts = await db<{ player_id: string; n: number }[]>`
+      SELECT player_id::text, COUNT(*)::int AS n FROM game_player_box_scores
+      WHERE player_id = ANY(${ids}::bigint[]) GROUP BY player_id`;
+    for (const c of counts) boxRows.set(c.player_id, c.n);
+  }
+  const dbById = new Map(dbPlayers.map((p) => [p.player_id, p]));
+  const out: LiveIdentityBackfill[] = [];
+  for (const b of backfills) {
+    const n = boxRows.get(b.player_id);
+    if (!n) continue;
+    const person = people.get(b.nba_person_id);
+    const row = dbById.get(b.player_id);
+    const birthdate = person?.birthdate ?? null;
+    const dbBirthdate = row?.birthdate ?? null;
+    out.push({
+      name: person ? `${person.firstName} ${person.lastName}`.trim() : '', personId: b.nba_person_id, birthdate,
+      playerId: b.player_id, dbName: row?.display_name ?? '', dbBirthdate, boxScoreRows: n,
+      matchedBy: birthdate && dbBirthdate && birthdate === dbBirthdate ? 'name + birthdate' : 'name only',
+    });
+  }
+  return out;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const inRange = (s: number) => s >= args.from && s <= args.to;
@@ -170,8 +210,19 @@ async function main() {
     if (!played(r) || referenced.has(r.personId)) continue;
     referenced.set(r.personId, people.get(r.personId) ?? { personId: r.personId, firstName: r.firstName, lastName: r.lastName, birthdate: null });
   }
-  const match = matchPlayers([...referenced.values()], await loadDbPlayers(db));
+  const dbPlayers = await loadDbPlayers(db);
+  const match = matchPlayers([...referenced.values()], dbPlayers);
   const ambiguous = new Set(match.ambiguous.map((a) => a.person.personId));
+
+  // Name matches that would set nba_person_id on a player who already has box
+  // scores (a live-pipeline identity). Listed for review before the real run.
+  const backfillsOntoLiveIdentities = await liveIdentityBackfills(db, match.backfillNbaId, referenced, dbPlayers);
+  if (backfillsOntoLiveIdentities.length) {
+    log(`nba_person_id backfills onto players who already have box scores (${backfillsOntoLiveIdentities.length}; review before the real run):`);
+    for (const b of backfillsOntoLiveIdentities) {
+      log(`  ${b.name} (Kaggle ${b.personId}${b.birthdate ? `, born ${b.birthdate}` : ''}) -> player_id ${b.playerId} "${b.dbName}"${b.dbBirthdate ? ` born ${b.dbBirthdate}` : ''}: ${b.boxScoreRows} box score rows, matched by ${b.matchedBy}`);
+    }
+  }
 
   const teamSeasons = aggregateTeamSeasons(allGames.filter((g) => tableSet.has(g.seasonId)), rows);
   const playerSeasons = aggregatePlayerSeasons(allGames.filter((g) => tableSet.has(g.seasonId)), rows);
@@ -290,7 +341,8 @@ async function main() {
     startBytes, estimatedBytes: simulatedBytes - startBytes, perSeason, skippedStages, stoppedByGuard: stopped,
     players: {
       referenced: referenced.size, matched: match.matched.size, toCreate: match.toCreate.length,
-      created: playerWrites.created, backfilled: match.backfillNbaId.length, backfillApplied: playerWrites.backfilled, ambiguousCount: match.ambiguous.length,
+      created: playerWrites.created, backfilled: match.backfillNbaId.length, backfillApplied: playerWrites.backfilled,
+      backfillsOntoLiveIdentities, ambiguousCount: match.ambiguous.length,
       ambiguous: match.ambiguous.map((a) => ({
         personId: a.person.personId, name: `${a.person.firstName} ${a.person.lastName}`.trim(),
         birthdate: a.person.birthdate, candidates: a.candidates,
