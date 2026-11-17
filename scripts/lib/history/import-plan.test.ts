@@ -176,6 +176,8 @@ describe('checkPointsAgainstScores', () => {
     const games = [
       game({ nbaGameId: 29700002, homeScore: 101, awayScore: 99 }),
       game({ nbaGameId: 29700001, homeScore: 20, awayScore: 10 }),
+      // Season order, not raw id order: a 2019 id (219...) sorts after 1997 ones.
+      game({ nbaGameId: 21900001, seasonId: 2019, homeScore: 5, awayScore: 6 }),
     ];
     const rows = [
       // 29700001: home adds up; away has a null-points row.
@@ -190,7 +192,10 @@ describe('checkPointsAgainstScores', () => {
         { gameId: 29700001, side: 'away', sum: null, score: 10 },
         { gameId: 29700002, side: 'home', sum: 45, score: 101 },
       ],
-      noPlayerRows: [{ gameId: 29700002, side: 'away', score: 99 }],
+      noPlayerRows: [
+        { gameId: 29700002, side: 'away', score: 99 },
+        { gameId: 21900001, side: 'home', score: 5 }, { gameId: 21900001, side: 'away', score: 6 },
+      ],
     });
   });
 });
