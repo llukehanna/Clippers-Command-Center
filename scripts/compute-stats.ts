@@ -291,6 +291,20 @@ async function main(): Promise<void> {
         OR g.home_team_id IN (SELECT team_id FROM teams WHERE abbreviation = 'LAC')
         OR g.away_team_id IN (SELECT team_id FROM teams WHERE abbreviation = 'LAC')
       )
+      -- Pre-2019 (Kaggle history) games: only when both team boxes carry the
+      -- possession inputs. Turnovers and offensive/defensive rebounds were not
+      -- recorded before the late 1970s; JS would read those nulls as 0 and store
+      -- made-up tov_pct / reb_pct / usage. Such games get no advanced rows and,
+      -- by this same filter, are never re-selected.
+      AND (
+        g.season_id IS NULL
+        OR g.season_id >= ${FULL_ROLLING_FIRST_SEASON}
+        OR (
+          SELECT COUNT(*) FROM game_team_box_scores b
+          WHERE b.game_id = g.game_id
+            AND b.turnovers IS NOT NULL AND b.offensive_reb IS NOT NULL AND b.defensive_reb IS NOT NULL
+        ) = 2
+      )
       ${all ? sql`` : sql`AND NOT EXISTS (SELECT 1 FROM advanced_team_game_stats a WHERE a.game_id = g.game_id)`}
     ORDER BY g.game_date, g.game_id
   `;
