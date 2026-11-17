@@ -1,6 +1,6 @@
 // scripts/lib/history/import-plan.ts
 // Pure helpers for scripts/import-kaggle-history.ts: load order, the storage
-// guard, the pre-write era check and team box totals. No DB imports.
+// guard, the pre-write era check, team box totals and report checks. No DB imports.
 import type { KaggleGame, KagglePlayerGame } from './kaggle.js';
 import { resolveEra, franchiseStartSeason } from './team-eras.js';
 import { played } from './season-totals.js';
@@ -107,15 +107,26 @@ const TEAM_BOX_FIELDS: Record<keyof TeamBox, keyof KagglePlayerGame> = {
 };
 export const TEAM_BOX_COLUMNS = Object.keys(TEAM_BOX_FIELDS) as Array<keyof TeamBox>;
 
-/**
- * A team's game totals summed from its players' counted (played) rows. A total
- * is null if any counted row lacks it; null overall when no row counts.
- */
-export function teamBoxFromRows(rows: KagglePlayerGame[]): TeamBox | null {
-  const counted = rows.filter(played);
-  if (counted.length === 0) return null;
+const nullBox = (points: number): TeamBox => {
   const out = {} as TeamBox;
+  for (const col of TEAM_BOX_COLUMNS) out[col] = null;
+  out.points = points;
+  return out;
+};
+
+/**
+ * One side's team box. `points` is the side's final score (Games.csv), never
+ * the player sum: a game missing a player row must not become a fake
+ * franchise low. Every other stat is summed from the side's counted (played)
+ * rows; a total is null if any counted row lacks it, and all of them are null
+ * when no row counts.
+ */
+export function teamBoxFromRows(rows: KagglePlayerGame[], points: number): TeamBox {
+  const counted = rows.filter(played);
+  const out = nullBox(points);
+  if (counted.length === 0) return out;
   for (const col of TEAM_BOX_COLUMNS) {
+    if (col === 'points') continue;
     let total: number | null = 0;
     for (const r of counted) {
       const v = r[TEAM_BOX_FIELDS[col]] as number | null;
@@ -125,4 +136,59 @@ export function teamBoxFromRows(rows: KagglePlayerGame[]): TeamBox | null {
     out[col] = total;
   }
   return out;
+}
+
+/**
+ * Both team boxes for a game, or neither. When only one side has counted rows
+ * the other still gets a box (its final score, every other stat null), so
+ * compute-stats never sees a one-sided game. A game with no counted rows on
+ * either side has no box score at all: null.
+ */
+export function teamBoxesForGame(game: KaggleGame, rows: KagglePlayerGame[]): { home: TeamBox; away: TeamBox } | null {
+  const mine = rows.filter((r) => r.nbaGameId === game.nbaGameId);
+  if (!mine.some(played)) return null;
+  return {
+    home: teamBoxFromRows(mine.filter((r) => r.isHome), game.homeScore),
+    away: teamBoxFromRows(mine.filter((r) => !r.isHome), game.awayScore),
+  };
+}
+
+export type PointsMismatch = {
+  gameId: number; side: 'home' | 'away';
+  /** Summed points of the side's counted rows; null when a counted row has no points. */
+  sum: number | null;
+  score: number;
+};
+
+export type PointsCheck = {
+  /** Sides with counted rows whose points do not add up to the final score. */
+  mismatches: PointsMismatch[];
+  /** Sides with no counted player row at all. */
+  noPlayerRows: Array<{ gameId: number; side: 'home' | 'away'; score: number }>;
+};
+
+/** Compares each side's summed player points with its final score, ordered by game id then side. */
+export function checkPointsAgainstScores(games: KaggleGame[], rows: KagglePlayerGame[]): PointsCheck {
+  const byGame = new Map<number, KagglePlayerGame[]>();
+  for (const r of rows) {
+    if (!played(r)) continue;
+    const a = byGame.get(r.nbaGameId); if (a) a.push(r); else byGame.set(r.nbaGameId, [r]);
+  }
+  const out: PointsCheck = { mismatches: [], noPlayerRows: [] };
+  for (const g of [...games].sort((a, b) => a.nbaGameId - b.nbaGameId)) {
+    const counted = byGame.get(g.nbaGameId) ?? [];
+    for (const side of ['home', 'away'] as const) {
+      const score = side === 'home' ? g.homeScore : g.awayScore;
+      const sideRows = counted.filter((r) => r.isHome === (side === 'home'));
+      if (sideRows.length === 0) { out.noPlayerRows.push({ gameId: g.nbaGameId, side, score }); continue; }
+      const sum = sideRows.some((r) => r.points === null) ? null : sideRows.reduce((s, r) => s + (r.points as number), 0);
+      if (sum !== score) out.mismatches.push({ gameId: g.nbaGameId, side, sum, score });
+    }
+  }
+  return out;
+}
+
+/** Report shape for a long list: the total plus the first `cap` items. */
+export function capped<T>(items: T[], cap = 200): { total: number; shown: number; items: T[] } {
+  return { total: items.length, shown: Math.min(cap, items.length), items: items.slice(0, cap) };
 }

@@ -3,6 +3,8 @@
 // league_season_averages rows. Cardinal rule: a total is null if ANY counted game
 // lacks the stat (early eras miss steals, blocks, turnovers, 3-pointers); never
 // undercount. A team-game with no player rows at all also nulls its totals.
+// Exception: team and opponent POINTS come from the games' final scores, not
+// player rows, so a missing player row can't undercount them.
 //
 // Play-in games (not playoffs, id 50000000-59999999) are excluded from EVERY
 // aggregate: NBA.com counts them separately, so they go in neither column.
@@ -210,12 +212,18 @@ export function aggregateTeamSeasons(games: KaggleGame[], rows: KagglePlayerGame
   for (const [k, v] of bucket) teamGame.set(k, sumCounts(v));
   const countsFor = (gameId: number, fid: number): Counts => teamGame.get(tgKey(gameId, fid)) ?? nullCounts();
 
-  type Acc = { wins: number; losses: number; own: Counts[]; opp: Counts[]; opponents: Set<number> };
+  type Acc = {
+    wins: number; losses: number; own: Counts[]; opp: Counts[]; opponents: Set<number>;
+    pointsFor: number; pointsAgainst: number;
+  };
   const teams = new Map<string, Acc & { seasonId: number; fid: number }>();
   const acc = (seasonId: number, fid: number) => {
     const k = `${seasonId}:${fid}`;
     let a = teams.get(k);
-    if (!a) { a = { seasonId, fid, wins: 0, losses: 0, own: [], opp: [], opponents: new Set() }; teams.set(k, a); }
+    if (!a) {
+      a = { seasonId, fid, wins: 0, losses: 0, own: [], opp: [], opponents: new Set(), pointsFor: 0, pointsAgainst: 0 };
+      teams.set(k, a);
+    }
     return a;
   };
 
@@ -234,6 +242,8 @@ export function aggregateTeamSeasons(games: KaggleGame[], rows: KagglePlayerGame
     }
     const homeWon = g.homeScore > g.awayScore;
     if (homeWon) { home.wins++; away.losses++; } else { away.wins++; home.losses++; }
+    home.pointsFor += g.homeScore; home.pointsAgainst += g.awayScore;
+    away.pointsFor += g.awayScore; away.pointsAgainst += g.homeScore;
     home.own.push(countsFor(g.nbaGameId, g.homeFranchiseId));
     home.opp.push(countsFor(g.nbaGameId, g.awayFranchiseId));
     away.own.push(countsFor(g.nbaGameId, g.awayFranchiseId));
@@ -244,8 +254,8 @@ export function aggregateTeamSeasons(games: KaggleGame[], rows: KagglePlayerGame
   for (const a of teams.values()) {
     const final = lastPlayoff.get(a.seasonId);
     const champ = final ? (final.homeScore > final.awayScore ? final.homeFranchiseId : final.awayFranchiseId) : null;
-    const own = sumCounts(a.own);
-    const opp = sumCounts(a.opp);
+    const own = { ...sumCounts(a.own), points: a.pointsFor };
+    const opp = { ...sumCounts(a.opp), points: a.pointsAgainst };
     const names = nameOf(a.seasonId, a.fid);
     const row = {
       seasonId: a.seasonId, nbaFranchiseId: a.fid, city: names.city, name: names.name ?? '',

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  planLoad, guardAllows, estimateBytes, eraProblems, teamBoxFromRows, stepGames, CLIPPERS_FRANCHISE_ID,
+  planLoad, guardAllows, estimateBytes, eraProblems, teamBoxFromRows, teamBoxesForGame, checkPointsAgainstScores,
+  capped, stepGames, CLIPPERS_FRANCHISE_ID, TEAM_BOX_COLUMNS,
 } from './import-plan.js';
 import type { KaggleGame, KagglePlayerGame } from './kaggle.js';
 
@@ -117,7 +118,7 @@ describe('teamBoxFromRows', () => {
       // DNP rows are not counted, even with a null stat.
       prow({ personId: 3, minutes: null, points: null, rebounds: null }),
     ];
-    const box = teamBoxFromRows(rows)!;
+    const box = teamBoxFromRows(rows, 17);
     expect(box.points).toBe(17);
     expect(box.steals).toBeNull();
     expect(box.rebounds).toBe(10);
@@ -125,8 +126,78 @@ describe('teamBoxFromRows', () => {
     expect(box.offensive_reb).toBe(2);
   });
 
-  it('returns null when the team has no counted rows', () => {
-    expect(teamBoxFromRows([])).toBeNull();
-    expect(teamBoxFromRows([prow({ minutes: '0:00' })])).toBeNull();
+  it('takes points from the final score, not the player sum', () => {
+    // A missing player row: the players add up to 17, the team scored 101.
+    const rows = [prow({ personId: 1, points: 10 }), prow({ personId: 2, points: 7 })];
+    expect(teamBoxFromRows(rows, 101).points).toBe(101);
+    // Even when a counted row has no points.
+    expect(teamBoxFromRows([prow({ points: null })], 99).points).toBe(99);
+  });
+
+  it('gives the score and nulls everything else when no row counts', () => {
+    for (const rows of [[], [prow({ minutes: '0:00' })]]) {
+      const box = teamBoxFromRows(rows, 88);
+      expect(box.points).toBe(88);
+      for (const col of TEAM_BOX_COLUMNS) if (col !== 'points') expect(box[col]).toBeNull();
+    }
+  });
+});
+
+describe('teamBoxesForGame', () => {
+  const g = game({ nbaGameId: 29700001, homeScore: 101, awayScore: 99 });
+
+  it('writes both sides with the final scores', () => {
+    const boxes = teamBoxesForGame(g, [prow({ isHome: true, points: 40 }), prow({ personId: 2, isHome: false, points: 50 })])!;
+    expect(boxes.home.points).toBe(101);
+    expect(boxes.away.points).toBe(99);
+    expect(boxes.home.rebounds).toBe(5);
+    expect(boxes.away.rebounds).toBe(5);
+  });
+
+  it('still writes the side with no counted rows: score only, every other stat null', () => {
+    const boxes = teamBoxesForGame(g, [prow({ isHome: true }), prow({ personId: 2, isHome: false, minutes: '0:00', points: 0 })])!;
+    expect(boxes.home).toMatchObject({ points: 101, rebounds: 5, turnovers: 1 });
+    expect(boxes.away.points).toBe(99);
+    for (const col of TEAM_BOX_COLUMNS) if (col !== 'points') expect(boxes.away[col]).toBeNull();
+  });
+
+  it('writes neither when no row counts on either side', () => {
+    expect(teamBoxesForGame(g, [])).toBeNull();
+    expect(teamBoxesForGame(g, [prow({ minutes: '0:00', points: 0 }), prow({ isHome: false, minutes: null, points: null })])).toBeNull();
+  });
+
+  it("ignores another game's rows", () => {
+    expect(teamBoxesForGame(g, [prow({ nbaGameId: 29700002 })])).toBeNull();
+  });
+});
+
+describe('checkPointsAgainstScores', () => {
+  it('lists sides whose summed points differ from the score, and sides with no rows', () => {
+    const games = [
+      game({ nbaGameId: 29700002, homeScore: 101, awayScore: 99 }),
+      game({ nbaGameId: 29700001, homeScore: 20, awayScore: 10 }),
+    ];
+    const rows = [
+      // 29700001: home adds up; away has a null-points row.
+      prow({ nbaGameId: 29700001, isHome: true, points: 20 }),
+      prow({ nbaGameId: 29700001, personId: 2, isHome: false, points: null }),
+      // 29700002: home is a player row short; away has only a DNP.
+      prow({ nbaGameId: 29700002, isHome: true, points: 45 }),
+      prow({ nbaGameId: 29700002, personId: 3, isHome: false, minutes: '0:00', points: 0 }),
+    ];
+    expect(checkPointsAgainstScores(games, rows)).toEqual({
+      mismatches: [
+        { gameId: 29700001, side: 'away', sum: null, score: 10 },
+        { gameId: 29700002, side: 'home', sum: 45, score: 101 },
+      ],
+      noPlayerRows: [{ gameId: 29700002, side: 'away', score: 99 }],
+    });
+  });
+});
+
+describe('capped', () => {
+  it('keeps the total and the first items', () => {
+    expect(capped([1, 2, 3], 2)).toEqual({ total: 3, shown: 2, items: [1, 2] });
+    expect(capped(Array.from({ length: 250 }, (_, i) => i)).items).toHaveLength(200);
   });
 });

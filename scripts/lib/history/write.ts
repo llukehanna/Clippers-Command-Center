@@ -13,7 +13,7 @@ import type { KaggleGame, KagglePlayerGame, KagglePerson } from './kaggle.js';
 import type { DbPlayer, MatchResult } from './match-players.js';
 import type { PlayerSeasonRow, TeamSeasonRow, LeagueAverageRow } from './season-totals.js';
 import { played } from './season-totals.js';
-import { teamBoxFromRows, TEAM_BOX_COLUMNS, GAP_FILL_SEASON } from './import-plan.js';
+import { teamBoxesForGame, TEAM_BOX_COLUMNS, GAP_FILL_SEASON } from './import-plan.js';
 import { classifyGames, type ClassifiedGame } from './match-games.js';
 import { TEAM_ERAS } from './team-eras.js';
 import { NBA_TEAM_IDS } from '../nba-teams.js';
@@ -226,11 +226,15 @@ export async function writeSeasonGames(
     const gameId = gameIdByNba.get(g.nbaGameId);
     if (!gameId) continue;
     const rows = rowsByGame.get(g.nbaGameId) ?? [];
+    // Both team boxes or neither (see teamBoxesForGame); points are the final score.
+    const boxes = teamBoxesForGame(g, rows);
     for (const isHome of [true, false]) {
       const team = isHome ? homeTeamId : awayTeamId;
       const side = rows.filter((r) => r.isHome === isHome);
-      const box = teamBoxFromRows(side);
-      if (box) teamRows.push({ game_id: gameId, team_id: team, is_home: isHome, ...box, raw_payload: { source: 'kaggle' } });
+      if (boxes) {
+        const box = isHome ? boxes.home : boxes.away;
+        teamRows.push({ game_id: gameId, team_id: team, is_home: isHome, ...box, raw_payload: { source: 'kaggle' } });
+      }
       const seen = new Set<string>();
       for (const r of side) {
         if (!played(r)) continue;

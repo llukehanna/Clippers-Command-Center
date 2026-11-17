@@ -34,7 +34,9 @@ import { matchPlayers } from './lib/history/match-players.js';
 import {
   aggregatePlayerSeasons, aggregateTeamSeasons, leagueAverages, compareFranchiseRecords, played,
 } from './lib/history/season-totals.js';
-import { planLoad, stepGames, guardAllows, estimateBytes, eraProblems, GAP_FILL_SEASON, type LoadStep } from './lib/history/import-plan.js';
+import {
+  planLoad, stepGames, guardAllows, estimateBytes, eraProblems, checkPointsAgainstScores, capped, GAP_FILL_SEASON, type LoadStep,
+} from './lib/history/import-plan.js';
 import {
   type Db, loadTeamIdByFranchise, loadDbPlayers, loadPlayerIdByPerson, databaseBytes, ambiguousMatchOf, type AmbiguousGameMatch,
   writePlayers, upsertSeasonRows, upsertEraNames, writeSeasonGames, replaceSeasonTables, loadCoverage,
@@ -167,6 +169,11 @@ async function main() {
   // Range filter, not set membership: an official season missing from the file must show up as 'missing'.
   const recordMismatches = tableSeasons.length === 0 ? []
     : compareFranchiseRecords(teamSeasons).filter((m) => m.seasonId >= tableSeasons[0] && inRange(m.seasonId) && m.seasonId < maxSeason);
+  // Team points come from the final score; this lists where the player rows don't add up to it
+  // (a missing or partial player row), for every game this run reads (per-game writes and season tables).
+  const pointsCheck = checkPointsAgainstScores([...keptGames.values()], rows);
+  const pointsVsScore = { mismatches: capped(pointsCheck.mismatches), noPlayerRows: capped(pointsCheck.noPlayerRows) };
+  log(`Player points vs final score: ${pointsCheck.mismatches.length} team-games differ, ${pointsCheck.noPlayerRows.length} have no player rows (team points use the score; see report)`);
 
   if (problems.length) {
     log(`Pre-write check failed:\n  ${problems.join('\n  ')}`);
@@ -279,7 +286,7 @@ async function main() {
         birthdate: a.person.birthdate, candidates: a.candidates,
       })),
     },
-    gameMatches: matches, eraProblems: problems, eraTeamsMissing, recordMismatches, rowErrors, rowsWithoutGame, recordsStart,
+    gameMatches: matches, eraProblems: problems, eraTeamsMissing, recordMismatches, pointsVsScore, rowErrors, rowsWithoutGame, recordsStart,
   };
   fs.mkdirSync(path.dirname(args.report), { recursive: true });
   fs.writeFileSync(args.report, JSON.stringify(report, null, 2));

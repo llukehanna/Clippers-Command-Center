@@ -126,6 +126,14 @@ describe.skipIf(!url)('Kaggle history import (fixture DB)', () => {
     expect(report.gameMatches.ambiguous.map((m: { nbaGameId: number }) => m.nbaGameId)).toEqual([29800105]);
     const stage1998 = report.perSeason.find((p: { stage: string }) => p.stage === '1998 clippers');
     expect(stage1998).toMatchObject({ games: 1, reused: 0, nearReused: 1, alreadyLoaded: 3, nearSkipped: 1, skipped: 4 });
+    // Summed player points vs the final score.
+    const { mismatches } = report.pointsVsScore;
+    expect(mismatches.total).toBe(mismatches.items.length);
+    expect(mismatches.items).toContainEqual({ gameId: 27200123, side: 'home', sum: 45, score: 101 });
+    expect(mismatches.items).toContainEqual({ gameId: 27200123, side: 'away', sum: 52, score: 99 });
+    expect(mismatches.items.filter((m: { gameId: number }) => m.gameId === 21900100)).toEqual([
+      { gameId: 21900100, side: 'home', sum: 30, score: 110 }, { gameId: 21900100, side: 'away', sum: 28, score: 105 },
+    ]);
   });
 
   it('imports a 1972 Braves game with nulls preserved', async () => {
@@ -142,7 +150,11 @@ describe.skipIf(!url)('Kaggle history import (fixture DB)', () => {
     const [team] = await sql<{ points: number; steals: number | null; rebounds: number; source: string; payload: string }[]>`
       SELECT points, steals, rebounds, raw_payload->>'source' AS source, raw_payload::text AS payload
       FROM game_team_box_scores WHERE game_id = ${g.game_id} AND team_id = ${LAC}`;
-    expect(team).toEqual({ points: 45, steals: null, rebounds: 14, source: 'kaggle', payload: '{"source": "kaggle"}' });
+    // Points are the final score (101-99), not the two player rows (25 + 20).
+    expect(team).toEqual({ points: 101, steals: null, rebounds: 14, source: 'kaggle', payload: '{"source": "kaggle"}' });
+    const [away] = await sql<{ points: number }[]>`
+      SELECT points FROM game_team_box_scores WHERE game_id = ${g.game_id} AND team_id = ${BOS}`;
+    expect(away.points).toBe(99);
   });
 
   it('backfills nba_person_id on a name match and does not duplicate the player', async () => {
@@ -170,10 +182,11 @@ describe.skipIf(!url)('Kaggle history import (fixture DB)', () => {
     expect(names.map((r) => r.display_name)).toEqual(['Antoine Walker', 'Chris Webber']);
     const smiths = await sql`SELECT 1 FROM players WHERE display_name = 'John Smith'`;
     expect(smiths).toHaveLength(2);
-    // Team totals still include the skipped player's line.
-    const [team] = await sql<{ points: number }[]>`
-      SELECT points FROM game_team_box_scores WHERE game_id = ${g.game_id} AND team_id = ${WAS}`;
-    expect(team.points).toBe(32);
+    // Team totals still include the skipped player's line (Webber 11 + Smith 3 rebounds);
+    // points are the final score.
+    const [team] = await sql<{ points: number; rebounds: number }[]>`
+      SELECT points, rebounds FROM game_team_box_scores WHERE game_id = ${g.game_id} AND team_id = ${WAS}`;
+    expect(team).toEqual({ points: 95, rebounds: 14 });
   });
 
   it('reuses a game stored under a legacy id', async () => {
