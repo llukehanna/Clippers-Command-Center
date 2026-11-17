@@ -25,7 +25,9 @@ async function assertNoRecentPoll(): Promise<void> {
   const [row] = await sql<{ value: unknown }[]>`SELECT value FROM app_kv WHERE key = 'live:last_poll_at'`;
   if (!row) return;
   const polledAt = new Date(row.value as string | number).getTime();
-  if (Number.isNaN(polledAt)) return;
+  if (Number.isNaN(polledAt)) {
+    throw new Error(`app_kv live:last_poll_at is unparseable (${JSON.stringify(row.value)}); refusing to run.`);
+  }
   const ageMin = (Date.now() - polledAt) / 60_000;
   if (ageMin < QUIET_MINUTES) {
     throw new Error(`Live poll ran ${ageMin.toFixed(1)} min ago (< ${QUIET_MINUTES}); refusing to run during a game.`);
@@ -59,6 +61,7 @@ async function main() {
     }
   }
 
+  await assertNoRecentPoll(); // a game may have started during the batches
   log('VACUUM FULL game_player_box_scores ...');
   await sql.unsafe('VACUUM FULL game_player_box_scores');
 
