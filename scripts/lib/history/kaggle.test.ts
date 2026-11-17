@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import path from 'node:path';
 import {
-  streamCsv, assertHeaders, parseGame, parsePlayerGame, parsePerson,
+  streamCsv, assertHeaders, parseGame, parsePlayerGame, parsePerson, KaggleRowError,
   seasonIdOfGame, minutesToClock, GAMES_COLUMNS, PLAYER_STATS_COLUMNS, PLAYERS_COLUMNS,
 } from './kaggle.js';
 
@@ -23,6 +23,24 @@ describe('kaggle readers', () => {
     expect(p.isHome).toBe(true);
     expect(p.starter).toBeNull();
     expect(p.minutes).toBe('34:30');
+  });
+
+  it('accepts 1.0/0.0 for home and rejects unreadable values', () => {
+    const r = { gameId: '1', personId: '2' };
+    expect(parsePlayerGame({ ...r, home: '1.0' }).isHome).toBe(true);
+    expect(parsePlayerGame({ ...r, home: ' 0.0 ' }).isHome).toBe(false);
+    expect(() => parsePlayerGame({ ...r, home: '' })).toThrow(KaggleRowError);
+    expect(() => parsePlayerGame({ ...r, home: 'x' })).toThrow(KaggleRowError);
+  });
+
+  it('throws KaggleRowError on a blank score but returns null for preseason', async () => {
+    const rows = await load('Games.csv');
+    expect(() => parseGame({ ...rows[0], homeScore: '' })).toThrow(KaggleRowError);
+    expect(parseGame({ ...rows[3], homeScore: '' })).toBeNull();
+    expect(parseGame(rows[3])).toBeNull();
+    try { parseGame({ ...rows[0], homeScore: '' }); } catch (e) {
+      expect(e).toMatchObject({ file: 'Games.csv', field: 'homeScore', value: '' });
+    }
   });
 
   it('accepts True/False for home', () => {
