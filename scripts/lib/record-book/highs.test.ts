@@ -36,10 +36,14 @@ describe('HIGH_SPECS', () => {
     expect(buildHighsSql(stl)).toContain(`s.game_date >= '1983-08-01'`);
     expect(buildHighsSql(pts)).toContain(`s.game_date >= '1970-08-01'`);
   });
-  it('builds league-season highs only from complete league seasons', () => {
+  it('builds league-season highs only from seasons with non-Clippers games', () => {
     const specs = HIGH_SPECS.filter((x) => x.scope === 'league_season');
     expect(specs.length).toBeGreaterThan(0);
-    for (const s of specs) expect(s.source).toContain('HAVING COUNT(*) >= 700');
+    for (const s of specs) {
+      expect(s.source).toContain('home_team_id NOT IN');
+      expect(s.source).toContain('away_team_id NOT IN');
+      expect(s.source).not.toContain('HAVING');
+    }
   });
   it('gives every spec a first season from the stat table', () => {
     for (const s of HIGH_SPECS) {
