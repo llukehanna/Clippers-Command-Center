@@ -301,6 +301,12 @@ describe.skipIf(!url)('Kaggle history import (fixture DB)', () => {
     expect(await sql`SELECT nba_game_id::text, home_score, away_score, status FROM all_games ORDER BY nba_game_id`).toEqual(snapshot);
   }, TIMEOUT);
   it('computes advanced stats only for Clippers games before 2019', async () => {
+    // A null-season, non-Clippers game keeps the old league-wide behavior.
+    const [{ game_id: nullSeasonId }] = await sql<{ game_id: string }[]>`
+      INSERT INTO all_games (nba_game_id, season_id, game_date, status, home_team_id, away_team_id, home_score, away_score)
+      VALUES (92000001, NULL, '1993-01-05', 'final', ${PHX}, ${BOS}, 100, 90) RETURNING game_id::text`;
+    await sql`INSERT INTO game_team_box_scores (game_id, team_id, is_home, points, rebounds)
+              VALUES (${nullSeasonId}, ${PHX}, true, 100, 40), (${nullSeasonId}, ${BOS}, false, 90, 38)`;
     execFileSync('npx', ['tsx', 'scripts/compute-stats.ts'], {
       encoding: 'utf8',
       env: { ...process.env, DATABASE_URL: url },
@@ -313,6 +319,7 @@ describe.skipIf(!url)('Kaggle history import (fixture DB)', () => {
     expect(await advancedRows(29700500)).toHaveLength(0);
     // 1972 Braves (Clippers franchise) game.
     expect(await advancedRows(27200123)).not.toHaveLength(0);
+    expect(await advancedRows(92000001)).not.toHaveLength(0);
   }, TIMEOUT);
 
   it('keeps Kaggle games out of the periods backfill', async () => {
