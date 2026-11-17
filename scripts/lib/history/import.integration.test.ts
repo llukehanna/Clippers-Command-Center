@@ -10,6 +10,8 @@ import os from 'node:os';
 import path from 'node:path';
 import postgres from 'postgres';
 import { periodsBackfillCandidates } from '../periods-candidates.js';
+import { replaceEraNames, loadTeamIdByFranchise, type Db } from './write.js';
+import { TEAM_ERAS } from './team-eras.js';
 
 const url = process.env.FIXTURE_DATABASE_URL;
 const TIMEOUT = 180_000;
@@ -318,6 +320,30 @@ describe.skipIf(!url)('Kaggle history import (fixture DB)', () => {
     expect(await counts()).toEqual(before);
     expect(await sql`SELECT nba_game_id::text, home_score, away_score, status FROM all_games ORDER BY nba_game_id`).toEqual(snapshot);
   }, TIMEOUT);
+  it('replaces era names, so a changed era leaves no overlapping row', async () => {
+    // An earlier run wrote different Clippers eras: Buffalo to 1975, San Diego from 1976.
+    const changed = TEAM_ERAS.map((e) =>
+      e.abbreviation === 'BUF' ? { ...e, lastSeason: 1975 } : e.abbreviation === 'SDC' ? { ...e, firstSeason: 1976 } : e);
+    const teamIds = await loadTeamIdByFranchise(sql as unknown as Db);
+    await sql.begin((tx) => replaceEraNames(tx as unknown as Db, teamIds, changed));
+    expect((await sql`SELECT first_season_id FROM team_era_names WHERE team_id = ${LAC} ORDER BY 1`).map((r) => r.first_season_id))
+      .toEqual([1970, 1976, 1984]);
+    // The import's own era write (TEAM_ERAS) runs second.
+    runImport([`--report=${reportPath}`]);
+    const eras = await sql<{ first_season_id: number; last_season_id: number | null; abbreviation: string }[]>`
+      SELECT first_season_id, last_season_id, abbreviation FROM team_era_names WHERE team_id = ${LAC} ORDER BY 1`;
+    expect(eras).toEqual([
+      { first_season_id: 1970, last_season_id: 1977, abbreviation: 'BUF' },
+      { first_season_id: 1978, last_season_id: 1983, abbreviation: 'SDC' },
+      { first_season_id: 1984, last_season_id: null, abbreviation: 'LAC' },
+    ]);
+    const overlaps = await sql`
+      SELECT 1 FROM team_era_names a JOIN team_era_names b
+        ON a.team_id = b.team_id AND a.first_season_id < b.first_season_id
+       AND b.first_season_id <= COALESCE(a.last_season_id, 32767)`;
+    expect(overlaps).toHaveLength(0);
+  }, TIMEOUT);
+
   it('computes advanced stats only for Clippers games before 2019', async () => {
     // A null-season, non-Clippers game keeps the old league-wide behavior.
     const [{ game_id: nullSeasonId }] = await sql<{ game_id: string }[]>`

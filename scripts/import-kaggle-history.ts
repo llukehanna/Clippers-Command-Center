@@ -39,7 +39,7 @@ import {
 } from './lib/history/import-plan.js';
 import {
   type Db, loadTeamIdByFranchise, loadDbPlayers, loadPlayerIdByPerson, databaseBytes, ambiguousMatchOf, type AmbiguousGameMatch,
-  writePlayers, upsertSeasonRows, upsertEraNames, writeSeasonGames, replaceSeasonTables, loadCoverage,
+  writePlayers, upsertSeasonRows, replaceEraNames, writeSeasonGames, replaceSeasonTables, loadCoverage,
   setBackfilledThrough,
 } from './lib/history/write.js';
 import { classifyGames } from './lib/history/match-games.js';
@@ -197,7 +197,7 @@ async function main() {
     await sql.begin(async (txRaw) => {
       const tx = txRaw as unknown as Db;
       await upsertSeasonRows(tx, [...tableSeasons, ...stepSeasons]);
-      eraTeamsMissing = await upsertEraNames(tx, teamIdByFranchise);
+      eraTeamsMissing = await replaceEraNames(tx, teamIdByFranchise);
       playerWrites = await writePlayers(tx, match);
     });
     if (eraTeamsMissing.length) log(`Era names skipped (no current teams row): ${eraTeamsMissing.join(', ')}`);
