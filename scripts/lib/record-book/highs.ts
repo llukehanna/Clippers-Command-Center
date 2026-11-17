@@ -3,7 +3,6 @@
 // Regular season only. Query params: $1 = LAC team_id, $2 = first season of
 // the "relevant players" window (players with a recent Clippers game).
 import { REGULAR_SEASON } from '../sql-fragments.js';
-import { MIN_COMPLETE_GAMES } from './records-start.js';
 
 export type HighScope = 'lac_team' | 'lac_player' | 'player_career' | 'player_season' | 'league_season';
 
@@ -27,8 +26,9 @@ export const STAT_FIRST_SEASON: Record<string, number> = {
   team_q_pts: 1996, q_pts: 1996, half_pts: 1996,   // play-by-play derived
 };
 
-/** League-season sources only count seasons with a complete league schedule (1970-95 hold Clippers games only). */
-const COMPLETE_LEAGUE_SEASONS = `g.season_id IN (SELECT season_id FROM games GROUP BY season_id HAVING COUNT(*) >= ${MIN_COMPLETE_GAMES})`;
+/** League-season sources skip seasons holding only Clippers games (1970-95): the season needs a game between two other teams. */
+const LAC_IDS = `(SELECT team_id FROM teams WHERE abbreviation = 'LAC')`;
+export const LEAGUE_SEASON_FILTER = `g.season_id IN (SELECT season_id FROM games WHERE home_team_id NOT IN ${LAC_IDS} AND away_team_id NOT IN ${LAC_IDS})`;
 
 /** Players with a regular-season Clippers game since season $2. */
 export const RELEVANT_PLAYERS = `(
@@ -60,8 +60,11 @@ function lacTeamGames(expr: string): string {
     WHERE t.team_id = $1::bigint AND ${REGULAR_SEASON}`;
 }
 
-const spec = (scope: HighScope, statKey: string, source: string, limit = 25, order: 'desc' | 'asc' = 'desc'): HighSpec =>
-  ({ scope, statKey, source, order, limit, firstSeason: STAT_FIRST_SEASON[statKey] });
+const spec = (scope: HighScope, statKey: string, source: string, limit = 25, order: 'desc' | 'asc' = 'desc'): HighSpec => {
+  const firstSeason = STAT_FIRST_SEASON[statKey];
+  if (firstSeason === undefined) throw new Error(`STAT_FIRST_SEASON has no entry for ${statKey}`);
+  return { scope, statKey, source, order, limit, firstSeason };
+};
 
 export const HIGH_SPECS: HighSpec[] = [
   // Any Clipper, any season.
@@ -72,7 +75,7 @@ export const HIGH_SPECS: HighSpec[] = [
     spec('player_season', key, playerGames(col, `pb.player_id IN ${RELEVANT_PLAYERS}`, `pb.player_id::text || ':' || g.season_id::text`), 5)),
   // League-wide per season.
   ...PLAYER_STATS.filter(([key]) => ['pts', 'reb', 'ast', 'fg3m'].includes(key))
-    .map(([key, col]) => spec('league_season', key, playerGames(col, COMPLETE_LEAGUE_SEASONS, 'g.season_id::text'))),
+    .map(([key, col]) => spec('league_season', key, playerGames(col, LEAGUE_SEASON_FILTER, 'g.season_id::text'))),
   // Clippers team games.
   spec('lac_team', 'team_pts', lacTeamGames('t.points')),
   spec('lac_team', 'team_fg3m', lacTeamGames('t.fg3_made')),
