@@ -284,9 +284,13 @@ async function main(): Promise<void> {
   const games = await sql<{ game_id: string; season_id: number | null }[]>`
     SELECT g.game_id::text AS game_id, g.season_id
     FROM games g
-    JOIN teams lac ON lac.abbreviation = 'LAC'
     WHERE EXISTS (SELECT 1 FROM game_team_box_scores b WHERE b.game_id = g.game_id)
-      AND (g.season_id >= ${FULL_ROLLING_FIRST_SEASON} OR lac.team_id IN (g.home_team_id, g.away_team_id))
+      AND (
+        g.season_id IS NULL
+        OR g.season_id >= ${FULL_ROLLING_FIRST_SEASON}
+        OR g.home_team_id IN (SELECT team_id FROM teams WHERE abbreviation = 'LAC')
+        OR g.away_team_id IN (SELECT team_id FROM teams WHERE abbreviation = 'LAC')
+      )
       ${all ? sql`` : sql`AND NOT EXISTS (SELECT 1 FROM advanced_team_game_stats a WHERE a.game_id = g.game_id)`}
     ORDER BY g.game_date, g.game_id
   `;
