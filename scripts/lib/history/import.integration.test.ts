@@ -362,6 +362,23 @@ describe.skipIf(!url)('Kaggle history import (fixture DB)', () => {
       VALUES (92000001, NULL, '1993-01-05', 'final', ${PHX}, ${BOS}, 100, 90) RETURNING game_id::text`;
     await sql`INSERT INTO game_team_box_scores (game_id, team_id, is_home, points, rebounds)
               VALUES (${nullSeasonId}, ${PHX}, true, 100, 40), (${nullSeasonId}, ${BOS}, false, 90, 38)`;
+    // R21: a 2019 Kaggle game whose away side has only its score (no player rows).
+    const [{ game_id: kaggle2019 }] = await sql<{ game_id: string }[]>`
+      INSERT INTO all_games (nba_game_id, season_id, game_date, status, home_team_id, away_team_id, home_score, away_score)
+      VALUES (21900999, 2019, '2020-01-05', 'final', ${PHX}, ${BOS}, 101, 99) RETURNING game_id::text`;
+    await sql`INSERT INTO game_team_box_scores
+                (game_id, team_id, is_home, points, rebounds, fg_attempted, ft_attempted, offensive_reb, defensive_reb, turnovers, raw_payload)
+              VALUES (${kaggle2019}, ${PHX}, true, 101, 45, 85, 20, 10, 35, 12, ${sql.json({ source: 'kaggle' })}),
+                     (${kaggle2019}, ${BOS}, false, 99, NULL, NULL, NULL, NULL, NULL, NULL, ${sql.json({ source: 'kaggle' })})`;
+    // A live 2019 game with a null turnover and a string-typed raw_payload: not a
+    // Kaggle box (guarded like periods-candidates), so it is selected exactly as today.
+    const [{ game_id: live2019 }] = await sql<{ game_id: string }[]>`
+      INSERT INTO all_games (nba_game_id, season_id, game_date, status, home_team_id, away_team_id, home_score, away_score)
+      VALUES (21900998, 2019, '2020-01-06', 'final', ${PHX}, ${BOS}, 100, 90) RETURNING game_id::text`;
+    await sql`INSERT INTO game_team_box_scores
+                (game_id, team_id, is_home, points, rebounds, fg_attempted, ft_attempted, offensive_reb, defensive_reb, turnovers, raw_payload)
+              VALUES (${live2019}, ${PHX}, true, 100, 45, 85, 20, 10, 35, NULL, ${JSON.stringify({ source: 'kaggle' })}::jsonb),
+                     (${live2019}, ${BOS}, false, 90, 40, 80, 20, 9, 31, 14, NULL)`;
     execFileSync('npx', ['tsx', 'scripts/compute-stats.ts'], {
       encoding: 'utf8',
       env: { ...process.env, DATABASE_URL: url },
@@ -380,6 +397,11 @@ describe.skipIf(!url)('Kaggle history import (fixture DB)', () => {
     // 1985 Clippers game with complete possession inputs on both sides still gets them.
     expect(await advancedRows(28500300)).toHaveLength(2);
     expect(await advancedRows(92000001)).not.toHaveLength(0);
+    // R21: the 2019 Kaggle game with a nulls-only side gets none; a complete 2019
+    // Kaggle game (the gap fill) and the live 2019 game still do.
+    expect(await advancedRows(21900999)).toHaveLength(0);
+    expect(await advancedRows(21900100)).toHaveLength(2);
+    expect(await advancedRows(21900998)).toHaveLength(2);
     // A re-run selects nothing new: the 1972 game is not picked up again.
     const rerun = execFileSync('npx', ['tsx', 'scripts/compute-stats.ts'], {
       encoding: 'utf8',
