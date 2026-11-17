@@ -3,7 +3,6 @@ import { Panel } from '@/components/ui/panel'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { formatSigned } from '@/src/lib/ui/odds'
 import { formatDayShort } from '@/src/lib/ui/time'
-import { teamName } from '@/src/lib/ui/teams'
 import type { PlayedGame } from '@/src/lib/ui/season'
 
 /**
@@ -33,7 +32,7 @@ export function SeasonStrip({ games, streaks }: { games: PlayedGame[]; streaks: 
             {games.map((g) => {
               const h = Math.max(6, (Math.abs(g.margin) / max) * 50)
               const win = g.result === 'W'
-              const label = `${win ? 'W' : 'L'} ${g.final_score.team}–${g.final_score.opp} ${g.home_away === 'home' ? 'vs' : '@'} ${teamName(g.opponent_abbr, g.opponent_name)} · ${formatDayShort(g.game_date)}${g.ot ? ' · OT' : ''}${g.game_type === 'play_in' ? ' · Play-In' : g.game_type === 'playoffs' ? ' · Playoffs' : ''}`
+              const label = `${win ? 'W' : 'L'} ${g.final_score.team}–${g.final_score.opp} ${g.home_away === 'home' ? 'vs' : '@'} ${g.opponent_abbr} · ${formatDayShort(g.game_date)}${g.ot ? ' · OT' : ''}${g.game_type === 'play_in' ? ' · Play-In' : g.game_type === 'playoffs' ? ' · Playoffs' : ''}`
               return (
                 <li key={g.game_id} className="relative flex-1">
                   <Link href={`/history/${g.game_id}`} prefetch={false} title={label} aria-label={label} className="group absolute inset-0">
