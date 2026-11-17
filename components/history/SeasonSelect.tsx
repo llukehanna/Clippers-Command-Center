@@ -1,9 +1,10 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { groupSeasonsByEra } from '@/src/lib/ui/season-groups'
 
 /** Season picker; changing season clears the other filters. */
-export function SeasonSelect({ seasons, value }: { seasons: Array<{ season_id: number; label: string }>; value: string }) {
+export function SeasonSelect({ seasons, value }: { seasons: Array<{ season_id: number; label: string; team_name: string }>; value: string }) {
   const router = useRouter()
   return (
     <label className="relative inline-flex items-center">
@@ -13,10 +14,14 @@ export function SeasonSelect({ seasons, value }: { seasons: Array<{ season_id: n
         onChange={(e) => router.push(`/history?season_id=${e.target.value}`, { scroll: false })}
         className="glass-track press cursor-pointer appearance-none rounded-full py-1.5 pl-3.5 pr-8 text-[13.5px] text-text outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-pacific"
       >
-        {[...seasons].reverse().map((s) => (
-          <option key={s.season_id} value={String(s.season_id)} className="bg-ink-2">
-            {s.label.replace('-', '–')}
-          </option>
+        {groupSeasonsByEra(seasons).map((g) => (
+          <optgroup key={g.label} label={g.label} className="bg-ink-2">
+            {g.seasons.map((s) => (
+              <option key={s.season_id} value={String(s.season_id)} className="bg-ink-2">
+                {s.label.replace('-', '–')}
+              </option>
+            ))}
+          </optgroup>
         ))}
       </select>
       <svg aria-hidden width="10" height="10" viewBox="0 0 10 10" className="pointer-events-none absolute right-3 text-mute">

@@ -205,3 +205,42 @@ describe('GET /api/history/games/{id}', () => {
   it.todo('game not found returns 404 with error envelope {error:{code:"NOT_FOUND",message:...,details:{}}}');
   it.todo('meta has all required fields: generated_at, source, stale, stale_reason, ttl_seconds');
 });
+
+// ─── GET /api/history/games/{id} — is_lac by team identity ───────────────────
+
+describe('GET /api/history/games/{id} is_lac', () => {
+  it('marks the Clippers side by team identity even when the era abbreviation is BUF', async () => {
+    mockHistorySqlFn.mockReset();
+    mockHistorySqlFn.mockImplementation(async (strings: readonly string[]) => {
+      const q = strings.join('?');
+      if (q.includes('FROM games g')) {
+        return [{
+          game_id: '9', game_date: '1973-01-05', season_id: 1972, home_team_id: '7', away_team_id: '42',
+          status: 'final', home_score: 100, away_score: 99,
+          home_abbr: 'SEA', away_abbr: 'BUF', home_name: 'SuperSonics', away_name: 'Braves',
+          home_is_lac: false, away_is_lac: true,
+        }];
+      }
+      if (q.includes('COUNT(*)')) return [{ cnt: 1 }];
+      if (q.includes('FROM game_player_box_scores')) {
+        return [
+          { player_id: '1', team_id: '7', display_name: 'A', points: 10 },
+          { player_id: '2', team_id: '42', display_name: 'B', points: 12 },
+        ];
+      }
+      return [];
+    });
+    const { GET } = await import('../../app/api/history/games/[game_id]/route.js');
+    const res = await GET(new Request('http://localhost/api/history/games/9'), { params: Promise.resolve({ game_id: '9' }) });
+    const body = await res.json();
+    expect(body.game.home_team).toMatchObject({ abbreviation: 'SEA', is_lac: false });
+    expect(body.game.away_team).toMatchObject({ abbreviation: 'BUF', is_lac: true });
+    expect(body.box_score.teams.map((t: { team_abbr: string; is_lac: boolean }) => [t.team_abbr, t.is_lac])).toEqual([
+      ['SEA', false],
+      ['BUF', true],
+    ]);
+    const gameCall = mockHistorySqlFn.mock.calls.find((c) => (c[0] as string[]).join('?').includes('FROM games g'))!;
+    expect((gameCall[0] as string[]).join('?')).toContain('nba_team_id');
+    expect(gameCall).toContain(1610612746);
+  });
+});

@@ -5,10 +5,10 @@ import type { LinePeriod } from '@/src/lib/ui/types'
 const label = (p: number) => (p <= 4 ? `Q${p}` : p === 5 ? 'OT' : `${p - 4}OT`)
 
 /** Points by period, Clippers row first; the higher score in each period is emphasized. */
-export function LineScore({ periods, lacHome, oppAbbr, className }: { periods: LinePeriod[]; lacHome: boolean; oppAbbr: string; className?: string }) {
+export function LineScore({ periods, lacHome, oppAbbr, lacAbbr = 'LAC', className }: { periods: LinePeriod[]; lacHome: boolean; oppAbbr: string; lacAbbr?: string; className?: string }) {
   if (!periods.length) return null
   const rows = [
-    { abbr: 'LAC', pts: periods.map((p) => (lacHome ? p.home : p.away)) },
+    { abbr: lacAbbr, pts: periods.map((p) => (lacHome ? p.home : p.away)) },
     { abbr: oppAbbr, pts: periods.map((p) => (lacHome ? p.away : p.home)) },
   ]
   return (

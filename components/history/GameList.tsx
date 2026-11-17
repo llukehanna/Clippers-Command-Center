@@ -23,7 +23,7 @@ function Row({ g }: { g: PlayedGame }) {
           <span className="min-w-0">
             <span className="flex min-w-0 items-center gap-2">
               <span className="truncate text-[14.5px] font-medium">
-                <span className="text-mute">{g.home_away === 'home' ? 'vs' : '@'}</span> {teamName(g.opponent_abbr)}
+                <span className="text-mute">{g.home_away === 'home' ? 'vs' : '@'}</span> {teamName(g.opponent_abbr, g.opponent_name)}
               </span>
               {gameTypeLabel(g.game_type) && <Chip tone="blue">{gameTypeLabel(g.game_type)}</Chip>}
             </span>
@@ -83,7 +83,7 @@ export function GameList({ played, upcoming }: { played: PlayedGame[]; upcoming:
               <li key={g.game_id} className="flex items-center gap-3 px-3.5 py-2 text-[14px] text-mute">
                 <span className="w-[92px] font-mono text-[12px]">{formatDay(g.game_date)}</span>
                 <TeamLogo abbr={g.opponent_abbr} size="xs" />
-                {g.home_away === 'home' ? 'vs' : '@'} {teamName(g.opponent_abbr)}
+                {g.home_away === 'home' ? 'vs' : '@'} {teamName(g.opponent_abbr, g.opponent_name)}
               </li>
             ))}
           </ol>

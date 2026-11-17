@@ -21,7 +21,7 @@ type SP = { season_id?: string; home_away?: string; result?: string }
 
 export default async function HistoryPage({ searchParams }: { searchParams: Promise<SP> }) {
   const params = await searchParams
-  const seasonsRes = await getJson<{ seasons: Array<{ season_id: number; label: string }> }>('/api/history/seasons')
+  const seasonsRes = await getJson<{ seasons: Array<{ season_id: number; label: string; team_name: string }> }>('/api/history/seasons')
   const seasons = seasonsRes?.seasons ?? []
   const seasonId = params.season_id ?? String(seasons.at(-1)?.season_id ?? '')
   const gamesRes = seasonId ? await getJson<{ games: HistoryGame[] }>(`/api/history/games?season_id=${seasonId}&limit=200`) : null
