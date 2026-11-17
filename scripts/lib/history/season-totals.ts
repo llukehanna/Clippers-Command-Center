@@ -253,7 +253,7 @@ export function aggregateTeamSeasons(games: KaggleGame[], rows: KagglePlayerGame
       wins: a.wins, losses: a.losses, playoffRound: a.opponents.size,
       wonTitle: champ === a.fid, games: a.wins + a.losses, ...own,
     } as TeamSeasonRow;
-    for (const k of STAT_KEYS) (row as Record<string, N>)[`opp${k[0].toUpperCase()}${k.slice(1)}`] = opp[k];
+    for (const k of STAT_KEYS) (row as unknown as Record<string, N>)[`opp${k[0].toUpperCase()}${k.slice(1)}`] = opp[k];
     out.push(row);
   }
   return out;
