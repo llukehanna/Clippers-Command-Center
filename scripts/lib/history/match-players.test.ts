@@ -69,10 +69,21 @@ describe('matchPlayers', () => {
     expect(r.toCreate.map((p) => p.personId)).toEqual([10]);
   });
 
-  it('does not merge on a conflicting birthdate', () => {
+  it('reports a sole name match with a conflicting birthdate as ambiguous', () => {
     const r = matchPlayers([person(3, 'Mike', 'James', '1975-08-18')], [row('a', 'Mike James', null, '1990-08-18')]);
     expect(r.matched.size).toBe(0);
-    expect(r.toCreate).toHaveLength(1);
+    expect(r.toCreate).toEqual([]);
+    expect(r.ambiguous).toEqual([{ person: person(3, 'Mike', 'James', '1975-08-18'), candidates: ['a'] }]);
+  });
+
+  it('ignores people already settled by nba_person_id when checking name uniqueness', () => {
+    const r = matchPlayers(
+      [person(1, 'Charles', 'Smith'), person(2, 'Charles', 'Smith')],
+      [row('a', 'Charles Smith', 1), row('b', 'Charles Smith')]
+    );
+    expect(r.matched.get(1)).toBe('a');
+    expect(r.matched.get(2)).toBe('b');
+    expect(r.backfillNbaId).toEqual([{ player_id: 'b', nba_person_id: 2 }]);
   });
 
   it('is deterministic regardless of input order', () => {

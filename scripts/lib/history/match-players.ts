@@ -55,6 +55,8 @@ export function matchPlayers(people: KagglePerson[], db: DbPlayer[]): MatchResul
     else markAmbiguous(p, hits.map((r) => r.player_id));
   }
 
+  const idMatched = new Set(matchedMap.keys());
+
   // Only rows without an NBA id may be name-matched; a row with a different id
   // is a different human.
   const pool = rows.filter((r) => r.nba_person_id === null && !claimed.has(r.player_id));
@@ -82,16 +84,20 @@ export function matchPlayers(people: KagglePerson[], db: DbPlayer[]): MatchResul
   for (const [p, r] of pass2Matches) markMatched(p, r, true);
 
   // Pass 3: name alone, only when it is unambiguous on both sides.
+  // People settled by an exact nba_person_id match do not count as competitors.
   const nameCount = new Map<string, number>();
-  for (const p of sortedPeople) nameCount.set(personKey(p), (nameCount.get(personKey(p)) ?? 0) + 1);
+  for (const p of sortedPeople.filter((q) => !idMatched.has(q.personId))) nameCount.set(personKey(p), (nameCount.get(personKey(p)) ?? 0) + 1);
   const toCreate: KagglePerson[] = [];
   for (const p of sortedPeople) {
     if (done.has(p.personId)) continue;
     const key = personKey(p);
     const nameRows = key ? pool.filter((r) => !claimed.has(r.player_id) && rowKey.get(r.player_id) === key) : [];
     const compatible = nameRows.filter((r) => !birthConflict(p.birthdate, r.birthdate));
-    if (compatible.length === 0) {
+    if (nameRows.length === 0) {
       toCreate.push(p);
+    } else if (compatible.length === 0) {
+      // Same name but conflicting birthdate: creating or merging are both guesses.
+      markAmbiguous(p, nameRows.map((r) => r.player_id));
     } else if (nameRows.length === 1 && nameCount.get(key) === 1) {
       markMatched(p, compatible[0], true);
     } else {
