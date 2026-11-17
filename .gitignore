@@ -55,3 +55,6 @@ next-env.d.ts
 
 # local screenshot scratch
 .playwright-mcp/
+
+# local data (Kaggle history dump, import reports)
+/data/
