@@ -29,6 +29,8 @@ interface GameRow {
   away_score: number | null;
   home_abbr: string;
   away_abbr: string;
+  home_name: string;
+  away_name: string;
   game_type: GameType;
   overtime_periods: number | null;
 }
@@ -160,8 +162,10 @@ export async function loadHistoryGames(url: URL): Promise<ApiResult> {
         g.status,
         g.home_score,
         g.away_score,
-        ht.abbreviation       AS home_abbr,
-        at.abbreviation       AS away_abbr,
+        COALESCE(he.abbreviation, ht.abbreviation) AS home_abbr,
+        COALESCE(ae.abbreviation, at.abbreviation) AS away_abbr,
+        COALESCE(he.name, ht.name) AS home_name,
+        COALESCE(ae.name, at.name) AS away_name,
         ${sql.unsafe(GAME_TYPE_SQL)} AS game_type,
         -- Overtime periods from the Clippers' total player minutes: 240 in
         -- regulation, +25 per OT (status no longer carries "OT").
@@ -171,6 +175,12 @@ export async function loadHistoryGames(url: URL): Promise<ApiResult> {
       FROM games g
       JOIN teams ht ON g.home_team_id = ht.team_id
       JOIN teams at ON g.away_team_id = at.team_id
+      LEFT JOIN team_era_names he ON he.team_id = ht.team_id
+       AND g.season_id >= he.first_season_id
+       AND (he.last_season_id IS NULL OR g.season_id <= he.last_season_id)
+      LEFT JOIN team_era_names ae ON ae.team_id = at.team_id
+       AND g.season_id >= ae.first_season_id
+       AND (ae.last_season_id IS NULL OR g.season_id <= ae.last_season_id)
       WHERE (g.home_team_id = ${lacTeamId}::bigint OR g.away_team_id = ${lacTeamId}::bigint)
         AND g.season_id = ${seasonId}
         ${cursorClause}
@@ -196,6 +206,8 @@ export async function loadHistoryGames(url: URL): Promise<ApiResult> {
       const isHome = g.home_team_id === lacTeamId;
       const homeAway: 'home' | 'away' = isHome ? 'home' : 'away';
       const opponentAbbr = isHome ? g.away_abbr : g.home_abbr;
+      const opponentName = isHome ? g.away_name : g.home_name;
+      const lacAbbr = isHome ? g.home_abbr : g.away_abbr;
       const lacScore = isHome ? g.home_score : g.away_score;
       const oppScore = isHome ? g.away_score : g.home_score;
 
@@ -212,6 +224,8 @@ export async function loadHistoryGames(url: URL): Promise<ApiResult> {
         game_id: g.game_id,
         game_date: g.game_date,
         opponent_abbr: opponentAbbr,
+        opponent_name: opponentName,
+        lac_abbr: lacAbbr,
         home_away: homeAway,
         result,
         // Only surface a score for finalized games — scheduled games may have 0s stored
