@@ -1,0 +1,6 @@
+gameId,gameDateTimeEst,hometeamCity,hometeamName,hometeamId,awayteamCity,awayteamName,awayteamId,homeScore,awayScore,gameType
+27200123,1972-12-05T20:00:00,Buffalo,Braves,1610612746,Boston,Celtics,1610612738,101,99,Regular Season
+20500456,2005-11-20T19:30:00,Phoenix,Suns,1610612756,Miami,Heat,1610612748,110,104,Regular Season
+30500001,2006-02-19T20:00:00,East,All-Stars,0,West,All-Stars,0,122,120,All-Star Game
+10500012,2005-10-12T19:00:00,Los Angeles,Clippers,1610612746,Denver,Nuggets,1610612743,95,90,Preseason
+42400101,2025-04-20T15:00:00,Los Angeles,Clippers,1610612746,Denver,Nuggets,1610612743,100,98,Playoffs
