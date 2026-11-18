@@ -80,7 +80,7 @@ export default async function HomePage() {
     <div className="page">
       <section className="enter grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 0 }}>
         <HomeLive>
-          <NextGamePanel game={next} context={nextContext} />
+          <NextGamePanel game={next} context={nextContext} href={next ? `/schedule/${next.game_id}` : undefined} />
         </HomeLive>
         {snapshot && (
           <SeasonPanel

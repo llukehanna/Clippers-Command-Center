@@ -53,6 +53,7 @@ export default async function SchedulePage() {
       <div className="enter" style={{ ['--i' as string]: 0 }}>
         <NextGamePanel
           game={next ?? null}
+          href={next ? `/schedule/${next.game_id}` : undefined}
           context={
             next ? (
               <span className="flex flex-wrap justify-end gap-1.5">

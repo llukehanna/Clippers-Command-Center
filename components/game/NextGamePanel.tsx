@@ -1,4 +1,5 @@
 import * as React from 'react'
+import Link from 'next/link'
 import { Panel } from '@/components/ui/panel'
 import { Chip } from '@/components/ui/chip'
 import { TeamMark } from '@/components/ui/team-mark'
@@ -13,11 +14,12 @@ interface NextGamePanelProps {
   game: ScheduleGame | null
   context?: React.ReactNode
   eyebrow?: string
+  href?: string
   className?: string
 }
 
 /** The hero card for the next Clippers game: matchup, tip-off, countdown, line. */
-export function NextGamePanel({ game, context, eyebrow = 'Next game', className }: NextGamePanelProps) {
+export function NextGamePanel({ game, context, eyebrow = 'Next game', href, className }: NextGamePanelProps) {
   if (!game) {
     return (
       <Panel variant="hero" className={className}>
@@ -87,6 +89,14 @@ export function NextGamePanel({ game, context, eyebrow = 'Next game', className 
               { label: 'Total', value: odds.over_under == null ? '—' : String(odds.over_under) },
             ]}
           />
+        )}
+
+        {href && (
+          <div className="mt-5 flex justify-end">
+            <Link href={href} className="font-mono text-[12px] text-mute transition-colors hover:text-text">
+              Game preview →
+            </Link>
+          </div>
         )}
       </div>
     </Panel>
