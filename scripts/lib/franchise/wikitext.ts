@@ -99,6 +99,8 @@ export interface Cell {
   colspan: number;
   /** True when this is a copy of a rowspan cell from a row above. */
   spanned: boolean;
+  /** The cell's attribute text (`style="background:#ff9"`), '' when none. */
+  attrs: string;
 }
 
 const ATTRS = /^\s*(?:[a-z-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'|]+)\s*)+$/i;
@@ -115,7 +117,7 @@ function makeCell(raw: string, header: boolean): Cell {
     const m = new RegExp(`${name}\\s*=\\s*["']?(\\d+)`, 'i').exec(attrs);
     return m ? Math.max(1, Number(m[1])) : 1;
   };
-  return { text: text.trim(), header, rowspan: span('rowspan'), colspan: span('colspan'), spanned: false };
+  return { text: text.trim(), header, rowspan: span('rowspan'), colspan: span('colspan'), spanned: false, attrs: attrs.trim() };
 }
 
 /** Lines, with a {{template}} or <ref> that runs over several lines joined back onto the line it started on. */

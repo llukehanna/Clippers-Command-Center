@@ -1,0 +1,9 @@
+{
+  "_source": "Controller-verified sample of site.api.espn.com/apis/site/v2/sports/basketball/nba/transactions?team=12 (LA Clippers).",
+  "transactions": [
+    { "date": "2026-10-17T07:00Z", "description": "Signed G Cam Christie to a two-way contract. Waived Gs Miye Oni, Jahmyl Telfort and Blake Wesley." },
+    { "date": "2026-10-16T07:00Z", "description": "Waived G Fletcher Loyer." },
+    { "date": "2026-02-05T08:00Z", "description": "Acquired G Max Strus from Cleveland." },
+    { "date": "2026-02-01T08:00Z", "description": "Re-signed G Kobe Sanders to a contract." }
+  ]
+}

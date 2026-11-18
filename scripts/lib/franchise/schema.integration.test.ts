@@ -47,4 +47,15 @@ describe.skipIf(!url)('franchise history schema (fixture DB)', () => {
     const parts = await sql`SELECT person_key FROM transaction_parts WHERE transaction_id = ${t.transaction_id}`;
     expect(parts.map((p) => p.person_key)).toEqual(['bbref:oldna01']);
   });
+
+  it('accepts every GapReason value in transaction_parts.gap_reason', async () => {
+    const gapReasons = ['pick_unidentified', 'protections_unknown', 'source_conflict', 'person_unmatched', 'party_unknown'];
+    const [t] = await sql`INSERT INTO transactions (transaction_key, slug, date, kind, description, involves_clippers, sources, is_complete)
+      VALUES ('nba:Gap Test', 'gap-test', '2006-02-01', 'trade', 'd', true, ARRAY['nba:Gap Test'], false)
+      RETURNING transaction_id`;
+    for (const gap of gapReasons) {
+      await expect(sql`INSERT INTO transaction_parts (transaction_id, asset_kind, gap_reason)
+        VALUES (${t.transaction_id}, 'other', ${gap})`).resolves.toBeDefined();
+    }
+  });
 });

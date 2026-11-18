@@ -1,0 +1,55 @@
+<!-- Source: Wikipedia "2019 NBA draft" (wikitext via the query API cache, fetched 2026-11). Excerpt: ==Draft lottery== probability table only (prose, legend and refs removed). -->
+==Draft lottery==
+{|class="wikitable plainrowheaders" style="text-align:center"
+|-
+! scope="col" rowspan="2" | Team
+! scope="col" rowspan="2" | [[2018–19 NBA season|2018–19<br />record]]
+! scope="col" rowspan="2" | Lottery<br />chances
+! scope="col" colspan="14" | Lottery probabilities
+|-
+! 1st || 2nd || 3rd || 4th || 5th || 6th || 7th || 8th || 9th || 10th || 11th || 12th || 13th || 14th
+|-
+! scope="row" style="text-align:left;" | [[New York Knicks]]
+| 17–65|| 140 || .140 || .134 ||style="background:#ff9; width:2em; text-align:center;"| .127 || .119 || .479 || — || — || — || — || — || — || — || — || —
+|-
+! scope="row" style="text-align:left;" | [[Cleveland Cavaliers]]
+| 19–63|| 140 || .140 || .134 || .127 || .119 ||style="background:#ff9; width:2em; text-align:center;"| .278 || .200 || — || — || — || — || — || — || — || —
+|-
+! scope="row" style="text-align:left;" | [[Phoenix Suns]]
+| 19–63|| 140 || .140 || .134 || .127 || .119 || .148 ||style="background:#ff9; width:2em; text-align:center;"| .260 || .071 || — || — || — || — || — || — || —
+|-
+! scope="row" style="text-align:left;" | [[Chicago Bulls]]
+| 22–60|| 125 || .125 || .122 || .119 || .114 || .072 || .257 ||style="background:#ff9; width:2em; text-align:center;"| .168 || .022 || — || — || — || — || — || —
+|-
+! scope="row" style="text-align:left;" | [[Atlanta Hawks]]
+| 29–53|| 105 || .105 || .105 || .105 || .105 || .022 || .196 || .267 ||style="background:#ff9; width:2em; text-align:center;"| .088 || .006 || — || — || — || — || —
+|-
+! scope="row" style="text-align:left;" | [[Washington Wizards]]
+| 32–50|| 90 || .090|| .092 || .094 || .096 || — || .086 || .296 || .206 ||style="background:#ff9; width:2em; text-align:center;"| .038 || .002 || — || — || — || —
+|-
+! scope="row" style="text-align:left;" | [[New Orleans Pelicans]]
+| 33–49|| 60 ||style="background:#ff9; width:2em; text-align:center;"| .060 || .063 || .067 || .072 || —  || — || .197 || .372 || .151 || .016 || .000 || — || — || —
+|-
+! scope="row" style="text-align:left;" | [[Memphis Grizzlies]]{{Cref|1}}
+| 33–49|| 60 || .060 ||style="background:#ff9; width:2em; text-align:center;"| .063 || .067 || .072 || — || — || — || .312 || .341 || .080 || .005 || .000 || — || —
+|-
+! scope="row" style="text-align:left;" | [[Dallas Mavericks]]{{Cref|2}}
+| 33–49|| 60 || .060 || .063 || .067 || .072 || — || — || — || — || .464 ||style="background:#ff9; width:2em; text-align:center;"| .243 || .029 || .001 || .000 || —
+|-
+! scope="row" style="text-align:left;" | [[Minnesota Timberwolves]]
+| 36–46|| 30 || .030 || .033 || .036 || .040 || — || — || — || — || — || .659 ||style="background:#ff9; width:2em; text-align:center;"| .190 || .012 || .000 || .000
+|-
+! scope="row" style="text-align:left;" | [[Los Angeles Lakers]]
+| 37–45|| 20 || .020 || .022 || .024 ||style="background:#ff9; width:2em; text-align:center;"| .028 || — || — || — || — || — || — || .776 || .126 || .004 || .000
+|-
+! scope="row" style="text-align:left;" | [[Charlotte Hornets]]
+| 39–43|| 10 || .010 || .011 || .012 || .014 || — || — || — || — || — || — || — ||style="background:#ff9; width:2em; text-align:center;"| .861 || .090 || .002
+|-
+! scope="row" style="text-align:left;" | [[Miami Heat]]
+| 39–43|| 10 || .010 || .011 || .012 || .014 || — || — || — || — || — || — || — || — ||style="background:#ff9; width:2em; text-align:center;"| .906 || .046
+|-
+! scope="row" style="text-align:left;" | [[Sacramento Kings]]{{Cref|3}}
+| 39–43|| 10 || .010 || .011 || .012 || .014 || — || — || — || — || — || — || — || — || — ||style="background:#ff9; width:2em; text-align:center;"| .952
+|}
+
+==Eligibility and entrants==

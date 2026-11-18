@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { linkTargets, plainText, section, tableRows } from './wikitext.js';
+import { linkTargets, plainText, readTable, section, tableRows } from './wikitext.js';
 
 const PAGE = [
   'Intro.',
@@ -89,6 +89,13 @@ describe('tableRows', () => {
       ['July 7, 2025', 'A', 'B', 'ref'],
       ['July 7, 2025', 'C', 'ref'],
     ]);
+  });
+});
+
+describe('readTable', () => {
+  it("keeps each cell's attribute text", () => {
+    const [row] = readTable(['{|', '|-', '| 17–65 || style="background:#ff9" | .127 || .119', '|}'].join('\n'));
+    expect(row.map((c) => [c.attrs, c.text])).toEqual([['', '17–65'], ['style="background:#ff9"', '.127'], ['', '.119']]);
   });
 });
 

@@ -1,0 +1,128 @@
+{
+ "_source": "Real rows excerpted from the NBA.com player-movement feed (data/franchise-raw/nba/movement.json).",
+ "NBA_Player_Movement": {
+  "rows": [
+   {
+    "Transaction_Type": "Trade",
+    "TRANSACTION_DATE": "2026-09-14T00:00:00",
+    "TRANSACTION_DESCRIPTION": "LA Clippers received guard Gradey Dick from Toronto Raptors.",
+    "TEAM_ID": 1610612746.0,
+    "TEAM_SLUG": "clippers",
+    "PLAYER_ID": 1641711.0,
+    "PLAYER_SLUG": "gradey-dick",
+    "Additional_Sort": 1610612761.0,
+    "GroupSort": "Trade 2026015"
+   },
+   {
+    "Transaction_Type": "Trade",
+    "TRANSACTION_DATE": "2026-09-14T00:00:00",
+    "TRANSACTION_DESCRIPTION": "LA Clippers received forward Brandon Ingram from Toronto Raptors.",
+    "TEAM_ID": 1610612746.0,
+    "TEAM_SLUG": "clippers",
+    "PLAYER_ID": 1627742.0,
+    "PLAYER_SLUG": "brandon-ingram",
+    "Additional_Sort": 1610612761.0,
+    "GroupSort": "Trade 2026015"
+   },
+   {
+    "Transaction_Type": "Trade",
+    "TRANSACTION_DATE": "2026-09-14T00:00:00",
+    "TRANSACTION_DESCRIPTION": "LA Clippers received draft consideration from Toronto Raptors.",
+    "TEAM_ID": 1610612746.0,
+    "TEAM_SLUG": "clippers",
+    "PLAYER_ID": 0.0,
+    "PLAYER_SLUG": "",
+    "Additional_Sort": 1610612761.0,
+    "GroupSort": "Trade 2026015"
+   },
+   {
+    "Transaction_Type": "Trade",
+    "TRANSACTION_DATE": "2026-09-14T00:00:00",
+    "TRANSACTION_DESCRIPTION": "Toronto Raptors received forward Kawhi Leonard from LA Clippers.",
+    "TEAM_ID": 1610612761.0,
+    "TEAM_SLUG": "raptors",
+    "PLAYER_ID": 202695.0,
+    "PLAYER_SLUG": "kawhi-leonard",
+    "Additional_Sort": 1610612746.0,
+    "GroupSort": "Trade 2026015"
+   },
+   {
+    "Transaction_Type": "Signing",
+    "TRANSACTION_DATE": "2026-11-17T00:00:00",
+    "TRANSACTION_DESCRIPTION": "Utah Jazz signed center Jonas Aidoo to a Two-Way Contract.",
+    "TEAM_ID": 1610612762.0,
+    "TEAM_SLUG": "jazz",
+    "PLAYER_ID": 1643265.0,
+    "PLAYER_SLUG": "jonas-aidoo",
+    "Additional_Sort": 0.0,
+    "GroupSort": "Signing 1158557"
+   },
+   {
+    "Transaction_Type": "Signing",
+    "TRANSACTION_DATE": "2026-10-29T00:00:00",
+    "TRANSACTION_DESCRIPTION": "LA Clippers signed guard Blake Wesley to a 10-Day Contract.",
+    "TEAM_ID": 1610612746.0,
+    "TEAM_SLUG": "clippers",
+    "PLAYER_ID": 1631104.0,
+    "PLAYER_SLUG": "blake-wesley",
+    "Additional_Sort": 0.0,
+    "GroupSort": "Signing 1157124"
+   },
+   {
+    "Transaction_Type": "Signing",
+    "TRANSACTION_DATE": "2026-10-19T00:00:00",
+    "TRANSACTION_DESCRIPTION": "Oklahoma City Thunder re-signed guard Cason Wallace to a Rookie Scale Extension.",
+    "TEAM_ID": 1610612760.0,
+    "TEAM_SLUG": "thunder",
+    "PLAYER_ID": 1641717.0,
+    "PLAYER_SLUG": "cason-wallace",
+    "Additional_Sort": 0.0,
+    "GroupSort": "Signing 1155734"
+   },
+   {
+    "Transaction_Type": "Signing",
+    "TRANSACTION_DATE": "2026-11-13T00:00:00",
+    "TRANSACTION_DESCRIPTION": "Chicago Bulls signed center Orlando Robinson to a Rest-of-Season Contract.",
+    "TEAM_ID": 1610612741.0,
+    "TEAM_SLUG": "bulls",
+    "PLAYER_ID": 1631115.0,
+    "PLAYER_SLUG": "orlando-robinson",
+    "Additional_Sort": 0.0,
+    "GroupSort": "Signing 1157986"
+   },
+   {
+    "Transaction_Type": "ContractConverted",
+    "TRANSACTION_DATE": "2026-10-19T00:00:00",
+    "TRANSACTION_DESCRIPTION": "Phoenix Suns converted the contract of center Duop Reath to a Two-Way Contract.",
+    "TEAM_ID": 1610612756.0,
+    "TEAM_SLUG": "suns",
+    "PLAYER_ID": 1641871.0,
+    "PLAYER_SLUG": "duop-reath",
+    "Additional_Sort": 0.0,
+    "GroupSort": "ContractConverted 1155732"
+   },
+   {
+    "Transaction_Type": "AwardOnWaivers",
+    "TRANSACTION_DATE": "2026-10-19T00:00:00",
+    "TRANSACTION_DESCRIPTION": "Phoenix Suns claimed forward Drew Timme off waivers.",
+    "TEAM_ID": 1610612756.0,
+    "TEAM_SLUG": "suns",
+    "PLAYER_ID": 1631166.0,
+    "PLAYER_SLUG": "drew-timme",
+    "Additional_Sort": 0.0,
+    "GroupSort": "AwardedOnWaivers 1155740"
+   },
+   {
+    "Transaction_Type": "Waive",
+    "TRANSACTION_DATE": "2026-10-17T00:00:00",
+    "TRANSACTION_DESCRIPTION": "LA Clippers waived guard Miye Oni.",
+    "TEAM_ID": 1610612746.0,
+    "TEAM_SLUG": "clippers",
+    "PLAYER_ID": 1629671.0,
+    "PLAYER_SLUG": "miye-oni",
+    "Additional_Sort": 0.0,
+    "GroupSort": "Waive 1155519"
+   }
+  ]
+ }
+}
