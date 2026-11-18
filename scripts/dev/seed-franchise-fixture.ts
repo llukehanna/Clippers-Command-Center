@@ -13,7 +13,7 @@
 //
 // Idempotent: running it twice leaves the same database.
 //
-// Run: npm run seed:franchise-fixture
+// Run: npm run seed:franchise-fixture [-- --empty]
 //   (= node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/dev/seed-franchise-fixture.ts)
 import fs from 'node:fs';
 import path from 'node:path';
@@ -47,6 +47,10 @@ function guardedUrl(): string {
   }
   return raw;
 }
+
+// --empty: schema + reference tables (teams, seasons, team_seasons, players, games) only; all 12
+// franchise tables stay empty, to check the pages' empty states.
+const EMPTY = process.argv.includes('--empty');
 
 const sql = postgres(guardedUrl(), { max: 1, connect_timeout: 10, onnotice: () => {} });
 
@@ -206,6 +210,9 @@ for (const [key, name, birth, nba] of [
   ['waltobi01', 'Bill Walton', '1952-11-05', undefined],
   ['russebi01', 'Bill Russell', '1934-02-12', undefined],
   ['baylore01', 'Elgin Baylor', '1934-09-16', undefined],
+  ['mcadobo01', 'Bob McAdoo', '1951-09-25', undefined],
+  ['wilkido01', 'Dominique Wilkins', '1960-01-12', undefined],
+  ['wrighlo01', 'Lorenzen Wright', '1975-11-04', undefined],
   ['name:jordan-miller-1998', 'Jordan Miller', '1998-07-04', undefined],
   ['name:kai-jones-2001', 'Kai Jones', '2001-01-05', undefined],
   ['name:kobe-sanders-2002', 'Kobe Sanders', '2002-05-06', undefined],
@@ -220,6 +227,7 @@ person('gentral01', 'coach', 'Alvin Gentry', '1954-11-05');
 person('dunlemi01', 'coach', 'Mike Dunleavy', '1954-09-15');
 person('riverdo01', 'coach', 'Doc Rivers', '1961-10-13');
 person('luety01', 'coach', 'Tyronn Lue', '1977-05-03');
+person('name:larry-brown-1940', 'coach', 'Larry Brown', '1940-09-14');
 // Executives
 person('name:lawrence-frank-1970', 'executive', 'Lawrence Frank', '1970-03-07');
 person('name:michael-winger-1982', 'executive', 'Michael Winger', '1982-01-01');
@@ -242,8 +250,12 @@ const picks: PickDef[] = [
   // Chris Paul trade (2017)
   { year: 2018, round: 1, orig: 'HOU', known: true, text: 'Top-3 protected', prot: [{ year: 2018, range: '1-3', then: 'Pick is kept by Houston' }], status: 'used', overall: 25, owner: 'LAC' },
   // Future picks (Harden trade, 2023)
-  { year: 2028, round: 1, orig: 'LAC', known: null, text: null, status: 'future', owner: 'PHI' },
-  { year: 2028, round: 2, orig: 'PHI', known: true, status: 'future', owner: 'LAC' },
+  // Future picks: final_owner stays NULL; the holder is the to_franchise of the latest linked part.
+  { year: 2028, round: 1, orig: 'LAC', known: null, text: null, status: 'future' },
+  { year: 2028, round: 2, orig: 'PHI', known: true, status: 'future' },
+  // Uncertain: Clippers-original 2028 second, with no linked outgoing part (the 2025 trade names it only as text)
+  { year: 2028, round: 2, orig: 'LAC', known: null, text: null, status: 'future' },
+  { year: 1996, round: 1, orig: 'LAC', known: true, status: 'used', overall: 7, selected: 'wrighlo01', owner: 'LAC' },
   // 1975 Seattle trade
   { year: 1976, round: 2, orig: 'OKC', known: true, status: 'used', overall: 24, owner: 'LAC' },
   // Pick chain: ORL -> HOU -> LAC
@@ -278,6 +290,9 @@ const swaps: SwapDef[] = [
 interface LotteryDef { year: number; pick: string; slot: number | null; odds: number | null; won: number; tie: boolean; source: 'wiki' | 'derived' }
 const lottery: LotteryDef[] = [
   { year: 2011, pick: pickRef(2011, 1, 'LAC'), slot: 8, odds: 0.028, won: 1, tie: false, source: 'wiki' }, // held by CLE; jumped up
+  { year: 2009, pick: pickRef(2009, 1, 'LAC'), slot: 3, odds: 0.177, won: 1, tie: false, source: 'wiki' }, // Clippers jumped up
+  { year: 1988, pick: pickRef(1988, 1, 'LAC'), slot: 1, odds: null, won: 1, tie: false, source: 'wiki' }, // equal-odds era
+  { year: 1996, pick: pickRef(1996, 1, 'LAC'), slot: 6, odds: null, won: 7, tie: false, source: 'wiki' }, // Clippers fell one spot; odds unrecorded
   { year: 2014, pick: pickRef(2014, 1, 'MIL'), slot: 1, odds: 0.25, won: 2, tie: false, source: 'wiki' }, // fell
   { year: 1985, pick: pickRef(1985, 1, 'NYK'), slot: 7, odds: null, won: 1, tie: false, source: 'wiki' }, // odds unknown
   { year: 2015, pick: pickRef(2015, 1, 'LAL'), slot: 4, odds: 0.119, won: 2, tie: true, source: 'derived' },
@@ -422,6 +437,15 @@ const txs: TxDef[] = [
       pk('DEN', 'ORL', pickRef(2025, 1, 'DEN')),
     ],
   },
+  // Sends a Clippers-original 2028 second-round pick that the source did not identify
+  {
+    key: 'nba:Trade 1327000', slug: '2025-02-06-hartwell-utah', date: '2025-02-06', clippers: true, kind: 'trade',
+    desc: 'The Clippers acquired Alex Hartwell from Utah for a 2028 second-round pick.',
+    parts: [
+      pl('UTA', LAC, 'name:alex-hartwell-1999'),
+      { f: LAC, t: 'UTA', k: 'pick', text: '2028 second-round pick', gap: 'pick_unidentified' },
+    ],
+  },
   // Signings and other moves, 2023-2025
   { key: 'nba:Signing 52011', slug: '2023-07-06-kobe-brown-two-way', date: '2023-07-06', clippers: true, kind: 'two_way', desc: 'The Clippers signed Kobe Brown to a two-way contract.', parts: [pl(null, LAC, 'brownko01')] },
   { key: 'nba:Signing 52244', slug: '2024-01-10-jordan-miller-ten-day', date: '2024-01-10', clippers: true, kind: 'ten_day', desc: 'The Clippers signed Jordan Miller to a 10-day contract.', parts: [pl(null, LAC, 'name:jordan-miller-1998')] },
@@ -510,15 +534,20 @@ const execTerms: Array<[string, string | null, string | null, string | null]> = 
   ['baylore01', 'Vice President of Basketball Operations', '1986-07-01', '2008-10-01'],
 ];
 
+// Only honors earned with the franchise (plus the league-wide Russell number).
 const honors: Array<[number | null, string, string, string | null]> = [
+  [1974, 'mcadobo01', 'mvp', 'Buffalo Braves'],
+  [2010, 'griffbl01', 'roy', null], [2010, 'griffbl01', 'all_rookie_1', null],
+  [2010, 'griffbl01', 'all_star', null], [2011, 'griffbl01', 'all_star', null], [2012, 'griffbl01', 'all_star', null],
+  [2013, 'griffbl01', 'all_star', null], [2014, 'griffbl01', 'all_star', null],
+  [2012, 'paulch01', 'all_star', null], [2013, 'paulch01', 'all_star', null], [2014, 'paulch01', 'all_star', null],
+  [2012, 'paulch01', 'all_nba_1', null], [2013, 'paulch01', 'all_nba_1', null], [2014, 'paulch01', 'all_nba_1', null],
   [2019, 'leonaka01', 'all_star', null], [2020, 'leonaka01', 'all_star', null],
-  [2019, 'georgpa01', 'all_star', null], [2020, 'georgpa01', 'all_star', null],
-  [2019, 'leonaka01', 'all_nba_2', null], [2020, 'leonaka01', 'all_nba_1', null], [2019, 'georgpa01', 'all_nba_3', null],
-  [2019, 'leonaka01', 'all_defense_2', null], [2020, 'leonaka01', 'clutch', 'Clutch Player of the Year finalist'],
-  [2017, 'hardeja01', 'mvp', null], [2017, 'willilo02', 'smoy', null], [2018, 'willilo02', 'smoy', null],
-  [2010, 'griffbl01', 'roy', null], [2009, 'griffbl01', 'all_rookie_1', null],
-  [2011, 'griffbl01', 'all_star', null], [2012, 'griffbl01', 'all_star', null],
-  [null, 'waltobi01', 'hall_of_fame', '1993'], [null, 'baylore01', 'hall_of_fame', '1977'],
+  [2019, 'leonaka01', 'all_nba_2', null], [2020, 'leonaka01', 'all_nba_2', null],
+  [2020, 'georgpa01', 'all_star', null], [2023, 'georgpa01', 'all_star', null], [2020, 'georgpa01', 'all_nba_3', null],
+  [2017, 'willilo02', 'smoy', null], [2018, 'willilo02', 'smoy', null], [2019, 'harremo01', 'smoy', null],
+  [null, 'mcadobo01', 'hall_of_fame', '2000'], [null, 'wilkido01', 'hall_of_fame', '2006'],
+  [null, 'waltobi01', 'hall_of_fame', '1993'], [null, 'name:larry-brown-1940', 'hall_of_fame', '2002'],
   [null, 'russebi01', 'retired_number_league', 'No. 6'],
   // No retired_number rows: the Clippers have retired none.
 ];
@@ -699,6 +728,7 @@ async function main() {
     await ins('player_team_stints', stints);
 
     // 5. Franchise tables
+    if (!EMPTY) {
     await ins('person_xref', people.map((p) => ({
       person_key: p.key, kind: p.kind, display_name: p.name, birthdate: p.birth ?? null, nba_person_id: p.nbaId ?? null,
       player_id: playerIds.get(p.key) ?? null,
@@ -763,6 +793,7 @@ async function main() {
     })));
     await ins('executive_terms', execTerms.map(([key, title, start, end]) => ({ person_key: key, title, start_date: start, end_date: end })));
     await ins('honors', honors.map(([s, key, honor, detail]) => ({ season_id: s, person_key: key, honor, detail })));
+    }
   });
 
   // 6. Summary
@@ -772,7 +803,7 @@ async function main() {
     'pick_swaps', 'transactions', 'transaction_parts', 'draft_lottery', 'salaries', 'payroll_seasons',
     'contracts', 'coach_seasons', 'executive_terms', 'honors',
   ];
-  console.log('Franchise fixture seeded. Row counts:');
+  console.log(EMPTY ? 'Fixture seeded with EMPTY franchise tables. Row counts:' : 'Franchise fixture seeded. Row counts:');
   for (const t of tables) {
     const [{ n }] = await sql.unsafe<{ n: string }[]>(`SELECT count(*)::text AS n FROM ${t}`);
     console.log(`  ${t.padEnd(24)} ${n}`);
