@@ -20,6 +20,7 @@ export const FACT_KINDS = [
   'streak', 'milestone', 'milestone_crossed', 'league_rank', 'standings', 'recent_form', 'yoy_change',
   'opp_rank', 'h2h', 'last_meeting', 'player_game_stat', 'player_combo',
   'team_game_stat', 'game_flow', 'player_period_stat', 'team_period_stat', 'clutch',
+  'opp_form', 'opp_hot_player', 'rest', 'line',
 ] as const;
 export type FactKind = (typeof FACT_KINDS)[number];
 
@@ -88,6 +89,16 @@ export interface FactData {
   meeting_date?: string;
   line?: string;             // the line's big categories: "12 pts, 11 reb, 10 blk"
   meeting_home?: boolean;
+  // Pregame matchup
+  winning?: boolean;
+  noun?: string;
+  opponent_player?: boolean;
+  lac_rest?: number;
+  opp_rest?: number;
+  lac_last_game?: string;
+  opp_last_game?: string;
+  spread?: number;
+  total_points?: number;
   // Game flow
   margin_series?: [number, number][];
   lead?: number;

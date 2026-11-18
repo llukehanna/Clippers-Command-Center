@@ -31,6 +31,7 @@ export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
   const season = f.seasonId !== null ? seasonLabel(f.seasonId) : '';
   switch (f.kind) {
     case 'streak':
+    case 'opp_hot_player':
       return d.streak_games && d.streak_games.length > 0
         ? { type: 'streak_strip', games: d.streak_games, threshold: d.hit_threshold ?? 0 }
         : null;

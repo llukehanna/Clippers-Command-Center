@@ -72,16 +72,19 @@ export function streakGames(def: StreakDef, games: Record<string, unknown>[]): S
   });
 }
 
-/** $1 season, $2 LAC, $3 as-of. */
-export const TEAM_STREAK_SQL = `
-WITH lac_games AS (
+/** A team's final games of one season through as-of ($1 season, $2 team, $3 as-of), newest first: playoffs out, the play-in kept. One rule for every team form query. */
+const TEAM_FORM_GAMES = `
   SELECT g.game_id, g.game_date,
          ((g.home_team_id = $2::bigint) = (g.home_score > g.away_score)) AS won,
          ROW_NUMBER() OVER (ORDER BY g.game_date DESC, g.game_id DESC) AS recency
   FROM games g
   WHERE g.season_id = $1::int AND NOT g.is_playoffs AND g.game_date <= $3::date
     AND $2::bigint IN (g.home_team_id, g.away_team_id)
-    AND g.status = 'final' AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
+    AND g.status = 'final' AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL`;
+
+/** $1 season, $2 team (the Clippers, or the next game's opponent), $3 as-of. */
+export const TEAM_STREAK_SQL = `
+WITH lac_games AS (${TEAM_FORM_GAMES}
 ), latest AS (
   SELECT won FROM lac_games WHERE recency = 1
 ), first_change AS (
@@ -94,6 +97,14 @@ SELECT (SELECT won FROM latest) AS winning,
 FROM lac_games
 WHERE recency < COALESCE((SELECT recency FROM first_change), 2147483647)
 HAVING COUNT(*) > 0`.trim();
+
+/** $1 season, $2 team, $3 as-of: the team's last ten games of the season (same games as TEAM_STREAK_SQL). */
+export const TEAM_LAST10_SQL = `
+WITH team_games AS (${TEAM_FORM_GAMES}
+)
+SELECT COUNT(*) FILTER (WHERE won)::int AS wins, COUNT(*)::int AS games
+FROM team_games
+WHERE recency <= 10`.trim();
 
 export const TEAM_STREAK_MIN = { wins: 3, losses: 4 } as const;
 

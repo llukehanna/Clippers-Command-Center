@@ -4,13 +4,16 @@ import { sql } from '../../db.js';
 import { REGULAR_SEASON } from '../../sql-fragments.js';
 import type { EngineContext } from './types.js';
 
-export interface NextGame { gameId: string; date: string; home: boolean; opponentId: string }
+export interface NextGame { gameId: string; date: string; home: boolean; opponentId: string; seasonId: number | null; isPlayoffs: boolean }
 
 /** The next Clippers game: dated after as-of, or on as-of and not final yet. */
 export async function nextClippersGame(ctx: EngineContext): Promise<NextGame | null> {
   const lac = ctx.lac.teamId;
-  const [g] = await sql<{ game_id: string; game_date: string; home_team_id: string; away_team_id: string }[]>`
-    SELECT game_id::text, game_date::text AS game_date, home_team_id::text, away_team_id::text
+  const [g] = await sql<{
+    game_id: string; game_date: string; home_team_id: string; away_team_id: string; season_id: number | null; is_playoffs: boolean;
+  }[]>`
+    SELECT game_id::text, game_date::text AS game_date, home_team_id::text, away_team_id::text,
+           season_id::int AS season_id, is_playoffs::boolean AS is_playoffs
     FROM games
     WHERE ${lac}::bigint IN (home_team_id, away_team_id)
       AND (game_date > ${ctx.asOf}::date OR (game_date = ${ctx.asOf}::date AND status <> 'final'))
@@ -18,7 +21,10 @@ export async function nextClippersGame(ctx: EngineContext): Promise<NextGame | n
     LIMIT 1`;
   if (!g) return null;
   const home = g.home_team_id === lac;
-  return { gameId: g.game_id, date: g.game_date, home, opponentId: home ? g.away_team_id : g.home_team_id };
+  return {
+    gameId: g.game_id, date: g.game_date, home, opponentId: home ? g.away_team_id : g.home_team_id,
+    seasonId: g.season_id, isPlayoffs: g.is_playoffs,
+  };
 }
 
 export interface PostgameGame {

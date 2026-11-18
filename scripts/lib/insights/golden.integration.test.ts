@@ -81,7 +81,7 @@ describe.skipIf(!url)(`insight engine golden expectations (${REAL ? 'real data, 
 
     it('G4 former Clippers never appear outside postgame', () => {
       const roster = all.context!.roster;
-      for (const d of all.drafts) if (d.surface !== 'postgame' && d.player_id) expect(roster.has(d.player_id), d.headline).toBe(true);
+      for (const d of all.drafts) if (d.surface !== 'postgame' && d.player_id && d.score_parts.salience_class !== 'opponent') expect(roster.has(d.player_id), d.headline).toBe(true);
     });
 
     it('G5 nothing trivial survives: p <= 0.25 unless a milestone or record', () => {

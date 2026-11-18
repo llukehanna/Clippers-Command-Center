@@ -444,6 +444,10 @@ export const QUESTIONS_BY_KIND: Record<FactKind, readonly Question[]> = {
   player_period_stat: PERIOD_QUESTIONS,
   team_period_stat: PERIOD_QUESTIONS,
   clutch: PERIOD_QUESTIONS,
+  opp_form: [],
+  opp_hot_player: [],
+  rest: [],
+  line: [],
 };
 
 export function questionsFor(fact: Fact): readonly Question[] {

@@ -6,6 +6,7 @@ import { lastMeetingTemplates } from './last-meeting.js';
 import { leagueRankTemplates } from './league-rank.js';
 import { milestoneCrossedTemplates } from './milestone-crossed.js';
 import { milestoneTemplates } from './milestone.js';
+import { lineTemplates, oppFormTemplates, oppHotPlayerTemplates, restTemplates } from './matchup.js';
 import { oppRankTemplates } from './opp-rank.js';
 import { clutchTemplates, playerPeriodTemplates, teamPeriodTemplates } from './period.js';
 import { playerComboTemplates, playerLineTemplates } from './player-line.js';
@@ -34,4 +35,8 @@ export const TEMPLATES: Record<FactKind, TemplateModule> = {
   player_period_stat: playerPeriodTemplates,
   team_period_stat: teamPeriodTemplates,
   clutch: clutchTemplates,
+  opp_form: oppFormTemplates,
+  opp_hot_player: oppHotPlayerTemplates,
+  rest: restTemplates,
+  line: lineTemplates,
 };

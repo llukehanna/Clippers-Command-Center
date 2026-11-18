@@ -514,6 +514,198 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     }, TIMEOUT);
   });
 
+  describe('pregame matchup', () => {
+    // 2026-01-10 is a fixture off day: the next Clippers game (2026-01-11, 2025-26) is against the Spurs, who have
+    // a last 10 of 8-2 and three hot scorers, so every opponent fact is exercised on real data.
+    const IN_SEASON = '2026-01-10';
+    const nextAt = async (asOf: string) => {
+      const { nextClippersGame } = await import('./engine/games');
+      const next = await nextClippersGame(await ctxAt(asOf));
+      if (!next) throw new Error(`no next game as of ${asOf}`);
+      return next;
+    };
+    const insertGame = (nbaGameId: number, date: string, home: number, away: number, playoffs = false) => sql<{ game_id: string }[]>`
+      INSERT INTO games (nba_game_id, season_id, game_date, start_time_utc, status, home_team_id, away_team_id, home_score, away_score, is_playoffs)
+      VALUES (${nbaGameId}, 2025, ${date}::date, ${date + 'T03:00:00Z'}::timestamptz, 'final', ${home}, ${away}, 110, 100, ${playoffs})
+      RETURNING game_id::text AS game_id`;
+    /** Runs the proof query and returns the rows that match the fact's `match` (an unused bind makes Postgres error). */
+    const proofRows = async (f: { proof: { sql: string; params: (string | number | boolean | null)[]; match: Record<string, string | number | boolean> } }) => {
+      const rows = await sql.unsafe(f.proof.sql, f.proof.params as never[]);
+      return rows.filter((r) => Object.entries(f.proof.match).every(([k, v]) => String(r[k]) === String(v)));
+    };
+
+    it('opponent form and hot players describe the next game\'s season, are proven, and hold only the opponent\'s players', async () => {
+      const { matchupDetector } = await import('./engine/detectors/pregame-matchup');
+      const ctx = await ctxAt(IN_SEASON);
+      const next = await nextAt(IN_SEASON);
+      expect(next).toMatchObject({ seasonId: 2025, isPlayoffs: false });
+      const { facts, gameIds } = await matchupDetector().run(ctx);
+      expect(gameIds).toBeNull();
+      const opp = facts.filter((f) => f.kind === 'opp_form' || f.kind === 'opp_hot_player');
+      expect(opp.some((f) => f.kind === 'opp_form'), 'an opponent form fact').toBe(true);
+      expect(opp.some((f) => f.kind === 'opp_hot_player'), 'an opponent hot player').toBe(true);
+      for (const f of opp) {
+        expect(f).toMatchObject({ surface: 'pregame', gameId: next.gameId, seasonId: next.seasonId });
+        expect(f.context.opponent_id).toBe(next.opponentId);
+        expect(f.window.season_id).toBe(next.seasonId);
+        expect(f.proof.params).toContain(next.seasonId);
+        expect((await proofRows(f)).length, `${f.stat} proof`).toBeGreaterThan(0);
+        if (f.kind === 'opp_form') expect(f.subject).toMatchObject({ type: 'team', id: next.opponentId });
+        else {
+          expect(f.data.opponent_player).toBe(true);
+          expect(ctx.roster.has(f.subject.id)).toBe(false);
+          const [row] = await sql<{ team_id: string }[]>`
+            SELECT pb.team_id::text AS team_id FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
+            WHERE pb.player_id = ${f.subject.id}::bigint AND g.game_date <= ${IN_SEASON}::date ORDER BY g.game_date DESC, g.game_id DESC LIMIT 1`;
+          expect(row.team_id).toBe(next.opponentId);
+        }
+      }
+      expect(opp.find((f) => f.stat === 'opp_last10')).toMatchObject({ value: 8, sample: { kind: 'share' } });
+    }, TIMEOUT);
+
+    it('the opponent streak is rated from the opponent\'s own record, on one shared form rule', async () => {
+      const { matchupDetector } = await import('./engine/detectors/pregame-matchup');
+      const { clippersTeamResultShare, teamResultRate } = await import('./engine/rates');
+      const { TEAM_LAST10_SQL, TEAM_STREAK_SQL } = await import('./engine/detectors/season-streaks');
+      // 2026-02-06: the next opponent (Raptors) has lost 20 straight.
+      const ctx = await ctxAt('2026-02-06');
+      const next = await nextAt('2026-02-06');
+      const { facts } = await matchupDetector().run(ctx);
+      const streak = facts.find((f) => f.stat === 'opp_streak');
+      expect(streak, 'an opponent streak').toBeDefined();
+      expect(streak!.data).toMatchObject({ winning: false, length: 20 });
+      expect(streak!.proof.sql).toBe(TEAM_STREAK_SQL);
+      expect(facts.find((f) => f.stat === 'opp_last10')!.proof.sql).toBe(TEAM_LAST10_SQL);
+      const pRef = await clippersTeamResultShare(ctx, false, next.opponentId);
+      const rate = await teamResultRate(ctx, false, streak!.data.start_date!, next.opponentId);
+      expect(streak!.sample).toEqual({ kind: 'rate', k: rate.k, n: rate.n, pRef, power: 20 });
+      expect(pRef).not.toBe(0.5);
+      expect(pRef).not.toBe(await clippersTeamResultShare(ctx, false));
+      // The helpers keep their as-of bound for any team.
+      expect(rate.n).toBeGreaterThan(0);
+      expect((await teamResultRate({ ...ctx, asOf: '2025-11-01' }, false, '2026-02-06', next.opponentId)).n).toBeLessThan(rate.n);
+    }, TIMEOUT);
+
+    it('a next game in another season than the stats season gets no opponent facts, even with complete league data', async () => {
+      const { matchupDetector } = await import('./engine/detectors/pregame-matchup');
+      const ctx = await ctxAt(laToday());
+      const next = await nextAt(laToday());
+      expect(ctx.league.complete).toBe(true);
+      expect(next.seasonId).not.toBe(ctx.season.id);
+      const { facts } = await matchupDetector().run(ctx);
+      expect(facts.filter((f) => ['opp_form', 'opp_hot_player'].includes(f.kind))).toEqual([]);
+
+      // The same with data in the next game's season: league coverage is unknown for it, so the facts stay out.
+      const inSeason = await ctxAt(IN_SEASON);
+      const { facts: open } = await matchupDetector().run(inSeason);
+      expect(open.some((f) => f.kind === 'opp_hot_player')).toBe(true);
+      const { facts: lagging } = await matchupDetector().run({ ...inSeason, season: { ...inSeason.season, id: inSeason.season.id - 1 } });
+      expect(lagging.filter((f) => ['opp_form', 'opp_hot_player'].includes(f.kind))).toEqual([]);
+    }, TIMEOUT);
+
+    it('no opponent form, hot players or rest facts for a playoff game or an opponent already in the postseason', async () => {
+      const { matchupDetector } = await import('./engine/detectors/pregame-matchup');
+      const ctx = await ctxAt(IN_SEASON);
+      const next = await nextAt(IN_SEASON);
+      const gated = (facts: { kind: string }[]) => facts.filter((f) => ['opp_form', 'opp_hot_player', 'rest'].includes(f.kind));
+      const created: string[] = [];
+      try {
+        // A game against the Clippers on the as-of day: both teams on the second night of a back-to-back.
+        const [b2b] = await insertGame(90_000_001, IN_SEASON, 1, Number(next.opponentId));
+        created.push(b2b.game_id);
+        const open = await matchupDetector().run(ctx);
+        expect(open.facts.filter((f) => f.kind === 'rest').map((f) => f.stat).sort()).toEqual(['lac_b2b', 'opp_b2b']);
+        expect(open.facts.some((f) => f.kind === 'opp_hot_player'), 'hot opponents before the gate').toBe(true);
+
+        // The opponent has played a playoff game this season.
+        const [po] = await insertGame(90_000_002, '2026-01-09', Number(next.opponentId), 5, true);
+        created.push(po.game_id);
+        expect(gated((await matchupDetector().run(ctx)).facts)).toEqual([]);
+        await sql`DELETE FROM games WHERE game_id = ${po.game_id}::bigint`;
+        created.pop();
+        expect(gated((await matchupDetector().run(ctx)).facts).length).toBeGreaterThan(0);
+
+        // The next game itself is a playoff game.
+        await sql`UPDATE games SET is_playoffs = TRUE WHERE game_id = ${next.gameId}::bigint`;
+        expect(gated((await matchupDetector().run(ctx)).facts)).toEqual([]);
+      } finally {
+        await sql`UPDATE games SET is_playoffs = FALSE WHERE game_id = ${next.gameId}::bigint`;
+        for (const id of created) await sql`DELETE FROM games WHERE game_id = ${id}::bigint`;
+      }
+    }, TIMEOUT);
+
+    it('rest: a back-to-back is a Clippers-side fact; the opponent\'s rest needs complete league data', async () => {
+      const { matchupDetector } = await import('./engine/detectors/pregame-matchup');
+      const ctx = await ctxAt(IN_SEASON);
+      const next = await nextAt(IN_SEASON);
+      let id: string | undefined;
+      try {
+        [{ game_id: id }] = await insertGame(90_000_003, IN_SEASON, 1, Number(next.opponentId));
+        const full = await matchupDetector().run(ctx);
+        const rest = full.facts.filter((f) => f.kind === 'rest');
+        expect(rest.map((f) => f.stat).sort()).toEqual(['lac_b2b', 'opp_b2b']);
+        for (const f of rest) {
+          expect(f).toMatchObject({ surface: 'pregame', gameId: next.gameId, sample: { kind: 'context' } });
+          expect((await proofRows(f)).length, f.stat).toBeGreaterThan(0);
+        }
+        expect(rest.find((f) => f.stat === 'lac_b2b')).toMatchObject({ value: 0, data: { lac_rest: 0, lac_last_game: IN_SEASON } });
+        const partial = await matchupDetector().run({ ...ctx, league: { complete: false, reason: 'x' } });
+        expect(partial.facts.map((f) => `${f.kind}/${f.stat}`)).toEqual(['rest/lac_b2b']);
+      } finally {
+        if (id) await sql`DELETE FROM games WHERE game_id = ${id}::bigint`;
+      }
+    }, TIMEOUT);
+
+    it('the line: the latest snapshot by the end of the as-of day in Los Angeles; Clippers-side only without league data', async () => {
+      const { matchupDetector, LINE_SQL } = await import('./engine/detectors/pregame-matchup');
+      const ctx = await ctxAt(IN_SEASON);
+      const next = await nextAt(IN_SEASON);
+      const snap = (at: string, spread: number, total: number) => sql`
+        INSERT INTO odds_snapshots (game_id, provider, captured_at, spread_home, spread_away, total_points)
+        VALUES (${next.gameId}::bigint, 'test', ${at}::timestamptz, ${spread}, ${-spread}, ${total})`;
+      try {
+        await snap('2026-01-09T12:00:00-08:00', -3, 220);
+        // 18:00 PT on the as-of day is 02:00 UTC the next day: a UTC-midnight cutoff would miss it.
+        await snap('2026-01-10T18:00:00-08:00', -4.5, 228.5);
+        // 00:30 PT the day after is after the as-of day.
+        await snap('2026-01-11T00:30:00-08:00', -9, 240);
+        const { facts } = await matchupDetector().run(ctx);
+        const line = facts.find((f) => f.kind === 'line');
+        const lacSpread = next.home ? -4.5 : 4.5;
+        expect(line).toMatchObject({
+          surface: 'pregame', gameId: next.gameId, subject: { type: 'team', id: ctx.lac.teamId }, value: lacSpread,
+          data: { spread: lacSpread, total_points: 228.5 },
+        });
+        expect(line!.proof.sql).toBe(LINE_SQL);
+        expect((await proofRows(line!)).length).toBeGreaterThan(0);
+        const partial = await matchupDetector().run({ ...ctx, league: { complete: false, reason: 'x' } });
+        expect(partial.facts.map((f) => f.kind)).toEqual(['line']);
+      } finally {
+        await sql`DELETE FROM odds_snapshots WHERE provider = 'test'`;
+      }
+    }, TIMEOUT);
+
+    it('buildDraft: opponent players are scored as opponents, not dropped as former players; every fact builds', async () => {
+      const { matchupDetector } = await import('./engine/detectors/pregame-matchup');
+      const { buildDraft } = await import('./engine/run');
+      const { factKey } = await import('./engine/keys');
+      const ctx = await ctxAt(IN_SEASON);
+      const { facts } = await matchupDetector().run(ctx);
+      const hot = facts.filter((f) => f.kind === 'opp_hot_player');
+      expect(hot.length).toBeGreaterThan(0);
+      for (const f of facts) {
+        const draft = await buildDraft(f, factKey(f), 'pregame.matchup', ctx);
+        if ('reason' in draft) expect(['trivial'], `${f.kind}/${f.stat}`).toContain(draft.reason);
+        else {
+          expect(draft.headline.length).toBeLessThanOrEqual(90);
+          if (f.kind === 'opp_hot_player') expect(draft.score_parts).toMatchObject({ salience_class: 'opponent', salience: 0.8 });
+        }
+      }
+      const built = await Promise.all(hot.map((f) => buildDraft(f, factKey(f), 'pregame.matchup', ctx)));
+      expect(built.filter((d) => !('reason' in d)).length, 'at least one hot opponent survives scoring').toBeGreaterThan(0);
+    }, TIMEOUT);
+  });
+
   describe('season detectors: ranks and year over year', () => {
     it('ranks the Clippers and their players league-wide, only with complete league data', async () => {
       const { leagueRankDetector } = await import('./engine/detectors/season-ranks');

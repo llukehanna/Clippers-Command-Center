@@ -43,9 +43,11 @@ export async function playerHitRates(
   return { rates: new Map(rows.map((r) => [r.player_id, { k: r.k, n: r.n }])), pRef: await clippersPlayerRate(ctx, predicate) };
 }
 
-/** The Clippers' wins (or losses) / games before `beforeDate`, stats season and the one before. */
-export async function teamResultRate(ctx: EngineContext, wins: boolean, beforeDate: string): Promise<Rate> {
-  const lac = ctx.lac.teamId;
+/** A team's (default the Clippers') wins (or losses) / games before `beforeDate`, stats season and the one before. */
+export async function teamResultRate(
+  ctx: EngineContext, wins: boolean, beforeDate: string, teamId: string = ctx.lac.teamId,
+): Promise<Rate> {
+  const lac = teamId;
   const [r] = await sql<{ k: number; n: number }[]>`
     SELECT COUNT(*) FILTER (WHERE ((g.home_team_id = ${lac}::bigint) = (g.home_score > g.away_score)) = ${wins}::boolean)::int AS k,
            COUNT(*)::int AS n
@@ -119,9 +121,11 @@ export async function careerTotalShare(ctx: EngineContext, column: string, thres
   return ((r?.k ?? 0) + 1) / ((r?.n ?? 0) + 2);
 }
 
-/** Share of the Clippers' final regular-season games won (or lost) from records start through as-of, Laplace-smoothed (k+1)/(n+2) so it is strictly inside (0,1); the team streak's p_ref. */
-export async function clippersTeamResultShare(ctx: EngineContext, wins: boolean): Promise<number> {
-  const lac = ctx.lac.teamId;
+/** Share of a team's (default the Clippers') final regular-season games won (or lost) from records start through as-of, Laplace-smoothed (k+1)/(n+2) so it is strictly inside (0,1); the team streak's p_ref. */
+export async function clippersTeamResultShare(
+  ctx: EngineContext, wins: boolean, teamId: string = ctx.lac.teamId,
+): Promise<number> {
+  const lac = teamId;
   const [r] = await sql<{ k: number; n: number }[]>`
     SELECT COUNT(*) FILTER (WHERE ((g.home_team_id = ${lac}::bigint) = (g.home_score > g.away_score)) = ${wins}::boolean)::int AS k,
            COUNT(*)::int AS n
