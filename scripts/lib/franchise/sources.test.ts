@@ -23,7 +23,7 @@ describe('bbrefSources', () => {
 
 describe('wikiSources', () => {
   const specs = wikiSources(1970, 2026, [2027, 2028]);
-  const titleOf = (s: { url: string }) => decodeURIComponent(new URL(s.url).searchParams.get('page')!);
+  const titleOf = (s: { title?: string }) => s.title!;
   const titles = specs.map(titleOf);
   it('names season pages by start year with an en dash and era team name', () => {
     expect(titles).toContain('1970–71 Buffalo Braves season');
@@ -41,10 +41,10 @@ describe('wikiSources', () => {
     expect(titles).toContain('Los Angeles Clippers');
     expect(titles).toContain('NBA draft lottery');
   });
-  it('builds parse-API urls and filesystem-safe keys', () => {
+  it('builds query-API urls and filesystem-safe keys', () => {
     const s = specs.find((x) => titleOf(x) === '1970–71 Buffalo Braves season')!;
-    expect(s.url).toContain('https://en.wikipedia.org/w/api.php?action=parse&page=');
-    expect(s.url).toContain('prop=wikitext%7Csections&format=json&formatversion=2');
+    expect(s.url).toContain('https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=');
+    expect(s.title).toBe('1970–71 Buffalo Braves season');
     expect(s.key).toBe('1970–71_Buffalo_Braves_season');
     expect(s.ext).toBe('json');
   });

@@ -1,10 +1,9 @@
 // scripts/lib/franchise/sources.ts
 // The list of every page/file the franchise-history archive downloads.
 // Keys are filesystem-safe and readable; the cache layout is <dir>/<source>/<key>.<ext>.
-import type { SourceSpec } from './fetcher.js';
+import { wikiQueryUrl, type SourceSpec } from './fetcher.js';
 
 const BBREF = 'https://www.basketball-reference.com';
-const WIKI_API = 'https://en.wikipedia.org/w/api.php';
 
 /** Basketball-Reference franchise code for a season, by the season's END year. */
 function bbrefEra(endYear: number): 'BUF' | 'SDC' | 'LAC' {
@@ -33,7 +32,8 @@ function wikiSpec(title: string): SourceSpec {
   return {
     source: 'wiki',
     key: title.replace(/ /g, '_').replace(/\//g, '_'),
-    url: `${WIKI_API}?action=parse&page=${encodeURIComponent(title)}&prop=wikitext%7Csections&format=json&formatversion=2`,
+    title,
+    url: wikiQueryUrl([title]),
     ext: 'json',
   };
 }
