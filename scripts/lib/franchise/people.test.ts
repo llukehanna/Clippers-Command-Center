@@ -68,4 +68,22 @@ describe('people crosswalk', () => {
     expect(resolveRef({ name: 'x', nbaPersonId: 999 }, idx, 1990)).toBe('nba:999');
     expect(resolveRef({ name: 'Nobody Here' }, idx, 1990)).toBeNull();
   });
+
+  it('demotes two bbref ids that claim the same player row to ambiguous', () => {
+    const r = matchPeople([row('smithjo01', 'Joe Smith'), row('smithjo02', 'Joe Smith')], [db('1', 11, 'Joe Smith', null)]);
+    expect(r.ambiguous.map((x) => x.bbrefId).sort()).toEqual(['smithjo01', 'smithjo02']);
+    expect(r.people.every((p) => p.playerId === null && p.nbaPersonId === null)).toBe(true);
+  });
+
+  it('a duplicated nbaPersonId resolves to null', () => {
+    const mk = (k: string) => ({ personKey: k, kind: 'player' as const, displayName: k, birthdate: null, nbaPersonId: 7, playerId: 'p' });
+    const idx = buildIndex([mk('a01'), mk('b01')], new Map());
+    expect(resolveRef({ name: 'x', nbaPersonId: 7 }, idx, 2000)).toBeNull();
+  });
+
+  it('matches a Date birthdate against a roster YYYY-MM-DD', () => {
+    const d = { ...db('1', 5, 'Ann Lee', null), birthdate: new Date('1980-02-02T00:00:00Z') };
+    const r = matchPeople([row('a01', 'Ann Lee', '1980-02-02')], [d, db('2', 6, 'Ann Lee', '1991-01-01')]);
+    expect(r.people[0].playerId).toBe('1');
+  });
 });
