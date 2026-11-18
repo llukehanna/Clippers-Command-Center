@@ -32,9 +32,17 @@ const clutchHeadline = (i: number): Headline => (f, rc) =>
 
 const dateLine: ContextLine = (f, _fr, rc) => `${fmtDate(f.context.date)} vs the ${oppFull(f, rc)}`;
 
-/** Clutch time is the last 5:00 of the 4th quarter and overtime with the game within 5 points: "in clutch time", not "the last five minutes". */
-const clutchLine: ContextLine = (f) =>
-  `${f.data.fgm ?? 0}-of-${f.data.fga ?? 0} from the field, ${f.data.ftm ?? 0}-of-${f.data.fta ?? 0} at the line in clutch time`;
+/**
+ * Clutch time is the last 5:00 of the 4th quarter and overtime with the game within 5 points: "in clutch time", not "the last five minutes".
+ * Parts with no attempts are left out ("0-of-0 at the line" says nothing).
+ */
+const clutchLine: ContextLine = (f, fr, rc, i) => {
+  const parts = [
+    (f.data.fga ?? 0) > 0 ? `${f.data.fgm ?? 0}-of-${f.data.fga} from the field` : null,
+    (f.data.fta ?? 0) > 0 ? `${f.data.ftm ?? 0}-of-${f.data.fta} at the line` : null,
+  ].filter((p): p is string => p !== null);
+  return parts.length ? `${parts.join(', ')} in clutch time` : dateLine(f, fr, rc, i);
+};
 
 export const playerPeriodTemplates: TemplateModule = { default: phrasings([playerHeadline(0), playerHeadline(1)], dateLine) };
 export const teamPeriodTemplates: TemplateModule = { default: phrasings([teamHeadline(0), teamHeadline(1)], dateLine) };

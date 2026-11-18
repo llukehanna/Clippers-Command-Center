@@ -7,14 +7,29 @@
 import { REGULAR_SEASON } from '../../sql-fragments.js';
 import type { EngineContext, Runner } from './types.js';
 
-/** $1 LAC, $2 first season (by season, not date: the 2019-20 bubble games run into Aug-Oct 2020), $3 before-date (exclusive), $4 as-of. Counts final Clippers games with no game_flow row. */
+/**
+ * $1 LAC, $2 first season (by season, not date: the 2019-20 bubble games run into Aug-Oct 2020), $3 before-date (exclusive), $4 as-of.
+ * Counts final Clippers games whose play-by-play is incomplete: no game_flow row; or the Clippers' player period points (periods 1-4)
+ * differ from their team period points (ingest drops player rows whose person is unknown); or a team clutch row exists and the
+ * player clutch points differ from it. A game with no clutch row had no clutch time (rows are created lazily).
+ */
 export const PBP_MISSING_SQL = `
 SELECT COUNT(*)::int AS missing
 FROM games g
 WHERE $1::bigint IN (g.home_team_id, g.away_team_id) AND g.status = 'final'
   AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL AND ${REGULAR_SEASON}
   AND g.season_id >= $2::int AND g.game_date < $3::date AND g.game_date <= $4::date
-  AND NOT EXISTS (SELECT 1 FROM game_flow gf WHERE gf.game_id = g.game_id)`.trim();
+  AND (
+    NOT EXISTS (SELECT 1 FROM game_flow gf WHERE gf.game_id = g.game_id)
+    OR COALESCE((SELECT SUM(pp.pts) FROM period_player_stats pp
+                 WHERE pp.game_id = g.game_id AND pp.team_id = $1::bigint AND pp.period <= 4), 0)
+       <> COALESCE((SELECT SUM(pt.pts) FROM period_team_stats pt
+                    WHERE pt.game_id = g.game_id AND pt.team_id = $1::bigint AND pt.period <= 4), 0)
+    OR EXISTS (SELECT 1 FROM clutch_stats ct
+               WHERE ct.game_id = g.game_id AND ct.team_id = $1::bigint AND ct.player_id IS NULL
+                 AND ct.pts <> COALESCE((SELECT SUM(c.pts) FROM clutch_stats c
+                                         WHERE c.game_id = g.game_id AND c.team_id = $1::bigint AND c.player_id IS NOT NULL), 0))
+  )`.trim();
 
 /** One answer per context and date bound, so a run asks the database once per distinct fact date. */
 const cache = new WeakMap<EngineContext, Map<string, Promise<boolean>>>();

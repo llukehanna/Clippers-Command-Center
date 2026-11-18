@@ -119,6 +119,11 @@ describe('play-by-play record gate (R7)', () => {
     await pbpRecordsComplete(makeCtx(), '2025-11-28', run);
     expect(calls).toHaveLength(3);
   });
+  it('also counts a game whose player period or clutch rows do not add up to the team rows', () => {
+    expect(PBP_MISSING_SQL).toMatch(/SUM\(pp\.pts\)[\s\S]*<>[\s\S]*SUM\(pt\.pts\)/);
+    expect(PBP_MISSING_SQL).toMatch(/ct\.player_id IS NULL[\s\S]*SUM\(c\.pts\)/);
+    for (const bind of ['$1', '$2', '$3', '$4']) expect(PBP_MISSING_SQL).toContain(bind);
+  });
   it('is incomplete when a game is missing, and without play-by-play records', async () => {
     expect(await pbpRecordsComplete(makeCtx(), '2025-11-28', async () => [{ missing: 1 }])).toBe(false);
     expect(await pbpRecordsComplete(makeCtx({ pbpRecordsStart: null }), '2025-11-28', async () => { throw new Error('no query'); })).toBe(false);

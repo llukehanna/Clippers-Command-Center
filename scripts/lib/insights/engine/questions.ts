@@ -245,6 +245,12 @@ export const GAME_QUESTIONS: readonly Question[] = [
   careerHigh, groupCompany, groupFirstSince, subjectFirstSince, clippersRank, groupSeasonHigh, subjectSeasonHigh, leagueRank, nthTime,
 ];
 
+/**
+ * Quarters, halves and clutch: no clippers_rank. Their reference rows are one per player-game (or per game),
+ * so a rank would count games while the copy ranks quarters and halves, and a game with two bigger quarters would understate it.
+ */
+export const PERIOD_QUESTIONS: readonly Question[] = GAME_QUESTIONS.filter((q) => q.name !== clippersRank.name);
+
 // ── Streaks (rb_streaks holds every Clipper's streaks) ──────────────────────
 
 const streakApplies = (fact: Fact, ctx: EngineContext) =>
@@ -422,9 +428,9 @@ export const QUESTIONS_BY_KIND: Record<FactKind, readonly Question[]> = {
   player_combo: GAME_QUESTIONS,
   team_game_stat: GAME_QUESTIONS,
   game_flow: GAME_QUESTIONS,
-  player_period_stat: GAME_QUESTIONS,
-  team_period_stat: GAME_QUESTIONS,
-  clutch: GAME_QUESTIONS,
+  player_period_stat: PERIOD_QUESTIONS,
+  team_period_stat: PERIOD_QUESTIONS,
+  clutch: PERIOD_QUESTIONS,
 };
 
 export function questionsFor(fact: Fact): readonly Question[] {

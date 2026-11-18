@@ -705,6 +705,9 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       }
     }, TIMEOUT);
 
+    /** pbpRecordsComplete caches per context object, so each read after a data change needs a fresh one. */
+    const makeCtxCopy = <T extends object>(c: T): T => ({ ...c });
+
     describe('quarters, halves and clutch', () => {
       beforeAll(async () => {
         await sql`
@@ -761,6 +764,65 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
           const own = (await runQuery(refs.group!)).filter((r) => r.game_id === comebackGame && r.subject_id === f.subject.id);
           expect(own, `${f.stat} own row in its reference set`).toHaveLength(1);
           expect(Number(own[0].value), `${f.stat} fact value equals its reference value`).toBe(f.value);
+        }
+      }, TIMEOUT);
+
+      it('drops the record frames when an earlier game\'s player rows do not add up to its team rows (dropped players)', async () => {
+        const { runEngine } = await import('./engine/run');
+        const { pbpRecordsComplete } = await import('./engine/pbp-coverage');
+        const { runQuery } = await import('./engine/query');
+        const { PBP_RECORD_FRAMES } = await import('./engine/framer');
+        const ctx = await ctxAt(laToday());
+        const [early] = await sql<{ game_id: string }[]>`
+          SELECT g.game_id::text FROM games g
+          WHERE g.season_id = 2025 AND 1 IN (g.home_team_id, g.away_team_id) AND g.status = 'final' AND ${sql.unsafe(REGULAR_SEASON)}
+            AND g.game_id <> ${comebackGame}::bigint AND g.game_date < (SELECT game_date FROM games WHERE game_id = ${comebackGame}::bigint)
+          ORDER BY g.game_date LIMIT 1`;
+        expect(early, 'a Clippers game before this one').toBeDefined();
+        const [{ d }] = await sql<{ d: string }[]>`SELECT game_date::text AS d FROM games WHERE game_id = ${comebackGame}::bigint`;
+        const drafts = async () => {
+          const res = await runEngine({ surfaces: ['postgame'], asOf: laToday(), write: false, gameId: comebackGame });
+          const mine = res.drafts.filter((x) => ['player_period_stat', 'team_period_stat', 'clutch'].includes(x.category));
+          expect(mine.length, 'period and clutch drafts').toBeGreaterThanOrEqual(4);
+          return mine;
+        };
+        try {
+          // A consistent earlier game: player period points equal the team's, player clutch equals the team clutch row.
+          await sql`INSERT INTO period_team_stats (game_id, team_id, period, pts, fgm, fga, fg3m, fg3a, ftm, fta, reb, ast, tov)
+            SELECT ${early.game_id}::bigint, 1, p, 10, 4, 9, 1, 3, 1, 2, 5, 2, 1 FROM generate_series(1, 4) AS p`;
+          await sql`INSERT INTO period_player_stats (game_id, player_id, team_id, period, pts, reb, ast, fg3m, fgm, fga, stl, blk)
+            SELECT ${early.game_id}::bigint, 1, 1, p, 10, 0, 0, 0, 4, 9, 0, 0 FROM generate_series(1, 4) AS p`;
+          await sql`INSERT INTO clutch_stats (game_id, team_id, player_id, pts, fgm, fga, fg3m, ftm, fta, tov)
+            VALUES (${early.game_id}::bigint, 1, NULL, 5, 2, 4, 0, 1, 2, 0), (${early.game_id}::bigint, 1, 1, 5, 2, 4, 0, 1, 2, 0)`;
+          expect(await pbpRecordsComplete(ctx, d, runQuery)).toBe(true);
+          const complete = await drafts();
+          expect(complete.filter((x) => x.frame.type === 'records_best').length, 'record frames while complete').toBeGreaterThan(0);
+
+          // A dropped player: his period row is gone (zeroed) while the team row stands.
+          const [pp] = await sql<{ pts: number }[]>`
+            SELECT pts::int FROM period_player_stats WHERE game_id = ${early.game_id}::bigint AND player_id = 1 AND period = 2`;
+          try {
+            await sql`UPDATE period_player_stats SET pts = 0 WHERE game_id = ${early.game_id}::bigint AND player_id = 1 AND period = 2`;
+            expect(await pbpRecordsComplete(makeCtxCopy(ctx), d, runQuery)).toBe(false);
+            for (const x of await drafts()) expect(PBP_RECORD_FRAMES.has(x.frame.type), `${x.category} ${x.frame.type}`).toBe(false);
+          } finally {
+            await sql`UPDATE period_player_stats SET pts = ${pp.pts} WHERE game_id = ${early.game_id}::bigint AND player_id = 1 AND period = 2`;
+          }
+          expect(await pbpRecordsComplete(makeCtxCopy(ctx), d, runQuery)).toBe(true);
+
+          // A dropped clutch player: the team clutch row counts more than the players' rows.
+          try {
+            await sql`UPDATE clutch_stats SET pts = 3 WHERE game_id = ${early.game_id}::bigint AND player_id = 1`;
+            expect(await pbpRecordsComplete(makeCtxCopy(ctx), d, runQuery)).toBe(false);
+            for (const x of await drafts()) expect(PBP_RECORD_FRAMES.has(x.frame.type), `${x.category} ${x.frame.type}`).toBe(false);
+          } finally {
+            await sql`UPDATE clutch_stats SET pts = 5 WHERE game_id = ${early.game_id}::bigint AND player_id = 1`;
+          }
+          expect(await pbpRecordsComplete(makeCtxCopy(ctx), d, runQuery)).toBe(true);
+        } finally {
+          await sql`DELETE FROM period_player_stats WHERE game_id = ${early.game_id}::bigint`;
+          await sql`DELETE FROM period_team_stats WHERE game_id = ${early.game_id}::bigint`;
+          await sql`DELETE FROM clutch_stats WHERE game_id = ${early.game_id}::bigint`;
         }
       }, TIMEOUT);
 

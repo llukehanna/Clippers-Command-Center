@@ -47,6 +47,14 @@ describe('period and clutch templates', () => {
       expect(out.context).not.toContain('this season');
     }
   });
+  it('leaves out clutch shooting parts with no attempts', () => {
+    const noFt = makeFact({ ...clutch, data: { ...clutch.data, ftm: 0, fta: 0 } });
+    const noFg = makeFact({ ...clutch, data: { ...clutch.data, fgm: 0, fga: 0 } });
+    const none = makeFact({ ...clutch, data: { ...clutch.data, fgm: 0, fga: 0, ftm: 0, fta: 0 } });
+    expect(say(noFt, fr('none'), post).context).toBe('4-of-6 from the field in clutch time');
+    expect(say(noFg, fr('none'), post).context).toBe('2-of-2 at the line in clutch time');
+    expect(say(none, fr('none'), post).context).not.toMatch(/0-of-0/);
+  });
   it('never calls clutch "the last five minutes" (it includes overtime)', () => {
     for (const frame of [fr('none'), fr('season_high'), fr('records_best', { records_label: '2019-20' })]) {
       const out = say(clutch, frame, post);
@@ -64,6 +72,17 @@ describe('period and clutch templates', () => {
       expect(blockedFrames(makeFact({ kind: k }), false)).toBe(PBP_RECORD_FRAMES);
       expect(blockedFrames(makeFact({ kind: k }), true)).toBeUndefined();
     }
+  });
+});
+
+describe('rank frames', () => {
+  it('never produces clippers_rank for quarters, halves or clutch (reference rows are player-games, not periods)', () => {
+    for (const k of ['player_period_stat', 'team_period_stat', 'clutch'] as const) {
+      const names = QUESTIONS_BY_KIND[k].map((q) => q.name);
+      expect(names).not.toContain('clippers_rank');
+      for (const keep of ['group_company', 'group_first_since', 'group_season_high']) expect(names, `${k} keeps ${keep}`).toContain(keep);
+    }
+    expect(QUESTIONS_BY_KIND.player_game_stat.map((q) => q.name)).toContain('clippers_rank');
   });
 });
 
