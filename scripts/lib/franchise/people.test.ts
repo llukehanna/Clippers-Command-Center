@@ -81,8 +81,8 @@ describe('people crosswalk', () => {
     expect(resolveRef({ name: 'x', nbaPersonId: 7 }, idx, 2000)).toBeNull();
   });
 
-  it('matches a Date birthdate against a roster YYYY-MM-DD', () => {
-    const d = { ...db('1', 5, 'Ann Lee', null), birthdate: new Date('1980-02-02T00:00:00Z') };
+  it('matches a driver-parsed DATE (UTC midnight) against a roster YYYY-MM-DD', () => {
+    const d = { ...db('1', 5, 'Ann Lee', null), birthdate: new Date('1980-02-02') };
     const r = matchPeople([row('a01', 'Ann Lee', '1980-02-02')], [d, db('2', 6, 'Ann Lee', '1991-01-01')]);
     expect(r.people[0].playerId).toBe('1');
   });

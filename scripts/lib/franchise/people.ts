@@ -25,7 +25,10 @@ export interface PeopleIndex {
   allByName: Map<string, PersonRow[]>;
 }
 
-/** Postgres may hand back a Date; compare on the YYYY-MM-DD prefix. */
+/**
+ * Compare on the YYYY-MM-DD prefix. A Date is expected at UTC midnight (the porsager `postgres` driver parses
+ * DATE via `new Date('YYYY-MM-DD')`), so toISOString is correct. Callers should prefer selecting `birthdate::text`.
+ */
 function ymd(b: string | Date | null | undefined): string | null {
   if (b == null) return null;
   if (b instanceof Date) return Number.isNaN(b.getTime()) ? null : b.toISOString().slice(0, 10);
