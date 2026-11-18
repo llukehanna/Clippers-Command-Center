@@ -1,149 +1,52 @@
 // scripts/generate-insights.ts
-// Insight Engine orchestrator.
+// Insight Engine v2: detects facts, frames them against the record book (only
+// inside complete records), scores and renders them, and stores each with one
+// proof statement that verify-insights re-runs. Stale claims are deactivated
+// per detector (and per game for postgame); v1 rows (no surface) are
+// deactivated on the first run; live rows are never touched.
 //
-// Generates and stores provable insights from stored data in dependency order:
-//   Step 1: Streak insights (player scoring and shooting streaks)
-//   Step 2: Milestone insights (season points, games played)
-//   Step 3: Rare event insights (top 5% percentile performances)
-//   Step 4: Opponent context insights (def rating, H2H record)
-//   Step 5: League comparison insights (team/player league ranks, standings)
-//   Step 6: Year-over-year insights (vs the previous season)
-//
-// All steps write to the insights table idempotently (ON CONFLICT on proof_hash).
-// proof_hash is a stable identity key (category + entity ids + season + metric
-// key — see makeInsightKey), so re-runs update rows instead of duplicating them.
-// After a category is regenerated, its previously-active batch insights that
-// were NOT re-emitted this run are deactivated (is_active = false): the claim
-// no longer holds (streak ended, rank dropped out of the top 5, ...).
-// Insights without valid proof are never stored (proof_result must be non-empty).
-//
-// Run via: npm run generate-insights
-
+// Run via: npm run generate-insights [-- --surface=season,pregame,postgame]
+//          [--game=<id> (postgame only)] [--as-of=YYYY-MM-DD] [--dry] [--verbose]
 import { sql } from './lib/db.js';
-import { generateStreakInsights } from './lib/insights/streaks.js';
-import { generateMilestoneInsights } from './lib/insights/milestones.js';
-import { generateRareEventInsights } from './lib/insights/rare-events.js';
-import { generateOpponentContextInsights } from './lib/insights/opponent-context.js';
-import { generateLeagueComparisonInsights } from './lib/insights/league-comparisons.js';
-import { generateYearOverYearInsights } from './lib/insights/year-over-year.js';
-import { loadInsightContext, type InsightContext } from './lib/insights/context.js';
-import type { InsightRow } from './lib/insights/proof-utils.js';
+import { parseEngineArgs } from './lib/insights/engine/cli.js';
+import { laToday } from './lib/insights/engine/dates.js';
+import { runEngine } from './lib/insights/engine/run.js';
 
-type Json = Parameters<typeof sql.json>[0];
-
-// ---- Upsert ----
-
-async function upsertInsight(row: InsightRow): Promise<void> {
-  await sql`
-    INSERT INTO insights (
-      scope, team_id, game_id, player_id, season_id,
-      category, headline, detail, importance,
-      proof_sql, proof_params, proof_result, proof_hash
-    ) VALUES (
-      ${row.scope},
-      ${row.team_id !== null ? sql`${row.team_id}::bigint` : null},
-      ${row.game_id !== null ? sql`${row.game_id}::bigint` : null},
-      ${row.player_id !== null ? sql`${row.player_id}::bigint` : null},
-      ${row.season_id},
-      ${row.category}, ${row.headline}, ${row.detail}, ${row.importance},
-      ${row.proof_sql}, ${sql.json(row.proof_params as unknown as Json)},
-      ${sql.json(row.proof_result as unknown as Json)}, ${row.proof_hash}
-    )
-    ON CONFLICT (proof_hash) WHERE proof_hash IS NOT NULL DO UPDATE SET
-      scope        = EXCLUDED.scope,
-      headline     = EXCLUDED.headline,
-      detail       = EXCLUDED.detail,
-      importance   = EXCLUDED.importance,
-      proof_sql    = EXCLUDED.proof_sql,
-      proof_params = EXCLUDED.proof_params,
-      proof_result = EXCLUDED.proof_result,
-      is_active    = TRUE,          -- re-emitted → eligible again
-      updated_at   = now()
-  `;
+function countBy<T>(items: T[], key: (t: T) => string): string {
+  const counts = new Map<string, number>();
+  for (const item of items) counts.set(key(item), (counts.get(key(item)) ?? 0) + 1);
+  return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, n]) => `${k} ${n}`).join(', ') || 'none';
 }
 
-/**
- * Deactivate batch insights of `category` that this run did not re-emit.
- * Scoped to batch scopes so live insights (scope 'live') are never touched.
- * Returns the number of rows deactivated.
- */
-async function deactivateStale(category: InsightRow['category'], keptHashes: string[]): Promise<number> {
-  const result = await sql`
-    UPDATE insights SET is_active = FALSE, updated_at = now()
-    WHERE category = ${category}
-      AND scope IN ('between_games', 'historical')
-      AND is_active = TRUE
-      AND (proof_hash IS NULL OR proof_hash <> ALL(${keptHashes}::text[]))
-  `;
-  return result.count;
-}
-
-// ---- Main ----
-
-async function main() {
-  console.log('\n=== Insight Engine ===\n');
-  const totals: Record<string, number> = {};
-  const verbose = process.argv.slice(2).includes('--verbose');
-
-  // INSIGHTS_NOW (ISO date) pins "now" for tests: it decides whether the stats
-  // season is the current one ("this season") or a completed one ("in 2025-26").
-  const now = process.env.INSIGHTS_NOW ? new Date(process.env.INSIGHTS_NOW) : new Date();
-  if (Number.isNaN(now.getTime())) throw new Error(`Invalid INSIGHTS_NOW "${process.env.INSIGHTS_NOW}"`);
-  const ctx: InsightContext | null = await loadInsightContext(now);
+async function main(): Promise<void> {
+  const args = parseEngineArgs(process.argv.slice(2), laToday());
+  console.log(`\n=== Insight Engine v2 — as of ${args.asOf}; ${args.surfaces.join(', ')}` +
+    `${args.gameId ? `; game ${args.gameId}` : ''}${args.write ? '' : ' (dry run)'} ===\n`);
+  const result = await runEngine({
+    surfaces: args.surfaces, gameId: args.gameId, asOf: args.asOf, write: args.write, log: (m) => console.log(m),
+  });
+  const ctx = result.context;
   if (!ctx) {
-    // Nothing to talk about yet (no teams / no Clippers box scores). Leave the
-    // existing insights alone rather than deactivating everything.
     console.log('No Clippers box scores found — skipping.');
-    await sql.end();
     return;
   }
-  console.log(
-    `Stats season: ${ctx.season.label} (${ctx.season.isCurrent ? 'current' : 'completed'}, ` +
-      `last Clippers game ${ctx.season.lastGameDate}); qualified players: ${ctx.minPlayerGames}+ games\n`
-  );
-
-  const steps = [
-    { name: 'Streak insights',           fn: generateStreakInsights,          category: 'streak' },
-    { name: 'Milestone insights',         fn: generateMilestoneInsights,       category: 'milestone' },
-    { name: 'Rare event insights',        fn: generateRareEventInsights,       category: 'rare_event' },
-    { name: 'Opponent context insights',  fn: generateOpponentContextInsights,  category: 'opponent_context' },
-    { name: 'League comparison insights', fn: generateLeagueComparisonInsights, category: 'league_comparison' },
-    { name: 'Year-over-year insights',    fn: generateYearOverYearInsights,    category: 'year_over_year' },
-  ];
-
-  for (const step of steps) {
-    process.stdout.write(`  ${step.name}... `);
-    // If a generator throws, main() fails before deactivation runs, so a
-    // partial run never wipes out a category.
-    const rows = await step.fn(ctx);
-    for (const row of rows) {
-      await upsertInsight(row);
+  console.log(`Stats season ${ctx.season.label} (${ctx.season.isCurrent ? 'current' : 'completed'}, last Clippers game ` +
+    `${ctx.season.lastGameDate}); records start ${ctx.recordsStart?.label ?? 'unknown'}; roster ${ctx.roster.size}; ` +
+    `league data ${ctx.league.complete ? 'complete' : 'incomplete'}`);
+  console.log(`Insights: ${countBy(result.drafts, (d) => `${d.surface}/${d.category}`)}`);
+  console.log(`Dropped: ${countBy(result.dropped, (d) => d.reason)}`);
+  console.log(`${result.upserted} upserted, ${result.deactivated} stale deactivated, ${result.legacyDeactivated} legacy deactivated`);
+  if (args.verbose) {
+    for (const d of [...result.drafts].sort((a, b) => b.importance - a.importance)) {
+      console.log(`  [${d.importance}] ${d.surface} ${d.headline} — ${d.detail}`);
     }
-    const deactivated = await deactivateStale(
-      step.category as InsightRow['category'],
-      rows.map((r) => r.proof_hash)
-    );
-    console.log(`${rows.length} insights upserted, ${deactivated} stale deactivated`);
-    if (verbose) {
-      for (const r of [...rows].sort((a, b) => b.importance - a.importance)) {
-        console.log(`      [${r.importance}] ${r.headline} — ${r.detail ?? ''}`);
-      }
-    }
-    totals[step.category] = rows.length;
   }
-
-  console.log('\n--- Summary ---');
-  for (const [cat, count] of Object.entries(totals)) {
-    console.log(`  ${cat}: ${count}`);
-  }
-  console.log(`  Total: ${Object.values(totals).reduce((a, b) => a + b, 0)}`);
-  console.log('\nDone.\n');
-
-  await sql.end();
 }
 
-main().catch(async (err) => {
-  console.error('generate-insights failed:', err);
-  await sql.end({ timeout: 5 }).catch(() => {});
-  process.exit(1);
-});
+main()
+  .then(() => sql.end({ timeout: 5 }))
+  .catch(async (err) => {
+    console.error('generate-insights failed:', err instanceof Error ? err.message : err);
+    await sql.end({ timeout: 5 }).catch(() => {});
+    process.exit(1);
+  });

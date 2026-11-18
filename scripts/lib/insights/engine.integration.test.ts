@@ -420,4 +420,84 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       }
     });
   });
+
+  describe('generate-insights', () => {
+    it('writes every batch surface, cuts legacy rows, keeps live rows, and verifies', async () => {
+      await sql`
+        INSERT INTO insights (scope, category, headline, importance, proof_sql, proof_params, proof_result, proof_hash) VALUES
+          ('between_games', 'streak', 'Legacy claim', 50, 'SELECT 1 AS one', '{}'::jsonb, '[{"one":1}]'::jsonb, 'legacy-cli'),
+          ('live', 'run', 'Live claim', 50, 'SELECT 1 AS one', '{}'::jsonb, '[{"one":1}]'::jsonb, 'live-cli')`;
+      const out = run('scripts/generate-insights.ts');
+      expect(out).toMatch(/\d+ upserted, \d+ stale deactivated, 1 legacy deactivated/);
+      const rows = await sql<{ surface: string | null; scope: string; proof_hash: string; is_active: boolean; first: string | null }[]>`
+        SELECT surface, scope, proof_hash, is_active, first_emitted_at::text AS first FROM insights`;
+      const v2 = rows.filter((r) => r.is_active && r.surface);
+      expect(new Set(v2.map((r) => r.surface))).toEqual(new Set(['season', 'pregame', 'postgame']));
+      for (const r of v2) {
+        expect(r.scope).toBe(r.surface === 'postgame' ? 'historical' : 'between_games');
+        expect(r.first).not.toBeNull();
+      }
+      expect(rows.find((r) => r.proof_hash === 'legacy-cli')?.is_active).toBe(false);
+      expect(rows.find((r) => r.proof_hash === 'live-cli')?.is_active).toBe(true);
+      expect(run('scripts/verify-insights.ts')).toMatch(/\d+ checked, 0 legacy skipped, 0 failed/);
+    }, TIMEOUT);
+
+    it('is idempotent: same rows, same first emission', async () => {
+      const snap = () => sql<{ proof_hash: string; first: string }[]>`
+        SELECT proof_hash, first_emitted_at::text AS first FROM insights WHERE surface IS NOT NULL ORDER BY proof_hash`;
+      const before = await snap();
+      run('scripts/generate-insights.ts');
+      expect(await snap()).toEqual(before);
+    }, TIMEOUT);
+
+    it('rewrites wording in place for an in-season as-of, and back', async () => {
+      run('scripts/generate-insights.ts', ['--as-of=2026-02-25', '--surface=season']);
+      const inSeason = await sql<{ headline: string }[]>`SELECT headline FROM insights WHERE is_active AND surface = 'season'`;
+      expect(inSeason.some((r) => r.headline.includes('this season'))).toBe(true);
+      expect(inSeason.some((r) => r.headline.startsWith('Clippers finished'))).toBe(false);
+      run('scripts/generate-insights.ts', ['--surface=season']);
+      const done = await sql<{ headline: string }[]>`SELECT headline FROM insights WHERE is_active AND surface = 'season'`;
+      expect(done.some((r) => r.headline.includes('this season'))).toBe(false);
+      expect(run('scripts/verify-insights.ts')).toMatch(/0 failed/);
+    }, TIMEOUT);
+
+    it('a single-game postgame run leaves other games alone', async () => {
+      const [g1, g2] = (await sql<{ game_id: string }[]>`
+        SELECT game_id::text FROM games WHERE status = 'final' AND 1 IN (home_team_id, away_team_id) AND season_id = 2025
+        ORDER BY game_date LIMIT 2`).map((r) => r.game_id);
+      for (const [key, gameId] of [['fake-g1', g1], ['fake-g2', g2]]) {
+        await sql`
+          INSERT INTO insights (scope, surface, category, headline, importance, proof_sql, proof_params, proof_result, proof_hash, game_id, first_emitted_at)
+          VALUES ('historical', 'postgame', 'league_night', 'Fake', 10, 'SELECT 1 AS one', '{}'::jsonb,
+                  '[{"part":"fact","data":{"one":1}}]'::jsonb, ${key}, ${gameId}::bigint, now())`;
+      }
+      run('scripts/generate-insights.ts', ['--surface=postgame', `--game=${g1}`]);
+      const rows = await sql<{ proof_hash: string; is_active: boolean }[]>`
+        SELECT proof_hash, is_active FROM insights WHERE proof_hash LIKE 'fake-%' ORDER BY 1`;
+      expect(rows).toEqual([{ proof_hash: 'fake-g1', is_active: false }, { proof_hash: 'fake-g2', is_active: true }]);
+      await sql`DELETE FROM insights WHERE proof_hash LIKE 'fake-%'`;
+    }, TIMEOUT);
+
+    it('a dry run writes nothing', async () => {
+      const state = async () => (await sql<{ n: number; u: string }[]>`
+        SELECT COUNT(*)::int AS n, MAX(updated_at)::text AS u FROM insights`)[0];
+      const before = await state();
+      expect(run('scripts/generate-insights.ts', ['--dry'])).toContain('(dry run)');
+      expect(await state()).toEqual(before);
+    }, TIMEOUT);
+
+    it('rejects bad arguments with exit code 1', () => {
+      expect(() => run('scripts/generate-insights.ts', ['--surface=live'])).toThrow();
+      expect(() => run('scripts/generate-insights.ts', ['--game=12'])).toThrow();
+    }, TIMEOUT);
+
+    it('refuses a postgame detector that would clear every game, before writing anything', async () => {
+      const { runEngine } = await import('./engine/run');
+      const rogue = { name: 'postgame.rogue', surface: 'postgame' as const, categories: ['league_night' as const], run: async () => ({ facts: [], gameIds: null }) };
+      const before = (await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM insights WHERE is_active`)[0].n;
+      await expect(runEngine({ surfaces: ['postgame'], asOf: laToday(), write: true, detectors: [rogue] }))
+        .rejects.toThrow(/postgame\.rogue/);
+      expect((await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM insights WHERE is_active`)[0].n).toBe(before);
+    }, TIMEOUT);
+  });
 });

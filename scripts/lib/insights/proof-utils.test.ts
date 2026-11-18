@@ -1,37 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
-  makeInsightKey,
   isReportableLeagueRank,
   MIN_LEAGUE_TEAMS,
   paramsRecord,
   positionalParams,
   proofStillHolds,
   ordinal,
-  rankPercentile,
   highestThreshold,
 } from './proof-utils';
-
-const base = {
-  category: 'streak' as const,
-  team_id: '13',
-  player_id: '42',
-  game_id: null,
-  season_id: 2026,
-};
-
-describe('makeInsightKey', () => {
-  it('is stable for the same identity', () => {
-    expect(makeInsightKey(base, 'scoring_streak_20')).toBe(makeInsightKey({ ...base }, 'scoring_streak_20'));
-  });
-
-  it('differs by category, entity, season and metric', () => {
-    const k = makeInsightKey(base, 'scoring_streak_20');
-    expect(makeInsightKey({ ...base, category: 'milestone' }, 'scoring_streak_20')).not.toBe(k);
-    expect(makeInsightKey({ ...base, player_id: '43' }, 'scoring_streak_20')).not.toBe(k);
-    expect(makeInsightKey({ ...base, season_id: 2025 }, 'scoring_streak_20')).not.toBe(k);
-    expect(makeInsightKey(base, 'hot_shooting_streak')).not.toBe(k);
-  });
-});
 
 describe('isReportableLeagueRank', () => {
   it('requires enough teams', () => {
@@ -77,11 +53,6 @@ describe('formatting helpers', () => {
     expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101].map(ordinal)).toEqual(
       ['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '23rd', '101st']
     );
-  });
-  it('rankPercentile', () => {
-    expect(rankPercentile(1, 30)).toBe(100);
-    expect(rankPercentile(30, 30)).toBe(0);
-    expect(rankPercentile(1, 1)).toBe(100);
   });
   it('highestThreshold', () => {
     expect(highestThreshold(1300, [500, 1000, 1500])).toBe(1000);
