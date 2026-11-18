@@ -99,13 +99,25 @@ SELECT team_id::text AS team_id, conference, wins, losses, conf_rank, conf_teams
 FROM ranked
 WHERE team_id = $2::bigint`.trim();
 
-/** $1 season, $2 window, $3 LAC, $4 as-of. */
+/** $1 season, $2 LAC, $3 as-of. True once the Clippers have a play-in or playoff game. */
+export const LAC_POSTSEASON_SQL = `
+SELECT EXISTS (
+  SELECT 1 FROM games g
+  WHERE g.season_id = $1::int AND g.game_date <= $3::date AND NOT ${REGULAR_SEASON}
+    AND (g.home_team_id = $2::bigint OR g.away_team_id = $2::bigint)
+)::boolean AS postseason`.trim();
+
+/** $1 season, $2 window, $3 LAC, $4 as-of. Rolling rows are capped at the last regular-season game date. */
 export function rollingRankSql(metric: 'off_rating' | 'net_rating'): string {
   return `
 WITH latest AS (
   SELECT DISTINCT ON (team_id) team_id, ${metric}::float8 AS value, as_of_game_date
   FROM rolling_team_stats
   WHERE season_id = $1::int AND window_games = $2::int AND ${metric} IS NOT NULL AND as_of_game_date <= $4::date
+    AND as_of_game_date <= (
+      SELECT MAX(g.game_date) FROM games g
+      WHERE g.season_id = $1::int AND ${REGULAR_SEASON} AND g.status = 'final' AND g.game_date <= $4::date
+    )
   ORDER BY team_id, as_of_game_date DESC
 )
 SELECT (SELECT COUNT(*) + 1 FROM latest l WHERE l.value > lac.value)::int AS rank,
@@ -207,6 +219,9 @@ export function recentFormDetector(): Detector {
     categories: ['recent_form'],
     async run(ctx) {
       if (!ctx.league.complete || !ctx.season.isCurrent) return { facts: [], gameIds: null };
+      // rolling_team_stats mixes in postseason games; once LAC is in the play-in or playoffs, no recent-form claim.
+      const [post] = await runQuery({ sql: LAC_POSTSEASON_SQL, params: [ctx.season.id, ctx.lac.teamId, ctx.asOf] });
+      if (post?.postseason === true) return { facts: [], gameIds: null };
       const facts: Fact[] = [];
       for (const metric of ['off_rating', 'net_rating'] as const) {
         const q = { sql: rollingRankSql(metric), params: [ctx.season.id, ROLLING_WINDOW, ctx.lac.teamId, ctx.asOf] };

@@ -314,9 +314,11 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       for (const f of facts) expect(f.sample.kind).toBe('share');
       expect((await leagueRankDetector('season', { teams: true }).run({ ...ctx, league: { complete: false, reason: 'test' } })).facts).toEqual([]);
       const players = (await leagueRankDetector('player', { teams: false }).run(ctx)).facts;
+      expect(players.length).toBeGreaterThan(0);
       expect(players.every((f) => f.subject.type === 'player' && f.surface === 'player')).toBe(true);
       // Controller ruling F4: a player rank without a frame strength (rank > 10) is a bare rank.
       expect(players.every((f) => f.kind === 'league_rank' && f.value <= 10)).toBe(true);
+      expect(facts.filter((f) => f.subject.type === 'player').length).toBeGreaterThan(0);
       expect(facts.filter((f) => f.subject.type === 'player').every((f) => f.value <= 10)).toBe(true);
     }, TIMEOUT);
 
@@ -329,6 +331,36 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(facts[0].data.rank!).toBeLessThanOrEqual(5);
       expect(facts[0].data.conference).toBe('West');
       expect((await recentFormDetector().run(ctx)).facts).toEqual([]);
+      const incomplete = { ...ctx, season: { ...ctx.season, isCurrent: true }, league: { complete: false as const, reason: 'test' } };
+      expect((await standingsDetector().run(incomplete)).facts).toEqual([]);
+      expect((await recentFormDetector().run(incomplete)).facts).toEqual([]);
+    }, TIMEOUT);
+
+    it('recent form is suppressed once the Clippers play a postseason game, and rolling rows stop at the regular season', async () => {
+      const { recentFormDetector, rollingRankSql, LAC_POSTSEASON_SQL } = await import('./engine/detectors/season-ranks');
+      // The fixture already has one LAC play-in game (2026-02-21): before it, LAC has no postseason game.
+      const done = await ctxAt('2026-02-20');
+      const forced = { ...done, season: { ...done.season, isCurrent: true } };
+      const baseline = (await recentFormDetector().run(forced)).facts;
+      expect(baseline.length).toBeGreaterThan(0);
+      const ids: string[] = [];
+      try {
+        const pre = await sql.unsafe(LAC_POSTSEASON_SQL, [done.season.id, done.lac.teamId, done.asOf] as never[]);
+        expect(pre[0].postseason).toBe(false);
+        const [g] = await sql<{ game_id: string }[]>`
+          INSERT INTO all_games (nba_game_id, season_id, game_date, status, home_team_id, away_team_id, home_score, away_score, is_playoffs)
+          VALUES (${42_500_011}, ${done.season.id}, ${done.asOf}::date, 'final', ${done.lac.teamId}::bigint, 3, 100, 90, true)
+          RETURNING game_id::text AS game_id`;
+        ids.push(g.game_id);
+        const post = await sql.unsafe(LAC_POSTSEASON_SQL, [done.season.id, done.lac.teamId, done.asOf] as never[]);
+        expect(post[0].postseason).toBe(true);
+        expect((await recentFormDetector().run(forced)).facts).toEqual([]);
+        const late = await ctxAt(laToday());
+        expect((await recentFormDetector().run({ ...late, season: { ...late.season, isCurrent: true } })).facts).toEqual([]);
+        expect(rollingRankSql('net_rating')).toContain('MAX(g.game_date)');
+      } finally {
+        if (ids.length) await sql`DELETE FROM all_games WHERE game_id = ANY(${ids}::bigint[])`;
+      }
     }, TIMEOUT);
 
     it('year over year: record, net rating, the star’s scoring', async () => {
@@ -343,6 +375,9 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         expect(f.sample.kind).toBe('share');
         expect((f.sample as { p: number }).p).toBeGreaterThan(0);
       }
+      const { yoyDetector: yd } = await import('./engine/detectors/season-yoy');
+      const ctx = await ctxAt(laToday());
+      expect((await yd('season').run({ ...ctx, league: { complete: false, reason: 'test' } })).facts).toEqual([]);
     }, TIMEOUT);
   });
 });
