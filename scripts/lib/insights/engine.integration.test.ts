@@ -113,6 +113,24 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(prior.has('legacy-store-test')).toBe(false);
     });
 
+    it('deactivateRetired touches only batch rows of retired categories, never live ones', async () => {
+      const { RETIRED_CATEGORIES, deactivateRetired, upsertInsight } = await import('./engine/store');
+      const category = 'zz_retired_test' as InsightDraft['category'];
+      RETIRED_CATEGORIES.push(category);
+      try {
+        await upsertInsight(draft({ key: 'retired-batch', category }));
+        await upsertInsight(draft({ key: 'retired-live', category, surface: 'live', scope: 'live' }));
+        expect(await deactivateRetired()).toBe(1);
+        const rows = await sql<{ proof_hash: string; is_active: boolean }[]>`
+          SELECT proof_hash, is_active FROM insights WHERE proof_hash IN ('retired-batch', 'retired-live')`;
+        expect(Object.fromEntries(rows.map((r) => [r.proof_hash, r.is_active]))).toEqual({ 'retired-batch': false, 'retired-live': true });
+        expect(await deactivateRetired()).toBe(0);
+      } finally {
+        RETIRED_CATEGORIES.splice(RETIRED_CATEGORIES.indexOf(category), 1);
+        await sql`DELETE FROM insights WHERE proof_hash IN ('retired-batch', 'retired-live')`;
+      }
+    });
+
     it('the record book holds every Clipper’s streaks', async () => {
       const [r] = await sql<{ n: number }[]>`
         SELECT COUNT(DISTINCT entity_id)::int AS n FROM rb_streaks WHERE entity_type = 'player' AND team_id = 1`;
@@ -414,6 +432,10 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     it('registry: unique names, unique categories per surface', async () => {
       const { DETECTORS } = await import('./engine/detectors/index');
       expect(new Set(DETECTORS.map((d) => d.name)).size).toBe(DETECTORS.length);
+      const { RETIRED_CATEGORIES } = await import('./engine/store');
+      for (const d of DETECTORS) {
+        expect(d.categories.filter((c) => RETIRED_CATEGORIES.includes(c)), d.name).toEqual([]);
+      }
       for (const surface of ['season', 'pregame', 'postgame', 'player'] as const) {
         const cats = DETECTORS.filter((d) => d.surface === surface).flatMap((d) => d.categories);
         expect(new Set(cats).size, surface).toBe(cats.length);
@@ -432,6 +454,9 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(three[0].seasonId).toBe(2025);
       expect(['W', 'L']).toContain(three[0].result);
       expect(three[0].lacScore).toBeGreaterThan(0);
+      // The upper edge is inclusive: a game dated exactly on as-of is covered.
+      const onEdge = await postgameGames((await loadEngineContext({ asOf: '2026-02-16', withPrior: false, postgameDays: 1 }))!);
+      expect(onEdge.map((g) => g.date)).toEqual(['2026-02-16']);
       expect((await at(5)).map((g) => g.date)).toEqual(['2026-02-14', '2026-02-16']);
       const [first] = await sql<{ game_id: string }[]>`
         SELECT game_id::text FROM games WHERE season_id = 2025 AND 1 IN (home_team_id, away_team_id) ORDER BY game_date LIMIT 1`;

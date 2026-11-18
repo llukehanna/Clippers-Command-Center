@@ -24,7 +24,7 @@ WITH sample AS (
          (COUNT(*) OVER ())::int AS sample_size
   FROM game_player_box_scores pb
   JOIN games g ON g.game_id = pb.game_id
-  WHERE g.season_id = $1::int AND ${REGULAR_SEASON} AND g.game_date <= $4::date AND pb.${column} IS NOT NULL
+  WHERE g.season_id = $1::int AND g.status = 'final' AND ${REGULAR_SEASON} AND g.game_date <= $4::date AND pb.${column} IS NOT NULL
 ), best AS (
   SELECT DISTINCT ON (s.player_id) s.game_id, s.player_id, s.value, s.pct_rank, s.league_rank, s.sample_size, s.game_date
   FROM sample s
