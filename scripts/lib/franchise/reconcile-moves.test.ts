@@ -294,6 +294,109 @@ describe('reconcileMoves', () => {
     expect(run({ bbref: [bb2], wiki: [], nba: [nba2] })).toHaveLength(1);
   });
 
+  it('connects a BBRef id the roster never listed to the one players row carrying that name', () => {
+    // A camp cut: BBRef waives blakewe01, NBA.com waives person 1631104; one players row is named Blake Wesley.
+    const db = (rows: Array<[string, number | null]>) => rows.map(([name, id], i) => ({ player_id: String(i + 1), nba_person_id: id, display_name: name, birthdate: null }));
+    const nba = mv('nba:Waive 5:1631104', '2026-10-17', [player(LAC, null, 'Blake Wesley', { nbaPersonId: 1631104 })], { kind: 'waiver' });
+    const bbref = mv('bbref:bw', '2026-10-17', [player(LAC, null, 'Blake Wesley', { bbrefId: 'weslebl01' })], { kind: 'waiver' });
+    const unique = buildIndex([], new Map(), db([['Blake Wesley', 1631104], ['Carl Cole', 98]]));
+    const out = reconcileMoves({ bbref: [bbref], wiki: [], nba: [nba], index: unique });
+    expect(out).toHaveLength(1);
+    expect(out[0].parts[0].person).toMatchObject({ bbrefId: 'weslebl01', nbaPersonId: 1631104 });
+
+    // Two players rows share the name (one without an id): no link, two moves.
+    const shared = buildIndex([], new Map(), db([['Blake Wesley', 1631104], ['Blake Wesley', null]]));
+    expect(reconcileMoves({ bbref: [bbref], wiki: [], nba: [nba], index: shared })).toHaveLength(2);
+    // The unique row holds a different NBA.com id: no link.
+    const other = buildIndex([], new Map(), db([['Blake Wesley', 77]]));
+    expect(reconcileMoves({ bbref: [bbref], wiki: [], nba: [nba], index: other })).toHaveLength(2);
+  });
+
+  it('never name-links a roster person matchPeople left without an id', () => {
+    // willima04 is on a roster, but matchPeople refused his players row (ambiguous or a birthdate mismatch).
+    const index = buildIndex([person('willima04', 'Marcus Williams')], new Map(),
+      [{ player_id: '1', nba_person_id: 99, display_name: 'Marcus Williams', birthdate: null }]);
+    const nba = mv('nba:Signing 1:99', '2018-07-01', [player(null, LAC, 'Marcus Williams', { nbaPersonId: 99 })], { kind: 'signing' });
+    const bbref = mv('bbref:mw', '2018-07-01', [player(null, LAC, 'Marcus Williams', { bbrefId: 'willima04' })], { kind: 'signing' });
+    expect(reconcileMoves({ bbref: [bbref], wiki: [], nba: [nba], index })).toHaveLength(2);
+  });
+
+  it('pairs contract kinds exactly before it pairs them across kinds', () => {
+    const index = buildIndex([], new Map(), [{ player_id: '1', nba_person_id: 5, display_name: 'Kai Jones', birthdate: null }]);
+    const p = (ids: { bbrefId?: string; nbaPersonId?: number }) => [player(null, LAC, 'Kai Jones', ids)];
+    const nba = [
+      mv('nba:Signing 1:5', '2024-10-19', p({ nbaPersonId: 5 }), { kind: 'signing' }),
+      mv('nba:ContractConverted 2:5', '2024-10-19', p({ nbaPersonId: 5 }), { kind: 'conversion' }),
+    ];
+    const bbref = [
+      mv('bbref:tw', '2024-10-19', p({ bbrefId: 'joneska01' }), { kind: 'two_way' }),
+      mv('bbref:sg', '2024-10-19', p({ bbrefId: 'joneska01' }), { kind: 'signing' }),
+    ];
+    const out = reconcileMoves({ bbref, wiki: [], nba, index });
+    expect(out.map((m) => [m.kind, m.sources.join('+')]).sort()).toEqual([
+      ['signing', 'nba:Signing 1:5+bbref:sg'],
+      ['two_way', 'nba:ContractConverted 2:5+bbref:tw'],
+    ]);
+  });
+
+  it('never matches two different named contracts, nor Wikipedia across kinds', () => {
+    const index = buildIndex([person('coffeam01', 'Amir Coffey', 1629599)], new Map());
+    const p = (ids: { bbrefId?: string; nbaPersonId?: number; } = {}) => [player(null, LAC, 'Amir Coffey', ids)];
+    // NBA.com two-way vs BBRef 10-day a day later: two events (or a disagreement), never one silent move.
+    expect(reconcileMoves({
+      nba: [mv('nba:a', '2021-01-05', p({ nbaPersonId: 1629599 }), { kind: 'two_way' })],
+      bbref: [mv('bbref:b', '2021-01-06', p({ bbrefId: 'coffeam01' }), { kind: 'ten_day' })], wiki: [], index,
+    })).toHaveLength(2);
+    // Before 2015: BBRef two-way; Wikipedia's two-way joins it, its conversion a day later stays its own event.
+    const out = reconcileMoves({
+      nba: [], bbref: [mv('bbref:tw', '2010-01-05', p({ bbrefId: 'coffeam01' }), { kind: 'two_way' })],
+      wiki: [mv('wiki:s#1', '2010-01-05', p(), { kind: 'two_way' }), mv('wiki:s#2', '2010-01-06', p(), { kind: 'conversion' })], index,
+    });
+    expect(out.map((m) => m.sources.join('+')).sort()).toEqual(['bbref:tw+wiki:s#1', 'wiki:s#2']);
+    // BBRef signing and Wikipedia 10-day: no cross-kind match outside NBA.com vs BBRef.
+    expect(reconcileMoves({
+      nba: [], bbref: [mv('bbref:sg', '2010-01-05', p({ bbrefId: 'coffeam01' }), { kind: 'signing' })],
+      wiki: [mv('wiki:t#1', '2010-01-06', p(), { kind: 'ten_day' })], index,
+    })).toHaveLength(2);
+  });
+
+  it('lets an override link ids whose names the sources spell differently', () => {
+    const nba = mv('nba:Waive 3:203095', '2019-02-07', [player(LAC, null, 'Moe Harkless', { nbaPersonId: 203095 })], { kind: 'waiver' });
+    const bbref = mv('bbref:mh', '2019-02-07', [player(LAC, null, 'Maurice Harkless', { bbrefId: 'harklma01' })], { kind: 'waiver' });
+    const linked = buildIndex([], new Map(), [], [{ bbrefId: 'harklma01', nbaPersonId: 203095 }]);
+    expect(reconcileMoves({ bbref: [bbref], wiki: [], nba: [nba], index: linked })).toHaveLength(1);
+    // Conflicting links (one BBRef id, two NBA.com ids) link nothing.
+    const clash = buildIndex([], new Map(), [], [{ bbrefId: 'harklma01', nbaPersonId: 203095 }, { bbrefId: 'harklma01', nbaPersonId: 7 }]);
+    expect(reconcileMoves({ bbref: [bbref], wiki: [], nba: [nba], index: clash })).toHaveLength(2);
+  });
+
+  it('connects the ids a person override links, even when no players row has the name', () => {
+    const nba = mv('nba:Waive 9:1643630', '2026-10-15', [player(LAC, null, 'Fletcher Loyer', { nbaPersonId: 1643630 })], { kind: 'waiver' });
+    const bbref = mv('bbref:fl', '2026-10-15', [player(LAC, null, 'Fletcher Loyer', { bbrefId: 'loyerfl01' })], { kind: 'waiver' });
+    expect(reconcileMoves({ bbref: [bbref], wiki: [], nba: [nba], index: buildIndex([], new Map()) })).toHaveLength(2);
+    const linked = buildIndex([], new Map(), [], [{ bbrefId: 'loyerfl01', nbaPersonId: 1643630 }]);
+    const out = reconcileMoves({ bbref: [bbref], wiki: [], nba: [nba], index: linked });
+    expect(out).toHaveLength(1);
+    expect(out[0].parts[0].person).toMatchObject({ bbrefId: 'loyerfl01', nbaPersonId: 1643630 });
+  });
+
+  it("matches NBA.com's plain Signing to BBRef's named contract a day apart, keeping BBRef's kind", () => {
+    const index = buildIndex([], new Map(), [{ player_id: '1', nba_person_id: 1629599, display_name: 'Amir Coffey', birthdate: null }]);
+    const p = (ids: { bbrefId?: string; nbaPersonId?: number }) => [player(null, LAC, 'Amir Coffey', ids)];
+    const nba = (kind: ParsedMove['kind'], date: string) => mv(`nba:${kind} ${date}`, date, p({ nbaPersonId: 1629599 }), { kind });
+    const bb = (kind: ParsedMove['kind'], date: string) => mv(`bbref:${kind} ${date}`, date, p({ bbrefId: 'coffeam01' }), { kind });
+
+    const a = reconcileMoves({ nba: [nba('signing', '2021-09-26')], bbref: [bb('two_way', '2021-09-26')], wiki: [], index });
+    expect(a).toHaveLength(1);
+    expect(a[0].kind).toBe('two_way');
+    const b = reconcileMoves({ nba: [nba('conversion', '2017-10-14')], bbref: [bb('two_way', '2017-10-15')], wiki: [], index });
+    expect(b.map((m) => m.kind)).toEqual(['two_way']);
+    // Two days apart, different contract kinds: separate events.
+    expect(reconcileMoves({ nba: [nba('signing', '2021-09-26')], bbref: [bb('two_way', '2021-09-28')], wiki: [], index })).toHaveLength(2);
+    // A waiver never matches a signing.
+    expect(reconcileMoves({ nba: [nba('waiver', '2021-09-26')], bbref: [bb('two_way', '2021-09-26')], wiki: [], index })).toHaveLength(2);
+  });
+
   it('treats a player NBA.com does not list as a conflict, and leaves the move incomplete', () => {
     const nba = mv('nba:Trade 8', '2019-07-06', [player(LAC, OKC, 'Aaron Able', { nbaPersonId: 11 })]);
     const bbref = mv('bbref:x8', '2019-07-06', [player(LAC, OKC, 'Aaron Able', { bbrefId: 'ablea01' }), player(OKC, LAC, 'Carl Cole', { bbrefId: 'coleca01' })]);

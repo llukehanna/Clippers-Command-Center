@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Panel } from '@/components/ui/panel'
 import { TeamLogo } from '@/components/ui/team-mark'
 import { ScheduleChips } from '@/components/game/ScheduleChips'
@@ -35,10 +36,12 @@ export function ScheduleMonth({ label, games }: { label: string; games: Row[] })
             const opp = home ? g.away_team : g.home_team
             const odds = g.odds
             return (
-              <li
-                key={g.game_id}
-                className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-[14px] px-3 py-3 sm:grid-cols-[52px_minmax(0,1.4fr)_110px_minmax(0,1fr)_150px] sm:gap-x-4 [&+&]:border-t [&+&]:border-line"
-              >
+              <li key={g.game_id} className="[&+&]:border-t [&+&]:border-line">
+                <Link
+                  href={`/schedule/${g.game_id}`}
+                  prefetch={false}
+                  className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-[14px] px-3 py-3 transition-colors hover:bg-ink-2/60 sm:grid-cols-[52px_minmax(0,1.4fr)_110px_minmax(0,1fr)_150px] sm:gap-x-4"
+                >
                 <div className="row-span-2 text-center leading-none sm:row-span-1">
                   <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-dim">{dow}</div>
                   <div className="mt-1 text-[20px] font-semibold tracking-[-0.02em] tabular-nums">{day}</div>
@@ -71,6 +74,7 @@ export function ScheduleMonth({ label, games }: { label: string; games: Row[] })
                     </>
                   ) : null}
                 </div>
+                </Link>
               </li>
             )
           })}

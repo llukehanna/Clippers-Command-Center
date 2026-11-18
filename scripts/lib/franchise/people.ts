@@ -23,6 +23,14 @@ export interface PeopleIndex {
   rosterBySeason: Map<number, RosterRow[]>;
   /** Normalized name -> people. */
   allByName: Map<string, PersonRow[]>;
+  /**
+   * Normalized names exactly one `players` row carries, mapped to that row's NBA.com id (rows without an id are left
+   * out, but still count against uniqueness). reconcile-moves uses it to connect a BBRef id the roster never listed
+   * (a camp cut, a 10-day) to an NBA.com id: never on a name another player shares.
+   */
+  nbaIdByUniqueDbName: Map<string, number>;
+  /** BBRef id -> NBA.com id, from `person` overrides whose ref is `nba:<id>` and personKey a BBRef id. */
+  nbaIdByBbref: Map<string, number>;
 }
 
 /**
@@ -91,7 +99,9 @@ export function matchPeople(roster: RosterRow[], db: DbPlayer[]): { people: Pers
   return { people, unmatched, ambiguous };
 }
 
-export function buildIndex(people: PersonRow[], rosterBySeason: Map<number, RosterRow[]>): PeopleIndex {
+export function buildIndex(
+  people: PersonRow[], rosterBySeason: Map<number, RosterRow[]>, dbPlayers: DbPlayer[] = [], links: Array<{ bbrefId: string; nbaPersonId: number }> = [],
+): PeopleIndex {
   const byBbref = new Map<string, PersonRow>();
   const byNbaId = new Map<number, PersonRow>();
   const ambiguousNbaIds = new Set<number>();
@@ -105,7 +115,21 @@ export function buildIndex(people: PersonRow[], rosterBySeason: Map<number, Rost
     const k = normalizePersonName(p.displayName);
     if (k) (allByName.get(k) ?? allByName.set(k, []).get(k)!).push(p);
   }
-  return { byBbref, byNbaId, ambiguousNbaIds, rosterBySeason, allByName };
+  const dbByName = new Map<string, DbPlayer[]>();
+  for (const d of dbPlayers) {
+    const k = normalizePersonName(d.display_name);
+    if (k) (dbByName.get(k) ?? dbByName.set(k, []).get(k)!).push(d);
+  }
+  const nbaIdByUniqueDbName = new Map<string, number>();
+  for (const [k, ds] of dbByName) if (ds.length === 1 && ds[0].nba_person_id != null) nbaIdByUniqueDbName.set(k, ds[0].nba_person_id);
+  // A BBRef id linked to two NBA.com ids, or an NBA.com id linked to two BBRef ids, links nothing.
+  const count = (xs: Array<string | number>) => xs.reduce((m, x) => m.set(x, (m.get(x) ?? 0) + 1), new Map<string | number, number>());
+  const distinct = [...new Map(links.map((l) => [`${l.bbrefId}|${l.nbaPersonId}`, l])).values()];
+  const perBbref = count(distinct.map((l) => l.bbrefId));
+  const perNba = count(distinct.map((l) => l.nbaPersonId));
+  const nbaIdByBbref = new Map(distinct.filter((l) => perBbref.get(l.bbrefId) === 1 && perNba.get(l.nbaPersonId) === 1)
+    .map((l) => [l.bbrefId, l.nbaPersonId] as [string, number]));
+  return { byBbref, byNbaId, ambiguousNbaIds, rosterBySeason, allByName, nbaIdByUniqueDbName, nbaIdByBbref };
 }
 
 function uniqueKey(keys: Set<string>): string | null | undefined {

@@ -78,6 +78,11 @@ export function edgePolicy(response: Response): EdgePolicy | null {
   return { fresh, stale: seconds('stale-while-revalidate') }
 }
 
+/** Whether a 200 body is really a redirect Next streamed after the status was sent. */
+export function isStreamedRedirect(body: string): boolean {
+  return body.includes('__next-page-redirect') || body.includes('NEXT_REDIRECT')
+}
+
 /** The copy that goes into the Cache API: edge TTL, no cookies, browser headers kept aside. */
 export function toStored(response: Response, policy: EdgePolicy, now: number): Response {
   const stored = new Response(response.body, response)
@@ -131,12 +136,15 @@ export async function serveWithEdgeCache(
   if (!isCacheableRequest(request)) return render()
 
   const key = cacheKey(request)
-  /** Stores `response` (or a clone of it, when the caller still sends the original). */
-  const storeFrom = (response: Response, { clone }: { clone: boolean }): Promise<void> => {
+  /** Stores `response`, which the caller owns (clone it first if it is also sent to the client). */
+  const storeFrom = async (response: Response): Promise<void> => {
     const policy = edgePolicy(response)
-    if (!policy) return Promise.resolve()
-    const copy = clone ? response.clone() : response
-    return store.put(key, toStored(copy, policy, now())).catch(() => {})
+    if (!policy) return
+    // A redirect() under a loading.tsx streams as a 200 (meta refresh / NEXT_REDIRECT
+    // payload). Storing it would pin the redirect for the whole TTL.
+    const probe = response.clone()
+    if (isStreamedRedirect(await probe.text().catch(() => ''))) return
+    await store.put(key, toStored(response, policy, now())).catch(() => {})
   }
 
   const hit = await store.match(key)
@@ -149,7 +157,7 @@ export async function serveWithEdgeCache(
       refreshing.add(key.url)
       ctx.waitUntil(
         render()
-          .then((fresh) => storeFrom(fresh, { clone: false }))
+          .then((fresh) => storeFrom(fresh))
           .catch(() => {})
           .finally(() => refreshing.delete(key.url))
       )
@@ -158,6 +166,6 @@ export async function serveWithEdgeCache(
   }
 
   const response = await render()
-  ctx.waitUntil(storeFrom(response, { clone: true }))
+  if (edgePolicy(response)) ctx.waitUntil(storeFrom(response.clone()))
   return edgePolicy(response) ? withStatus(response, 'MISS') : response
 }

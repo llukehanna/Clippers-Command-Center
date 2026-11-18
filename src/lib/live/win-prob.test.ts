@@ -1,13 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_SIGMA,
+  PERIOD_SECS,
   elapsedSecs,
   expectedLacMargin,
   formatClock,
   formatGameTime,
+  modelSigma,
   normalCdf,
   periodClockAt,
   periodName,
+  pregameLacWinProb,
   remainingFraction,
   winProbability,
 } from './win-prob';
@@ -104,5 +107,26 @@ describe('expectedLacMargin', () => {
   it('falls back to home court', () => {
     expect(expectedLacMargin(null, true)).toEqual({ expected: 2.5, source: 'home_court' });
     expect(expectedLacMargin(undefined, false)).toEqual({ expected: -2.5, source: 'home_court' });
+  });
+});
+
+describe('pregameLacWinProb', () => {
+  it('is 50% for an even game and matches the in-game model at the tip', () => {
+    expect(pregameLacWinProb(0, 13)).toBeCloseTo(0.5, 6);
+    expect(pregameLacWinProb(4.5, 13)).toBeCloseTo(
+      winProbability({ margin: 0, period: 1, clockSec: PERIOD_SECS, expected: 4.5, sigma: 13 }),
+      6
+    );
+    expect(pregameLacWinProb(4.5, 13)).toBeGreaterThan(0.6);
+  });
+});
+
+describe('modelSigma (app copy)', () => {
+  const fit = { sigma: 21.8, brier: 0.178, n_games: 588, n_samples: 1, fitted_at: '', reliability: [] };
+  it('prefers the per-source fit, then the overall fit, then the default', () => {
+    expect(modelSigma({ ...fit, sigma_by_source: { home_court: { sigma: 22.4, brier: 0.2, n_games: 573 } } }, 'home_court')).toBe(22.4);
+    expect(modelSigma({ ...fit, sigma_by_source: { home_court: { sigma: 22.4, brier: 0.2, n_games: 573 } } }, 'spread')).toBe(DEFAULT_SIGMA);
+    expect(modelSigma(fit, 'spread')).toBe(21.8);
+    expect(modelSigma(null, 'spread')).toBe(DEFAULT_SIGMA);
   });
 });

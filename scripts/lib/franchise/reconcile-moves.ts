@@ -66,6 +66,27 @@ function kindFamily(k: MoveKind): string {
   return k === 're_signing' ? 'signing' : k;
 }
 
+/**
+ * One contract event NBA.com and BBRef label differently: NBA.com files a two-way or 10-day deal (or BBRef's
+ * two-way-to-standard conversion) as a plain Signing, and an Exhibit 10 turned two-way as ContractConverted, while
+ * BBRef names the contract. Only these pairs, only NBA.com against BBRef, and only a day apart at most (kindsMatch);
+ * the merged move takes BBRef's kind (mergeGroup). Two different named kinds never match.
+ */
+const NAMED_CONTRACTS = new Set<MoveKind>(['two_way', 'ten_day', 'conversion']);
+
+function contractPair(nbaKind: MoveKind, bbrefKind: MoveKind): boolean {
+  if (nbaKind === 'signing' || nbaKind === 're_signing') return NAMED_CONTRACTS.has(bbrefKind);
+  return nbaKind === 'conversion' && bbrefKind === 'two_way';
+}
+
+function kindsMatch(a: Item, b: Item): boolean {
+  if (kindFamily(a.move.kind) === kindFamily(b.move.kind)) return true;
+  if (Math.abs(dayNumber(a.move.date) - dayNumber(b.move.date)) > 1) return false;
+  if (a.source === 'nba' && b.source === 'bbref') return contractPair(a.move.kind, b.move.kind);
+  if (a.source === 'bbref' && b.source === 'nba') return contractPair(b.move.kind, a.move.kind);
+  return false;
+}
+
 function team(id: FranchiseId | null): string {
   return id == null ? '?' : (TRICODE_BY_NBA_ID[id] ?? String(id));
 }
@@ -115,12 +136,32 @@ interface Item {
   people: Array<Who | null>;
 }
 
-type Who = { key: string | null; name: string };
+/**
+ * `nbaVia`: an NBA.com id a BBRef key may match as `nba:<id>`. `via: 'override'`: a `person` override links them
+ * (PeopleIndex.nbaIdByBbref), for a key the index holds no NBA.com id for; the names needn't agree. `via: 'name'`: a
+ * BBRef id the roster never listed, and exactly one `players` row carries this name (nbaIdByUniqueDbName); the names
+ * must agree. A roster person matchPeople left without an id (a birthdate mismatch, an ambiguous name) never links.
+ */
+type Who = { key: string | null; name: string; nbaVia?: number; via?: 'override' | 'name' };
+
+function who(ref: PersonRef, index: PeopleIndex, season: number): Who {
+  const key = resolveRef(ref, index, season);
+  const name = normalizePersonName(ref.name);
+  if (key && !key.startsWith('nba:') && index.byBbref.get(key)?.nbaPersonId == null) {
+    const linked = index.nbaIdByBbref.get(key);
+    if (linked != null) return { key, name, nbaVia: linked, via: 'override' };
+    const nbaVia = index.nbaIdByUniqueDbName.get(name);
+    if (nbaVia != null && !index.byBbref.has(key)) return { key, name, nbaVia, via: 'name' };
+  }
+  return { key, name };
+}
 
 /** 'key': the index resolves both to one person. 'name': only the names agree (weak). false: different people. */
 function personMatch(a: Who, b: Who): 'key' | 'name' | false {
   if (a.key && b.key) {
     if (a.key === b.key) return 'key';
+    const linked = (x: Who, y: Who) => y.nbaVia != null && x.key === `nba:${y.nbaVia}` && (y.via === 'override' || (x.name !== '' && x.name === y.name));
+    if (linked(a, b) || linked(b, a)) return 'key';
     // Two keys of the same kind (two BBRef ids, or two NBA ids) that differ are different people. A BBRef key
     // and an `nba:` key only differ because the index couldn't connect them, so the name may still agree.
     if (a.key.startsWith('nba:') === b.key.startsWith('nba:')) return false;
@@ -136,7 +177,7 @@ function makeItem(move: ParsedMove, source: Source, index: PeopleIndex): Item {
     move,
     source,
     rank: rank(source, move.date),
-    people: move.parts.map((p) => (p.person ? { key: resolveRef(p.person, index, season), name: normalizePersonName(p.person.name) } : null)),
+    people: move.parts.map((p) => (p.person ? who(p.person, index, season) : null)),
   };
 }
 
@@ -160,7 +201,7 @@ function sameWay(x: MovePart, y: MovePart): boolean {
  * must corroborate each other, so a lone name never decides a merge.
  */
 function overlap(a: Item, b: Item): number {
-  if (kindFamily(a.move.kind) !== kindFamily(b.move.kind)) return 0;
+  if (!kindsMatch(a, b)) return 0;
   if (Math.abs(dayNumber(a.move.date) - dayNumber(b.move.date)) > WINDOW_DAYS) return 0;
   const aPeople = a.people.some((x) => x);
   const bPeople = b.people.some((y) => y);
@@ -226,7 +267,7 @@ function conflict(mg: Merge, part: MovePart | null, baseReading: string, other: 
 }
 
 function personOf(mg: Merge, ref: PersonRef): Who {
-  return { key: resolveRef(ref, mg.index, mg.season), name: normalizePersonName(ref.name) };
+  return who(ref, mg.index, mg.season);
 }
 
 /** The merged part (index) that an other-source part describes, or -1. Prefers one going the same way. */
@@ -362,7 +403,8 @@ function mergeGroup(g: Group, index: PeopleIndex): MergedMove {
   const out: MergedMove = {
     sourceKey: base.move.sourceKey,
     date,
-    kind: base.move.kind,
+    kind: (base.source === 'nba' && members.find((m) => m.source === 'bbref' && contractPair(base.move.kind, m.move.kind))?.move.kind)
+      || base.move.kind,
     parts: mg.parts,
     involvesClippers: members.some((m) => m.move.involvesClippers),
     // A dispute about a part the base doesn't list leaves no gap on any part, but the move still isn't settled.
@@ -392,12 +434,14 @@ export function reconcileMoves(input: ReconcileInput): MergedMove[] {
     (byDate.get(it.move.date) ?? byDate.set(it.move.date, []).get(it.move.date)!).push(g);
   };
   const candidates = (it: Item, sameSourceOk: boolean) => {
-    const out: Array<{ it: Item; g: Group; score: number; gap: number }> = [];
+    const out: Array<{ it: Item; g: Group; score: number; gap: number; exact: number }> = [];
     for (let d = -WINDOW_DAYS; d <= WINDOW_DAYS; d++) {
       for (const g of byDate.get(addDays(it.move.date, d)) ?? []) {
         if (!sameSourceOk && g.members.some((m) => m.source === it.source)) continue;
         const score = Math.max(...g.members.map((m) => overlap(m, it)));
-        if (score > 0) out.push({ it, g, score, gap: Math.abs(d) });
+        // exact: a member of the same kind family, preferred over a contract-kind pairing at the same score.
+        const exact = g.members.some((m) => kindFamily(m.move.kind) === kindFamily(it.move.kind)) ? 0 : 1;
+        if (score > 0) out.push({ it, g, score, gap: Math.abs(d), exact });
       }
     }
     return out;
@@ -407,7 +451,7 @@ export function reconcileMoves(input: ReconcileInput): MergedMove[] {
   // one move per source per event, so a player traded twice on one day goes to the deal that agrees on direction.
   for (const tier of [0, 1, 2]) {
     const tierItems = items.filter((it) => it.rank === tier);
-    const pairs = tierItems.flatMap((it) => candidates(it, false)).sort((x, y) => y.score - x.score || x.gap - y.gap);
+    const pairs = tierItems.flatMap((it) => candidates(it, false)).sort((x, y) => y.score - x.score || x.exact - y.exact || x.gap - y.gap);
     const placed = new Set<Item>();
     for (const { it, g } of pairs) {
       if (placed.has(it) || g.members.some((m) => m.source === it.source)) continue;

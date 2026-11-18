@@ -14,7 +14,7 @@ export function UpNextList({ games }: { games: Array<ScheduleGame & { annotation
       {games.map((g) => (
         <li key={g.game_id}>
           <Link
-            href="/schedule"
+            href={`/schedule/${g.game_id}`}
             className="panel group flex h-full flex-col gap-3 p-4 transition-colors duration-300 hover:border-line-2"
           >
             <div className="flex items-center justify-between gap-2">

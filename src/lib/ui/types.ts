@@ -2,8 +2,12 @@
 // app/api/**/route.ts on main exactly — the UI never reshapes the API.
 
 import type { MetaEnvelope } from '@/src/lib/api-utils'
+import type { Broadcast } from '../espn/schedule'
+import type { InjuryEntry } from '../espn/injuries'
 import type { LineupState, LivePhase, LivePlay, LiveFlow, LiveWinProb } from '../types/live-state'
 import type { PlayerInjury } from '../types/live'
+import type { Shot } from '../shots'
+import type { RecordNote } from '../record-notes'
 
 export type HomeAway = 'home' | 'away'
 
@@ -626,4 +630,68 @@ export interface TradePayload {
   /** Distinct gap notes of the trade's parts. */
   gap_notes: string[]
   became: TreeNode[]
+}
+
+// ─── Game preview (/schedule/[game_id]) ──────────────────────────────────────
+
+export type { Broadcast, InjuryEntry }
+
+export interface PreviewRank { value: number; rank: number; of: number }
+
+export interface PreviewTeamForm {
+  record: { wins: number; losses: number } | null
+  last10: { wins: number; losses: number; net_rating: number | null } | null
+  ranks: { off: PreviewRank; def: PreviewRank; net: PreviewRank } | null
+  days_since_last: number | null
+}
+
+export interface PreviewMeeting {
+  game_id: string
+  game_date: string
+  season_id: number
+  lac_home: boolean
+  lac_score: number
+  opp_score: number
+  won: boolean
+}
+
+export interface GamePreviewPayload {
+  meta: MetaEnvelope
+  game: ScheduleGame & { game_id: string; status: string; arena: string | null; season_id: number }
+  broadcasts: Broadcast[] | null
+  injuries: { updated_at: string | null; lac: InjuryEntry[]; opp: InjuryEntry[] } | null
+  line: {
+    current: { spread: number | null; moneyline: number | null; over_under: number | null; captured_at: string } | null
+    movement: { t: string; spread: number }[]
+    win_prob: { lac: number; source: 'spread' | 'home_court' }
+  } | null
+  matchup: {
+    season_series: { wins: number; losses: number } | null
+    meetings: PreviewMeeting[] | null
+    lac: PreviewTeamForm
+    opp: PreviewTeamForm
+  }
+  insights: Insight[]
+}
+
+// ─── Game story (/history/[game_id]) ─────────────────────────────────────────
+
+export type { Shot, RecordNote }
+
+export interface StoryPeriodLine { pts: number; fgm: number; fga: number; fg3m: number; fg3a: number; ftm: number; fta: number }
+export interface StoryClutchLine { pts: number; fgm: number; fga: number; fg3m: number; ftm: number; fta: number; tov: number }
+
+export interface GameStoryPayload {
+  meta: MetaEnvelope
+  game_id: string
+  opp_abbr: string
+  flow: {
+    flow: LiveFlow
+    expected_source: 'spread' | 'home_court'
+    summary: { largest_lead: number; largest_deficit: number; lead_changes: number; times_tied: number; lac_best_run: number; opp_best_run: number }
+  } | null
+  quarters: Array<{ period: number; lac: StoryPeriodLine; opp: StoryPeriodLine; lac_top: { name: string; pts: number } | null }> | null
+  clutch: { lac: StoryClutchLine; opp: StoryClutchLine | null; players: Array<{ name: string; pts: number; fgm: number; fga: number }> } | null
+  shots: { shots: Shot[]; located: number; total: number } | null
+  records: RecordNote[] | null
 }
