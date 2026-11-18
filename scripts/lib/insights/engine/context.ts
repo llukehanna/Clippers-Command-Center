@@ -8,7 +8,7 @@ import { sql } from '../../db.js';
 import { currentSeasonId, seasonLabel } from '../../schedule-utils.js';
 import { REGULAR_SEASON } from '../../sql-fragments.js';
 import { assessLeagueCoverage, type TeamGames } from './coverage.js';
-import { applyRosterSnapshot, parseRosterSnapshot, snapshotProblem, type RosterSnapshot } from './roster.js';
+import { applyRosterSnapshot, parseRosterSnapshot, rosterGuardReason, snapshotProblem, type RosterSnapshot } from './roster.js';
 import { parseRecordsStart } from './records.js';
 import { rosterSubquery } from './sql.js';
 import { loadPrior } from './store.js';
@@ -100,15 +100,17 @@ export async function loadEngineContext(opts: LoadOptions): Promise<EngineContex
   [chosen.season_id, asOf, lac.teamId])) as unknown as { d: string | null }[];
 
   const league = assessLeagueCoverage(coverage, lac.teamId, latest?.d ?? null);
-  // League box scores are incomplete: a traded player still looks like a Clipper, so intersect with the synced roster.
+  // The box-score roster can include departed players when league box scores are incomplete (a traded player still
+  // looks like a Clipper) or while the stats season lags the current one (last season's roster): intersect with the synced roster.
   let roster = boxRoster;
-  if (!league.complete) {
+  const guardReason = rosterGuardReason(league.complete, chosen.season_id, asOf);
+  if (guardReason) {
     const snapshot = await loadRosterSnapshot();
     const problem = snapshotProblem(snapshot, asOf);
     if (problem) {
-      console.log(`::warning title=Roster snapshot unusable::roster:LAC is ${problem}; the box-score roster is used unguarded while league data is incomplete`);
+      console.log(`::warning title=Roster snapshot unusable::roster:LAC is ${problem}; the box-score roster is used unguarded while ${guardReason}`);
     }
-    roster = applyRosterSnapshot(boxRoster, snapshot, asOf, league.complete);
+    roster = applyRosterSnapshot(boxRoster, snapshot, asOf, true);
   }
 
   const prior: Map<string, PriorState> = opts.withPrior ? await loadPrior() : new Map();

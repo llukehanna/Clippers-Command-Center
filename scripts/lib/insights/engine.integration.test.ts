@@ -514,6 +514,28 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     }, TIMEOUT);
   });
 
+  it('loadEngineContext: while the stats season lags the current one, a usable roster snapshot drops a departed player', async () => {
+    const { loadEngineContext } = await import('./engine/context');
+    const { currentSeasonId } = await import('../schedule-utils');
+    const today = laToday();
+    const base = await ctxAt(today);
+    // the fixture's latest season is over: the stats season lags (the first games of a new season look the same)
+    expect(base.season.id).toBeLessThan(currentSeasonId(new Date(`${today}T12:00:00Z`)));
+    expect(base.league.complete).toBe(true);
+    expect(base.roster.has('1') && base.roster.size > 1, 'a roster with players besides the star').toBe(true);
+    try {
+      await sql`
+        INSERT INTO app_kv (key, value) VALUES ('roster:LAC',
+          ${sql.json({ team: 'LAC', source: 'espn', synced_at: new Date().toISOString(), players: [{ player_id: '1', name: 'Star Clipper' }, { player_id: '99999', name: 'New Signing' }] })}::jsonb)
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
+      const ctx = await loadEngineContext({ asOf: today, withPrior: false });
+      // only removes: the star stays, everyone else the snapshot lacks goes, and the snapshot's newcomer is not added
+      expect([...ctx!.roster.keys()]).toEqual(['1']);
+    } finally {
+      await sql`DELETE FROM app_kv WHERE key = 'roster:LAC'`;
+    }
+  }, TIMEOUT);
+
   describe('pregame matchup', () => {
     // 2026-01-10 is a fixture off day: the next Clippers game (2026-01-11, 2025-26) is against the Spurs, who have
     // a last 10 of 8-2 and three hot scorers, so every opponent fact is exercised on real data.

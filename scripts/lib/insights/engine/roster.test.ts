@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { addDays } from './dates';
-import { applyRosterSnapshot, parseRosterSnapshot, snapshotProblem, snapshotUsable, type RosterSnapshot } from './roster';
+import { applyRosterSnapshot, parseRosterSnapshot, rosterGuardReason, snapshotProblem, snapshotUsable, type RosterSnapshot } from './roster';
 import type { RosterPlayer } from './types';
 
 const ASOF = '2026-12-10';
@@ -22,24 +22,24 @@ describe('snapshotUsable', () => {
 });
 
 describe('applyRosterSnapshot', () => {
-  it('returns the same Map when the league is complete', () => {
+  it('returns the same Map when no guard is needed', () => {
     const r = box();
-    expect(applyRosterSnapshot(r, snap(ASOF, ['1']), ASOF, true)).toBe(r);
+    expect(applyRosterSnapshot(r, snap(ASOF, ['1']), ASOF, false)).toBe(r);
   });
   it('returns the same Map when the snapshot is unusable', () => {
     const r = box();
-    expect(applyRosterSnapshot(r, null, ASOF, false)).toBe(r);
-    expect(applyRosterSnapshot(r, snap(addDays(ASOF, -4), ['1']), ASOF, false)).toBe(r);
+    expect(applyRosterSnapshot(r, null, ASOF, true)).toBe(r);
+    expect(applyRosterSnapshot(r, snap(addDays(ASOF, -4), ['1']), ASOF, true)).toBe(r);
   });
-  it('keeps only intersecting players when incomplete with a usable snapshot', () => {
+  it('keeps only intersecting players when a guard is needed and the snapshot is usable', () => {
     const r = box();
-    const out = applyRosterSnapshot(r, snap(ASOF, ['1', '3']), ASOF, false);
+    const out = applyRosterSnapshot(r, snap(ASOF, ['1', '3']), ASOF, true);
     expect(out).not.toBe(r);
     expect([...out.keys()].sort()).toEqual(['1', '3']);
     expect(out.get('1')).toBe(r.get('1'));
   });
   it('never adds a snapshot player missing from the box-score roster', () => {
-    const out = applyRosterSnapshot(box(), snap(ASOF, ['1', '99']), ASOF, false);
+    const out = applyRosterSnapshot(box(), snap(ASOF, ['1', '99']), ASOF, true);
     expect([...out.keys()]).toEqual(['1']);
   });
 });
@@ -73,5 +73,28 @@ describe('snapshotProblem', () => {
     expect(snapshotProblem(snap(addDays(ASOF, -4), ['1']), ASOF)).toBe('stale (synced 2026-12-06)');
     expect(snapshotProblem(snap(addDays(ASOF, 2), ['1']), ASOF)).toMatch(/future/);
     expect(snapshotProblem(snap(ASOF, ['1']), ASOF)).toBeNull();
+  });
+});
+
+describe('rosterGuardReason', () => {
+  // 2026-11-18 is in the 2026-27 season; a stats season of 2025 lags it, 2026 does not.
+  const NOV = '2026-11-18';
+  it('is null when the league is complete and the stats season is the current one', () => {
+    expect(rosterGuardReason(true, 2026, NOV)).toBeNull();
+    expect(rosterGuardReason(true, 2025, '2026-02-25')).toBeNull();
+  });
+  it('names incomplete league data', () => {
+    expect(rosterGuardReason(false, 2026, NOV)).toMatch(/league data is incomplete/);
+  });
+  it('names the stats-season lag: the first games of a new season still use last season\'s box scores', () => {
+    expect(rosterGuardReason(true, 2025, NOV)).toMatch(/stats season 2025-26 lags/);
+    // July onward is already the new season
+    expect(rosterGuardReason(true, 2025, '2026-07-01')).toMatch(/lags/);
+    expect(rosterGuardReason(true, 2025, '2026-06-30')).toBeNull();
+  });
+  it('names both reasons when both apply', () => {
+    const r = rosterGuardReason(false, 2025, NOV)!;
+    expect(r).toMatch(/incomplete/);
+    expect(r).toMatch(/lags/);
   });
 });

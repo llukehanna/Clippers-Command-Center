@@ -1,6 +1,7 @@
 // scripts/lib/insights/engine/roster.ts
 // The synced Clippers roster (app_kv 'roster:LAC') as a guard for the box-score
 // roster when league-wide box scores are incomplete. DB-free.
+import { currentSeasonId, seasonLabel } from '../../schedule-utils.js';
 import { addDays, laToday } from './dates.js';
 import type { RosterPlayer } from './types.js';
 
@@ -12,11 +13,24 @@ export function snapshotUsable(snapshot: RosterSnapshot | null, asOf: string): b
   return snapshot.syncedDate >= addDays(asOf, -3) && snapshot.syncedDate <= addDays(asOf, 1);
 }
 
-/** Intersects the box-score roster with the snapshot when the league is incomplete; never adds players. */
+/**
+ * Why the box-score roster needs the synced-roster guard; null when it doesn't. Two reasons: league box scores are
+ * incomplete (a traded player still looks like a Clipper), or the stats season lags the current one (a new season's
+ * first games, before MIN_SEASON_GAMES: the roster comes from last season's box scores, so offseason departures remain).
+ */
+export function rosterGuardReason(leagueComplete: boolean, statsSeasonId: number, asOf: string): string | null {
+  const reasons: string[] = [];
+  if (!leagueComplete) reasons.push('league data is incomplete');
+  const current = currentSeasonId(new Date(`${asOf}T12:00:00Z`));
+  if (statsSeasonId < current) reasons.push(`the stats season ${seasonLabel(statsSeasonId)} lags the current season ${seasonLabel(current)}`);
+  return reasons.length ? reasons.join(' and ') : null;
+}
+
+/** Intersects the box-score roster with the snapshot when a guard is needed (`needsGuard`); never adds players. */
 export function applyRosterSnapshot(
-  roster: Map<string, RosterPlayer>, snapshot: RosterSnapshot | null, asOf: string, leagueComplete: boolean,
+  roster: Map<string, RosterPlayer>, snapshot: RosterSnapshot | null, asOf: string, needsGuard: boolean,
 ): Map<string, RosterPlayer> {
-  if (leagueComplete || !snapshot || !snapshotUsable(snapshot, asOf)) return roster;
+  if (!needsGuard || !snapshot || !snapshotUsable(snapshot, asOf)) return roster;
   return new Map([...roster].filter(([id]) => snapshot.playerIds.has(id)));
 }
 
