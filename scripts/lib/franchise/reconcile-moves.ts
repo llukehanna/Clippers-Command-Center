@@ -1,8 +1,10 @@
 // scripts/lib/franchise/reconcile-moves.ts
 // Merges the same event seen by Basketball-Reference, Wikipedia and NBA.com into one record (spec §3.2).
 //
-// Two moves are the same event when the kinds agree, the dates are within 3 days, and they share a person
-// (or, when either side names nobody, an identified pick year + round). Each group has a base source:
+// Two moves are the same event when the kinds agree, the dates are within 3 days, and they share a person going
+// the same way (or, when both name nobody, an identified pick year + round going the same way). A shared person
+// matched on name alone (the index couldn't connect the ids) never decides a merge by itself: it needs a second
+// agreeing person or pick beside it. Each group has a base source:
 // NBA.com from 2015-16 on (its GroupSort decides grouping), BBRef before; Wikipedia is never the base unless
 // it stands alone. The base reading is kept; other sources fill what the base doesn't say (ids on people,
 // pick details, the picks behind an NBA.com "draft consideration", the third team of a multi-team deal).
@@ -11,7 +13,7 @@
 import { NBA_TEAM_IDS, TRICODE_BY_NBA_ID } from '../nba-teams.js';
 import { normalizePersonName } from '../player-match.js';
 import { chooseTransactionKey } from './keys.js';
-import { buildIndex, resolveRef, type PeopleIndex } from './people.js';
+import { resolveRef, type PeopleIndex } from './people.js';
 import type { FranchiseId, MoveKind, MovePart, ParsedMove, PersonRef } from './types.js';
 
 const LAC = NBA_TEAM_IDS.LAC;
@@ -21,16 +23,19 @@ const WINDOW_DAYS = 3;
 export interface MergedMove extends ParsedMove {
   sources: string[];
   transactionKey: string;
-  /** partIndex -1: a part the base source doesn't have (the base reading, its absence, is kept). */
-  conflicts: Array<{ partIndex: number; readings: string[] }>;
+  /**
+   * Disputed parts. `partIndex` is the merged part's index, or null for a part another source lists that the
+   * base doesn't (the base reading, its absence, is kept, so there is no part to point at).
+   */
+  conflicts: Array<{ partIndex: number | null; readings: string[] }>;
 }
 
 export interface ReconcileInput {
   bbref: ParsedMove[];
   wiki: ParsedMove[];
   nba: ParsedMove[];
-  /** People crosswalk used to tell whether two refs are the same person. Defaults to an empty index (ids and names only). */
-  index?: PeopleIndex;
+  /** People crosswalk used to tell whether two refs are the same person. */
+  index: PeopleIndex;
 }
 
 type Source = 'nba' | 'bbref' | 'wiki';
@@ -107,18 +112,23 @@ interface Item {
   source: Source;
   rank: number;
   /** Resolved key (or null) and normalized name for each part's person, by part index. */
-  people: Array<{ key: string | null; name: string } | null>;
+  people: Array<Who | null>;
 }
 
-function samePerson(a: { key: string | null; name: string }, b: { key: string | null; name: string }): boolean {
+type Who = { key: string | null; name: string };
+
+/** 'key': the index resolves both to one person. 'name': only the names agree (weak). false: different people. */
+function personMatch(a: Who, b: Who): 'key' | 'name' | false {
   if (a.key && b.key) {
-    if (a.key === b.key) return true;
+    if (a.key === b.key) return 'key';
     // Two keys of the same kind (two BBRef ids, or two NBA ids) that differ are different people. A BBRef key
-    // and an `nba:` key only differ because the index couldn't connect them, so fall back to the name.
+    // and an `nba:` key only differ because the index couldn't connect them, so the name may still agree.
     if (a.key.startsWith('nba:') === b.key.startsWith('nba:')) return false;
   }
-  return a.name !== '' && a.name === b.name;
+  return a.name !== '' && a.name === b.name ? 'name' : false;
 }
+
+const samePerson = (a: Who, b: Who) => personMatch(a, b) !== false;
 
 function makeItem(move: ParsedMove, source: Source, index: PeopleIndex): Item {
   const season = seasonOf(move.date);
@@ -137,30 +147,59 @@ function mergePerson(base: PersonRef, other: PersonRef): void {
 
 // ---- matching ----------------------------------------------------------------
 
+/** Same direction, where an unstated (null) end agrees with anything. */
+function sameWay(x: MovePart, y: MovePart): boolean {
+  return (x.from == null || y.from == null || x.from === y.from) && (x.to == null || y.to == null || x.to === y.to);
+}
+
 /**
- * How strongly two moves overlap: shared people (or, when either names nobody, shared identified picks), each
- * counting double when both sources also agree on its direction. 0 = not the same event.
+ * How strongly two moves overlap; 0 = not the same event. Evidence is shared people when both name people, or
+ * shared identified picks (year + round) when both name nobody; a move naming people never matches one that
+ * doesn't. Only evidence that agrees on direction counts: a person who goes the other way is a different event.
+ * At least one agreeing person must be matched through the index, or else two agreeing pieces (people or picks)
+ * must corroborate each other, so a lone name never decides a merge.
  */
 function overlap(a: Item, b: Item): number {
   if (kindFamily(a.move.kind) !== kindFamily(b.move.kind)) return 0;
   if (Math.abs(dayNumber(a.move.date) - dayNumber(b.move.date)) > WINDOW_DAYS) return 0;
-  const sameWay = (x: MovePart, y: MovePart) => x.from === y.from && x.to === y.to;
-  let n = 0;
-  if (a.people.some((x) => x) && b.people.some((y) => y)) {
-    a.people.forEach((x, i) => {
-      if (!x) return;
-      const js = b.people.map((y, j) => (y && samePerson(x, y) ? j : -1)).filter((j) => j >= 0);
-      if (js.length) n += js.some((j) => sameWay(a.move.parts[i], b.move.parts[j])) ? 2 : 1;
-    });
-    return n;
-  }
+  const aPeople = a.people.some((x) => x);
+  const bPeople = b.people.some((y) => y);
+  if (aPeople !== bPeople) return 0;
   const key = (p: MovePart) => `${p.pick!.year}-${p.pick!.round}`;
   const pb = b.move.parts.filter(identified);
+  let agreeing = 0;
+  let strong = false;
   for (const p of a.move.parts.filter(identified)) {
-    const hits = pb.filter((q) => key(q) === key(p));
-    if (hits.length) n += hits.some((q) => sameWay(p, q)) ? 2 : 1;
+    if (pb.some((q) => key(q) === key(p) && sameWay(p, q))) {
+      agreeing++;
+      strong = true;
+    }
   }
-  return n;
+  if (aPeople) {
+    let people = 0;
+    a.people.forEach((x, i) => {
+      if (!x) return;
+      let best: 'key' | 'name' | false = false;
+      b.people.forEach((y, j) => {
+        if (!y || !sameWay(a.move.parts[i], b.move.parts[j])) return;
+        const m = personMatch(x, y);
+        if (m === 'key' || (m === 'name' && !best)) best = m;
+      });
+      if (!best) return;
+      people++;
+      if (best === 'key') strong = true;
+    });
+    if (people === 0) return 0; // shared picks only corroborate a shared person
+    agreeing += people;
+  }
+  if (agreeing === 0) return 0;
+  return strong || agreeing >= 2 ? agreeing : 0;
+}
+
+/** Every person the move names is already in the group. */
+function peopleWithin(it: Item, g: Group): boolean {
+  const named = it.people.filter((x): x is Who => !!x);
+  return named.length > 0 && named.every((x) => g.members.some((m) => m.people.some((y) => y && samePerson(x, y))));
 }
 
 interface Group {
@@ -186,23 +225,23 @@ function conflict(mg: Merge, part: MovePart | null, baseReading: string, other: 
   else mg.conflicts.push({ part, readings: [`${mg.base.source}: ${baseReading}`, otherLine] });
 }
 
-function personOf(mg: Merge, ref: PersonRef): { key: string | null; name: string } {
+function personOf(mg: Merge, ref: PersonRef): Who {
   return { key: resolveRef(ref, mg.index, mg.season), name: normalizePersonName(ref.name) };
 }
 
 /** The merged part (index) that an other-source part describes, or -1. Prefers one going the same way. */
 function counterpart(mg: Merge, used: Set<number>, other: Item, oi: number): number {
   const op = other.move.parts[oi];
-  const sameWay = (p: MovePart) => p.from === op.from && p.to === op.to;
+  const exact = (p: MovePart) => p.from === op.from && p.to === op.to;
   const prefer = (test: (p: MovePart) => boolean) => {
     const is = mg.parts.map((_, i) => i).filter((i) => !used.has(i) && test(mg.parts[i]));
-    return is.find((i) => sameWay(mg.parts[i])) ?? is[0] ?? -1;
+    return is.find((i) => exact(mg.parts[i])) ?? is[0] ?? -1;
   };
   const who = other.people[oi];
   if (who) return prefer((p) => !!p.person && samePerson(personOf(mg, p.person), who));
   if (identified(op)) return prefer((p) => identified(p) && p.pick!.year === op.pick!.year && p.pick!.round === op.pick!.round);
   // A vague pick or a draft consideration never links: it only stands for an unidentified pick going the same way.
-  if (op.kind === 'pick') return prefer((p) => p.kind === 'pick' && !identified(p) && sameWay(p));
+  if (op.kind === 'pick') return prefer((p) => p.kind === 'pick' && !identified(p) && exact(p));
   if (op.swap) return prefer((p) => p.swap?.year === op.swap!.year && p.swap?.round === op.swap!.round);
   return prefer((p) => p.kind === op.kind && !p.person && !p.pick && !p.swap && p.to === op.to);
 }
@@ -243,6 +282,17 @@ function mergePick(mg: Merge, bp: MovePart, op: MovePart): boolean {
   } else if (!a.selected && b.selected) a.selected = { ...b.selected };
   if (!a.protectionsText && b.protectionsText) a.protectionsText = b.protectionsText;
   return agree;
+}
+
+/**
+ * A part the base source couldn't have listed, so its absence there is an omission, not a dispute: NBA.com
+ * hides everything but players with an id (draft rights, cash, pick details, swaps, other considerations), and
+ * BBRef gives only the Clippers' side of a deal. Anything else the base doesn't list is a conflict.
+ */
+function baseCannotSay(base: Source, op: MovePart): boolean {
+  if (base === 'nba') return op.kind !== 'player';
+  if (base === 'bbref') return op.from !== LAC && op.to !== LAC;
+  return false;
 }
 
 function mergeMember(mg: Merge, other: Item): void {
@@ -293,9 +343,7 @@ function mergeMember(mg: Merge, other: Item): void {
     if (fillers.has(dir(op)) && (identified(op) || op.swap)) continue;
     // An unidentified pick only stands for a pick going the same way; when the deal already has one it adds nothing.
     if (op.kind === 'pick' && !identified(op) && mg.parts.some((p) => p.kind === 'pick' && dir(p) === dir(op))) continue;
-    // NBA.com hides what has no player id (draft rights, cash, pick details), and BBRef tells only the Clippers'
-    // side of a deal: a part the base can't have said is added. A Clippers-side part BBRef doesn't list is a dispute.
-    if (mg.base.source !== 'bbref' || (op.from !== LAC && op.to !== LAC)) mg.parts.push(clonePart(op));
+    if (baseCannotSay(mg.base.source, op)) mg.parts.push(clonePart(op));
     else conflict(mg, null, '(absent)', other, describe(op));
   }
 }
@@ -317,10 +365,11 @@ function mergeGroup(g: Group, index: PeopleIndex): MergedMove {
     kind: base.move.kind,
     parts: mg.parts,
     involvesClippers: members.some((m) => m.move.involvesClippers),
-    complete: mg.parts.every((p) => !p.gap),
+    // A dispute about a part the base doesn't list leaves no gap on any part, but the move still isn't settled.
+    complete: mg.parts.every((p) => !p.gap) && mg.conflicts.length === 0,
     sources,
     transactionKey: chooseTransactionKey(sources),
-    conflicts: mg.conflicts.map((c) => ({ partIndex: c.part ? mg.parts.indexOf(c.part) : -1, readings: c.readings })),
+    conflicts: mg.conflicts.map((c) => ({ partIndex: c.part ? mg.parts.indexOf(c.part) : null, readings: c.readings })),
   };
   if (notes.length) out.notes = notes;
   return out;
@@ -329,7 +378,7 @@ function mergeGroup(g: Group, index: PeopleIndex): MergedMove {
 // ---- entry -------------------------------------------------------------------
 
 export function reconcileMoves(input: ReconcileInput): MergedMove[] {
-  const index = input.index ?? buildIndex([], new Map());
+  const { index } = input;
   const items: Item[] = [
     ...input.nba.map((m) => makeItem(m, 'nba', index)),
     ...input.bbref.map((m) => makeItem(m, 'bbref', index)),
@@ -367,8 +416,11 @@ export function reconcileMoves(input: ReconcileInput): MergedMove[] {
     }
     for (const it of tierItems) {
       if (placed.has(it)) continue;
-      // Wikipedia sometimes splits one deal over two table rows: a leftover row joins the deal it overlaps.
-      const again = it.source === 'wiki' ? candidates(it, true).sort((x, y) => y.score - x.score || x.gap - y.gap)[0] : undefined;
+      // Wikipedia sometimes splits one deal over two table rows: a leftover row joins the deal it overlaps, but only
+      // when it names nobody the deal doesn't already have (it may not bring in parts of a different event).
+      const again = it.source === 'wiki'
+        ? candidates(it, true).filter((c) => peopleWithin(it, c.g)).sort((x, y) => y.score - x.score || x.gap - y.gap)[0]
+        : undefined;
       if (again) again.g.members.push(it);
       else found(it);
     }
