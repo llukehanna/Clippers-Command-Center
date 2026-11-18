@@ -46,7 +46,7 @@ async function main(): Promise<void> {
 main()
   .then(() => sql.end({ timeout: 5 }))
   .catch(async (err) => {
-    console.error('generate-insights failed:', err instanceof Error ? err.message : err);
+    console.error('generate-insights failed:', err);
     await sql.end({ timeout: 5 }).catch(() => {});
     process.exit(1);
   });

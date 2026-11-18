@@ -22,7 +22,7 @@ async function main(): Promise<void> {
 main()
   .then(() => sql.end({ timeout: 5 }))
   .catch(async (err) => {
-    console.error('insights:replay failed:', err instanceof Error ? err.message : err);
+    console.error('insights:replay failed:', err);
     await sql.end({ timeout: 5 }).catch(() => {});
     process.exit(1);
   });
