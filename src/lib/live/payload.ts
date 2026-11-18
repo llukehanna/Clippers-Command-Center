@@ -3,7 +3,7 @@
 // insights). Shared by the route and by the browser, which rebuilds the page
 // payload from pushed live state (Live v2 plan 2). No DB, no Next imports.
 
-import type { BoxscorePlayer, BoxscoreTeam, TeamStatistics } from '../types/live';
+import type { BoxscorePlayer, BoxscoreTeam, PlayerInjury, TeamStatistics } from '../types/live';
 import type { LiveStateDoc } from '../types/live-state';
 import type { BoxScorePlayer, BoxValue, Insight, KeyMetric, LiveGame, LivePayload } from '../ui/types';
 import type { MetaEnvelope } from '../api-utils';
@@ -248,6 +248,27 @@ export function liveInsights(s: LiveInsightInput): Insight[] {
   return [...legacy, ...(moments ?? [])];
 }
 
+/** Players out, per side, minus anyone who has played tonight. */
+function injuriesOf(team: BoxscoreTeam | null | undefined): PlayerInjury[] {
+  if (!team?.injuries) return [];
+  const played = new Set(team.players.filter((p) => p.played === '1').map((p) => p.personId));
+  return team.injuries.filter((i) => !played.has(i.personId));
+}
+
+/** The doc's play-by-play and injury report, for the page payload. */
+export function docExtras(
+  doc: Pick<LiveStateDoc, 'home_box' | 'away_box'> & { last_plays?: LiveStateDoc['last_plays'] },
+  lacIsHome: boolean,
+): Pick<LivePayload, 'plays' | 'injuries'> {
+  const lac = lacIsHome ? doc.home_box : doc.away_box;
+  const opp = lacIsHome ? doc.away_box : doc.home_box;
+  const hasReport = Boolean(lac?.injuries || opp?.injuries);
+  return {
+    plays: doc.last_plays ?? [],
+    injuries: hasReport ? { lac: injuriesOf(lac), opp: injuriesOf(opp) } : null,
+  };
+}
+
 /**
  * The page payload with pushed live state laid over the last /api/live
  * response. `base` supplies what the runner doesn't know (team names and ids,
@@ -297,6 +318,7 @@ export function overlayLiveDoc(base: LivePayload, doc: LiveStateDoc): LivePayloa
     wp: doc.wp ?? null,
     lineups: doc.lineups ?? null,
     observed_at: doc.observed_at,
+    ...docExtras(doc, lacIsHome),
   };
 }
 
@@ -333,5 +355,7 @@ export function notStartedPayload(game: LiveGame, meta: MetaEnvelope, otherGames
     wp: null,
     lineups: null,
     observed_at: null,
+    plays: [],
+    injuries: null,
   };
 }

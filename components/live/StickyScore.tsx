@@ -9,7 +9,8 @@ import type { ScoreSide } from '@/components/game/Scoreboard'
 
 /**
  * Slim score bar that slides in under the top bar once the main scoreboard
- * (the sentinel) scrolls out of view.
+ * (the sentinel) scrolls out of view. Centered on phones; score left and
+ * clock right on wider screens.
  */
 export function StickyScore({
   sentinel,
@@ -57,7 +58,7 @@ export function StickyScore({
       )}
       style={{ top }}
     >
-      <div className="glass-bar mx-auto flex max-w-[1320px] items-center justify-between gap-4 rounded-full px-4 py-2 sm:px-5">
+      <div className="glass-bar mx-auto flex max-w-[1320px] items-center justify-center gap-5 rounded-full px-4 py-2 sm:justify-between sm:gap-4 sm:px-5">
         <div className="flex items-center gap-4 tabular-nums">
           <span className="flex items-center gap-2 text-[15px] font-semibold">
             <TeamLogo abbr={lac.abbr} size="xs" /> {lac.score ?? '—'}

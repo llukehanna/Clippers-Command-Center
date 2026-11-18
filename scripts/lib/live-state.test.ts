@@ -12,16 +12,16 @@ function inputs(over: Partial<StateInputs> = {}): StateInputs {
 }
 
 describe('lastPlays', () => {
-  it('returns the newest 15 plays, newest first, trimmed for clients', () => {
-    const actions = Array.from({ length: 20 }, (_, i) => action(i + 1));
+  it('returns the newest 25 plays, newest first, trimmed for clients', () => {
+    const actions = Array.from({ length: 30 }, (_, i) => action(i + 1));
     const plays = lastPlays(actions);
-    expect(plays).toHaveLength(15);
-    expect(plays[0].action_number).toBe(20);
-    expect(plays[14].action_number).toBe(6);
+    expect(plays).toHaveLength(25);
+    expect(plays[0].action_number).toBe(30);
+    expect(plays[24].action_number).toBe(6);
     expect(plays[0]).toEqual({
-      action_number: 20, period: 1, clock: '10:00', team_tricode: 'LAC', person_id: 201,
-      action_type: '2pt', sub_type: 'jumpshot', description: 'Play 20', score_home: 2, score_away: 0,
-      time_actual: actions[19].timeActual,
+      action_number: 30, period: 1, clock: '10:00', team_tricode: 'LAC', person_id: 201,
+      action_type: '2pt', sub_type: 'jumpshot', description: 'Play 30', score_home: 2, score_away: 0,
+      time_actual: actions[29].timeActual,
     });
   });
 });

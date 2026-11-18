@@ -10,7 +10,9 @@
 //     (PersonIdResolver); an unmatched player gets the negated ESPN id, so it
 //     never collides with a real NBA id (no headshot, usual minutes unknown).
 //   - on-court flags: derived from starters + substitutions in play-by-play.
-//   - timeouts remaining / bonus: not in the feed (left unknown).
+//   - timeouts remaining: not in the feed; the runner counts them from
+//     play-by-play (scripts/lib/live-timeouts.ts). Bonus: left unknown.
+//   - injuries: ESPN's report rides on the box score teams (BoxscoreTeam.injuries).
 
 import type {
   BoxscoreGame,
@@ -20,6 +22,7 @@ import type {
   NBAPlayByPlayResponse,
   NBAScoreboardResponse,
   PlayByPlayAction,
+  PlayerInjury,
   PlayerStatistics,
   ScoreboardGame,
   ScoreboardTeam,
@@ -92,6 +95,13 @@ export interface EspnSummaryJson {
     players?: Array<{ team?: EspnTeamRef; statistics?: Array<{ labels?: string[]; athletes?: EspnAthleteLine[] }> }>;
   };
   plays?: EspnPlay[];
+  injuries?: Array<{ team?: EspnTeamRef; injuries?: EspnInjury[] }>;
+}
+
+interface EspnInjury {
+  status?: string;
+  athlete?: { id?: string; displayName?: string };
+  details?: { type?: string; detail?: string; side?: string; returnDate?: string };
 }
 
 // ── Small parsers ────────────────────────────────────────────────────────────
@@ -290,6 +300,35 @@ export function toActions(json: EspnSummaryJson, resolve: PersonIdResolver, name
   return out;
 }
 
+// ── Injuries ─────────────────────────────────────────────────────────────────
+
+// Body parts that stay capitalized mid-phrase.
+const PROPER_PARTS = new Set(['achilles']);
+
+/** ESPN injury details → "Right knee inflammation" ('' when ESPN gives nothing). */
+export function injuryLabel(d: EspnInjury['details']): string {
+  const side = d?.side && !/not specified/i.test(d.side) ? d.side.trim() : '';
+  const rawType = d?.type?.trim() ?? '';
+  const type = rawType && !PROPER_PARTS.has(rawType.toLowerCase()) ? rawType.toLowerCase() : rawType;
+  const detail = d?.detail && !/not specified/i.test(d.detail) ? d.detail.trim().toLowerCase() : '';
+  const label = [side, type, detail].filter(Boolean).join(' ');
+  return label ? label[0].toUpperCase() + label.slice(1) : '';
+}
+
+/** A team's injury report from the summary, players resolved to NBA personIds. */
+export function toInjuries(json: EspnSummaryJson, tricode: string, resolve: PersonIdResolver): PlayerInjury[] {
+  const block = json.injuries?.find((t) => tricodeOf(t.team?.abbreviation) === tricode);
+  return (block?.injuries ?? [])
+    .filter((i) => i.athlete?.displayName)
+    .map((i) => ({
+      personId: resolve(i.athlete?.id ?? '', i.athlete?.displayName ?? ''),
+      name: i.athlete!.displayName!,
+      status: i.status?.trim() || 'Out',
+      injury: injuryLabel(i.details),
+      returnDate: /^\d{4}-\d{2}-\d{2}$/.test(i.details?.returnDate ?? '') ? i.details!.returnDate! : null,
+    }));
+}
+
 // ── Box score ────────────────────────────────────────────────────────────────
 
 const ZERO_TEAM_STATS: TeamStatistics = {
@@ -419,6 +458,7 @@ export function toBoxscore(json: EspnSummaryJson, nbaGameId: string, resolve: Pe
         score
       ),
       players,
+      injuries: toInjuries(json, tri, resolve),
     };
     teams.set(c.homeAway ?? '', team);
   }

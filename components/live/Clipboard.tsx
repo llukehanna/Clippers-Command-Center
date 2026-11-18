@@ -1,8 +1,10 @@
 'use client'
 
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { TeamLogo } from '@/components/ui/team-mark'
 import { formatClock } from '@/src/lib/live/win-prob'
+import { playerHref } from '@/src/lib/ui/live'
 import type { LineupState, StintPlayer } from '@/src/lib/types/live-state'
 
 const MAX_FOULS = 6
@@ -38,7 +40,7 @@ function MinutesBar({ p }: { p: StintPlayer }) {
   )
 }
 
-function OnCourt({ abbr, players }: { abbr: string; players: StintPlayer[] }) {
+function OnCourt({ abbr, players, linkPlayers = false }: { abbr: string; players: StintPlayer[]; linkPlayers?: boolean }) {
   return (
     <div className="min-w-0">
       <div className="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.1em] text-mute">
@@ -51,7 +53,13 @@ function OnCourt({ abbr, players }: { abbr: string; players: StintPlayer[] }) {
         <ul className="m-0 grid list-none gap-1.5 p-0">
           {players.map((p) => (
             <li key={p.player_id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 rounded-[12px] bg-white/[0.03] px-3 py-2">
-              <span className="truncate text-[13.5px] font-medium">{p.name}</span>
+              {linkPlayers && playerHref(p.player_id) ? (
+                <Link href={playerHref(p.player_id)!} className="truncate text-[13.5px] font-medium hover:underline">
+                  {p.name}
+                </Link>
+              ) : (
+                <span className="truncate text-[13.5px] font-medium">{p.name}</span>
+              )}
               <span className="font-mono text-[12px] tabular-nums text-mute" title={`On since ${p.stint_start.clock} of ${p.stint_start.period <= 4 ? `Q${p.stint_start.period}` : 'OT'}`}>
                 {formatClock(p.stint_secs)} <span className={tone(p.stint_plus_minus)}>{signed(p.stint_plus_minus)}</span>
               </span>
@@ -82,7 +90,7 @@ export function Clipboard({ lineups, lacAbbr, oppAbbr }: { lineups: LineupState;
         </span>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <OnCourt abbr={lacAbbr} players={lineups.on_court.lac} />
+        <OnCourt abbr={lacAbbr} players={lineups.on_court.lac} linkPlayers />
         <OnCourt abbr={oppAbbr} players={lineups.on_court.opp} />
       </div>
       {units_tonight.length > 0 && (

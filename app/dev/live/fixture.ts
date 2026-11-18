@@ -2,7 +2,8 @@
 // Live view without a real game. Sample numbers, not a real game.
 
 import { elapsedSecs, periodClockAt, winProbability } from '@/src/lib/live/win-prob'
-import type { FlowMarker, FlowPoint, LineupState, LiveFlow, LiveWinProb } from '@/src/lib/types/live-state'
+import type { FlowMarker, FlowPoint, LineupState, LiveFlow, LivePlay, LiveWinProb } from '@/src/lib/types/live-state'
+import type { PlayerInjury } from '@/src/lib/types/live'
 import type { BoxScorePlayer, LivePayload } from '@/src/lib/ui/types'
 
 function p(
@@ -107,6 +108,60 @@ function sampleLineups(p: LivePayload): LineupState {
   }
 }
 
+const PLAY_SCRIPT: Array<[string | null, string, number, number]> = [
+  ['LAC', 'Kawhi Leonard makes 18-foot pullup jump shot', 2, 0],
+  ['DEN', 'Nikola Jokic misses 12-foot hook shot', 0, 0],
+  ['LAC', 'John Collins defensive rebound', 0, 0],
+  ['LAC', 'Darius Garland makes 26-foot three point jumper (Kawhi Leonard assists)', 3, 0],
+  ['DEN', 'Nuggets Full timeout', 0, 0],
+  ['DEN', 'Jamal Murray makes driving layup', 0, 2],
+  ['LAC', 'Brook Lopez bad pass (Christian Braun steals)', 0, 0],
+  ['DEN', 'Aaron Gordon makes two point shot', 0, 2],
+  ['LAC', 'Kris Dunn shooting foul (Jamal Murray draws the foul)', 0, 0],
+  ['DEN', 'Jamal Murray makes free throw 1 of 2', 0, 1],
+  ['DEN', 'Jamal Murray misses free throw 2 of 2', 0, 0],
+  ['LAC', 'Brook Lopez defensive rebound', 0, 0],
+  ['LAC', 'Kawhi Leonard makes 24-foot step back jumpshot', 3, 0],
+  ['DEN', 'Christian Braun makes 3-foot dunk (Nikola Jokic assists)', 0, 2],
+  ['LAC', 'Darius Garland makes 12-foot floating jump shot', 2, 0],
+]
+
+/** Sample plays ending at the fixture's score and clock, newest first (as the runner sends them). */
+export function samplePlays(lacScore: number, oppScore: number, lacHome: boolean, period: number, clockSec: number): LivePlay[] {
+  let lac = lacScore
+  let opp = oppScore
+  const out: LivePlay[] = []
+  for (let i = PLAY_SCRIPT.length - 1; i >= 0; i--) {
+    const [tri, description, lacPts, oppPts] = PLAY_SCRIPT[i]
+    const secs = clockSec + (PLAY_SCRIPT.length - 1 - i) * 17
+    out.push({
+      action_number: 1000 + i * 2,
+      period,
+      clock: `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`,
+      team_tricode: tri,
+      person_id: null,
+      action_type: /timeout/i.test(description) ? 'timeout' : 'shot',
+      sub_type: '',
+      description,
+      score_home: lacHome ? lac : opp,
+      score_away: lacHome ? opp : lac,
+      time_actual: null,
+    })
+    lac -= lacPts
+    opp -= oppPts
+  }
+  return out
+}
+
+const INJURIES: { lac: PlayerInjury[]; opp: PlayerInjury[] } = {
+  lac: [
+    { personId: 1630295, name: 'Bradley Beal', status: 'Out', injury: 'Right knee inflammation', returnDate: '2026-11-29' },
+    { personId: 1627742, name: 'Brandon Ingram', status: 'Out', injury: 'Right Achilles surgery', returnDate: '2026-11-19' },
+    { personId: -42, name: 'Two-Way Rookie', status: 'Day-To-Day', injury: 'Illness', returnDate: null },
+  ],
+  opp: [{ personId: 1629008, name: 'Michael Porter Jr.', status: 'Out', injury: 'Left ankle sprain', returnDate: '2026-11-21' }],
+}
+
 export function liveFixture(now = new Date()): LivePayload {
   const iso = now.toISOString()
   const payload: LivePayload = {
@@ -199,5 +254,13 @@ export function liveFixture(now = new Date()): LivePayload {
   const g = payload.game!
   const lacHome = g.home.abbreviation === 'LAC'
   const margin = ((lacHome ? g.home.score : g.away.score) ?? 0) - ((lacHome ? g.away.score : g.home.score) ?? 0)
-  return { ...payload, ...sampleFlow(margin, elapsedSecs(g.period ?? 1, clockSecs(g.clock))), lineups: sampleLineups(payload) }
+  const lacScore = (lacHome ? g.home.score : g.away.score) ?? 0
+  const oppScore = (lacHome ? g.away.score : g.home.score) ?? 0
+  return {
+    ...payload,
+    ...sampleFlow(margin, elapsedSecs(g.period ?? 1, clockSecs(g.clock))),
+    lineups: sampleLineups(payload),
+    plays: samplePlays(lacScore, oppScore, lacHome, g.period ?? 1, clockSecs(g.clock)),
+    injuries: INJURIES,
+  }
 }
