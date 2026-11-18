@@ -1,7 +1,7 @@
 // scripts/build-record-book.ts
 // Rebuilds the record book from scratch (it is small):
 //   rb_game_highs — top single-game values per scope (see lib/record-book/highs.ts)
-//   rb_streaks    — every qualifying streak of relevant players and the Clippers
+//   rb_streaks    — every qualifying streak of every Clipper (any season) and the Clippers
 //   app_kv 'insights.records_start' — first season of complete records
 //   app_kv 'insights.pbp_records_start' — first season of complete play-by-play
 //     records (quarters, runs, clutch); deleted when no season qualifies
@@ -12,7 +12,7 @@
 import { sql } from './lib/db.js';
 import { seasonLabel } from './lib/schedule-utils.js';
 import { REGULAR_SEASON } from './lib/sql-fragments.js';
-import { buildHighsSql, highsParams, HIGH_SPECS, RELEVANT_PLAYERS } from './lib/record-book/highs.js';
+import { buildHighsSql, highsParams, HIGH_SPECS, STREAK_PLAYERS } from './lib/record-book/highs.js';
 import {
   computeStreaks, PLAYER_STREAK_DEFS, TEAM_STREAK_DEFS, type PlayerStreakGame, type TeamStreakGame,
 } from './lib/record-book/streaks.js';
@@ -44,8 +44,8 @@ async function main() {
            COALESCE(pb.fg_made, 0)::int AS fgm, COALESCE(pb.fg_attempted, 0)::int AS fga
     FROM game_player_box_scores pb
     JOIN games g ON g.game_id = pb.game_id
-    WHERE ${REGULAR_SEASON} AND pb.player_id IN ${RELEVANT_PLAYERS}
-    ORDER BY pb.player_id, g.game_date, g.game_id`, [lac.team_id, relevantFrom])) as unknown as PlayerStreakGame[];
+    WHERE ${REGULAR_SEASON} AND pb.player_id IN ${STREAK_PLAYERS}
+    ORDER BY pb.player_id, g.game_date, g.game_id`, [lac.team_id])) as unknown as PlayerStreakGame[];
 
   const teamGames = (await sql.unsafe(`
     SELECT $1::text AS "entityId", $1::text AS "teamId", g.game_id::text AS "gameId", g.game_date::text AS "gameDate",

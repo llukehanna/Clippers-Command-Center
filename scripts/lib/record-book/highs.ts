@@ -39,7 +39,20 @@ export const RELEVANT_PLAYERS = `(
     AND NOT rg.is_playoffs AND rg.nba_game_id NOT BETWEEN 50000000 AND 59999999
 )`;
 
-const PLAYER_STATS: [string, string][] = [
+/**
+ * Every player with a regular-season Clippers game (any season). Streak
+ * history for framing must include former Clippers, or "longest since" could
+ * miss a longer streak by a player who has left. $1 = LAC team_id.
+ */
+export const STREAK_PLAYERS = `(
+  SELECT DISTINCT sp.player_id
+  FROM game_player_box_scores sp
+  JOIN games sg ON sg.game_id = sp.game_id
+  WHERE sp.team_id = $1::bigint
+    AND NOT sg.is_playoffs AND sg.nba_game_id NOT BETWEEN 50000000 AND 59999999
+)`;
+
+const PLAYER_STATS:[string, string][] = [
   ['pts', 'points'], ['reb', 'rebounds'], ['ast', 'assists'], ['fg3m', 'fg3_made'], ['stl', 'steals'], ['blk', 'blocks'],
 ];
 

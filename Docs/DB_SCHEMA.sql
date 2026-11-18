@@ -421,6 +421,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_insights_proof_hash
   ON insights (proof_hash)
   WHERE proof_hash IS NOT NULL;
 
+-- Insights v2 engine: every claim carries its surface, reference frame,
+-- evidence spec, entities and score terms (scripts/lib/insights/engine/).
+-- Legacy rows keep surface NULL and are deactivated by the first v2 run.
+ALTER TABLE insights ADD COLUMN IF NOT EXISTS surface          TEXT;         -- live | pregame | postgame | season | player
+ALTER TABLE insights ADD COLUMN IF NOT EXISTS frame            JSONB;        -- { type, strength, who, text, proof_rows, ... }
+ALTER TABLE insights ADD COLUMN IF NOT EXISTS evidence         JSONB;        -- evidence spec (src/lib/insights/types.ts)
+ALTER TABLE insights ADD COLUMN IF NOT EXISTS entities         JSONB;        -- [{ type: player|team|game, id, name }]
+ALTER TABLE insights ADD COLUMN IF NOT EXISTS score_parts      JSONB;        -- every scorer term
+ALTER TABLE insights ADD COLUMN IF NOT EXISTS first_emitted_at TIMESTAMPTZ;  -- set on insert, never updated (novelty)
+CREATE INDEX IF NOT EXISTS idx_insights_active_surface ON insights (is_active, surface, importance DESC);
+
 -- Optional: enforce "provable" proof_result is present (already NOT NULL) and proof_sql is present.
 -- Application must ensure proofs are correct; DB ensures data exists.
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildHighsSql, highsParams, HIGH_SPECS, STAT_FIRST_SEASON } from './highs';
+import { buildHighsSql, highsParams, HIGH_SPECS, STAT_FIRST_SEASON, STREAK_PLAYERS } from './highs';
 
 describe('HIGH_SPECS', () => {
   it('has unique stat keys per scope', () => {
@@ -53,5 +53,12 @@ describe('HIGH_SPECS', () => {
   });
   it('starts play-by-play highs at 1996', () => {
     for (const k of ['team_q_pts', 'q_pts', 'half_pts']) expect(STAT_FIRST_SEASON[k]).toBe(1996);
+  });
+});
+
+describe('STREAK_PLAYERS', () => {
+  it('covers every Clipper, not just recent ones (no season floor)', () => {
+    expect(STREAK_PLAYERS).toContain('sp.team_id = $1::bigint');
+    expect(STREAK_PLAYERS).not.toContain('$2');
   });
 });
