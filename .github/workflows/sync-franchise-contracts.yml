@@ -1,0 +1,36 @@
+name: Sync Franchise Contracts
+
+# Weekly franchise contracts and current season (scripts/sync-franchise-contracts.ts): two BBRef pages (contracts and
+# this season's transactions) plus the Wikipedia season page. The step summary lists the counts and the trades still
+# incomplete. A BBRef refusal fails the run and changes nothing.
+
+on:
+  schedule:
+    - cron: '0 15 * * 1'   # Mondays at 15:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-write
+  cancel-in-progress: false
+
+jobs:
+  sync-franchise-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run sync-franchise-contracts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

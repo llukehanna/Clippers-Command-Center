@@ -82,3 +82,6 @@ export const NBA_MOVEMENT: SourceSpec = {
   source: 'nba', key: 'movement', ext: 'json',
   url: 'https://stats.nba.com/js/data/playermovement/NBA_Player_Movement.json',
 };
+
+/** ESPN's Clippers transactions (site API, team 12): dated prose, no ids. The nightly job's fallback when NBA.com fails. */
+export const ESPN_TRANSACTIONS_URL = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/transactions?team=12';
