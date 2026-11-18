@@ -39,6 +39,7 @@ export function ScheduleMonth({ label, games }: { label: string; games: Row[] })
               <li key={g.game_id} className="[&+&]:border-t [&+&]:border-line">
                 <Link
                   href={`/schedule/${g.game_id}`}
+                  prefetch={false}
                   className="grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-[14px] px-3 py-3 transition-colors hover:bg-ink-2/60 sm:grid-cols-[52px_minmax(0,1.4fr)_110px_minmax(0,1fr)_150px] sm:gap-x-4"
                 >
                 <div className="row-span-2 text-center leading-none sm:row-span-1">
