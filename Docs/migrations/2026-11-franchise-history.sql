@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS transaction_parts (
   pick_id            INTEGER REFERENCES draft_picks(pick_id) ON UPDATE CASCADE,
   swap_id            INTEGER REFERENCES pick_swaps(swap_id) ON UPDATE CASCADE,
   unlinked_text      TEXT,
-  gap_reason         TEXT CHECK (gap_reason IN ('pick_unidentified','protections_unknown','source_conflict','person_unmatched'))
+  gap_reason         TEXT CHECK (gap_reason IN ('pick_unidentified','protections_unknown','source_conflict','person_unmatched','party_unknown'))
 );
 CREATE INDEX IF NOT EXISTS idx_transaction_parts_txn ON transaction_parts (transaction_id);
 CREATE INDEX IF NOT EXISTS idx_transaction_parts_person ON transaction_parts (person_key);
