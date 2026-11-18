@@ -3,8 +3,9 @@
 // asset (spec §1 draft_picks / pick_swaps, §3.2 "Picks" and "Protections"). Pure: no DB, no I/O.
 //
 // A pick's identity is (year, round, original franchise). A draft row's original is its chain's first team; with no
-// chain, the sender of the earliest stored part naming its selection, else the drafting team. Two rows claiming one
-// pick are ranked (stated chain > trade evidence > nothing); losers and ties stay unkeyed (`unkeyed`), never guessed.
+// chain, an original a stored part states, else the drafting team, unless a stored part shows the pick arriving from
+// another team (a trade's sender is never taken as the original). Rows claiming one pick are ranked (chain > stated
+// original > default); losers, ties and contradicted defaults stay unkeyed (`unkeyed`) for overrides, never guessed.
 // A trade part is linked to a pick only by:
 //   1. its selection ("X was later selected"): the draft row that selected X (BBRef id via the Clippers' BBRef draft
 //      table, else the normalized name on that year's Wikipedia draft page), when that row is keyed;
@@ -107,7 +108,7 @@ export interface PicksResult {
   moves: MergedMove[];
   breaks: ChainBreak[];
   disputes: ChainDispute[];
-  /** Clippers draft rows whose pick can't be settled (no stated origin, and another row claims the same pick). */
+  /** Draft rows whose pick can't be settled (see settle): the Clippers' own, and any a stored part's selection names. */
   unkeyed: Array<{ year: number; round: number; overall: number; name: string; teamFranchise: FranchiseId }>;
 }
 
@@ -156,23 +157,30 @@ interface Slot {
   row: DraftPickRow;
   /** Cross-checked owners before the drafting team, original first. */
   chain: FranchiseId[];
-  /** chain[0]; with no chain, the team a stored trade part first brought it from, else the drafting team. */
+  /** chain[0]; with no chain, an original a source states, else the drafting team (null: unsettled, see settle). */
   original: FranchiseId | null;
   /** null when another row has a better claim to the same pick, or it ties with one (see settle). */
   key: string | null;
 }
 
-/** A trade part that names this slot's selection: when it happened, its stated original, its sender. */
+/** A stored part that names this slot's selection: when it happened, its stated original, its sender. */
 interface Evidence {
   date: string;
   orig: FranchiseId | null;
   from: FranchiseId | null;
 }
 
-function origin(ev: Evidence[]): FranchiseId | null {
+/**
+ * A chainless row's original from the parts naming its selection: one stated original settles it (rank 1). A sender
+ * is never taken as the original (it may have had the pick from someone unrecorded), but when the earliest part came
+ * from another team the drafting team's own-pick default is contradicted, so the row is unsettled (null).
+ * undefined: no evidence either way, the own-pick default stands (rank 0).
+ */
+function origin(ev: Evidence[], drafting: FranchiseId): FranchiseId | null | undefined {
   const stated = new Set(ev.map((e) => e.orig).filter((x): x is FranchiseId => x != null));
   if (stated.size > 0) return stated.size === 1 ? [...stated][0] : null;
-  return [...ev].sort((a, b) => a.date.localeCompare(b.date))[0].from;
+  const first = [...ev].filter((e) => e.from != null).sort((a, b) => a.date.localeCompare(b.date))[0];
+  return first && first.from !== drafting ? null : undefined;
 }
 
 function isSubsequence(short: FranchiseId[], long: FranchiseId[]): boolean {
@@ -238,17 +246,18 @@ class DraftIndex {
 
   /**
    * Keys the slots. Wikipedia only writes "(from X)" on acquired picks, and not always (a team with three 1978
-   * 3rd-rounders may show no origin on any), so a row with no chain takes its origin from the stored parts that name
-   * its selection. Rows that still claim the same pick are ranked: a stated chain, then trade evidence, then nothing;
-   * a sole best claim keeps the key, every other claim (and a tie) is left unkeyed rather than guessed.
+   * 3rd-rounders may show no origin on any), so a chainless row's own-pick default is checked against the stored
+   * parts naming its selection (see origin). Rows that still claim the same pick are ranked: a stated chain, then a
+   * stated original, then the default; a sole best claim keeps the key, every other claim (and a tie) is left
+   * unkeyed for an override rather than guessed.
    */
   settle(evidence: Map<Slot, Evidence[]>): void {
     const rank = new Map<Slot, number>();
     const groups = new Map<string, Slot[]>();
     for (const s of this.slots) {
-      const ev = s.chain.length === 0 ? (evidence.get(s) ?? []).filter((e) => e.orig != null || e.from != null) : [];
-      if (ev.length > 0) s.original = origin(ev);
-      rank.set(s, s.chain.length > 0 ? 2 : ev.length > 0 ? 1 : 0);
+      const o = s.chain.length === 0 ? origin(evidence.get(s) ?? [], s.row.teamFranchise) : undefined;
+      if (o !== undefined) s.original = o;
+      rank.set(s, s.chain.length > 0 ? 2 : o != null ? 1 : 0);
       if (s.original != null) push(groups, pickKey(s.row.year, s.row.round, s.original), s);
     }
     for (const [key, group] of groups) {
@@ -506,6 +515,7 @@ export function buildPicks(moves: MergedMove[], draft: DraftInput, currentDraftY
       if (sel && sel.row.round === round) {
         if (!sel.key) {
           if (!p.gap) p.gap = 'pick_unidentified'; // the draft row's pick couldn't be settled (see settle)
+          unkeyed.add(sel);
           return;
         }
         if (pick.originalFranchiseId != null && pick.originalFranchiseId !== sel.original) {

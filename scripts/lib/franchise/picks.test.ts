@@ -91,25 +91,57 @@ describe('buildPicks', () => {
     const { IND } = NBA_TEAM_IDS;
     const wiki = [
       row(1978, 3, 46, 'Hollis Copeland', DEN, [LAC]), // explicitly the Clippers' own 3rd
-      row(1978, 3, 48, 'Mike Santos', LAC), // no "(from X)": origin from the trade that brought it
-      row(1978, 3, 51, 'Ricky Gallon', LAC), // no "(from X)" and no trade: origin unknown
-      row(1989, 2, 31, 'Jeff Martin', LAC), // two bare rows; once one is placed, the other is the own pick
+      row(1978, 3, 48, 'Mike Santos', LAC), // no "(from X)"; a trade brought it from IND, but IND's isn't stated as its origin
+      row(1978, 3, 51, 'Ricky Gallon', LAC), // no "(from X)" and no trade: loses the own-pick claim to Copeland
+      row(1978, 3, 65, 'Marvin Delph', LAC), // no "(from X)", but a source states the original
+      row(1989, 2, 31, 'Jeff Martin', LAC), // the only row left claiming the Clippers' own 2nd: keeps it
       row(1989, 2, 33, 'Jay Edwards', LAC),
     ];
-    const bbref = [bb(1978, 3, 48, 'Mike Santos', 'santomi01'), bb(1978, 3, 51, 'Ricky Gallon', 'gallori01'), bb(1989, 2, 31, 'Jeff Martin', 'martije01'), bb(1989, 2, 33, 'Jay Edwards', 'edwarja02')];
+    const bbref = [bb(1978, 3, 48, 'Mike Santos', 'santomi01'), bb(1978, 3, 51, 'Ricky Gallon', 'gallori01'), bb(1978, 3, 65, 'Marvin Delph', 'delphma01'),
+      bb(1989, 2, 31, 'Jeff Martin', 'martije01'), bb(1989, 2, 33, 'Jay Edwards', 'edwarja02')];
     const moves = [
       mv('bbref:1', '1977-10-18', [pick(IND, LAC, 1978, 3, { selected: { bbrefId: 'santomi01', name: 'Mike Santos' } })]),
-      mv('bbref:2', '1988-02-01', [pick(MIA, LAC, 1989, 2, { selected: { name: 'Jay Edwards' } })]),
+      mv('bbref:2', '1978-01-31', [pick(PHI, LAC, 1978, 3, { selected: { name: 'Marvin Delph' }, originalFranchiseId: PHI })]),
+      mv('bbref:3', '1988-02-01', [pick(MIA, LAC, 1989, 2, { selected: { name: 'Jay Edwards' } })]),
     ];
     const out = buildPicks(moves, draft({ wiki, bbref }), NOW);
-    expect(out.moves.map((m) => m.parts[0].pickKey)).toEqual(['1978-3-IND', '1989-2-MIA']);
+    expect(out.moves.map((m) => m.parts[0].pickKey)).toEqual([undefined, '1978-3-PHI', undefined]);
+    expect(out.moves[0].parts[0].gap).toBe('pick_unidentified');
     const byOverall = (y: number, o: number) => traded(out.picks).filter((p) => p.year === y && p.overall === o).map((p) => p.pickKey);
     expect(byOverall(1978, 46)).toEqual(['1978-3-LAC']);
-    expect(byOverall(1978, 48)).toEqual(['1978-3-IND']);
+    expect(byOverall(1978, 48)).toEqual([]);
     expect(byOverall(1978, 51)).toEqual([]);
+    expect(byOverall(1978, 65)).toEqual(['1978-3-PHI']);
     expect(byOverall(1989, 31)).toEqual(['1989-2-LAC']);
-    expect(byOverall(1989, 33)).toEqual(['1989-2-MIA']);
-    expect(out.unkeyed).toEqual([{ year: 1978, round: 3, overall: 51, name: 'Ricky Gallon', teamFranchise: LAC }]);
+    expect(byOverall(1989, 33)).toEqual([]);
+    expect(out.unkeyed.map((u) => u.name)).toEqual(['Mike Santos', 'Ricky Gallon', 'Jay Edwards']);
+  });
+
+  it('never takes a trade sender as a draft row\'s original (the 1982 HOU shape)', () => {
+    const { HOU } = NBA_TEAM_IDS;
+    // #32 has no "(from X)"; the trade that brought it to the Clippers came from HOU. HOU's own chainless #42 must
+    // keep 1982-2-HOU, and #32 must not be guessed as HOU's (nor as the Clippers' own, which the trade contradicts).
+    const { ATL } = NBA_TEAM_IDS;
+    const wiki = [
+      row(1982, 2, 32, 'Richard Anderson', LAC),
+      row(1982, 2, 42, 'Houston Own', HOU, [], [LAC]), // traded to the Clippers on draft day, so it gets a row
+      row(1976, 5, 80, 'Connie White', ATL), // another team's chainless row that a Clippers trade sent it: also unsettled
+    ];
+    const moves = [
+      mv('bbref:1', '1982-06-28', [pick(HOU, LAC, 1982, 2, { selected: { bbrefId: 'anderri01', name: 'Richard Anderson' } })]),
+      mv('bbref:2', '1975-01-08', [pick(LAC, ATL, 1976, 5, { selected: { bbrefId: 'whiteco02', name: 'Connie White' } })]),
+    ];
+    const out = buildPicks(moves, draft({ wiki, bbref: [bb(1982, 2, 32, 'Richard Anderson', 'anderri01')] }), NOW);
+    expect(out.moves[0].parts[0].pickKey).toBeUndefined();
+    expect(out.moves[0].parts[0].gap).toBe('pick_unidentified');
+    expect(traded(out.picks).find((p) => p.overall === 32)).toBeUndefined();
+    expect(traded(out.picks).find((p) => p.pickKey === '1982-2-HOU')).toMatchObject({ overall: 42, status: 'used', finalOwnerFranchiseId: LAC });
+    expect(out.moves[1].parts[0].pickKey).toBeUndefined();
+    expect(out.unkeyed).toEqual([
+      { year: 1982, round: 2, overall: 32, name: 'Richard Anderson', teamFranchise: LAC },
+      { year: 1976, round: 5, overall: 80, name: 'Connie White', teamFranchise: ATL },
+    ]);
+    expect(out.breaks).toEqual([]);
   });
 
   it('leaves a 1970 future pick unlinked with pick_unidentified', () => {
