@@ -22,25 +22,33 @@ describe('snapshotUsable', () => {
 });
 
 describe('applyRosterSnapshot', () => {
-  it('returns the same Map when no guard is needed', () => {
-    const r = box();
-    expect(applyRosterSnapshot(r, snap(ASOF, ['1']), ASOF, false)).toBe(r);
-  });
+  const ids = Array.from({ length: 12 }, (_, i) => String(i + 1));
+  const big = () => new Map(ids.map((id) => [id, player(id)]));
   it('returns the same Map when the snapshot is unusable', () => {
-    const r = box();
-    expect(applyRosterSnapshot(r, null, ASOF, true)).toBe(r);
-    expect(applyRosterSnapshot(r, snap(addDays(ASOF, -4), ['1']), ASOF, true)).toBe(r);
+    const r = big();
+    expect(applyRosterSnapshot(r, null, ASOF)).toBe(r);
+    expect(applyRosterSnapshot(r, snap(addDays(ASOF, -4), ids), ASOF)).toBe(r);
   });
-  it('keeps only intersecting players when a guard is needed and the snapshot is usable', () => {
-    const r = box();
-    const out = applyRosterSnapshot(r, snap(ASOF, ['1', '3']), ASOF, true);
+  it('keeps only intersecting players when the snapshot is usable', () => {
+    const r = big();
+    const out = applyRosterSnapshot(r, snap(ASOF, ids.slice(0, 10)), ASOF);
     expect(out).not.toBe(r);
-    expect([...out.keys()].sort()).toEqual(['1', '3']);
+    expect([...out.keys()]).toEqual(ids.slice(0, 10));
     expect(out.get('1')).toBe(r.get('1'));
   });
   it('never adds a snapshot player missing from the box-score roster', () => {
-    const out = applyRosterSnapshot(box(), snap(ASOF, ['1', '99']), ASOF, true);
-    expect([...out.keys()]).toEqual(['1']);
+    const out = applyRosterSnapshot(big(), snap(ASOF, [...ids.slice(0, 9), '99']), ASOF);
+    expect([...out.keys()]).toEqual(ids.slice(0, 9));
+  });
+  it('leaves the roster alone when the snapshot would keep fewer than 8 players', () => {
+    const r = big();
+    expect(applyRosterSnapshot(r, snap(ASOF, ids.slice(0, 7)), ASOF)).toBe(r);
+    expect(applyRosterSnapshot(box(), snap(ASOF, ['1', '3']), ASOF).size).toBe(3);
+  });
+  it('leaves the roster alone when the snapshot would keep under half of it', () => {
+    const r = new Map(Array.from({ length: 20 }, (_, i) => [String(i + 1), player(String(i + 1))] as const));
+    expect(applyRosterSnapshot(r, snap(ASOF, Array.from({ length: 9 }, (_, i) => String(i + 1))), ASOF)).toBe(r);
+    expect(applyRosterSnapshot(r, snap(ASOF, Array.from({ length: 10 }, (_, i) => String(i + 1))), ASOF).size).toBe(10);
   });
 });
 
@@ -73,6 +81,11 @@ describe('snapshotProblem', () => {
     expect(snapshotProblem(snap(addDays(ASOF, -4), ['1']), ASOF)).toBe('stale (synced 2026-12-06)');
     expect(snapshotProblem(snap(addDays(ASOF, 2), ['1']), ASOF)).toMatch(/future/);
     expect(snapshotProblem(snap(ASOF, ['1']), ASOF)).toBeNull();
+  });
+  it('names a snapshot too small to trust, given the box-score roster', () => {
+    const r = new Map(Array.from({ length: 12 }, (_, i) => [String(i + 1), player(String(i + 1))] as const));
+    expect(snapshotProblem(snap(ASOF, ['1', '2', '3']), ASOF, r)).toBe('too small (kept 3 of 12)');
+    expect(snapshotProblem(snap(ASOF, [...r.keys()].slice(0, 8)), ASOF, r)).toBeNull();
   });
 });
 

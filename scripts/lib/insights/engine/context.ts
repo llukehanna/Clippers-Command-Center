@@ -106,11 +106,11 @@ export async function loadEngineContext(opts: LoadOptions): Promise<EngineContex
   const guardReason = rosterGuardReason(league.complete, chosen.season_id, asOf);
   if (guardReason) {
     const snapshot = await loadRosterSnapshot();
-    const problem = snapshotProblem(snapshot, asOf);
+    const problem = snapshotProblem(snapshot, asOf, boxRoster);
     if (problem) {
-      console.log(`::warning title=Roster snapshot unusable::roster:LAC is ${problem}; the box-score roster is used unguarded while ${guardReason}`);
+      console.log(`::warning title=Roster snapshot unusable::roster:LAC snapshot ${problem}; the box-score roster is used unguarded while ${guardReason}`);
     }
-    roster = applyRosterSnapshot(boxRoster, snapshot, asOf, true);
+    roster = applyRosterSnapshot(boxRoster, snapshot, asOf);
   }
 
   const prior: Map<string, PriorState> = opts.withPrior ? await loadPrior() : new Map();

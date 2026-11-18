@@ -60,7 +60,7 @@ export interface FactData {
   streak_games?: StreakGame[];
   hit_threshold?: number;
   // Milestones / season totals
-  career?: boolean;          // career (not season) milestone
+  career?: boolean;          // career (not season) milestone; for vs_opponent, the whole career is in the data
   threshold?: number;
   step?: number;
   total_value?: number;

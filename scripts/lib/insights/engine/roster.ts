@@ -1,6 +1,6 @@
 // scripts/lib/insights/engine/roster.ts
 // The synced Clippers roster (app_kv 'roster:LAC') as a guard for the box-score
-// roster when league-wide box scores are incomplete. DB-free.
+// roster when league-wide box scores are incomplete or the stats season lags the current one. DB-free.
 import { currentSeasonId, seasonLabel } from '../../schedule-utils.js';
 import { addDays, laToday } from './dates.js';
 import type { RosterPlayer } from './types.js';
@@ -26,11 +26,13 @@ export function rosterGuardReason(leagueComplete: boolean, statsSeasonId: number
   return reasons.length ? reasons.join(' and ') : null;
 }
 
-/** Intersects the box-score roster with the snapshot when a guard is needed (`needsGuard`); never adds players. */
+export const MIN_SNAPSHOT_KEPT = 8;
+
+/** Intersects the box-score roster with a usable snapshot; never adds players. Unchanged when `snapshotProblem` finds one. */
 export function applyRosterSnapshot(
-  roster: Map<string, RosterPlayer>, snapshot: RosterSnapshot | null, asOf: string, needsGuard: boolean,
+  roster: Map<string, RosterPlayer>, snapshot: RosterSnapshot | null, asOf: string,
 ): Map<string, RosterPlayer> {
-  if (!needsGuard || !snapshot || !snapshotUsable(snapshot, asOf)) return roster;
+  if (!snapshot || snapshotProblem(snapshot, asOf, roster)) return roster;
   return new Map([...roster].filter(([id]) => snapshot.playerIds.has(id)));
 }
 
@@ -50,9 +52,18 @@ export function parseRosterSnapshot(value: unknown): RosterSnapshot | null {
   return { syncedDate: laToday(synced), playerIds: new Set(ids) };
 }
 
-/** Why a snapshot can't guard the roster, for the post-game log; null when usable. */
-export function snapshotProblem(snapshot: RosterSnapshot | null, asOf: string): string | null {
+/**
+ * Why a snapshot can't guard the roster, for the post-game log; null when usable. With the box-score `roster`, a
+ * snapshot that would keep fewer than 8 players, or under half of them, is a truncated sync: too small to trust.
+ */
+export function snapshotProblem(snapshot: RosterSnapshot | null, asOf: string, roster?: Map<string, RosterPlayer>): string | null {
   if (!snapshot) return 'missing or unreadable';
-  if (snapshotUsable(snapshot, asOf)) return null;
-  return snapshot.syncedDate < asOf ? `stale (synced ${snapshot.syncedDate})` : `from the future (synced ${snapshot.syncedDate})`;
+  if (!snapshotUsable(snapshot, asOf)) {
+    return snapshot.syncedDate < asOf ? `stale (synced ${snapshot.syncedDate})` : `from the future (synced ${snapshot.syncedDate})`;
+  }
+  if (roster) {
+    const kept = [...roster.keys()].filter((id) => snapshot.playerIds.has(id)).length;
+    if (kept < MIN_SNAPSHOT_KEPT || kept * 2 < roster.size) return `too small (kept ${kept} of ${roster.size})`;
+  }
+  return null;
 }

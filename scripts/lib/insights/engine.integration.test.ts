@@ -523,14 +523,20 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     expect(base.season.id).toBeLessThan(currentSeasonId(new Date(`${today}T12:00:00Z`)));
     expect(base.league.complete).toBe(true);
     expect(base.roster.has('1') && base.roster.size > 1, 'a roster with players besides the star').toBe(true);
+    const snapshot = (ids: string[]) => sql`
+      INSERT INTO app_kv (key, value) VALUES ('roster:LAC',
+        ${sql.json({ team: 'LAC', source: 'espn', synced_at: new Date().toISOString(), players: ids.map((id) => ({ player_id: id, name: `P${id}` })) })}::jsonb)
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
+    const baseIds = [...base.roster.keys()].sort();
+    expect(baseIds.length).toBeGreaterThanOrEqual(10);
     try {
-      await sql`
-        INSERT INTO app_kv (key, value) VALUES ('roster:LAC',
-          ${sql.json({ team: 'LAC', source: 'espn', synced_at: new Date().toISOString(), players: [{ player_id: '1', name: 'Star Clipper' }, { player_id: '99999', name: 'New Signing' }] })}::jsonb)
-        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
-      const ctx = await loadEngineContext({ asOf: today, withPrior: false });
-      // only removes: the star stays, everyone else the snapshot lacks goes, and the snapshot's newcomer is not added
-      expect([...ctx!.roster.keys()]).toEqual(['1']);
+      // only removes: eight players stay, the rest go, and the snapshot's newcomer is not added
+      const kept = baseIds.slice(0, 8);
+      await snapshot([...kept, '99999']);
+      expect([...(await loadEngineContext({ asOf: today, withPrior: false }))!.roster.keys()].sort()).toEqual(kept);
+      // a truncated sync (one player) is too small to trust: the box-score roster stands
+      await snapshot([baseIds[0]]);
+      expect([...(await loadEngineContext({ asOf: today, withPrior: false }))!.roster.keys()].sort()).toEqual(baseIds);
     } finally {
       await sql`DELETE FROM app_kv WHERE key = 'roster:LAC'`;
     }
@@ -760,7 +766,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
 
     describe('vs opponent', () => {
       // Which opponent and min-games clear the floors depends on the fixture's schedule: scan the 2025-26 Clippers
-      // games (the day before each) for the first preview whose opponent has a qualifying player at 3 games.
+      // games (the day before each) for the first preview with a qualifying fact under 5 games (so the default 5-game floor has something to filter).
       async function findPreview() {
         const { vsOpponentDetector } = await import('./engine/detectors/pregame-vs-opponent');
         const dates = await sql<{ d: string }[]>`
@@ -770,17 +776,24 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         for (const { d } of dates) {
           const ctx = await ctxAt(d);
           const { facts } = await vsOpponentDetector(3).run(ctx);
-          if (facts.length > 0) return { ctx, asOf: d, minGames: 3, facts };
+          if (facts.some((f) => f.data.games! < 5)) return { ctx, asOf: d, minGames: 3, facts };
         }
-        throw new Error('no fixture preview has a vs-opponent fact at 3 games');
+        throw new Error('no fixture preview has a vs-opponent fact under 5 games');
       }
 
       it('only gaps of 3+ PPG over enough games, inside the records, proven, on the next game\'s season', async () => {
         const { vsOpponentDetector, VS_OPPONENT_SQL } = await import('./engine/detectors/pregame-vs-opponent');
         const { ctx, asOf, minGames } = await findPreview();
         const next = await nextAt(asOf);
+        const at3 = (await vsOpponentDetector(3).run(ctx)).facts;
+        const at5 = (await vsOpponentDetector(5).run(ctx)).facts;
+        const summary = (fs: typeof at3) => fs.map((f) => [f.subject.id, f.value, f.data.games, f.data.cur_value, f.data.prev_value]);
+        // the default floor is the 3-game result narrowed to 5+ games
+        expect(at3.some((f) => f.data.games! < 5), 'the floor-3 list holds a fact under 5 games').toBe(true);
+        expect(summary(at5)).toEqual(summary(at3.filter((f) => f.data.games! >= 5)));
+        expect(minGames).toBe(3);
         let total = 0;
-        for (const floor of [5, minGames]) {
+        for (const floor of [5, 3]) {
           const { facts, gameIds } = await vsOpponentDetector(floor).run(ctx);
           expect(gameIds).toBeNull();
           for (const f of facts) {
