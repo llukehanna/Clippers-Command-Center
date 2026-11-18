@@ -16,6 +16,8 @@ import {
   adjacentSeasons,
   groupBySeason,
   franchiseTab,
+  allowsAllSeasons,
+  parseMovesSeason,
 } from './display'
 
 const team = (abbreviation: string | null, city: string | null, name: string | null, is_clippers = false) => ({
@@ -147,6 +149,20 @@ describe('moves navigation', () => {
   it('builds Moves URLs, leaving the default type out', () => {
     expect(movesHref({ season: null, type: 'trade', player: null })).toBe('/franchise')
     expect(movesHref({ season: 2019, type: 'all', player: 'paulch01' })).toBe('/franchise?season=2019&type=all&player=paulch01')
+    expect(movesHref({ season: 'all', type: 'trade', player: null })).toBe('/franchise?season=all')
+  })
+  it('offers All seasons only where the list stays bounded (Trades, or one player)', () => {
+    expect(allowsAllSeasons({ type: 'trade', player: null })).toBe(true)
+    expect(allowsAllSeasons({ type: 'all', player: 'paulch01' })).toBe(true)
+    expect(allowsAllSeasons({ type: 'all', player: null })).toBe(false)
+    expect(allowsAllSeasons({ type: 'signing', player: null })).toBe(false)
+  })
+  it('reads the season param: a year, all where allowed, otherwise the latest-season default', () => {
+    expect(parseMovesSeason('2019', { type: 'signing', player: null })).toBe(2019)
+    expect(parseMovesSeason('all', { type: 'trade', player: null })).toBe('all')
+    expect(parseMovesSeason('all', { type: 'all', player: null })).toBeNull()
+    expect(parseMovesSeason(undefined, { type: 'trade', player: null })).toBeNull()
+    expect(parseMovesSeason('19x', { type: 'trade', player: null })).toBeNull()
   })
   it('finds the newer and older seasons around the selected one', () => {
     expect(adjacentSeasons([2025, 2019, 2016], 2019)).toEqual({ newer: 2025, older: 2016 })

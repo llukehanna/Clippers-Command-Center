@@ -71,6 +71,8 @@ export interface TreePerson {
   person_key: string;
   display_name: string;
   player_id: string | null;
+  /** person_xref's, else the linked player's; null when unknown. */
+  nba_person_id?: number | string | null;
 }
 
 /** Era team of a franchise in a season (null season = latest). */
@@ -189,7 +191,14 @@ class Ctx {
   person(key: string, fallback: string | null): FranchisePersonRef {
     const p = this.people.get(key);
     const playerId = p?.player_id ?? null;
-    return { person_key: key, name: p?.display_name ?? fallback ?? key, player_id: playerId, href: playerHref(playerId) };
+    const nba = p?.nba_person_id == null ? null : Number(p.nba_person_id);
+    return {
+      person_key: key,
+      name: p?.display_name ?? fallback ?? key,
+      player_id: playerId,
+      nba_person_id: nba != null && Number.isFinite(nba) ? nba : null,
+      href: playerHref(playerId),
+    };
   }
 
   /** Moves touching an asset, in date order, one per transaction. */
@@ -292,6 +301,7 @@ function eventStep(ctx: Ctx, ev: Event, state: State, kind: TreeNode['kind']): S
       note: gapNote(ev.part.gap_reason),
       children: [],
       truncatedAt: null,
+      person: ev.part.person_key ? ctx.person(ev.part.person_key, null) : null,
       date: ev.txn.date,
       team: ctx.team(ev.part.to_franchise_id, ev.txn.season_id),
     },
@@ -313,6 +323,7 @@ function draftedStep(ctx: Ctx, pick: TreePick): Step {
       note: person ? null : 'player not recorded',
       children: [],
       truncatedAt: null,
+      person,
       date: null,
       team: owner,
     },
@@ -457,6 +468,7 @@ export function buildTradeTree(rootSlug: string, rows: TreeRows, depth = 3): { s
       note: gapNote(part.gap_reason),
       children: [],
       truncatedAt: null,
+      person: part.person_key ? ctx.person(part.person_key, part.unlinked_text) : null,
       date: null,
       team: ctx.team(part.to_franchise_id, root.season_id),
     };

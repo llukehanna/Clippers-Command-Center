@@ -145,12 +145,18 @@ export function possessive(t: FranchiseTeamRef | null | undefined): string {
 }
 
 export interface MovesFilters {
-  season: number | null
+  /** A season start year; 'all' (Trades or a player filter only: both bounded); null = the default, the latest season with matching moves. */
+  season: number | 'all' | null
   type: MoveTypeFilter
   player: string | null
 }
 
-/** Moves URL; the page's default type (trade) stays out of it. */
+/** "All seasons" is offered only where the list stays bounded: Trades, or one player's moves. */
+export function allowsAllSeasons(f: Pick<MovesFilters, 'type' | 'player'>): boolean {
+  return f.type === 'trade' || f.player != null
+}
+
+/** Moves URL; the page's defaults (type trade, latest season) stay out of it. */
 export function movesHref(f: MovesFilters): string {
   const q = new URLSearchParams()
   if (f.season != null) q.set('season', String(f.season))
@@ -158,6 +164,13 @@ export function movesHref(f: MovesFilters): string {
   if (f.player) q.set('player', f.player)
   const s = q.toString()
   return s ? `/franchise?${s}` : '/franchise'
+}
+
+/** Reads the Moves season param: a year, 'all' where allowed, else null (the latest season). */
+export function parseMovesSeason(raw: string | undefined, f: Pick<MovesFilters, 'type' | 'player'>): MovesFilters['season'] {
+  if (raw && /^\d{4}$/.test(raw)) return Number(raw)
+  if (raw === 'all' && allowsAllSeasons(f)) return 'all'
+  return null
 }
 
 /** Neighbours of `current` in a newest-first list of seasons (current need not be in it). */

@@ -17,6 +17,7 @@ interface ContractRow {
   person_key: string;
   display_name: string | null;
   player_id: string | null;
+  nba_person_id: number | string | null;
   season_id: number;
   amount_usd: string | number | null;
   guaranteed_usd: string | number | null;
@@ -40,11 +41,12 @@ export async function loadFranchiseContracts(): Promise<ApiResult> {
           ORDER BY fetched_at DESC, snapshot_id DESC
           LIMIT 1
         )
-        SELECT c.snapshot_id, c.fetched_at, c.person_key, x.display_name, x.player_id::text AS player_id,
+        SELECT c.snapshot_id, c.fetched_at, c.person_key, x.display_name, x.player_id::text AS player_id, COALESCE(x.nba_person_id, pl.nba_person_id) AS nba_person_id,
                c.season_id, c.amount_usd, c.guaranteed_usd, c.option
         FROM contracts c
         JOIN snap ON snap.snapshot_id = c.snapshot_id
         LEFT JOIN person_xref x ON x.person_key = c.person_key
+        LEFT JOIN players pl ON pl.player_id = x.player_id
         ORDER BY c.person_key, c.season_id
       `,
       sql<PayrollRow[]>`
@@ -62,7 +64,7 @@ export async function loadFranchiseContracts(): Promise<ApiResult> {
       if (at && (!fetchedAt || at > fetchedAt)) fetchedAt = at;
       let p = byPerson.get(r.person_key);
       if (!p) {
-        p = { person: personRef(r.person_key, r.display_name, r.player_id), seasons: [] };
+        p = { person: personRef(r.person_key, r.display_name, r.player_id, r.nba_person_id), seasons: [] };
         byPerson.set(r.person_key, p);
       }
       p.seasons.push({ season_id: r.season_id, amount_usd: num(r.amount_usd), guaranteed_usd: num(r.guaranteed_usd), option: r.option });

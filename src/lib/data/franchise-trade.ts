@@ -100,8 +100,9 @@ export async function loadFranchiseTrade(slug: string): Promise<ApiResult> {
         WHERE swap_id = ANY(${allSwapIds}::int[])
       `,
       personKeys.length === 0 ? Promise.resolve([] as TreePerson[]) : sql<TreePerson[]>`
-        SELECT x.person_key, x.display_name, x.player_id::text AS player_id
+        SELECT x.person_key, x.display_name, x.player_id::text AS player_id, COALESCE(x.nba_person_id, pl.nba_person_id) AS nba_person_id
         FROM person_xref x
+        LEFT JOIN players pl ON pl.player_id = x.player_id
         WHERE x.person_key = ANY(${personKeys}::text[])
       `,
     ]);

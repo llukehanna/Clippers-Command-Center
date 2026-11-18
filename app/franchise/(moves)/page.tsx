@@ -10,7 +10,7 @@ import { MoveSeasonSelect } from '@/components/franchise/MoveSeasonSelect'
 import { PlayerFilter } from '@/components/franchise/PlayerFilter'
 import { getJson } from '@/src/lib/ui/api'
 import { calendarSeasonId } from '@/src/lib/season'
-import { adjacentSeasons, groupBySeason, movesHref, seasonLabel, type MovesFilters } from '@/src/lib/franchise/display'
+import { adjacentSeasons, allowsAllSeasons, groupBySeason, movesHref, parseMovesSeason, seasonLabel, type MovesFilters } from '@/src/lib/franchise/display'
 import type { MovesPayload, MoveTypeFilter } from '@/src/lib/ui/types'
 
 // Live data on every request (loaders read the database directly).
@@ -29,18 +29,19 @@ const TYPES: Array<{ value: MoveTypeFilter; label: string; noun: string }> = [
   { value: 'all', label: 'All', noun: 'move' },
 ]
 
-/** Moves: every Clippers transaction, newest first. Season is a hard filter; type opens on Trades. */
+/**
+ * Moves: Clippers transactions, newest first, one season at a time (a hard filter with
+ * previous/next links). It opens on the latest season with moves of the selected type;
+ * "All seasons" exists only where the list stays bounded (Trades, or one player's moves).
+ */
 export default async function MovesPage({ searchParams }: { searchParams: Promise<SP> }) {
   const params = await searchParams
   const type = TYPES.find((t) => t.value === params.type) ?? TYPES[0]
-  const filters: MovesFilters = {
-    season: params.season && /^\d{4}$/.test(params.season) ? Number(params.season) : null,
-    type: type.value,
-    player: params.player?.trim() || null,
-  }
-  const q = new URLSearchParams({ type: filters.type })
-  if (filters.season != null) q.set('season', String(filters.season))
-  if (filters.player) q.set('player', filters.player)
+  const player = params.player?.trim() || null
+  const asked = parseMovesSeason(params.season, { type: type.value, player })
+  const q = new URLSearchParams({ type: type.value })
+  if (asked !== 'all') q.set('season', asked == null ? 'latest' : String(asked))
+  if (player) q.set('player', player)
   const data = await getJson<MovesPayload>(`/api/franchise/moves?${q.toString()}`)
 
   if (!data) {
@@ -55,22 +56,23 @@ export default async function MovesPage({ searchParams }: { searchParams: Promis
     )
   }
 
+  // The season on screen: the one asked for, or the latest the loader resolved.
+  const filters: MovesFilters = { season: asked === 'all' ? 'all' : data.filters.season, type: type.value, player }
+  const season = typeof filters.season === 'number' ? filters.season : null
   const counts = data.season_counts
   const lastSeason = Math.max(calendarSeasonId(), ...data.seasons)
-  const selectSeasons = filters.season != null && !data.seasons.includes(filters.season) ? [...data.seasons, filters.season].sort((a, b) => b - a) : data.seasons
+  const selectSeasons = season != null && !data.seasons.includes(season) ? [...data.seasons, season].sort((a, b) => b - a) : data.seasons
   const groups = groupBySeason(data.moves)
   const plural = (n: number, noun = type.noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
-  const near = filters.season != null ? adjacentSeasons(counts.map((c) => c.season_id), filters.season) : null
-  const scope = filters.season != null ? seasonLabel(filters.season) : null
-  // One step wider when a filter combination is empty: all types, then all seasons, then any player.
+  const near = season != null ? adjacentSeasons(counts.map((c) => c.season_id), season) : null
+  const scope = season != null ? seasonLabel(season) : null
+  // One step wider when a filter combination is empty: all types (same season), then any player.
   const widen =
     type.value !== 'all'
       ? { label: 'Show all types', href: movesHref({ ...filters, type: 'all' }) }
-      : filters.season != null
-        ? { label: 'Show all seasons', href: movesHref({ ...filters, season: null }) }
-        : filters.player
-          ? { label: 'Clear the player filter', href: movesHref({ ...filters, player: null }) }
-          : null
+      : filters.player
+        ? { label: 'Clear the player filter', href: movesHref({ ...filters, player: null }) }
+        : null
 
   return (
     <div className="grid gap-6 sm:gap-7 [&>*]:min-w-0">
@@ -78,7 +80,7 @@ export default async function MovesPage({ searchParams }: { searchParams: Promis
         <EraRibbon
           counts={counts}
           lastSeason={lastSeason}
-          selected={filters.season}
+          selected={season}
           playerMode={filters.player != null}
           noun={type.noun}
           hrefFor={(season) => movesHref({ ...filters, season })}
@@ -86,7 +88,7 @@ export default async function MovesPage({ searchParams }: { searchParams: Promis
       </div>
 
       <section aria-label="Filters" className="enter relative z-20 flex flex-wrap items-center gap-2" style={{ ['--i' as string]: 3 }}>
-        <MoveSeasonSelect seasons={selectSeasons} filters={filters} />
+        <MoveSeasonSelect seasons={selectSeasons} filters={filters} allowAll={allowsAllSeasons(filters)} />
         <SegmentedLinks
           ariaLabel="Move type"
           size="sm"
@@ -134,13 +136,13 @@ export default async function MovesPage({ searchParams }: { searchParams: Promis
             ) : (
               <span />
             )}
-            <Link
-              href={type.value === 'all' ? movesHref({ ...filters, season: null }) : movesHref({ ...filters, type: 'all' })}
-              scroll={false}
-              className="py-2 text-center hover:text-text"
-            >
-              {type.value === 'all' ? 'All seasons' : `All ${scope} moves`}
-            </Link>
+            {type.value !== 'all' ? (
+              <Link href={movesHref({ ...filters, type: 'all' })} scroll={false} className="py-2 text-center hover:text-text">
+                All {scope} moves
+              </Link>
+            ) : (
+              <span />
+            )}
             {near.older != null ? (
               <Link href={movesHref({ ...filters, season: near.older })} scroll={false} className="py-2 text-right hover:text-text">
                 {seasonLabel(near.older)} →

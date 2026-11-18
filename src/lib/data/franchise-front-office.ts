@@ -16,6 +16,7 @@ interface CoachRow {
   person_key: string;
   display_name: string | null;
   player_id: string | null;
+  nba_person_id: number | string | null;
   games: number | null;
   wins: number | null;
   losses: number | null;
@@ -27,6 +28,7 @@ interface ExecRow {
   person_key: string;
   display_name: string | null;
   player_id: string | null;
+  nba_person_id: number | string | null;
   title: string | null;
   start_date: string | null;
   end_date: string | null;
@@ -36,17 +38,19 @@ export async function loadFranchiseFrontOffice(): Promise<ApiResult> {
   try {
     const [coaches, execs] = await Promise.all([
       sql<CoachRow[]>`
-        SELECT cs.season_id, cs.ordinal, cs.person_key, x.display_name, x.player_id::text AS player_id,
+        SELECT cs.season_id, cs.ordinal, cs.person_key, x.display_name, x.player_id::text AS player_id, COALESCE(x.nba_person_id, pl.nba_person_id) AS nba_person_id,
                cs.games, cs.wins, cs.losses, cs.playoff_wins, cs.playoff_losses
         FROM coach_seasons cs
         LEFT JOIN person_xref x ON x.person_key = cs.person_key
+        LEFT JOIN players pl ON pl.player_id = x.player_id
         ORDER BY cs.season_id DESC, cs.ordinal
       `,
       sql<ExecRow[]>`
-        SELECT e.person_key, x.display_name, x.player_id::text AS player_id, e.title,
+        SELECT e.person_key, x.display_name, x.player_id::text AS player_id, COALESCE(x.nba_person_id, pl.nba_person_id) AS nba_person_id, e.title,
                e.start_date::text AS start_date, e.end_date::text AS end_date
         FROM executive_terms e
         LEFT JOIN person_xref x ON x.person_key = e.person_key
+        LEFT JOIN players pl ON pl.player_id = x.player_id
         ORDER BY e.start_date DESC NULLS LAST, e.term_id DESC
       `,
     ]);
@@ -55,7 +59,7 @@ export async function loadFranchiseFrontOffice(): Promise<ApiResult> {
       season_id: c.season_id,
       season_label: formatSeasonLabel(c.season_id),
       ordinal: c.ordinal,
-      coach: personRef(c.person_key, c.display_name, c.player_id),
+      coach: personRef(c.person_key, c.display_name, c.player_id, c.nba_person_id),
       games: c.games,
       wins: c.wins,
       losses: c.losses,
@@ -63,7 +67,7 @@ export async function loadFranchiseFrontOffice(): Promise<ApiResult> {
       playoff_losses: c.playoff_losses,
     }));
     const executives: ExecutiveTerm[] = execs.map((e) => ({
-      person: personRef(e.person_key, e.display_name, e.player_id),
+      person: personRef(e.person_key, e.display_name, e.player_id, e.nba_person_id),
       title: e.title,
       start_date: e.start_date,
       end_date: e.end_date,

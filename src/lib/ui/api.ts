@@ -18,6 +18,7 @@ import { loadHistorySeasons } from '@/src/lib/data/history-seasons'
 import { loadHistoryGames } from '@/src/lib/data/history-games'
 import { loadHistoryGame } from '@/src/lib/data/history-game'
 import { loadFranchiseMoves } from '@/src/lib/data/franchise-moves'
+import { loadFranchisePeople } from '@/src/lib/data/franchise-people'
 import { loadFranchiseDraft } from '@/src/lib/data/franchise-draft'
 import { loadFranchiseContracts } from '@/src/lib/data/franchise-contracts'
 import { loadFranchisePicks } from '@/src/lib/data/franchise-picks'
@@ -40,6 +41,7 @@ const ROUTES: Array<[RegExp, Loader]> = [
   [/^\/api\/history\/games$/, (_, url) => loadHistoryGames(url)],
   [/^\/api\/history\/games\/([^/]+)$/, (m) => loadHistoryGame(decodeURIComponent(m[1]))],
   [/^\/api\/franchise\/moves$/, (_, url) => loadFranchiseMoves(url)],
+  [/^\/api\/franchise\/people$/, () => loadFranchisePeople()],
   [/^\/api\/franchise\/draft$/, () => loadFranchiseDraft()],
   [/^\/api\/franchise\/contracts$/, () => loadFranchiseContracts()],
   [/^\/api\/franchise\/picks$/, () => loadFranchisePicks()],

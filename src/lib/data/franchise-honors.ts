@@ -47,6 +47,7 @@ interface Row {
   person_key: string;
   display_name: string | null;
   player_id: string | null;
+  nba_person_id: number | string | null;
   honor: string;
   detail: string | null;
 }
@@ -54,9 +55,10 @@ interface Row {
 export async function loadFranchiseHonors(): Promise<ApiResult> {
   try {
     const rows = await sql<Row[]>`
-      SELECT h.season_id, h.person_key, x.display_name, x.player_id::text AS player_id, h.honor, h.detail
+      SELECT h.season_id, h.person_key, x.display_name, x.player_id::text AS player_id, COALESCE(x.nba_person_id, pl.nba_person_id) AS nba_person_id, h.honor, h.detail
       FROM honors h
       LEFT JOIN person_xref x ON x.person_key = h.person_key
+      LEFT JOIN players pl ON pl.player_id = x.player_id
       ORDER BY h.season_id DESC NULLS FIRST, h.honor, x.display_name, h.honor_id
     `;
 
@@ -70,7 +72,7 @@ export async function loadFranchiseHonors(): Promise<ApiResult> {
         honor: r.honor,
         label: honorLabel(r.honor),
         detail: r.detail,
-        person: personRef(r.person_key, r.display_name, r.player_id),
+        person: personRef(r.person_key, r.display_name, r.player_id, r.nba_person_id),
       };
       if (r.honor === 'retired_number') body.retired_number.push(row);
       else if (r.honor === 'retired_number_league') body.retired_number_league.push(row);

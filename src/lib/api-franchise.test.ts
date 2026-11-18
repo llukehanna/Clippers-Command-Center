@@ -49,7 +49,7 @@ describe('GET /api/franchise/moves', () => {
       description: 'Bradley Beal signed with the Clippers.', is_complete: false, involves_clippers: true },
   ];
   const parts = [
-    { transaction_id: '1', from_franchise_id: OKC, to_franchise_id: LAC, person_key: 'georgpa01', display_name: 'Paul George', player_id: '4' },
+    { transaction_id: '1', from_franchise_id: OKC, to_franchise_id: LAC, person_key: 'georgpa01', display_name: 'Paul George', player_id: '4', nba_person_id: 202331 },
     { transaction_id: '1', from_franchise_id: LAC, to_franchise_id: OKC, person_key: 'gilgesh01', display_name: 'Shai Gilgeous-Alexander', player_id: null },
     { transaction_id: '1', from_franchise_id: LAC, to_franchise_id: OKC, person_key: null, display_name: null, player_id: null },
     { transaction_id: '3', from_franchise_id: null, to_franchise_id: LAC, person_key: 'bealbr01', display_name: 'Bradley Beal', player_id: null },
@@ -83,8 +83,8 @@ describe('GET /api/franchise/moves', () => {
     expect(george.teams.map((t: { abbreviation: string }) => t.abbreviation)).toEqual(['LAC', 'OKC']);
     expect(george.teams[1]).toMatchObject({ franchise_id: OKC, name: 'Thunder', city: 'Oklahoma City', is_clippers: false });
     expect(george.people).toEqual([
-      { person_key: 'georgpa01', name: 'Paul George', player_id: '4', href: '/players/4' },
-      { person_key: 'gilgesh01', name: 'Shai Gilgeous-Alexander', player_id: null, href: null },
+      { person_key: 'georgpa01', name: 'Paul George', player_id: '4', nba_person_id: 202331, href: '/players/4' },
+      { person_key: 'gilgesh01', name: 'Shai Gilgeous-Alexander', player_id: null, nba_person_id: null, href: null },
     ]);
     const beal = body.moves[1];
     expect(beal).toMatchObject({ kind_group: 'signing', href: null, is_complete: false });
@@ -119,6 +119,7 @@ describe('GET /api/franchise/moves', () => {
     const { GET } = await import('../../app/api/franchise/moves/route.js');
     expect((await GET(new Request('http://localhost/api/franchise/moves?type=bogus'))).status).toBe(400);
     expect((await GET(new Request('http://localhost/api/franchise/moves?season=19x'))).status).toBe(400);
+    expect((await GET(new Request('http://localhost/api/franchise/moves?season=newest'))).status).toBe(400);
   });
 
   it('counts moves per season for the type and player filters, ignoring the season filter', async () => {
@@ -139,13 +140,43 @@ describe('GET /api/franchise/moves', () => {
   });
 
   it('names the filtered player from person_xref, and is null without a player filter', async () => {
-    route((q) => (q.includes('FROM person_xref px') ? [{ display_name: 'Paul George', player_id: '4' }] : []));
+    route((q) => (q.includes('WHERE x.person_key =') ? [{ display_name: 'Paul George', player_id: '4', nba_person_id: 202331 }] : []));
     const { GET } = await import('../../app/api/franchise/moves/route.js');
     const withPlayer = await (await GET(new Request('http://localhost/api/franchise/moves?player=georgpa01'))).json();
-    expect(withPlayer.player).toEqual({ person_key: 'georgpa01', name: 'Paul George', player_id: '4', href: '/players/4' });
+    expect(withPlayer.player).toEqual({ person_key: 'georgpa01', name: 'Paul George', player_id: '4', nba_person_id: 202331, href: '/players/4' });
     const without = await (await GET(new Request('http://localhost/api/franchise/moves'))).json();
     expect(without.player).toBeNull();
     expect(without.season_counts).toEqual([]);
+  });
+
+  it('reads headshot ids from person_xref, else the linked player', async () => {
+    const { GET } = await import('../../app/api/franchise/moves/route.js');
+    await GET(new Request('http://localhost/api/franchise/moves'));
+    const text = callFor('LEFT JOIN person_xref x ON x.person_key = p.person_key')![0].join('?');
+    expect(text).toContain('COALESCE(x.nba_person_id, pl.nba_person_id) AS nba_person_id');
+    expect(text).toContain('LEFT JOIN players pl ON pl.player_id = x.player_id');
+  });
+
+  it('resolves season=latest to the newest season with a matching move, and echoes it', async () => {
+    route((q) => {
+      if (q.includes('GROUP BY s.season_id')) return [{ season_id: 2023, n: 2 }, { season_id: 2019, n: 1 }];
+      if (q.includes('FROM transactions t')) return [];
+      return [];
+    });
+    const { GET } = await import('../../app/api/franchise/moves/route.js');
+    const res = await GET(new Request('http://localhost/api/franchise/moves?season=latest&type=signing'));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.filters.season).toBe(2023);
+    expect(callFor('FROM transactions t')!.slice(1)).toContain(2023);
+  });
+
+  it('never runs an unfiltered query when season=latest has no matching season', async () => {
+    const { GET } = await import('../../app/api/franchise/moves/route.js');
+    const body = await (await GET(new Request('http://localhost/api/franchise/moves?season=latest&type=release'))).json();
+    expect(body.filters.season).toBeNull();
+    expect(body.moves).toEqual([]);
+    expect(callFor('FROM transactions t')).toBeUndefined();
   });
 });
 
@@ -392,7 +423,7 @@ describe('GET /api/franchise/draft', () => {
             final_owner_franchise_id: LAC, selected_person: 'prestja01', display_name: 'Jason Preston', player_id: null,
             pre_lottery_slot: null, odds_first: null, pick_won: null, tie_unresolved: null, lottery_source: null },
           { pick_id: 15, pick_key: `2011-1-${LAC}`, draft_year: 2011, round: 1, original_franchise_id: LAC, status: 'used', overall_pick: 1,
-            final_owner_franchise_id: CLE, selected_person: 'irvinky01', display_name: 'Kyrie Irving', player_id: '77',
+            final_owner_franchise_id: CLE, selected_person: 'irvinky01', display_name: 'Kyrie Irving', player_id: '77', nba_person_id: 202681,
             pre_lottery_slot: 8, odds_first: '2.800', pick_won: 1, tie_unresolved: false, lottery_source: 'wiki' },
         ];
       }
@@ -410,7 +441,9 @@ describe('GET /api/franchise/draft', () => {
     const preston = body.years[0].picks[0];
     expect(preston.original_team.abbreviation).toBe('ORL');
     expect(preston.via.map((t: { abbreviation: string }) => t.abbreviation)).toEqual(['HOU']);
-    expect(preston).toMatchObject({ traded_away: false, lottery: null, player: { name: 'Jason Preston', href: null } });
+    expect(preston).toMatchObject({ traded_away: false, lottery: null, player: { name: 'Jason Preston', href: null, nba_person_id: null } });
+    expect(body.years[1].picks[0].player).toMatchObject({ name: 'Kyrie Irving', nba_person_id: 202681 });
+    expect(callFor('FROM draft_picks dp')![0].join('?')).toContain('COALESCE(x.nba_person_id, pl.nba_person_id)');
     expect(preston.chain.map((h: { slug: string }) => h.slug)).toEqual(['orl-hou', 'hou-lac']);
     const kyrie = body.years[1].picks[0];
     expect(kyrie).toMatchObject({ traded_away: true, player: { href: '/players/77' } });
@@ -457,7 +490,7 @@ describe('GET /api/franchise/contracts', () => {
       if (q.includes('FROM contracts c')) {
         return [
           { snapshot_id: 'cap-2026-11-09', fetched_at: new Date('2026-11-09T06:00:00Z'), person_key: 'leonaka01', display_name: 'Kawhi Leonard',
-            player_id: '1', season_id: 2026, amount_usd: '50000000', guaranteed_usd: '50000000', option: null },
+            player_id: '1', nba_person_id: 202695, season_id: 2026, amount_usd: '50000000', guaranteed_usd: '50000000', option: null },
           { snapshot_id: 'cap-2026-11-09', fetched_at: new Date('2026-11-09T06:00:00Z'), person_key: 'leonaka01', display_name: 'Kawhi Leonard',
             player_id: '1', season_id: 2027, amount_usd: '57500000', guaranteed_usd: null, option: 'player' },
         ];
@@ -475,7 +508,8 @@ describe('GET /api/franchise/contracts', () => {
     expect(body.snapshot_fetched_at).toBe('2026-11-09T06:00:00.000Z');
     expect(body.snapshot_id).toBe('cap-2026-11-09');
     expect(body.seasons).toEqual([2026, 2027]);
-    expect(body.players[0].person).toMatchObject({ name: 'Kawhi Leonard', href: '/players/1' });
+    expect(body.players[0].person).toMatchObject({ name: 'Kawhi Leonard', href: '/players/1', nba_person_id: 202695 });
+    expect(callFor('FROM contracts c')![0].join('?')).toContain('COALESCE(x.nba_person_id, pl.nba_person_id)');
     expect(body.players[0].seasons[1]).toEqual({ season_id: 2027, amount_usd: 57500000, guaranteed_usd: null, option: 'player' });
     expect(body.payroll[0]).toEqual({ season_id: 1984, season_label: '1984-85', listed_players: 3, roster_players: 14, listed_total_usd: 2520000, is_partial: true });
   });
@@ -501,7 +535,7 @@ describe('GET /api/franchise/front-office', () => {
         ];
       }
       if (q.includes('FROM executive_terms e')) {
-        return [{ person_key: 'baylore01', display_name: 'Elgin Baylor', player_id: null, title: 'Vice President', start_date: '1986-07-01', end_date: null }];
+        return [{ person_key: 'baylore01', display_name: 'Elgin Baylor', player_id: null, nba_person_id: 76127, title: 'Vice President', start_date: '1986-07-01', end_date: null }];
       }
       return [];
     });
@@ -511,8 +545,8 @@ describe('GET /api/franchise/front-office', () => {
     const body = await res.json();
     expect(body.meta.ttl_seconds).toBe(86400);
     expect(body.coach_seasons[1]).toMatchObject({ season_id: 2002, season_label: '2002-03', ordinal: 2, playoff_wins: null, playoff_losses: null,
-      coach: { person_key: 'dunlemi01', name: 'Mike Dunleavy' } });
-    expect(body.executives[0]).toMatchObject({ title: 'Vice President', start_date: '1986-07-01', end_date: null, person: { name: 'Elgin Baylor' } });
+      coach: { person_key: 'dunlemi01', name: 'Mike Dunleavy', nba_person_id: null } });
+    expect(body.executives[0]).toMatchObject({ title: 'Vice President', start_date: '1986-07-01', end_date: null, person: { name: 'Elgin Baylor', nba_person_id: 76127 } });
   });
 });
 
@@ -523,7 +557,7 @@ describe('GET /api/franchise/honors', () => {
     route((q) => q.includes('FROM honors h') ? [
       { season_id: null, person_key: 'russebi01', display_name: 'Bill Russell', player_id: null, honor: 'retired_number_league', detail: 'No. 6' },
       { season_id: null, person_key: 'waltobi01', display_name: 'Bill Walton', player_id: null, honor: 'hall_of_fame', detail: '1993' },
-      { season_id: 2020, person_key: 'leonaka01', display_name: 'Kawhi Leonard', player_id: '1', honor: 'all_nba_1', detail: null },
+      { season_id: 2020, person_key: 'leonaka01', display_name: 'Kawhi Leonard', player_id: '1', nba_person_id: '202695', honor: 'all_nba_1', detail: null },
       { season_id: 2019, person_key: 'leonaka01', display_name: 'Kawhi Leonard', player_id: '1', honor: 'all_star', detail: null },
     ] : []);
     const { GET } = await import('../../app/api/franchise/honors/route.js');
@@ -535,7 +569,8 @@ describe('GET /api/franchise/honors', () => {
     expect(body.retired_number_league[0]).toMatchObject({ detail: 'No. 6', person: { name: 'Bill Russell' } });
     expect(body.hall_of_fame[0]).toMatchObject({ season_id: null, detail: '1993' });
     expect(body.awards_by_season.map((s: { season_id: number }) => s.season_id)).toEqual([2020, 2019]);
-    expect(body.awards_by_season[0].honors[0]).toMatchObject({ honor: 'all_nba_1', label: 'All-NBA First Team', person: { href: '/players/1' } });
+    expect(body.awards_by_season[0].honors[0]).toMatchObject({ honor: 'all_nba_1', label: 'All-NBA First Team', person: { href: '/players/1', nba_person_id: 202695 } });
+    expect(body.retired_number_league[0].person.nba_person_id).toBeNull();
   });
 });
 
@@ -565,7 +600,7 @@ describe('GET /api/franchise/trades/[slug]', () => {
             unlinked_text: 'a future second-round pick', gap_reason: 'pick_unidentified' },
         ];
       }
-      if (q.includes('FROM person_xref x')) return [{ person_key: 'batumni01', display_name: 'Nicolas Batum', player_id: null }];
+      if (q.includes('FROM person_xref x')) return [{ person_key: 'batumni01', display_name: 'Nicolas Batum', player_id: null, nba_person_id: 201587 }];
       return [];
     });
     const { GET } = await import('../../app/api/franchise/trades/[slug]/route.js');
@@ -579,6 +614,45 @@ describe('GET /api/franchise/trades/[slug]', () => {
     expect(body.gap_notes).toEqual(['pick not identified']);
     expect(body.became.map((n: { label: string }) => n.label)).toEqual(['a future second-round pick', 'Nicolas Batum']);
     expect(body.became[1].note).toBe('no further record');
+    expect(body.sides[1].received[0].person).toMatchObject({ name: 'Nicolas Batum', nba_person_id: 201587 });
+    expect(body.became[1].person).toMatchObject({ nba_person_id: 201587 });
     expect(queries().some((q) => q.includes('WHERE t.slug'))).toBe(true);
+  });
+});
+
+// ─── People (Moves player search) ────────────────────────────────────────────
+
+describe('GET /api/franchise/people', () => {
+  it('lists the distinct people in Clippers moves by name, with move counts and headshot ids', async () => {
+    route((q) =>
+      q.includes('FROM transaction_parts p')
+        ? [
+            { person_key: 'gallida01', display_name: 'Danilo Gallinari', player_id: null, nba_person_id: 201568, move_count: '2' },
+            { person_key: 'georgpa01', display_name: 'Paul George', player_id: '4', nba_person_id: null, move_count: 1 },
+          ]
+        : [],
+    );
+    const { GET } = await import('../../app/api/franchise/people/route.js');
+    const res = await GET();
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=3600');
+    const body = await res.json();
+    expect(body.people).toEqual([
+      { person_key: 'gallida01', name: 'Danilo Gallinari', player_id: null, nba_person_id: 201568, href: null, move_count: 2 },
+      { person_key: 'georgpa01', name: 'Paul George', player_id: '4', nba_person_id: null, href: '/players/4', move_count: 1 },
+    ]);
+    const text = callFor('FROM transaction_parts p')![0].join('?');
+    expect(text).toContain('t.involves_clippers = true');
+    expect(text).toContain('count(DISTINCT t.transaction_id)');
+    expect(text).toMatch(/ORDER BY COALESCE\(x\.display_name, p\.person_key\)/);
+  });
+
+  it('is registered for server pages (getJson)', async () => {
+    vi.resetModules();
+    vi.doMock('next/cache', () => ({ unstable_cache: <T>(fn: T) => fn }));
+    const api = await import('./ui/api');
+    route((q) => (q.includes('FROM transaction_parts p') ? [{ person_key: 'k', display_name: 'K', player_id: null, nba_person_id: null, move_count: 1 }] : []));
+    const body = await api.getJson<{ people: unknown[] }>('/api/franchise/people');
+    expect(body?.people).toHaveLength(1);
   });
 });

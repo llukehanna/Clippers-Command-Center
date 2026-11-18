@@ -3,7 +3,8 @@
 // League rows kept only for trade trees (involves_clippers = false) never appear here.
 //
 // Query params:
-//   season  season_id (start year), e.g. 2019
+//   season  season_id (start year), e.g. 2019; or `latest` = the newest season with a move matching
+//           type and player (echoed back as that season in filters.season; null when there is none)
 //   type    kind group (R2): trade | signing | release | draft | other | all (absent = all)
 //   player  person_key (R3), exact
 //
@@ -45,6 +46,12 @@ interface TxnRow {
   is_complete: boolean;
 }
 
+interface PlayerRow {
+  display_name: string;
+  player_id: string | null;
+  nba_person_id: number | string | null;
+}
+
 interface PartRow {
   transaction_id: string;
   from_franchise_id: number | null;
@@ -52,6 +59,7 @@ interface PartRow {
   person_key: string | null;
   display_name: string | null;
   player_id: string | null;
+  nba_person_id: number | string | null;
 }
 
 export async function loadFranchiseMoves(url: URL): Promise<ApiResult> {
@@ -59,30 +67,18 @@ export async function loadFranchiseMoves(url: URL): Promise<ApiResult> {
   const typeParam = url.searchParams.get('type');
   const playerParam = url.searchParams.get('player')?.trim() || null;
 
-  if (seasonParam != null && !/^\d{4}$/.test(seasonParam)) return badRequest('season must be a four-digit season start year');
+  if (seasonParam != null && seasonParam !== 'latest' && !/^\d{4}$/.test(seasonParam)) {
+    return badRequest('season must be a four-digit season start year or latest');
+  }
   if (typeParam != null && !TYPES.includes(typeParam as MoveTypeFilter)) {
     return badRequest(`type must be one of ${TYPES.join(', ')}`);
   }
-  const season = seasonParam == null ? null : Number(seasonParam);
   const type = (typeParam as MoveTypeFilter | null) ?? null;
   const include = type && type !== 'all' && type !== 'other' ? KIND_GROUPS[type] : null;
   const exclude = type === 'other' ? NAMED_KINDS : null;
 
   try {
-    const [txns, seasonRows, countRows, playerRows] = await Promise.all([
-      sql<TxnRow[]>`
-        SELECT t.transaction_id::text AS transaction_id, t.slug, t.date::text AS date, t.season_id,
-               t.kind, t.description, t.is_complete
-        FROM transactions t
-        WHERE t.involves_clippers = true
-          AND (${season}::int IS NULL OR t.season_id = ${season}::int)
-          AND (${include}::text[] IS NULL OR t.kind = ANY(${include}::text[]))
-          AND (${exclude}::text[] IS NULL OR NOT (t.kind = ANY(${exclude}::text[])))
-          AND (${playerParam}::text IS NULL OR EXISTS (
-                SELECT 1 FROM transaction_parts pp
-                WHERE pp.transaction_id = t.transaction_id AND pp.person_key = ${playerParam}::text))
-        ORDER BY t.date DESC NULLS LAST, t.transaction_id DESC
-      `,
+    const [seasonRows, countRows, playerRows] = await Promise.all([
       sql<{ season_id: number }[]>`
         SELECT DISTINCT season_id FROM transactions
         WHERE involves_clippers = true AND season_id IS NOT NULL
@@ -102,19 +98,41 @@ export async function loadFranchiseMoves(url: URL): Promise<ApiResult> {
         ORDER BY s.season_id DESC
       `,
       playerParam == null
-        ? Promise.resolve([] as { display_name: string; player_id: string | null }[])
-        : sql<{ display_name: string; player_id: string | null }[]>`
-            SELECT px.display_name, px.player_id::text AS player_id
-            FROM person_xref px WHERE px.person_key = ${playerParam}::text
+        ? Promise.resolve([] as PlayerRow[])
+        : sql<PlayerRow[]>`
+            SELECT x.display_name, x.player_id::text AS player_id, COALESCE(x.nba_person_id, pl.nba_person_id) AS nba_person_id
+            FROM person_xref x
+            LEFT JOIN players pl ON pl.player_id = x.player_id
+            WHERE x.person_key = ${playerParam}::text
           `,
     ]);
+
+    const seasonCounts = countRows.map((r) => ({ season_id: r.season_id, count: Number(r.n) }));
+    // season=latest: the newest season with a move matching type and player (the Moves page default).
+    const season = seasonParam == null ? null : seasonParam === 'latest' ? (seasonCounts[0]?.season_id ?? null) : Number(seasonParam);
+    const nothing = seasonParam === 'latest' && season == null;
+
+    const txns = nothing ? [] : await sql<TxnRow[]>`
+      SELECT t.transaction_id::text AS transaction_id, t.slug, t.date::text AS date, t.season_id,
+             t.kind, t.description, t.is_complete
+      FROM transactions t
+      WHERE t.involves_clippers = true
+        AND (${season}::int IS NULL OR t.season_id = ${season}::int)
+        AND (${include}::text[] IS NULL OR t.kind = ANY(${include}::text[]))
+        AND (${exclude}::text[] IS NULL OR NOT (t.kind = ANY(${exclude}::text[])))
+        AND (${playerParam}::text IS NULL OR EXISTS (
+              SELECT 1 FROM transaction_parts pp
+              WHERE pp.transaction_id = t.transaction_id AND pp.person_key = ${playerParam}::text))
+      ORDER BY t.date DESC NULLS LAST, t.transaction_id DESC
+    `;
 
     const ids = txns.map((t) => t.transaction_id);
     const parts = ids.length === 0 ? [] : await sql<PartRow[]>`
       SELECT p.transaction_id::text AS transaction_id, p.from_franchise_id, p.to_franchise_id,
-             p.person_key, x.display_name, x.player_id::text AS player_id
+             p.person_key, x.display_name, x.player_id::text AS player_id, COALESCE(x.nba_person_id, pl.nba_person_id) AS nba_person_id
       FROM transaction_parts p
       LEFT JOIN person_xref x ON x.person_key = p.person_key
+      LEFT JOIN players pl ON pl.player_id = x.player_id
       WHERE p.transaction_id = ANY(${ids}::bigint[])
       ORDER BY p.part_id
     `;
@@ -138,7 +156,7 @@ export async function loadFranchiseMoves(url: URL): Promise<ApiResult> {
     const moves: MoveRow[] = txns.map((t) => {
       const people = new Map<string, ReturnType<typeof personRef>>();
       for (const p of partsByTxn.get(t.transaction_id) ?? []) {
-        if (p.person_key && !people.has(p.person_key)) people.set(p.person_key, personRef(p.person_key, p.display_name, p.player_id));
+        if (p.person_key && !people.has(p.person_key)) people.set(p.person_key, personRef(p.person_key, p.display_name, p.player_id, p.nba_person_id));
       }
       return {
         slug: t.slug,
@@ -157,8 +175,11 @@ export async function loadFranchiseMoves(url: URL): Promise<ApiResult> {
     return ok({
       filters: { season, type, player: playerParam },
       seasons: seasonRows.map((r) => r.season_id),
-      season_counts: countRows.map((r) => ({ season_id: r.season_id, count: Number(r.n) })),
-      player: playerParam == null || !playerRows[0] ? null : personRef(playerParam, playerRows[0].display_name, playerRows[0].player_id),
+      season_counts: seasonCounts,
+      player:
+        playerParam == null || !playerRows[0]
+          ? null
+          : personRef(playerParam, playerRows[0].display_name, playerRows[0].player_id, playerRows[0].nba_person_id),
       moves,
     }, TTL);
   } catch (err) {

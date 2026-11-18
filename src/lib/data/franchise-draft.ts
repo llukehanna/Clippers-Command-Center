@@ -28,6 +28,7 @@ interface PickRow {
   selected_person: string | null;
   display_name: string | null;
   player_id: string | null;
+  nba_person_id: number | string | null;
   pre_lottery_slot: number | null;
   odds_first: string | number | null;
   pick_won: number | null;
@@ -65,10 +66,11 @@ export async function loadFranchiseDraft(): Promise<ApiResult> {
     const picks = await sql<PickRow[]>`
       SELECT dp.pick_id, dp.pick_key, dp.draft_year, dp.round, dp.original_franchise_id, dp.status,
              dp.overall_pick, dp.final_owner_franchise_id, dp.selected_person,
-             x.display_name, x.player_id::text AS player_id,
+             x.display_name, x.player_id::text AS player_id, COALESCE(x.nba_person_id, pl.nba_person_id) AS nba_person_id,
              l.pre_lottery_slot, l.odds_first, l.pick_won, l.tie_unresolved, l.source AS lottery_source
       FROM draft_picks dp
       LEFT JOIN person_xref x ON x.person_key = dp.selected_person
+      LEFT JOIN players pl ON pl.player_id = x.player_id
       LEFT JOIN draft_lottery l ON l.pick_id = dp.pick_id AND l.draft_year = dp.draft_year
       WHERE COALESCE(dp.status, '') <> 'future'
         AND (dp.final_owner_franchise_id = ${LAC}
@@ -137,7 +139,7 @@ export async function loadFranchiseDraft(): Promise<ApiResult> {
         round: p.round,
         overall_pick: p.overall_pick,
         status: p.status,
-        player: p.selected_person ? personRef(p.selected_person, p.display_name, p.player_id) : null,
+        player: p.selected_person ? personRef(p.selected_person, p.display_name, p.player_id, p.nba_person_id) : null,
         original_team: team(p.original_franchise_id, season),
         via,
         owner: ownerId == null ? null : team(ownerId, season),

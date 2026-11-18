@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { coachTenures, executiveGroups, winPct } from './tenures'
 import type { CoachSeason, ExecutiveTerm } from '@/src/lib/ui/types'
 
-const person = (key: string, name: string) => ({ person_key: key, name, player_id: null, href: null })
+const person = (key: string, name: string) => ({ person_key: key, name, player_id: null, nba_person_id: null, href: null })
 const cs = (season_id: number, ordinal: number, key: string, name: string, w: number | null, l: number | null, pw: number | null = null, pl: number | null = null): CoachSeason => ({
   season_id,
   season_label: `${season_id}-${String((season_id + 1) % 100).padStart(2, '0')}`,

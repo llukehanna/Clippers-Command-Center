@@ -316,6 +316,8 @@ export interface FranchisePersonRef {
   person_key: string
   name: string
   player_id: string | null
+  /** NBA person id for the headshot (person_xref's, else the linked player's); null when unknown. */
+  nba_person_id: number | null
   href: string | null
 }
 
@@ -351,6 +353,17 @@ export interface MovesPayload {
   /** The person named by the player filter; null without one or when unknown. */
   player: FranchisePersonRef | null
   moves: MoveRow[]
+}
+
+/** A person in Clippers moves, for the Moves player search (/api/franchise/people). */
+export interface MovePerson extends FranchisePersonRef {
+  move_count: number
+}
+
+export interface PeoplePayload {
+  meta: MetaEnvelope
+  /** By name. */
+  people: MovePerson[]
 }
 
 /** One trade that moved a pick. */
@@ -582,6 +595,8 @@ export interface TreeNode {
   children: TreeNode[]
   /** Depth limit reached: slug of the trade page to continue on. */
   truncatedAt: string | null
+  /** The player on this row (asset, next move or drafted player), with the headshot id; null otherwise. */
+  person: FranchisePersonRef | null
   /** Date of the event (null for the asset rows). */
   date: string | null
   /** Who holds the asset after this row. */

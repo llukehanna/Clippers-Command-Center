@@ -20,9 +20,18 @@ export function isoTime(v: unknown): string | null {
   return Number.isNaN(d.getTime()) ? String(v) : d.toISOString();
 }
 
-export function personRef(person_key: string, name: string | null, player_id: string | number | null): FranchisePersonRef {
+/**
+ * nba_person_id (for headshots) is person_xref's, else the linked player's (players.nba_person_id);
+ * queries select it as COALESCE(x.nba_person_id, pl.nba_person_id). Unknown stays null.
+ */
+export function personRef(
+  person_key: string,
+  name: string | null,
+  player_id: string | number | null,
+  nba_person_id: string | number | null = null,
+): FranchisePersonRef {
   const id = player_id == null ? null : String(player_id);
-  return { person_key, name: name ?? person_key, player_id: id, href: playerHref(id) };
+  return { person_key, name: name ?? person_key, player_id: id, nba_person_id: num(nba_person_id), href: playerHref(id) };
 }
 
 /** 200 with the meta envelope and a public cache header of `ttl` seconds. */

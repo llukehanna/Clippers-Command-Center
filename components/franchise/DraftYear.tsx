@@ -29,7 +29,7 @@ function UsedPick({ pick }: { pick: DraftPick }) {
     <div className={ROW}>
       <RoundBadge>{badge(pick)}</RoundBadge>
       {pick.player ? (
-        <PlayerAvatar name={pick.player.name} size={36} className="max-sm:!h-8 max-sm:!w-8" />
+        <PlayerAvatar name={pick.player.name} nbaPlayerId={pick.player.nba_person_id} size={36} className="max-sm:!h-8 max-sm:!w-8" />
       ) : (
         <span aria-hidden className="h-8 w-8 rounded-full border border-dashed border-line-2 sm:h-9 sm:w-9" />
       )}

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { PlayerAvatar } from '@/components/ui/player-avatar'
 import { movesHref, type MovesFilters } from '@/src/lib/franchise/display'
-import type { FranchisePersonRef, MovesPayload } from '@/src/lib/ui/types'
+import type { FranchisePersonRef, PeoplePayload } from '@/src/lib/ui/types'
 
 const json = (url: string) =>
   fetch(url).then((r) => {
@@ -16,29 +16,17 @@ const json = (url: string) =>
 
 const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 
-/** People in the moves of the current type, most moves first. */
-function peopleOf(payload: MovesPayload | undefined): Array<{ person: FranchisePersonRef; count: number }> {
-  const byKey = new Map<string, { person: FranchisePersonRef; count: number }>()
-  for (const m of payload?.moves ?? []) {
-    for (const p of m.people) {
-      const cur = byKey.get(p.person_key)
-      if (cur) cur.count += 1
-      else byKey.set(p.person_key, { person: p, count: 1 })
-    }
-  }
-  return [...byKey.values()].sort((a, b) => b.count - a.count || a.person.name.localeCompare(b.person.name))
-}
-
 /**
  * Player filter for Moves. With a player set it's a removable chip; otherwise a button that
- * opens a search over the people in this type's moves (loaded on first open).
+ * opens a search over everyone in Clippers moves (/api/franchise/people, loaded on first open).
+ * Picking a player opens their whole Clippers history: all types, all seasons (bounded).
  */
 export function PlayerFilter({ filters, player }: { filters: MovesFilters; player: FranchisePersonRef | null }) {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const root = React.useRef<HTMLDivElement>(null)
-  const { data, error } = useSWR<MovesPayload>(open ? `/api/franchise/moves?type=${filters.type}` : null, json, { revalidateOnFocus: false })
+  const { data, error } = useSWR<PeoplePayload>(open ? '/api/franchise/people' : null, json, { revalidateOnFocus: false })
 
   React.useEffect(() => {
     if (!open) return
@@ -57,8 +45,15 @@ export function PlayerFilter({ filters, player }: { filters: MovesFilters; playe
   if (filters.player) {
     return (
       <span className="glass-track inline-flex items-center gap-2 rounded-full py-[3px] pl-[3px] pr-1 text-[13px] text-text md:text-[12.5px]">
-        <PlayerAvatar name={player?.name ?? filters.player} size={24} />
-        {player?.name ?? filters.player}
+        {player ? (
+          <PlayerAvatar name={player.name} nbaPlayerId={player.nba_person_id} size={24} />
+        ) : (
+          // A key with no person record: a neutral label, never the raw key.
+          <span aria-hidden className="grid h-6 w-6 place-items-center rounded-full border border-dashed border-line-2 font-mono text-[10px] text-dim">
+            ?
+          </span>
+        )}
+        {player?.name ?? 'Unknown player'}
         <Link
           href={movesHref({ ...filters, player: null })}
           scroll={false}
@@ -73,10 +68,11 @@ export function PlayerFilter({ filters, player }: { filters: MovesFilters; playe
     )
   }
 
-  const all = peopleOf(data)
+  const all = data?.people ?? []
   const q = fold(query.trim())
-  const results = (q ? all.filter((p) => fold(p.person.name).includes(q)) : all).slice(0, 8)
-  const hrefFor = (key: string) => movesHref({ season: null, type: filters.type, player: key })
+  // Typing: matches in name order (as served). Empty: the people with the most moves.
+  const results = (q ? all.filter((p) => fold(p.name).includes(q)) : [...all].sort((a, b) => b.move_count - a.move_count || a.name.localeCompare(b.name))).slice(0, 8)
+  const hrefFor = (key: string) => movesHref({ season: 'all', type: 'all', player: key })
 
   return (
     <div ref={root} className="relative">
@@ -106,7 +102,7 @@ export function PlayerFilter({ filters, player }: { filters: MovesFilters; playe
             onKeyDown={(e) => {
               if (e.key === 'Enter' && results[0]) {
                 setOpen(false)
-                router.push(hrefFor(results[0].person.person_key), { scroll: false })
+                router.push(hrefFor(results[0].person_key), { scroll: false })
               }
             }}
             placeholder="Search players…"
@@ -117,9 +113,9 @@ export function PlayerFilter({ filters, player }: { filters: MovesFilters; playe
             {error && <li className="px-3 py-4 text-[13px] text-mute">Players couldn&apos;t load. Try again in a moment.</li>}
             {!data && !error && <li className="px-3 py-4 font-mono text-[11.5px] text-dim">Loading players…</li>}
             {data && results.length === 0 && (
-              <li className="px-3 py-4 text-[13px] text-mute">{all.length ? 'No player by that name in these moves.' : 'No players in these moves yet.'}</li>
+              <li className="px-3 py-4 text-[13px] text-mute">{all.length ? 'No player by that name in Clippers moves.' : 'No players in Clippers moves yet.'}</li>
             )}
-            {results.map(({ person, count }) => (
+            {results.map((person) => (
               <li key={person.person_key}>
                 <Link
                   href={hrefFor(person.person_key)}
@@ -127,10 +123,10 @@ export function PlayerFilter({ filters, player }: { filters: MovesFilters; playe
                   onClick={() => setOpen(false)}
                   className="row-hover flex items-center gap-3 rounded-[12px] px-2.5 py-2 text-[14px] text-text outline-none focus-visible:bg-white/[0.06]"
                 >
-                  <PlayerAvatar name={person.name} size={26} />
+                  <PlayerAvatar name={person.name} nbaPlayerId={person.nba_person_id} size={26} />
                   <span className="min-w-0 flex-1 truncate">{person.name}</span>
                   <span className="font-mono text-[11px] text-dim">
-                    {count} move{count === 1 ? '' : 's'}
+                    {person.move_count} move{person.move_count === 1 ? '' : 's'}
                   </span>
                 </Link>
               </li>

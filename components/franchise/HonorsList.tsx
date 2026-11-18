@@ -64,7 +64,7 @@ export function HallOfFame({ rows }: { rows: HonorRow[] }) {
     <Panel className="p-2">
       {rows.map((h) => (
         <div key={h.person.person_key} className="row-hover grid grid-cols-[36px_minmax(0,1fr)] items-center gap-3 rounded-[14px] px-3 py-[9px]">
-          <PlayerAvatar name={h.person.name} size={36} />
+          <PlayerAvatar name={h.person.name} nbaPlayerId={h.person.nba_person_id} size={36} />
           <div className="min-w-0">
             <PersonName person={h.person} className="block truncate text-[14.5px] font-medium tracking-[-0.01em]" />
             <div className="mt-px font-mono text-[11px] text-dim">{h.detail ? `Inducted ${h.detail}` : 'Induction year not recorded'}</div>
@@ -78,7 +78,7 @@ export function HallOfFame({ rows }: { rows: HonorRow[] }) {
 function Person({ person }: { person: FranchisePersonRef }) {
   return (
     <span className="inline-flex items-center gap-2 text-[14px]">
-      <PlayerAvatar name={person.name} size={26} />
+      <PlayerAvatar name={person.name} nbaPlayerId={person.nba_person_id} size={26} />
       <PersonName person={person} />
     </span>
   )

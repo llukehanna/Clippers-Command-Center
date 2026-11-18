@@ -71,7 +71,7 @@ export function CapSheet({ data, currentSeason }: { data: ContractsPayload; curr
               <Tr key={p.person.person_key}>
                 <Td align="left" sticky>
                   <span className="flex items-center gap-2.5">
-                    <PlayerAvatar name={p.person.name} size={28} />
+                    <PlayerAvatar name={p.person.name} nbaPlayerId={p.person.nba_person_id} size={28} />
                     <PersonName person={p.person} className="font-medium text-text" />
                   </span>
                 </Td>

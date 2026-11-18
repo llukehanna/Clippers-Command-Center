@@ -13,6 +13,9 @@ import type { MovesPayload, PlayersPayload } from '@/src/lib/ui/types'
 
 export const OPEN_PALETTE_EVENT = 'ccc:open-palette'
 
+/** Trades listed before anything is typed; typing searches every trade. */
+const RECENT_TRADES = 5
+
 const PAGES = [
   { href: '/home', label: 'Home', hint: 'Next game, form, trends' },
   { href: '/live', label: 'Live', hint: 'Scoreboard and box score' },
@@ -49,16 +52,21 @@ async function loadRecentGames(): Promise<SeasonGames[]> {
 /** ⌘K / Ctrl+K palette: jump to any page, player, trade (by player name), or recent game. */
 export function CommandPalette() {
   const [open, setOpen] = React.useState(false)
+  const [search, setSearch] = React.useState('')
   const router = useRouter()
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
+        setSearch('') // each open starts with an empty search
         setOpen((o) => !o)
       }
     }
-    const onOpen = () => setOpen(true)
+    const onOpen = () => {
+      setSearch('')
+      setOpen(true)
+    }
     window.addEventListener('keydown', onKey)
     window.addEventListener(OPEN_PALETTE_EVENT, onOpen)
     return () => {
@@ -71,6 +79,8 @@ export function CommandPalette() {
   const { data: roster } = useSWR<PlayersPayload>(open ? '/api/players' : null, json, { revalidateOnFocus: false })
   const { data: seasons } = useSWR<SeasonGames[]>(open ? 'palette:games' : null, loadRecentGames, { revalidateOnFocus: false })
   const { data: trades } = useSWR<MovesPayload>(open ? '/api/franchise/moves?type=trade' : null, json, { revalidateOnFocus: false })
+
+  const typed = search.trim() !== ''
 
   const go = (href: string) => {
     setOpen(false)
@@ -97,6 +107,8 @@ export function CommandPalette() {
         </svg>
         <Command.Input
           autoFocus
+          value={search}
+          onValueChange={setSearch}
           placeholder="Search players, games, trades…"
           className="h-14 min-w-0 flex-1 bg-transparent text-[16px] text-text md:text-[15px] outline-none placeholder:text-dim"
         />
@@ -135,22 +147,23 @@ export function CommandPalette() {
           </Command.Group>
         )}
 
-        {trades && (
+        {trades && (trades.moves.length > 0 || typed) && (
           <Command.Group heading="Trades" className={group}>
             {trades.moves.length === 0 ? (
-              // The archive is empty until the import runs: one quiet row (empty query, or a search for "trade") says so.
-              <Command.Item value="trade trades none recorded" onSelect={() => go('/franchise')} className={item}>
+              // The archive is empty until the import runs; say so once someone searches.
+              <Command.Item forceMount value="no trades recorded yet" onSelect={() => go('/franchise')} className={item}>
                 <span className="text-text">No trades recorded yet</span>
                 <span className="ml-auto text-[12.5px] text-dim">The franchise history import hasn&apos;t run</span>
               </Command.Item>
             ) : (
-              trades.moves.map((m) => {
+              // Empty query: the most recent few. Typing searches them all, by player name or team.
+              (typed ? trades.moves : trades.moves.slice(0, RECENT_TRADES)).map((m) => {
                 const other = m.teams.find((t) => !t.is_clippers)
                 const names = m.people.map((p) => p.name)
                 return (
                   <Command.Item
                     key={m.slug}
-                    value={`trade ${names.join(' ')} ${m.date ?? ''} ${m.slug}`}
+                    value={`${names.join(' ')} ${m.date ?? ''} ${m.slug}`}
                     keywords={[other?.city ?? '', other?.name ?? '', other?.abbreviation ?? '']}
                     onSelect={() => go(m.href ?? '/franchise')}
                     className={item}
