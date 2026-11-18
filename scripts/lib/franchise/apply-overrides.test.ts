@@ -164,6 +164,19 @@ describe('applyOverrides (phase 2, after buildPicks)', () => {
     expect(ok.data.picks[0]).toMatchObject({ protectionsKnown: true, protections: [{ year: 0, range: '1-10', then: null }] });
   });
 
+  it('marks a future pick forfeited, which takes it out of the protections gate', () => {
+    const data = ds({ picks: [{ ...row('2030-1-LAC', 2030, 1, LAC), status: 'future' }] });
+    const before = buildReport(applyOverrides(data, []).data, [], []);
+    expect(gateFailures(before)).toEqual(['1 future pick without known protections']);
+    const o: Override = { kind: 'pick', match: { pickKey: '2030-1-LAC' }, set: { status: 'forfeited' }, source: 's' };
+    const out = applyOverrides(data, [o]);
+    expect(out.invalid).toEqual([]);
+    expect(out.stale).toEqual([]);
+    expect(out.data.picks[0]).toMatchObject({ status: 'forfeited', protectionsKnown: false });
+    expect(gateFailures(buildReport(out.data, out.stale, out.invalid))).toEqual([]);
+    expect(data.picks[0].status).toBe('future'); // input untouched
+  });
+
   it('reports phase-2 overrides that match nothing as stale, and leaves phase-1 kinds alone', () => {
     const data = ds({ picks: [row('2028-1-LAC', 2028, 1, LAC)] });
     const stale: Override[] = [

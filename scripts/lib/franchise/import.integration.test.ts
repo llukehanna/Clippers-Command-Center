@@ -27,8 +27,11 @@ describe.skipIf(!url)('import-franchise-history (fake cache, fixture DB)', () =>
   const db = () => sql as unknown as Db;
   const quiet = () => {};
   /** The fake cache holds 2017-18 and 2026-27; the draft after 2026-27 is 2027's. */
-  const args = (...flags: string[]) =>
-    parseImportArgs([`--dir=${dir}`, `--report=${path.join(dir, 'report.json')}`, '--from=2017', '--to=2026', ...flags], new Date('2026-11-17T12:00:00Z'));
+  // No overrides: the fake cache copies real pages, and overrides.ts settles some of their lines.
+  const args = (...flags: string[]) => ({
+    ...parseImportArgs([`--dir=${dir}`, `--report=${path.join(dir, 'report.json')}`, '--from=2017', '--to=2026', ...flags], new Date('2026-11-17T12:00:00Z')),
+    overrides: [],
+  });
 
   async function counts(): Promise<Record<string, number>> {
     const out: Record<string, number> = {};
