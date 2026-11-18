@@ -1,0 +1,26 @@
+<!-- Source: Wikipedia "1985–86 Los Angeles Clippers season", ===Trades=== section, whole section (wikitext via the query API cache, fetched 2026-11). -->
+===Trades===
+{| border=1 style="border-collapse:collapse; text-align: center; width: 100%" bordercolor="#DFDFDF"  cellpadding="5"
+|-
+|- bgcolor="eeeeee"
+| style="width:12%" | September 6, [[1985-86 NBA season|1985]]
+| style="width:30%" valign="top"| To '''[[Los Angeles Clippers]]'''<hr>
+* [[Cedric Maxwell]] and 1986 first-round draft pick
+| style="width:30%" valign="top"| To '''[[Boston Celtics]]'''<hr>
+* [[Bill Walton]]
+|-
+|- bgcolor="eeeeee"
+| style="width:12%" | November 25, [[1985-86 NBA season|1985]]
+| style="width:30%" valign="top"| To '''[[Los Angeles Clippers]]'''<hr>
+* [[Kurt Nimphius]]
+| style="width:30%" valign="top"| To '''[[Dallas Mavericks]]'''<hr>
+* [[James Donaldson (basketball)|James Donaldson]]
+|-
+|- bgcolor="eeeeee"
+| style="width:12%" | January 14, [[1985-86 NBA season|1986]]
+| style="width:30%" valign="top"| To '''[[Los Angeles Clippers]]'''<hr>
+* [[Darnell Valentine]]
+| style="width:30%" valign="top"| To '''[[Portland Trail Blazers]]'''<hr>
+* 1986 first-round draft pick
+|-
+|}

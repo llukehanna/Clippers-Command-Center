@@ -1,0 +1,98 @@
+<!-- Source: Wikipedia "Los Angeles Clippers" article (wikitext via the query API cache, fetched 2026-11): Retired numbers, Basketball Hall of Famers (rows trimmed), Individual awards (four categories kept), NBA All-Star Weekend and Head coaches sections. Excerpt. -->
+==Personnel==
+===Retired numbers===
+The NBA retired [[Bill Russell]]'s No. 6 for all its member teams on August 11, 2022.<ref>{{cite web |title=Bill Russell's No. 6 jersey to be retired throughout NBA |url=https://www.nba.com/news/bill-russells-no-6-jersey-to-be-retired-throughout-nba |website=NBA.com |access-date=August 24, 2022 |date=August 11, 2022 |archive-date=August 17, 2022 |archive-url=https://web.archive.org/web/20220817080803/https://www.nba.com/news/bill-russells-no-6-jersey-to-be-retired-throughout-nba |url-status=live }}</ref><ref>{{cite news |last1=Golliver |first1=Ben |title=NBA permanently retires Bill Russell's No. 6 |url=https://www.washingtonpost.com/sports/2022/08/11/bill-russell-nba-jersey-retirement/ |newspaper=Washington Post |access-date=August 24, 2022 |date=August 11, 2022 |archive-date=November 7, 2022 |archive-url=https://web.archive.org/web/20221107143239/https://www.washingtonpost.com/sports/2022/08/11/bill-russell-nba-jersey-retirement/ |url-status=live }}</ref>
+
+===Basketball Hall of Famers===
+{| class="wikitable" style="text-align:center"
+|-
+! colspan="5" style="{{NBA color cell|Los Angeles Clippers|border=2}};"|Los Angeles Clippers Hall of Famers
+|-
+! colspan="5" style="text-align:center; {{NBA color cell2|Los Angeles Clippers|border=2}};"|Players
+|-
+! No. !! Name !! Position !! Tenure !! Inducted
+|-
+| '''32''' || [[Bill Walton]] || [[Center (basketball)|C]] || 1979–1985 || 1993
+|-
+| '''11''' || [[Bob McAdoo]] || [[Power forward (basketball)|F]]/[[Center (basketball)|C]] || 1972–1976 || 2000
+|-
+! colspan="5" style="text-align:center; {{NBA color cell2|Los Angeles Clippers|border=2}};"|Coaches
+|-
+! colspan="2"|Name !! Position !! Tenure !! Inducted
+|-
+| colspan="2"|[[Jack Ramsay]] || Head coach || 1972–1976 || 1992
+|-
+| colspan="2"|[[Larry Brown (basketball)|Larry Brown]] || Head coach || 1992–1993 || 2002
+|-
+| colspan="2"|[[Bill Fitch]] || Head coach || 1994–1998 || 2019
+|-
+| '''25''' || [[Doc Rivers]] <sup>1</sup> || Head coach || 2013–2020 || 2026
+|-
+! colspan="5" style="text-align:center; {{NBA color cell2|Los Angeles Clippers|border=2}};"|Contributors
+|-
+| colspan="2"|[[Cotton Fitzsimmons]] || Head coach || 1977–1978 || 2021
+|-
+| colspan="2"|[[Jerry West]] || Executive || 2017–2024 || 2024
+|}
+
+'''Notes:'''
+* <sup>1</sup> Rivers also played for the Clippers in the 1991–92 season.
+
+===Individual awards===
+{{columns-start|num=2}}
+'''[[NBA Rookie of the Year Award|NBA Rookie of the Year]]'''
+*[[Terry Cummings]]&nbsp;– 1983
+*[[Blake Griffin]]&nbsp;– 2011
+
+'''[[NBA Sixth Man of the Year Award|NBA Sixth Man of the Year]]'''
+*[[Jamal Crawford]]&nbsp;– 2014, 2016
+*[[Lou Williams]]&nbsp;– 2018, 2019
+*[[Montrezl Harrell]]&nbsp;– 2020
+
+'''[[NBA Sportsmanship Award]]'''
+*[[Elton Brand]]&nbsp;– 2006
+
+'''[[All-NBA Team|All-NBA First Team]]'''
+*[[Chris Paul]]&nbsp;– 2012–2014
+*[[DeAndre Jordan]]&nbsp;– 2016
+*[[Kawhi Leonard]]&nbsp;– 2021
+
+'''[[NBA All-Rookie Second Team]]'''
+*[[Brent Barry]]&nbsp;– 1996
+*[[Maurice Taylor]]&nbsp;– 1998
+*[[Michael Olowokandi]]&nbsp;– 1999
+*[[Eric Gordon]]&nbsp;– 2009
+*[[Eric Bledsoe]]&nbsp;– 2011
+*[[Shai Gilgeous-Alexander]]&nbsp;– 2019
+*[[Landry Shamet]]&nbsp;– 2019
+{{columns-end}}
+
+
+===NBA All-Star Weekend===
+'''[[NBA All-Star Game|NBA All-Star selections]]'''
+*[[World B. Free]]&nbsp;- 1980
+*[[Norm Nixon]]&nbsp;– 1985
+*[[Marques Johnson]]&nbsp;– 1986
+*[[Danny Manning]]&nbsp;– 1993, 1994
+*[[Elton Brand]]&nbsp;– 2002, 2006
+*[[Chris Kaman]]&nbsp;– 2010
+*[[Blake Griffin]]&nbsp;– 2011–2015
+*[[Chris Paul]]&nbsp;– 2012–2016
+*[[DeAndre Jordan]]&nbsp;– 2017
+*[[Kawhi Leonard]]&nbsp;– 2020–2021, 2024
+*[[Paul George]]&nbsp;- 2021, 2023–2024
+*[[James Harden]]&nbsp;– 2025
+
+'''[[National Basketball Association All-Star Game Most Valuable Player Award|NBA All-Star Game Most Valuable Player]]'''
+*[[Randy Smith (basketball)|Randy Smith]]&nbsp;– 1978
+*[[Chris Paul]]&nbsp;– 2013
+*[[Kawhi Leonard]]&nbsp;– 2020
+
+'''[[Slam Dunk Contest|Slam Dunk champion]]'''
+*[[Brent Barry]] – 1996
+*[[Blake Griffin]] – 2011
+
+==Head coaches==
+{{main|List of Los Angeles Clippers head coaches}}
+<!-- Please DO NOT abbreviate to L.A. Thank you. -->
+

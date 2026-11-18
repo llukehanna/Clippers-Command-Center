@@ -1,0 +1,19 @@
+<!-- Source: Wikipedia "1976–77 Buffalo Braves season", ===Trades=== section, the August 5 and August 25, 1976 rows only (wikitext via the query API cache, fetched 2026-11). The first row (ABA dispersal draft pick) has no parse rule. -->
+===Trades===
+{| border=1 style="border-collapse:collapse; text-align: center; width: 100%" bordercolor="#DFDFDF"  cellpadding="5"
+|-
+|- bgcolor="eeeeee"
+| style="width:12%" | August 5, [[1976–77 NBA season|1976]]
+| style="width:30%" valign="top"| To '''[[Buffalo Braves]]'''<hr>
+* The 7th pick of [[1976 NBA Draft#ABA dispersal draft|1976 ABA dispersal draft]]. ([[Bird Averitt]] of the [[Kentucky Colonels]] was chosen)
+| style="width:30%" valign="top"| To '''[[Milwaukee Bucks]]'''<hr>
+* 1977 2nd round draft pick
+|-
+|- bgcolor="eeeeee"
+| style="width:12%" | August 25, [[1976–77 NBA season|1976]]
+| style="width:30%" valign="top"| To '''[[Buffalo Braves]]'''<hr>
+* 1977 2nd round draft pick
+| style="width:30%" valign="top"| To '''[[Phoenix Suns]]'''<hr>
+* [[Tom Van Arsdale]]
+|-
+|}
