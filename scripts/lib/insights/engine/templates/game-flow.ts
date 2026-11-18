@@ -1,9 +1,10 @@
 // Postgame game flow (play-by-play): comebacks, leads, runs, lead changes. Past tense.
+import type { FlowKey } from '../references.js';
 import type { Fact } from '../types.js';
 import { oppShort, phrasings, type Headline, type RenderContext, type TemplateModule } from './shared.js';
 
 type Words = ((f: Fact, rc: RenderContext) => string)[];
-const WORDS: Record<string, Words> = {
+const WORDS: Record<FlowKey, Words> = {
   comeback: [
     (f, rc) => `Clippers erased a ${f.value}-point deficit to beat the ${oppShort(f, rc)}`,
     (f, rc) => `Clippers came back from ${f.value} down to beat the ${oppShort(f, rc)}`,
@@ -26,7 +27,7 @@ const WORDS: Record<string, Words> = {
   ],
 };
 
-const headlines: Headline[] = [0, 1].map((i) => (f: Fact, rc: RenderContext) => WORDS[f.stat][i](f, rc));
+const headlines: Headline[] = [0, 1].map((i) => (f: Fact, rc: RenderContext) => WORDS[f.stat as FlowKey][i](f, rc));
 
 export const gameFlowTemplates: TemplateModule = {
   default: phrasings(headlines, (f) => `Largest lead ${f.data.lead ?? 0}, largest deficit ${f.data.deficit ?? 0}`),

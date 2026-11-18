@@ -12,7 +12,7 @@ const flow = (stat: keyof typeof FLOW_STATS, value: number, result: 'W' | 'L' = 
   kind: 'game_flow', surface: 'postgame', subject: { type: 'team', id: '1', name: 'Clippers' }, stat, value,
   window: { type: 'game', game_id: '500', season_id: 2025 }, gameId: '500',
   context: { date, opponent_id: '2', home: true, result },
-  data: { thing: FLOW_STATS[stat].thing(value), best: FLOW_STATS[stat].best, by: 'by the Clippers', lead: 8, deficit: 22, margin_series: [[0, 0], [1440, -22], [2880, 4]] },
+  data: { thing: FLOW_STATS[stat].thing(value), best: FLOW_STATS[stat].best, by: FLOW_STATS[stat].by, lead: 8, deficit: 22, margin_series: [[0, 0], [1440, -22], [2880, 4]] },
 });
 
 describe('game flow templates', () => {
@@ -26,6 +26,18 @@ describe('game flow templates', () => {
     expect(say(flow('blown_lead', 18, 'L'), fr('none'), post).headline).toBe('Clippers lost to the Warriors after leading by 18');
     expect(say(flow('best_run', 16), fr('first_since', { since_date: '2022-01-05' }), post).context)
       .toBe('First 16-0 run by the Clippers since Jan 2022');
+  });
+  it('names the condition each stat\'s reference set filters on', () => {
+    const records = fr('records_best', { records_label: '2019-20' });
+    const since = fr('first_since', { since_date: '2025-03-05' });
+    expect(say(flow('largest_lead', 22), since, post).context).toBe('First 22-point lead in a win by the Clippers since Mar 2025');
+    expect(say(flow('largest_lead', 22), records, post).context).toBe('Largest lead in a win by the Clippers since 2019-20');
+    expect(say(flow('blown_lead', 18, 'L'), since, post).context).toBe('First blown 18-point lead by the Clippers since Mar 2025');
+    expect(say(flow('comeback', 22), since, post).context).toBe('First 22-point comeback by the Clippers since Mar 2025');
+  });
+  it('does not credit a both-teams stat to the Clippers alone', () => {
+    expect(say(flow('lead_changes', 24), fr('records_best', { records_label: '2019-20' }), post).context).toBe('Most lead changes in a Clippers game since 2019-20');
+    expect(say(flow('lead_changes', 24), fr('first_since', { since_date: '2025-03-05' }), post).context).toBe('First 24 lead changes in a Clippers game since Mar 2025');
   });
   it('words the season through the frozen postgame phrase, never "this season"', () => {
     expect(say(flow('comeback', 22), fr('season_high'), post).context).toBe('The largest comeback win by the Clippers so far in 2025-26');

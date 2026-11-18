@@ -216,16 +216,18 @@ export interface FlowStat {
   polarity: 'positive' | 'negative' | 'neutral';
   thing: (v: number) => string;
   best: string;
+  /** Who the stat belongs to: lead changes are a both-teams stat. */
+  by: string;
 }
 
 const lacWon = (lac: string) => `((g.home_team_id = ${lac}::bigint) = (g.home_score > g.away_score))`;
 
 export const FLOW_STATS: Record<FlowKey, FlowStat> = {
-  comeback: { expr: () => 'COALESCE(gf.comeback_margin, 0)', floor: 10, when: 'W', polarity: 'positive', thing: (v) => `${v}-point comeback`, best: 'largest comeback win' },
-  largest_lead: { expr: (lac) => `CASE WHEN ${lacWon(lac)} THEN gf.lac_largest_lead ELSE 0 END`, floor: 20, when: 'W', polarity: 'positive', thing: (v) => `${v}-point lead`, best: 'largest lead in a win' },
-  blown_lead: { expr: (lac) => `CASE WHEN ${lacWon(lac)} THEN 0 ELSE gf.lac_largest_lead END`, floor: 15, when: 'L', polarity: 'negative', thing: (v) => `blown ${v}-point lead`, best: 'largest blown lead' },
-  best_run: { expr: () => 'gf.lac_best_run', floor: 14, when: 'any', polarity: 'positive', thing: (v) => `${v}-0 run`, best: 'longest scoring run' },
-  lead_changes: { expr: () => 'gf.lead_changes', floor: 20, when: 'any', polarity: 'neutral', thing: (v) => `${v}-lead-change game`, best: 'most lead changes in a game' },
+  comeback: { expr: () => 'COALESCE(gf.comeback_margin, 0)', floor: 10, when: 'W', polarity: 'positive', thing: (v) => `${v}-point comeback`, best: 'largest comeback win', by: 'by the Clippers' },
+  largest_lead: { expr: (lac) => `CASE WHEN ${lacWon(lac)} THEN gf.lac_largest_lead ELSE 0 END`, floor: 20, when: 'W', polarity: 'positive', thing: (v) => `${v}-point lead in a win`, best: 'largest lead in a win', by: 'by the Clippers' },
+  blown_lead: { expr: (lac) => `CASE WHEN ${lacWon(lac)} THEN 0 ELSE gf.lac_largest_lead END`, floor: 15, when: 'L', polarity: 'negative', thing: (v) => `blown ${v}-point lead`, best: 'largest blown lead', by: 'by the Clippers' },
+  best_run: { expr: () => 'gf.lac_best_run', floor: 14, when: 'any', polarity: 'positive', thing: (v) => `${v}-0 run`, best: 'longest scoring run', by: 'by the Clippers' },
+  lead_changes: { expr: () => 'gf.lead_changes', floor: 20, when: 'any', polarity: 'neutral', thing: (v) => `${v} lead changes`, best: 'most lead changes', by: 'in a Clippers game' },
 };
 
 /**

@@ -32,7 +32,7 @@ export function flowDetector(): Detector {
             ...gameFactBase(g, ctx), kind: 'game_flow', subject: { type: 'team', id: ctx.lac.teamId, name: 'Clippers' },
             stat: key, value, polarity: stat.polarity, proof: { ...q, match: {} }, sample: { kind: 'context' },
             data: {
-              thing: stat.thing(value), best: stat.best, by: 'by the Clippers',
+              thing: stat.thing(value), best: stat.best, by: stat.by,
               lead: Number(r.lac_lead), deficit: Number(r.lac_deficit),
               margin_series: r.margin_series as [number, number][],
             },
