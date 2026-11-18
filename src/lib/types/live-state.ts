@@ -140,7 +140,7 @@ export interface LiveStateDoc {
   home_box: BoxscoreTeam | null;
   away_box: BoxscoreTeam | null;
   recent_scoring: LiveRecentScoring[];
-  last_plays: LivePlay[];      // newest first, at most 15
+  last_plays: LivePlay[];      // newest first, at most 25 (LAST_PLAYS)
   other_games: unknown[];      // poll-live-logic OtherGame[]
   observed_at: string | null;  // time_actual of the newest play
   fetched_at: string;          // when the runner built this state

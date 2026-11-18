@@ -11,10 +11,11 @@ import type { LivePhase, LivePlay, LiveStateDoc, LiveWinProb, WpCalibration } fr
 import { DEFAULT_SIGMA, expectedLacMargin, PERIOD_SECS, winProbability } from '../../src/lib/live/win-prob';
 import { buildFlow } from './live-flow';
 import { buildLineups } from './live-lineups';
+import { timeoutsRemaining } from './live-timeouts';
 import { clockToSecondsRemaining, parseNBAClock } from './nba-live-client';
 import { extractRecentScoring, LAC_TEAM_ID, lineScore, summarizeOtherGames } from './poll-live-logic';
 
-export const LAST_PLAYS = 15;
+export const LAST_PLAYS = 25;
 export const RECENT_SCORING_LOOKBACK_SECONDS = 120;
 
 export type LiveStateBody = Omit<LiveStateDoc, 'seq'>;
@@ -213,7 +214,11 @@ export function buildLiveState(i: StateInputs): LiveStateBody {
             clockSec,
             usualMin: model.usualMin,
             fallback: {
-              timeouts: { lac: sbLac.timeoutsRemaining ?? null, opp: sbOpp.timeoutsRemaining ?? null },
+              // ESPN's scoreboard has no timeouts: count them from play-by-play.
+              timeouts: {
+                lac: sbLac.timeoutsRemaining ?? timeoutsRemaining(i.actions, sbLac.teamId, period, clockSec),
+                opp: sbOpp.timeoutsRemaining ?? timeoutsRemaining(i.actions, sbOpp.teamId, period, clockSec),
+              },
               bonus: { lac: sbLac.inBonus === '1', opp: sbOpp.inBonus === '1' },
             },
           }))
