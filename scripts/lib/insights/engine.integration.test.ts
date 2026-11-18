@@ -512,6 +512,26 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(empty).toEqual({ facts: [], gameIds: [] });
     }, TIMEOUT);
 
+    it('postgame team lines: emits the team stats past their floors for one game, rated from prior games', async () => {
+      const { teamLinesDetector } = await import('./engine/detectors/postgame-team-lines');
+      const [g] = await sql<{ game_id: string; pts: number }[]>`
+        SELECT t.game_id::text AS game_id, t.points::int AS pts FROM game_team_box_scores t JOIN games g ON g.game_id = t.game_id
+        WHERE t.team_id = 1 AND g.season_id = 2025 AND NOT g.is_playoffs AND g.nba_game_id < 50000000 AND t.points >= 120
+        ORDER BY t.points DESC LIMIT 1`;
+      expect(g, 'the fixture has a Clippers regular-season game of 120+ points').toBeDefined();
+      const ctx = { ...(await ctxAt(laToday())), gameId: g.game_id };
+      const { facts, gameIds } = await teamLinesDetector().run(ctx);
+      expect(gameIds).toEqual([g.game_id]);
+      expect(facts.length).toBeGreaterThan(0);
+      for (const f of facts) {
+        expect(f).toMatchObject({ kind: 'team_game_stat', surface: 'postgame', subject: { type: 'team', id: '1' }, gameId: g.game_id });
+        expect(f.sample.kind).toBe('rate');
+      }
+      expect(facts.find((f) => f.stat === 'team_pts')?.value).toBe(g.pts);
+      const empty = await teamLinesDetector().run({ ...ctx, gameId: null, postgameDays: 0 });
+      expect(empty.facts).toEqual([]);
+    }, TIMEOUT);
+
     it('registry: unique names, unique categories per surface', async () => {
       const { DETECTORS } = await import('./engine/detectors/index');
       expect(new Set(DETECTORS.map((d) => d.name)).size).toBe(DETECTORS.length);

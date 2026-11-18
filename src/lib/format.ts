@@ -26,6 +26,7 @@ const INSIGHT_CATEGORY_LABELS: Record<string, string> = {
   league_night: 'Big Night',
   player_game_stat: 'Big Night',
   player_combo: 'Stat Line',
+  team_game_stat: 'Team Night',
 }
 
 /** Display label for an insight category ("league_comparison" → "League Rank"). */

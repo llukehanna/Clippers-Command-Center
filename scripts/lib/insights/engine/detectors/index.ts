@@ -3,6 +3,7 @@
 // surface: they define each detector's stale-row deactivation scope.
 import type { Detector } from '../types.js';
 import { playerLinesDetector } from './postgame-player-lines.js';
+import { teamLinesDetector } from './postgame-team-lines.js';
 import { opponentDetector } from './pregame-opponent.js';
 import { milestoneDetector } from './season-milestones.js';
 import { leagueRankDetector, recentFormDetector, standingsDetector } from './season-ranks.js';
@@ -18,4 +19,5 @@ export const DETECTORS: readonly Detector[] = [
   yoyDetector('season'),
   opponentDetector(),
   playerLinesDetector(),
+  teamLinesDetector(),
 ];

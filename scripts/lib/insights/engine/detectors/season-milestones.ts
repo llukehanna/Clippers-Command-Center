@@ -6,6 +6,7 @@ import { lateJoiners } from '../games.js';
 import { highestThreshold } from '../../proof-utils.js';
 import { runQuery } from '../query.js';
 import { seasonTotalShare } from '../rates.js';
+import { DOUBLE_DOUBLE } from '../references.js';
 import { REGULAR_SEASON, rosterSubquery } from '../sql.js';
 import type { Detector, Fact } from '../types.js';
 
@@ -19,8 +20,6 @@ export interface MilestoneDef {
   thing: (n: number) => string;  // 1500 → "1,500-point season"
 }
 
-const DOUBLE_DOUBLE = `((pb.points >= 10)::int + (pb.rebounds >= 10)::int + (pb.assists >= 10)::int
-   + (pb.steals >= 10)::int + (pb.blocks >= 10)::int) >= 2`;
 const thousands = (n: number) => n.toLocaleString('en-US');
 
 export const MILESTONES: MilestoneDef[] = [

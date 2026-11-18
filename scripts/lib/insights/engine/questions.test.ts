@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { COMBOS, TENS, refAsOf, refsFor } from './references';
+import { COMBOS, DOUBLE_DOUBLE, TEAM_GAME_STATS, TENS, refAsOf, refsFor } from './references';
 import { FACT_KINDS } from './types';
 import {
   careerHigh, clippersRank, groupCompany, groupFirstSince, groupSeasonHigh, leagueRank, milestoneFirstSince,
@@ -205,6 +205,34 @@ describe('postgame references are bounded at the fact date (R2)', () => {
     expect(TENS.match(/COALESCE\(pb\.\w+ >= 10, FALSE\)::int/g)).toHaveLength(5);
     expect(TENS).not.toMatch(/\(pb\.\w+ >= 10\)::int/);
     for (const c of COMBOS.filter((x) => x.key !== 'triple_double')) expect(c.cond, c.key).toMatch(/^COALESCE\(.*\) AND COALESCE\(.*\)$/);
+  });
+  it('team stat refs: Clippers group and league sets bounded at the game date (R2); loss margin gets no league set', () => {
+    const teamFact = {
+      ...night, kind: 'team_game_stat' as const, stat: 'team_pts', value: 132, subject: { type: 'team' as const, id: '1', name: 'Clippers' },
+      data: { thing: '132-point game', best: 'most points in a game', by: 'by the Clippers', formatted: '132' },
+    };
+    const refs = refsFor(teamFact, ctx)!;
+    expect(refs).toMatchObject({ subject: null, betterIsHigher: true, ordinal: true, leagueMin: 500, start: { season_id: 2020 } });
+    expect(refs.group!.params).toEqual(['1', 2020, '2025-11-28']);
+    expect(refs.league!.params).toEqual([2025, '2025-11-28']);
+    const same = { ...teamFact, context: { ...teamFact.context, date: '2026-02-25' } };
+    expect(refsFor(same, ctx)!.group!.params).toEqual(['1', 2020, '2026-02-25']);
+    expect(refsFor({ ...teamFact, stat: 'loss_margin' }, ctx)!.league).toBeNull();
+    expect(refsFor({ ...teamFact, stat: 'opp_pts_low' }, ctx)!.betterIsHigher).toBe(false);
+    expect(refsFor({ ...teamFact, stat: 'nope' }, ctx)).toBeNull();
+    expect(refsFor(teamFact, makeCtx({ league: { complete: false, reason: 'x' } }))!.league).toBeNull();
+    expect(Object.keys(TEAM_GAME_STATS).sort()).toEqual(['loss_margin', 'margin', 'opp_pts_low', 'team_fg3m', 'team_fg_pct', 'team_pts']);
+  });
+  it('a team league rank needs its own 500-game sample, not the player 2000', () => {
+    const teamFact = { ...night, kind: 'team_game_stat' as const, stat: 'team_pts', value: 132, subject: { type: 'team' as const, id: '1', name: 'Clippers' } };
+    expect(leagueRank.interpret([{ rank: 1, total: 600 }], teamFact, ctx)).toMatchObject({ type: 'league_rank', who: 'league' });
+    expect(leagueRank.interpret([{ rank: 1, total: 400 }], teamFact, ctx)).toBeNull();
+    expect(leagueRank.interpret([{ rank: 1, total: 600 }], night, ctx)).toBeNull();
+  });
+  it('the double-double predicate is NULL-safe like the combos', () => {
+    expect(DOUBLE_DOUBLE.match(/COALESCE\(pb\.\w+ >= 10, FALSE\)::int/g)).toHaveLength(5);
+    expect(DOUBLE_DOUBLE).not.toMatch(/\(pb\.\w+ >= 10\)::int/);
+    expect(DOUBLE_DOUBLE).toMatch(/>= 2$/);
   });
   it('a combo with nobody earlier is not "the most" (only_one comes from the company question)', () => {
     expect(groupFirstSince.interpret([], combo, ctx)).toBeNull();

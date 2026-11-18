@@ -214,10 +214,10 @@ export const leagueRank: Question = {
        COUNT(*)::int AS total
 FROM ref`);
   },
-  interpret(rows) {
+  interpret(rows, fact, ctx) {
     const rank = num(rows[0]?.rank);
     const total = num(rows[0]?.total);
-    if (rank === null || total === null || total < MIN_LEAGUE_SAMPLE) return null;
+    if (rank === null || total === null || total < (refsFor(fact, ctx)?.leagueMin ?? MIN_LEAGUE_SAMPLE)) return null;
     const strength = rankStrength(rank);
     return strength === null ? null : frame('league_rank', strength, 'league', { rank, total });
   },
@@ -420,6 +420,7 @@ export const QUESTIONS_BY_KIND: Record<FactKind, readonly Question[]> = {
   last_meeting: [],
   player_game_stat: GAME_QUESTIONS,
   player_combo: GAME_QUESTIONS,
+  team_game_stat: GAME_QUESTIONS,
 };
 
 export function questionsFor(fact: Fact): readonly Question[] {

@@ -17,6 +17,8 @@ export interface RefSpec {
   betterIsHigher: boolean;
   /** false for 0/1 facts (combos): no ranks, highs or career highs. */
   ordinal: boolean;
+  /** Minimum league sample for a league_rank frame (default MIN_LEAGUE_SAMPLE). */
+  leagueMin?: number;
 }
 
 export interface PlayerGameStat { column: string; noun: string; plural: string; label: string }
@@ -98,6 +100,9 @@ export interface ComboDef { key: 'pts30_reb10' | 'pts30_ast10' | 'triple_double'
 const atLeast = (col: string, n: number) => `COALESCE(pb.${col} >= ${n}, FALSE)`;
 export const TENS = `(${['points', 'rebounds', 'assists', 'steals', 'blocks'].map((c) => `${atLeast(c, 10)}::int`).join(' + ')})`;
 
+/** Two or more categories at 10 (NULL-safe like TENS). */
+export const DOUBLE_DOUBLE = `${TENS} >= 2`;
+
 /** Combined lines (non-ordinal: did it or didn't). */
 export const COMBOS: ComboDef[] = [
   { key: 'pts30_reb10', cond: `${atLeast('points', 30)} AND ${atLeast('rebounds', 10)}`, thing: '30-point, 10-rebound game' },
@@ -120,12 +125,81 @@ function comboRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
   };
 }
 
+export interface TeamGameStat {
+  /** SQL over game_team_box_scores t (Clippers) and o (opponent). */
+  expr: string;
+  betterIsHigher: boolean;
+  /** At or past this value the fact is built (<= for lower-is-better). */
+  floor: number;
+  when: 'any' | 'W' | 'L';
+  polarity: 'positive' | 'negative';
+  thing: (v: number) => string;
+  best: string;
+  fmt: (v: number) => string;
+}
+
+const pct1 = (v: number) => `${(v * 100).toFixed(1)}%`;
+
+export const TEAM_GAME_STATS: Record<'team_pts' | 'team_fg3m' | 'team_fg_pct' | 'margin' | 'loss_margin' | 'opp_pts_low', TeamGameStat> = {
+  team_pts: { expr: 't.points', betterIsHigher: true, floor: 120, when: 'any', polarity: 'positive', thing: (v) => `${v}-point game`, best: 'most points in a game', fmt: String },
+  team_fg3m: { expr: 't.fg3_made', betterIsHigher: true, floor: 18, when: 'any', polarity: 'positive', thing: (v) => `${v}-three game`, best: 'most threes in a game', fmt: String },
+  team_fg_pct: { expr: 't.fg_made::float8 / NULLIF(t.fg_attempted, 0)', betterIsHigher: true, floor: 0.55, when: 'any', polarity: 'positive', thing: (v) => `${pct1(v)} shooting game`, best: 'best shooting game', fmt: pct1 },
+  margin: { expr: 't.points - o.points', betterIsHigher: true, floor: 20, when: 'W', polarity: 'positive', thing: (v) => `${v}-point win`, best: 'largest win', fmt: String },
+  loss_margin: { expr: 'o.points - t.points', betterIsHigher: true, floor: 20, when: 'L', polarity: 'negative', thing: (v) => `${v}-point loss`, best: 'worst loss', fmt: String },
+  opp_pts_low: { expr: 'o.points', betterIsHigher: false, floor: 95, when: 'any', polarity: 'positive', thing: (v) => `game allowing ${v}`, best: 'fewest points allowed', fmt: String },
+};
+
+const teamColumns = (expr: string) =>
+  `(${expr})::float8 AS value, g.game_id::text AS game_id, g.game_date::text AS game_date,
+       g.season_id::int AS season_id, t.team_id::text AS subject_id, tt.name AS subject_name`;
+const teamFrom = `FROM game_team_box_scores t
+JOIN game_team_box_scores o ON o.game_id = t.game_id AND o.team_id <> t.team_id
+JOIN games g ON g.game_id = t.game_id
+JOIN teams tt ON tt.team_id = t.team_id`;
+
+export function clippersTeamRef(expr: string, lacTeamId: string, start: RecordsStart, asOf: string): ProofQuery {
+  return {
+    sql: `SELECT ${teamColumns(expr)}
+${teamFrom}
+WHERE t.team_id = $1::bigint AND ${REGULAR_SEASON} AND g.season_id >= $2::int AND g.game_date <= $3::date AND (${expr}) IS NOT NULL`,
+    params: [lacTeamId, start.season_id, asOf],
+  };
+}
+
+export function leagueSeasonTeamRef(expr: string, seasonId: number, asOf: string): ProofQuery {
+  return {
+    sql: `SELECT ${teamColumns(expr)}
+${teamFrom}
+WHERE g.season_id = $1::int AND ${REGULAR_SEASON} AND g.game_date <= $2::date AND (${expr}) IS NOT NULL`,
+    params: [seasonId, asOf],
+  };
+}
+
+function teamStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
+  const stat = TEAM_GAME_STATS[fact.stat as keyof typeof TEAM_GAME_STATS];
+  if (!stat) return null;
+  const asOf = refAsOf(fact, ctx);
+  return {
+    group: ctx.recordsStart ? clippersTeamRef(stat.expr, ctx.lac.teamId, ctx.recordsStart, asOf) : null,
+    subject: null,
+    // A loss margin ranks only against the Clippers' own losses (a league set would mix winners in); league coverage covers the stats season only.
+    league: ctx.league.complete && fact.stat !== 'loss_margin' && (fact.seasonId ?? ctx.season.id) === ctx.season.id
+      ? leagueSeasonTeamRef(stat.expr, ctx.season.id, asOf) : null,
+    start: ctx.recordsStart,
+    betterIsHigher: stat.betterIsHigher,
+    ordinal: true,
+    leagueMin: 500,
+  };
+}
+
 export function refsFor(fact: Fact, ctx: EngineContext): RefSpec | null {
   switch (fact.kind) {
     case 'player_game_stat':
       return playerStatRefs(fact, ctx);
     case 'player_combo':
       return comboRefs(fact, ctx);
+    case 'team_game_stat':
+      return teamStatRefs(fact, ctx);
     default:
       return null;
   }

@@ -9,6 +9,7 @@ import { playerComboTemplates, playerLineTemplates } from './player-line.js';
 import { recentFormTemplates } from './recent-form.js';
 import type { TemplateModule } from './shared.js';
 import { standingsTemplates } from './standings.js';
+import { teamLineTemplates } from './team-line.js';
 import { streakTemplates } from './streak.js';
 import { yoyTemplates } from './yoy.js';
 
@@ -24,4 +25,5 @@ export const TEMPLATES: Record<FactKind, TemplateModule> = {
   last_meeting: lastMeetingTemplates,
   player_game_stat: playerLineTemplates,
   player_combo: playerComboTemplates,
+  team_game_stat: teamLineTemplates,
 };

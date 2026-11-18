@@ -5,6 +5,9 @@ import { seasonLabel } from '../../schedule-utils.js';
 import { fmtDate } from './dates.js';
 import type { EngineContext, Fact } from './types.js';
 
+/** Postgame ranks are frozen at the game date, so they read "so far in {label}" like the draft text (run.ts). */
+const seasonWording = (f: Fact, label: string) => (f.surface === 'postgame' ? `so far in ${label}` : `in ${label}`);
+
 /** Game-level facts: a ladder of the company joined, else the league rank. */
 export function gameStatEvidence(f: Fact, fr: Frame, seasonText: string): Evidence | null {
   if (fr.type === 'joins_company' && fr.proof_rows.length > 0) {
@@ -20,7 +23,7 @@ export function gameStatEvidence(f: Fact, fr: Frame, seasonText: string): Eviden
   const rank = fr.type === 'league_rank' ? fr.rank : f.data.rank;
   const total = fr.type === 'league_rank' ? fr.total : f.data.total;
   if (rank === undefined || total === undefined) return null;
-  return { type: 'rank_track', rank, total, betterIsHigher: true, label: `NBA player games in ${seasonText}` };
+  return { type: 'rank_track', rank, total, betterIsHigher: true, label: `NBA ${f.kind === 'team_game_stat' ? 'team' : 'player'} games ${seasonWording(f, seasonText)}` };
 }
 
 export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
@@ -52,6 +55,7 @@ export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
         betterIsHigher: d.higherIsBetter ?? true,
       };
     case 'player_game_stat':
+    case 'team_game_stat':
       return gameStatEvidence(f, fr, season);
     default:
       return null;
