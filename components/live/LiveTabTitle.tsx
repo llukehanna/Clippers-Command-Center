@@ -28,8 +28,8 @@ export function LiveTabTitle({ game }: { game: LiveGame }) {
     if (final) return
     const link = document.createElement('link')
     link.rel = 'icon'
-    link.type = 'image/svg+xml'
-    link.href = '/favicon-live.svg'
+    link.type = 'image/png'
+    link.href = '/favicon-live.png'
     link.dataset.live = 'true'
     document.head.appendChild(link)
     return () => link.remove()
