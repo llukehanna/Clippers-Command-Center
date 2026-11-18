@@ -2,7 +2,7 @@
 // One-time import of historical games from the Kaggle "Historical NBA Data and
 // Player Box Scores" CSVs (CC0), run LOCALLY against the production database.
 //
-// Writes (see Docs/superpowers/specs/2026-11-17-history-archive-games-design.md §2):
+// Writes:
 //   - per-game rows (all_games + team/player box scores) for Clippers games
 //     1970-2018, every 2019-20 game (gap fill), and league games 1996-2018,
 //     newest first. Never 2020-21 or later: the live pipeline owns those.

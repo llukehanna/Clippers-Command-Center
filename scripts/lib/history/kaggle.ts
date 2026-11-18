@@ -204,9 +204,7 @@ function reqHome(cell: string | undefined): boolean {
  * Untracked stats are null by era. The first season (start year) each stat was
  * recorded; for earlier games parsePlayerGame forces it to null whatever the
  * cell says, because NBA.com-derived data can write 0 for "not recorded".
- * Source: the spec's "Data completeness by era" section
- * (Docs/superpowers/specs/2026-11-17-history-archive-games-design.md, from
- * Basketball-Reference's coverage table): steals and blocks start in 1973-74
+ * Source: Basketball-Reference's coverage table: steals and blocks start in 1973-74
  * (offensive/defensive rebounds with them), turnovers in 1977-78, 3-pointers in
  * 1979-80. Plus-minus is NBA.com's, from 1996-97. Total rebounds, points, FG and
  * FT are complete for every era and are never masked.
