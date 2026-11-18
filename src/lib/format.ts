@@ -16,6 +16,14 @@ const INSIGHT_CATEGORY_LABELS: Record<string, string> = {
   run: 'Scoring Run',
   clutch: 'Clutch',
   comeback: 'Comeback',
+  league_rank: 'League Rank',
+  standings: 'Standings',
+  recent_form: 'Recent Form',
+  yoy_change: 'Year over Year',
+  opp_rank: 'Scouting Report',
+  h2h: 'Head to Head',
+  last_meeting: 'Last Meeting',
+  league_night: 'Big Night',
 }
 
 /** Display label for an insight category ("league_comparison" → "League Rank"). */

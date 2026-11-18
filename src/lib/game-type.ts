@@ -1,7 +1,7 @@
 // src/lib/game-type.ts
 // Regular season vs play-in vs playoffs. games.is_playoffs is false for the
 // play-in, whose official NBA ids are 005YY…… (stored without leading zeros:
-// 50,000,000–59,999,999). Mirrors REGULAR_SEASON in scripts/lib/insights/context.ts.
+// 50,000,000–59,999,999). Mirrors REGULAR_SEASON in scripts/lib/sql-fragments.ts.
 
 export type GameType = 'regular' | 'play_in' | 'playoffs';
 

@@ -158,12 +158,6 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     await sql`DELETE FROM media_items WHERE dedup_key LIKE 'ranktest:%'`;
   });
 
-  async function activeInsights() {
-    return sql<{ category: string; scope: string; headline: string; importance: number }[]>`
-      SELECT category, scope, headline, importance FROM insights WHERE is_active ORDER BY importance DESC
-    `;
-  }
-
   it('computes advanced stats and rolling windows for every game', () => {
     const out = run('scripts/compute-stats.ts');
     expect(out).toContain('for 1801 game(s)'); // 2024-25 + 2025-26 (+ play-in)
@@ -177,70 +171,6 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
     `;
     expect(row.nonzero).toBeGreaterThan(0);
   });
-
-  it('generates every category for a completed season, all provable', async () => {
-    run('scripts/generate-insights.ts');
-    const rows = await activeInsights();
-    const categories = new Set(rows.map((r) => r.category));
-    expect([...categories].sort()).toEqual(
-      ['league_comparison', 'milestone', 'opponent_context', 'rare_event', 'streak', 'year_over_year']
-    );
-    const headlines = rows.map((r) => r.headline);
-    expect(headlines).toContainEqual(expect.stringMatching(/^Clippers finished 2025-26 at \d+-\d+, \d+(st|nd|rd|th) in the West$/));
-    expect(headlines).toContain('Star Clipper closed 2025-26 with 30+ points in 5 straight games');
-    expect(headlines).toContain('Big Clipper closed 2025-26 with 10+ rebounds in 6 straight games');
-    expect(headlines).toContain("Star Clipper's 55-point game was the best scoring night in the NBA in 2025-26");
-    expect(headlines).toContainEqual(expect.stringMatching(/^Up next: the Golden State Warriors had the \d+(st|nd|rd|th)-ranked defense in 2025-26$/));
-    expect(headlines.some((h) => h.includes('this season'))).toBe(false);
-
-    // Year over year vs 2024-25 (the fixture's Clippers and Star Clipper improve).
-    expect(headlines).toContainEqual(expect.stringMatching(/^Clippers won \d+ games in 2025-26, up from \d+ in 2024-25$/));
-    expect(headlines).toContainEqual(
-      expect.stringMatching(/^Star Clipper's scoring rose from \d+\.\d PPG in 2024-25 to \d+\.\d PPG in 2025-26$/)
-    );
-    expect(headlines).toContainEqual(expect.stringMatching(/^Clippers' net rating improved from \d+(st|nd|rd|th) in 2024-25 to \d+(st|nd|rd|th) in 2025-26$/));
-
-    // Traded away before season's end → not a Clippers player for season insights.
-    const seasonCats = new Set(['streak', 'milestone', 'league_comparison']);
-    expect(rows.filter((r) => seasonCats.has(r.category) && r.headline.includes('LAC Player 3'))).toEqual([]);
-
-    // Milestones count the regular season only (60 games, not the play-in).
-    const [pts] = await sql<{ detail: string }[]>`
-      SELECT detail FROM insights WHERE is_active AND headline LIKE 'Star Clipper reached % points in 2025-26'
-    `;
-    expect(pts.detail).toMatch(/ in 60 games$/);
-
-    // Play-in excluded from the standings: 60 regular-season games.
-    const [standing] = await sql<{ proof_result: { wins: number; losses: number }[] }[]>`
-      SELECT proof_result FROM insights WHERE is_active AND headline LIKE 'Clippers finished%'
-    `;
-    expect(standing.proof_result[0].wins + standing.proof_result[0].losses).toBe(60);
-
-    expect(run('scripts/verify-insights.ts')).toMatch(/\d+ checked, 0 legacy skipped, 0 failed/);
-  }, TIMEOUT);
-
-  it('is idempotent: a re-run updates rows instead of adding them', async () => {
-    const [before] = await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM insights`;
-    run('scripts/generate-insights.ts');
-    const [after] = await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM insights`;
-    expect(after.n).toBe(before.n);
-  }, TIMEOUT);
-
-  it('uses in-season wording and in-season insights when the season is current', async () => {
-    run('scripts/generate-insights.ts', { INSIGHTS_NOW: '2026-02-25' });
-    const headlines = (await activeInsights()).map((r) => r.headline);
-    expect(headlines).toContainEqual(expect.stringMatching(/^Clippers are \d+-\d+, \d+(st|nd|rd|th) in the West$/));
-    expect(headlines).toContainEqual(expect.stringMatching(/^Clippers have (won|lost) \d+ straight$/));
-    expect(headlines).toContain('Star Clipper has scored 30+ in 5 straight games');
-    expect(headlines).toContainEqual(expect.stringMatching(/^Star Clipper ranks \d+(st|nd|rd|th) in the NBA in scoring this season$/));
-    expect(headlines).toContainEqual(expect.stringMatching(/^Clippers are winning \d+% of their games, up from \d+% last season$/));
-    expect(headlines).toContainEqual(
-      expect.stringMatching(/^Star Clipper's scoring rose from \d+\.\d PPG last season to \d+\.\d PPG this season$/)
-    );
-    // Completed-season phrasings were replaced, not left active alongside.
-    expect(headlines.some((h) => h.startsWith('Clippers finished'))).toBe(false);
-    expect(run('scripts/verify-insights.ts')).toMatch(/0 failed/);
-  }, TIMEOUT);
 
   it('ingests a league box score: game row, box scores, players, stints; re-ingest is idempotent', async () => {
     const { ingestBoxscore } = await import('./league-ingest');

@@ -62,8 +62,15 @@ jobs:
       - name: Compute stats
         run: npm run compute-stats
 
+      # The insight framer reads rb_streaks; rebuild it from the backfilled box scores.
+      - name: Build record book
+        run: npm run build-record-book
+
       - name: Generate insights
         run: npm run generate-insights
+
+      - name: Verify insight proofs
+        run: npm run verify-insights
 
       - name: Report finalize failures
         if: steps.finalize.outcome == 'failure'
