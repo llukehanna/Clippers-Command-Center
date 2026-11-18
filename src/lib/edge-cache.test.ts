@@ -70,6 +70,11 @@ describe('isCacheableRequest', () => {
 })
 
 describe('cacheKey', () => {
+  it('keys on the deployed version so a deploy never serves an older build', () => {
+    expect(cacheKey(get('/home'), 'v1').url).not.toBe(cacheKey(get('/home'), 'v2').url)
+    expect(cacheKey(get('/home'), 'v1').url).toBe(cacheKey(get('/home'), 'v1').url)
+  })
+
   it('keys on the URL, keeping HTML and RSC apart', () => {
     const doc = cacheKey(get('/home?_rsc=abc'))
     const rsc = cacheKey(get('/home?_rsc=abc', { RSC: '1' }))

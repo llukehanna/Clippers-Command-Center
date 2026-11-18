@@ -25,13 +25,14 @@ const CANONICAL_ORIGIN = 'https://clippers.lukeghanna.com'
 const REDIRECT_HOSTS = new Set(['ccc.lukeghanna.com'])
 
 const worker = {
-  async fetch(request: Request, env: unknown, ctx: WaitUntil): Promise<Response> {
+  async fetch(request: Request, env: { CF_VERSION_METADATA?: { id?: string } }, ctx: WaitUntil): Promise<Response> {
     const url = new URL(request.url)
     if (REDIRECT_HOSTS.has(url.hostname)) {
       return Response.redirect(`${CANONICAL_ORIGIN}${url.pathname}${url.search}`, 301)
     }
     const store = (caches as unknown as { default: EdgeCacheStore }).default
-    return serveWithEdgeCache(request, () => app.fetch(request, env, ctx), { store, ctx })
+    const version = env.CF_VERSION_METADATA?.id
+    return serveWithEdgeCache(request, () => app.fetch(request, env, ctx), { store, ctx, version })
   },
 }
 
