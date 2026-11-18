@@ -295,15 +295,21 @@ The “provable” fact system used for rotating wow-facts and contextual alerts
 
 **Key fields**
 - `scope`: `"live" | "between_games" | "historical"`
-- `category`: `"milestone" | "streak" | "run" | "comparison" | ...`
+- `category`: the fact kind (`streak`, `milestone`, `league_rank`, `standings`, `recent_form`, `yoy_change`, `opp_rank`, `h2h`, `last_meeting`, `league_night`, …)
 - `headline`: short display text
-- `detail`: optional second line
+- `detail`: the context line (the frame, in words)
 - `importance`: 0–100 ranking used by selection algorithm
 - `valid_from`, `valid_to`: optional lifecycle for live insights
 - `is_active`
+- `surface`: `"live" | "pregame" | "postgame" | "season" | "player"` (v2 engine; NULL = a v1 row, deactivated by the first v2 run)
+- `frame`: `{ type, strength, who, text, proof_rows, since_date?, records_label?, … }` — the reference frame (`career_high`, `records_best`, `first_since`, …); frames only search seasons since `insights.records_start`
+- `evidence`: evidence spec for the card visual (`streak_strip`, `rank_track`, `history_ladder`, `delta`, `milestone_progress`, `margin_spark`)
+- `entities`: `[{ type: player|team|game, id, name }]`
+- `score_parts`: every scorer term (p, rarity, frame strength, salience, recency, polarity, novelty, importance)
+- `first_emitted_at`: set when the claim is first stored, never updated (novelty)
 
 **Proof fields (required for provable insights)**
-- `proof_sql`: SQL statement that proves the claim
+- `proof_sql`: one statement proving the claim — `WITH fact_rows AS (…), frame_rows AS (…) SELECT part, data …`; `verify-insights` re-runs it
 - `proof_params`: JSON parameters used by the query
 - `proof_result`: JSON snapshot of returned results supporting the claim
 - `proof_hash`: optional hash of proof package
