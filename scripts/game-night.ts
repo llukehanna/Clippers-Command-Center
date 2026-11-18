@@ -10,7 +10,8 @@
 //    in scripts/lib/live-cadence.ts (2–30 s by game phase) via
 //    scripts/lib/live-poller.ts, writing live_state on every change.
 // 3. When the scoreboard says Final, finalizes the game (box scores, stints,
-//    advanced stats), asks the workflow to start the post-game pipeline
+//    advanced stats; from ESPN's summary, provisionally, while the NBA refuses
+//    its box score — the nightly league sync swaps in the NBA's), asks the workflow to start the post-game pipeline
 //    (league sync, stats, insights — postgame=true in $GITHUB_OUTPUT; its
 //    nightly cron runs hours late) and exits. Preseason games (all_games.is_preseason)
 //    are polled the same way but never finalized: they don't count anywhere.
@@ -87,7 +88,8 @@ async function handOffIfMainMoved(): Promise<boolean> {
 
 /**
  * Finalizes the game, retrying every 15 minutes while the run has time: the
- * NBA often refuses box scores for a while after the buzzer. Out of time is
+ * NBA often refuses box scores for a while after the buzzer, and ESPN (the
+ * fallback, see lib/finalize.ts) can take a few minutes to post its final. Out of time is
  * a warning, not a failure — the nightly post-game pipeline finalizes any
  * game still without box scores.
  */

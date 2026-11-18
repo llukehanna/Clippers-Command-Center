@@ -12,13 +12,23 @@
 //              players row (nba_player_id NULL). Requires the columns from
 //              Docs/migrations/2026-09-audit.sql.
 //
+// Sources: the NBA box score (cdn.nba.com, then stats.nba.com) is official.
+// When it isn't available (the NBA refuses GitHub Actions for hours after the
+// buzzer), each attempt falls back to ESPN's game summary. An ESPN box score
+// is provisional: its team rows carry raw_payload.source = 'espn', minutes are
+// whole numbers, and players ESPN names that we can't match are left out. The
+// nightly league sync (sync-league-games) re-ingests provisional games from
+// the NBA, which replaces every row.
+//
 // Failure semantics: finalizeGame THROWS if it cannot write a complete box
 // score. All writes happen in one transaction, and the game is only marked
 // 'final' when at least one player row was written — so a failed game has no
 // box score rows and is picked up again by finalize-games.
 
+import type { Sql } from 'postgres';
 import { sql } from './db.js';
 import { fetchBoxscore } from './nba-live-client.js';
+import { espnFeeds } from './live-deps.js';
 import {
   upsertTeamBoxScore,
   upsertPlayerBoxScore,
@@ -53,6 +63,18 @@ export interface FinalizeOptions {
    * be final (gameStatus 3) with player rows; no fetch or retry happens.
    */
   boxscore?: NBABoxscoreResponse;
+  /** The official NBA box score fetch. Default: nba-live-client fetchBoxscore. */
+  fetchNba?: (gid: string) => Promise<NBABoxscoreResponse>;
+  /**
+   * ESPN's box score, tried on every attempt the NBA one isn't ready. Default:
+   * the game's ESPN summary. null turns the fallback off.
+   */
+  fetchEspn?: (() => Promise<NBABoxscoreResponse>) | null;
+}
+
+/** Box scores built from ESPN's summary (espn-live-client toBoxResponse) are provisional. */
+export function isEspnBoxscore(box: NBABoxscoreResponse): boolean {
+  return box.meta?.request === 'espn';
 }
 
 /**
@@ -110,7 +132,16 @@ export async function finalizeGame(
     );
   }
 
-  const boxscore = opts.boxscore ?? (await fetchFinalBoxscore(gid, maxRetries, retryDelayMs));
+  const boxscore =
+    opts.boxscore ??
+    (await fetchFinalBoxscore(
+      gid,
+      maxRetries,
+      retryDelayMs,
+      opts.fetchNba ?? fetchBoxscore,
+      opts.fetchEspn === undefined ? defaultEspnFetch(db, gameDbId, gid) : opts.fetchEspn
+    ));
+  const provisional = isEspnBoxscore(boxscore);
   if (boxscore.game.gameStatus !== 3) {
     throw new Error(`[finalize] ${gid}: box score is not final (gameStatus=${boxscore.game.gameStatus})`);
   }
@@ -120,17 +151,33 @@ export async function finalizeGame(
     // Cast needed because TransactionSql loses call signatures via Omit<>.
     const tx = txRaw as unknown as Db;
 
+    const [existing] = await tx<{ rows: number; provisional: boolean | null }[]>`
+      SELECT COUNT(*)::int AS rows, bool_or(raw_payload->>'source' = 'espn') AS provisional
+      FROM game_team_box_scores WHERE game_id = ${gameDbId}::bigint
+    `;
+    if (provisional && existing.rows > 0 && !existing.provisional) {
+      console.log(`[finalize] ${gid}: already has the official NBA box score; not replacing it with ESPN's`);
+      return null;
+    }
+    // A provisional box score is replaced whole: its player rows may include
+    // players the new box score resolves differently or leaves out.
+    if (existing.provisional) {
+      await tx`DELETE FROM game_player_box_scores WHERE game_id = ${gameDbId}::bigint`;
+    }
+
     const homeTeamDbId = await resolveTeamDbId(tx, homeTeam, game.home_team_id, 'home', gid);
     const awayTeamDbId = await resolveTeamDbId(tx, awayTeam, game.away_team_id, 'away', gid);
 
     // Write team box scores (use NBA-provided team aggregates directly)
     // raw_payload keeps the team statistics plus the per-period line score
     // (read by /api/history/games/[id] as game.periods).
-    const teamPayload = (t: typeof homeTeam) => JSON.stringify({ ...t.statistics, periods: t.periods ?? [] });
+    // source: 'espn' marks a provisional box score (see the header).
+    const teamPayload = (t: typeof homeTeam) =>
+      JSON.stringify({ ...t.statistics, periods: t.periods ?? [], ...(provisional ? { source: 'espn' } : {}) });
     await upsertTeamBoxScore(gameDbId, homeTeamDbId, true, homeTeam.statistics, teamPayload(homeTeam), tx);
     await upsertTeamBoxScore(gameDbId, awayTeamDbId, false, awayTeam.statistics, teamPayload(awayTeam), tx);
 
-    const resolver = new PlayerResolver(tx);
+    const resolver = new PlayerResolver(tx, provisional);
     let written = 0;
     for (const [team, teamDbId] of [
       [homeTeam, homeTeamDbId],
@@ -181,35 +228,65 @@ export async function finalizeGame(
     return written;
   });
 
-  console.log(`[finalize] Game ${gid}: team + ${playerCount} player box score rows written; marked final`);
+  if (playerCount === null) return;
+  console.log(
+    `[finalize] Game ${gid}: team + ${playerCount} player box score rows written` +
+      `${provisional ? ' from ESPN (provisional until the nightly NBA sync)' : ''}; marked final`
+  );
 }
 
 // ── Internal helpers ───────────────────────────────────────────────────────────
 
-/** Fetch the box score, retrying while the game isn't final or player rows are missing. */
+/** Why a fetched box score can't be written yet, or null when it can. */
+function notReadyReason(box: NBABoxscoreResponse): string | null {
+  const { gameStatus, homeTeam, awayTeam } = box.game;
+  if (gameStatus !== 3) return `game not final yet (gameStatus=${gameStatus})`;
+  const played = homeTeam.players.some(p => p.played === '1') || awayTeam.players.some(p => p.played === '1');
+  return played ? null : 'no player data yet';
+}
+
+async function tryFetch(fetch: () => Promise<NBABoxscoreResponse>): Promise<NBABoxscoreResponse | string> {
+  try {
+    const box = await fetch();
+    return notReadyReason(box) ?? box;
+  } catch (err) {
+    return (err as Error).message;
+  }
+}
+
+/** The game's ESPN summary as a box score; the ESPN event is looked up once. */
+function defaultEspnFetch(db: Db, gameDbId: string, gid: string): () => Promise<NBABoxscoreResponse> {
+  const feeds = espnFeeds(db as unknown as Sql, gameDbId, gid);
+  return async () => {
+    const r = await feeds.fetchBox(gid);
+    if (r.status !== 200) throw new Error(`ESPN box score HTTP ${r.status}`);
+    return r.body;
+  };
+}
+
+/**
+ * Fetch the box score, retrying while it isn't final or has no player rows.
+ * Each attempt asks the NBA first, then ESPN.
+ */
 async function fetchFinalBoxscore(
   gid: string,
   maxRetries: number,
-  retryDelayMs: number
+  retryDelayMs: number,
+  fetchNba: (gid: string) => Promise<NBABoxscoreResponse>,
+  fetchEspn: (() => Promise<NBABoxscoreResponse>) | null
 ): Promise<NBABoxscoreResponse> {
   let lastReason = 'unknown';
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const boxscore = await fetchBoxscore(gid);
-      const { gameStatus, homeTeam, awayTeam } = boxscore.game;
-      const hasPlayerData =
-        homeTeam.players.some(p => p.played === '1') ||
-        awayTeam.players.some(p => p.played === '1');
-
-      if (gameStatus !== 3) {
-        lastReason = `game not final yet (gameStatus=${gameStatus})`;
-      } else if (!hasPlayerData) {
-        lastReason = 'no player data yet (NBA API lag)';
-      } else {
-        return boxscore;
+    const nba = await tryFetch(() => fetchNba(gid));
+    if (typeof nba !== 'string') return nba;
+    lastReason = `NBA: ${nba}`;
+    if (fetchEspn) {
+      const espn = await tryFetch(fetchEspn);
+      if (typeof espn !== 'string') {
+        console.log(`[finalize] ${gid}: NBA box score unavailable (${nba}); using ESPN's`);
+        return espn;
       }
-    } catch (err) {
-      lastReason = (err as Error).message;
+      lastReason += `; ESPN: ${espn}`;
     }
     console.warn(`[finalize] ${gid} attempt ${attempt}/${maxRetries}: ${lastReason}`);
     if (attempt < maxRetries) await sleep(retryDelayMs);
@@ -258,10 +335,12 @@ async function resolveTeamDbId(
 class PlayerResolver {
   private candidates: PlayerNameCandidate[] | null = null;
 
-  constructor(private readonly tx: Db) {}
+  /** provisional: an ESPN box score, whose unmatched players carry -espnId. */
+  constructor(private readonly tx: Db, private readonly provisional = false) {}
 
   async resolve(player: BoxscorePlayer): Promise<string | null> {
     const personId = Number(player.personId);
+    if (this.provisional && Number.isSafeInteger(personId) && personId < 0) return this.resolveByNameOnly(player);
     if (!Number.isSafeInteger(personId) || personId <= 0) {
       console.warn(`[finalize] Skipping player "${player.name}": invalid personId ${player.personId}`);
       return null;
@@ -273,11 +352,7 @@ class PlayerResolver {
     if (byId) return byId.player_id;
 
     // Loaded lazily, once per game: only needed the first time a personId is unseen.
-    this.candidates ??= await this.tx<PlayerNameCandidate[]>`
-      SELECT player_id::text, display_name, first_name, last_name, is_active
-      FROM players
-      WHERE nba_person_id IS NULL
-    `;
+    this.candidates ??= await this.loadUnclaimed();
     const match = pickUniqueNameMatch(player.name, this.candidates);
     if (match) {
       this.candidates = this.candidates.filter(c => c.player_id !== match.player_id);
@@ -306,6 +381,30 @@ class PlayerResolver {
     `;
     console.log(`[finalize] New player row for ${displayName} (NBA personId ${personId})`);
     return inserted.player_id;
+  }
+
+  /**
+   * An ESPN player with no NBA personId: a unique name match, without
+   * claiming the row (there's no NBA id to record). No match → skipped; the
+   * NBA re-ingest adds them.
+   */
+  private async resolveByNameOnly(player: BoxscorePlayer): Promise<string | null> {
+    this.candidates ??= await this.loadUnclaimed();
+    const match = pickUniqueNameMatch(player.name, this.candidates);
+    if (match) {
+      this.candidates = this.candidates.filter(c => c.player_id !== match.player_id);
+      return match.player_id;
+    }
+    console.warn(`[finalize] Skipping ESPN player "${player.name}": no NBA personId and no unique name match`);
+    return null;
+  }
+
+  private loadUnclaimed(): Promise<PlayerNameCandidate[]> {
+    return this.tx<PlayerNameCandidate[]>`
+      SELECT player_id::text, display_name, first_name, last_name, is_active
+      FROM players
+      WHERE nba_person_id IS NULL
+    `;
   }
 }
 
