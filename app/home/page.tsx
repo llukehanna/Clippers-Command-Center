@@ -5,6 +5,7 @@ import { SeasonPanel } from '@/components/home/SeasonPanel'
 import { LastTenPanel } from '@/components/home/LastTenPanel'
 import { PlayerLeaders } from '@/components/home/PlayerLeaders'
 import { BuzzPanel } from '@/components/home/BuzzPanel'
+import { HomeLive } from '@/components/home/HomeLive'
 import { InsightStack } from '@/components/insights/InsightStack'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { Chip } from '@/components/ui/chip'
@@ -78,7 +79,9 @@ export default async function HomePage() {
   return (
     <div className="page">
       <section className="enter grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 0 }}>
-        <NextGamePanel game={next} context={nextContext} />
+        <HomeLive>
+          <NextGamePanel game={next} context={nextContext} />
+        </HomeLive>
         {snapshot && (
           <SeasonPanel
             title={isPastSeason ? 'Last season' : 'This season'}
