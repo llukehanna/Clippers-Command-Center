@@ -6,7 +6,7 @@
 
 export const ESPN_CACHE_TTL_SECONDS = 900;
 
-export async function fetchEspnJson(url: string, timeoutMs = 4000): Promise<unknown | null> {
+export async function fetchEspnJson(url: string, timeoutMs = 8000): Promise<unknown | null> {
   try {
     const res = await fetch(url, {
       signal: AbortSignal.timeout(timeoutMs),
