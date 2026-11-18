@@ -106,7 +106,9 @@ export function LiveView({
   const lac: ScoreSide = { abbr: lacSide.abbreviation ?? 'LAC', name: lacSide.name, score: lacSide.score }
   const opp: ScoreSide = { abbr: oppSide.abbreviation, name: oppSide.name, score: oppSide.score }
   const oppAbbr = opp.abbr ?? 'OPP'
-  const delayed = state === 'DATA_DELAYED'
+  // /live keeps a game up for half an hour after the buzzer: show it as final, not live.
+  const final = game.status === 'final'
+  const delayed = !final && state === 'DATA_DELAYED'
 
   const odds = data.odds
   const probs = odds ? noVigProbabilities(lacHome ? odds.moneyline_home : odds.moneyline_away, lacHome ? odds.moneyline_away : odds.moneyline_home) : null
@@ -125,7 +127,7 @@ export function LiveView({
   return (
     <div className="page">
       <LiveTabTitle game={game} />
-      <StickyScore sentinel={scoreRef} lac={lac} opp={opp} period={game.period} clock={game.clock} delayed={delayed} />
+      <StickyScore sentinel={scoreRef} lac={lac} opp={opp} period={game.period} clock={game.clock} delayed={delayed} final={final} />
 
       {/* z-10: .enter's animation gives every section its own stacking context; the
           spoiler control's popover has to paint over the sections below. */}
@@ -134,7 +136,8 @@ export function LiveView({
           lac={lac}
           opp={opp}
           lacHome={lacHome}
-          mode={delayed ? 'delayed' : 'live'}
+          mode={final ? 'final' : delayed ? 'delayed' : 'live'}
+          status={final ? game.status_text || 'Final' : null}
           period={game.period}
           clock={game.clock}
           tag={game.is_preseason ? 'Preseason' : null}
@@ -252,7 +255,7 @@ export function LiveView({
             </div>
           ) : (
             <Panel className="p-5 text-[14px] text-mute">
-              {delayed ? 'Insights pause while the feed is delayed.' : 'Scoring runs and clutch moments show up here as they happen.'}
+              {delayed ? 'Insights pause while the feed is delayed.' : 'Scoring runs, comebacks and clutch moments show up here as they happen.'}
             </Panel>
           )}
         </div>

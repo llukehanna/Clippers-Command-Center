@@ -8,6 +8,7 @@ import type { LiveStateDoc } from '../types/live-state';
 import type { BoxScorePlayer, BoxValue, Insight, KeyMetric, LiveGame, LivePayload } from '../ui/types';
 import type { MetaEnvelope } from '../api-utils';
 import { generateLiveInsights } from '../insights/live';
+import { flowMoments } from './moments';
 
 // ── Key metrics computation ───────────────────────────────────────────────────
 
@@ -207,11 +208,19 @@ export interface LiveInsightInput {
   home_score: number;
   away_score: number;
   recent_scoring: LiveStateDoc['recent_scoring'];
+  /** Game flow (runs, margins); without it runs come from the recent-scoring window. */
+  flow?: LiveStateDoc['flow'];
+  lac_abbr?: string;
+  opp_abbr?: string;
 }
 
-/** Live run/clutch insights, shaped like the route has always returned them. */
+/**
+ * Live insights: the game's moments from the flow series (every run, a
+ * comeback — see ./moments.ts) plus the clutch card. Rows saved before the
+ * flow existed fall back to the recent-scoring run detector.
+ */
 export function liveInsights(s: LiveInsightInput): Insight[] {
-  return generateLiveInsights(
+  const candidates = generateLiveInsights(
     {
       game_id: s.game_id,
       period: s.period,
@@ -223,14 +232,20 @@ export function liveInsights(s: LiveInsightInput): Insight[] {
       recent_scoring: s.recent_scoring,
     },
     { home_rolling_10: null, away_rolling_10: null }
-  ).map((c, idx) => ({
-    insight_id: `live-${s.game_id}-${idx}`,
+  );
+  const moments = s.flow?.points.length
+    ? flowMoments(s.flow, { game_id: s.game_id, lac: s.lac_abbr ?? 'LAC', opp: s.opp_abbr ?? 'OPP' })
+    : null;
+  const kept = moments ? candidates.filter((c) => c.category !== 'run') : candidates;
+  const legacy = kept.map((c, idx) => ({
+    insight_id: `live-${s.game_id}-${c.category}-${idx}`,
     category: c.category,
     headline: c.headline,
     detail: c.detail,
     importance: c.importance,
     proof: { summary: c.category, result: c.proof_result[0] ?? null },
   }));
+  return [...legacy, ...(moments ?? [])];
 }
 
 /**
@@ -272,6 +287,9 @@ export function overlayLiveDoc(base: LivePayload, doc: LiveStateDoc): LivePayloa
       home_score: doc.home_score,
       away_score: doc.away_score,
       recent_scoring: doc.recent_scoring,
+      flow: doc.flow,
+      lac_abbr: lacAbbr,
+      opp_abbr: oppAbbr,
     }),
     other_games: doc.other_games,
     cadence: doc.cadence,

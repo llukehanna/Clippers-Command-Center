@@ -7,7 +7,6 @@
 /*
  * CCC design system — hybrid of lukeghanna.com materials and the Clippers
  * palette (Naval #0C2340, Ember #C8102E, Pacific #418FDE).
- * Spec: docs/superpowers/specs/2026-09-27-premium-ui-redesign-design.md
  */
 
 @theme inline {
@@ -95,6 +94,14 @@
   html {
     background: var(--ink-0);
     -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  a,
+  button,
+  select,
+  summary,
+  [role="button"] {
+    touch-action: manipulation;
   }
   body {
     /* Transparent so the ambient light layers (body::before/::after, painted
@@ -174,6 +181,19 @@
   .page > * {
     min-width: 0;
   }
+  /* Landscape phones: keep content clear of the notch. */
+  @supports (padding: max(0px)) {
+    .page {
+      padding-left: max(14px, env(safe-area-inset-left));
+      padding-right: max(14px, env(safe-area-inset-right));
+    }
+    @media (min-width: 640px) {
+      .page {
+        padding-left: max(22px, env(safe-area-inset-left));
+        padding-right: max(22px, env(safe-area-inset-right));
+      }
+    }
+  }
 
   /* ── Liquid glass ─────────────────────────────────────────────────────────
      .panel     frosted surface: translucent fill, backdrop blur + saturation,
@@ -229,8 +249,10 @@
     transition: opacity 0.4s var(--ease-premium);
     z-index: -1;
   }
-  .panel:hover::before {
-    opacity: 1;
+  @media (hover: hover) and (pointer: fine) {
+    .panel:hover::before {
+      opacity: 1;
+    }
   }
   .panel-inset {
     position: relative;
@@ -313,8 +335,13 @@
   .row-hover {
     transition: background-color 0.25s var(--ease-premium);
   }
-  .row-hover:hover {
-    background: rgba(255, 255, 255, 0.035);
+  @media (hover: hover) {
+    .row-hover:hover {
+      background: rgba(255, 255, 255, 0.035);
+    }
+  }
+  .row-hover:active {
+    background: rgba(255, 255, 255, 0.05);
   }
 
   /* Staggered fade-up on page load */
@@ -347,9 +374,34 @@
 }
 
 /* Page-to-page transitions (React <ViewTransition default="page">). The top
-   bar keeps its own name so it stays still while the page crossfades. */
-[data-topbar] {
+   bar and tab bar keep their own names so they stay still while the page
+   crossfades. The name goes on the glass element itself, not its wrapper: a
+   view-transition-name makes an element a backdrop root, and a backdrop-filter
+   inside one can only blur what is inside it (nothing), not the page. */
+[data-topbar] > .glass-bar {
   view-transition-name: topbar;
+}
+[data-tabbar] > .glass-bar {
+  view-transition-name: tabbar;
+}
+
+/* Phones: room for the floating tab bar, and lighter glass. Every blurred
+   panel re-samples what is behind it while scrolling, so phones get a smaller
+   blur radius and a still (not drifting) light field to keep scrolling smooth
+   and the battery cool. */
+@media (max-width: 767px) {
+  main {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
+  }
+  .panel {
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    backdrop-filter: blur(18px) saturate(180%);
+  }
+}
+@media (pointer: coarse) {
+  body::before {
+    animation: none;
+  }
 }
 ::view-transition-old(.page) {
   animation: ccc-vt-out 160ms ease-out both;

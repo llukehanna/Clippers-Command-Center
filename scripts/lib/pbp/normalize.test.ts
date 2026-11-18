@@ -91,7 +91,8 @@ describe('normalizePbp team ids in person fields', () => {
 // Real samples saved by scripts/dev/capture-pbp-fixture.ts. Every made shot and
 // free throw must add up to the final score — this validates classification.
 const FIXTURES = path.join(__dirname, '__fixtures__');
-const real = fs.existsSync(FIXTURES) ? fs.readdirSync(FIXTURES).filter((f) => f.endsWith('.json')) : [];
+// NBA feeds only; the ESPN summary fixture goes through espnToRaw first (espn.test.ts).
+const real = fs.existsSync(FIXTURES) ? fs.readdirSync(FIXTURES).filter((f) => /^(cdn|stats)-.*\.json$/.test(f)) : [];
 describe.skipIf(real.length === 0)('normalizePbp on captured games', () => {
   for (const file of real) {
     it(`${file}: made shots + free throws equal the final score`, () => {
