@@ -4,12 +4,10 @@
 // clock and period only — everything runner-derived stays as last seen.
 
 import type { LivePayload } from '../ui/types';
+import { espnTricode as tricode } from '../espn/tricode';
 
 export const ESPN_SCOREBOARD_URL = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard';
 export const BACKUP_STALE_REASON = 'backup feed (ESPN)';
-
-// ESPN abbreviations that differ from NBA tricodes.
-const ESPN_TO_NBA: Record<string, string> = { GS: 'GSW', NY: 'NYK', SA: 'SAS', NO: 'NOP', UTAH: 'UTA', WSH: 'WAS' };
 
 export interface EspnScore {
   home: number;
@@ -23,8 +21,6 @@ export interface EspnScore {
 interface EspnCompetitor { homeAway?: string; score?: string; team?: { abbreviation?: string } }
 interface EspnStatus { period?: number; displayClock?: string; type?: { state?: string; shortDetail?: string; completed?: boolean } }
 interface EspnEvent { competitions?: Array<{ competitors?: EspnCompetitor[]; status?: EspnStatus }>; status?: EspnStatus }
-
-const tricode = (abbr: string | undefined) => (abbr ? ESPN_TO_NBA[abbr] ?? abbr : '');
 
 export function espnScoreboardUrl(gameDate: string): string {
   return `${ESPN_SCOREBOARD_URL}?dates=${gameDate.replaceAll('-', '')}`;
