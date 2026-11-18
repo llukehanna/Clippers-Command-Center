@@ -3,7 +3,8 @@
 // using the era-correct names for the season.
 import { NBA_TEAM_IDS } from '../nba-teams.js';
 import { TEAM_ERAS } from '../history/team-eras.js';
-import type { FranchiseId } from './types.js';
+import { OVERRIDES } from './overrides.js';
+import type { FranchiseId, Override } from './types.js';
 
 export interface Alias {
   text: string; // normalized (see norm)
@@ -33,9 +34,16 @@ function norm(text: string): string {
     .trim();
 }
 
-export function franchiseFromName(text: string, seasonId: number): FranchiseId | null {
+/**
+ * `teamName` overrides (overrides.ts) win over the alias and era tables; pass `[]` to resolve without them (the
+ * stale check in apply-overrides.ts does).
+ */
+export function franchiseFromName(text: string, seasonId: number, overrides: readonly Override[] = OVERRIDES): FranchiseId | null {
   const t = norm(text);
   if (!t) return null;
+  for (const o of overrides) {
+    if (o.kind === 'teamName' && o.match.seasonId === seasonId && norm(o.match.text) === t) return o.franchise;
+  }
   const hits = new Set<string>();
   for (const a of ALIASES) {
     if (a.text === t && a.firstSeason <= seasonId && (a.lastSeason === null || seasonId <= a.lastSeason)) {
