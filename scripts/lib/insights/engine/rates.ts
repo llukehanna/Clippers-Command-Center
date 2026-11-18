@@ -86,3 +86,15 @@ export async function seasonTotalShare(ctx: EngineContext, expr: string, thresho
     ) s`;
   return ((r?.k ?? 0) + 1) / ((r?.n ?? 0) + 2);
 }
+
+/** Share of the Clippers' final regular-season games won (or lost) from records start through as-of; the team streak's p_ref. */
+export async function clippersTeamResultShare(ctx: EngineContext, wins: boolean): Promise<number> {
+  const lac = ctx.lac.teamId;
+  const [r] = await sql<{ p: number }[]>`
+    SELECT COALESCE(AVG((((g.home_team_id = ${lac}::bigint) = (g.home_score > g.away_score)) = ${wins}::boolean)::int), 0)::float8 AS p
+    FROM games g
+    WHERE ${lac}::bigint IN (g.home_team_id, g.away_team_id) AND g.status = 'final'
+      AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
+      AND g.season_id >= ${recordsFrom(ctx)} AND g.game_date <= ${ctx.asOf}::date AND ${regular()}`;
+  return r?.p ?? 0;
+}

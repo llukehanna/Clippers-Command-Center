@@ -210,4 +210,61 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(future.n).toBe(await countBefore('2099-01-01'));
     }, TIMEOUT);
   });
+
+  describe('season detectors: streaks and milestones', () => {
+    it('finds the seeded closing streaks (LAC games only) with prior hit rates', async () => {
+      const { streakDetector } = await import('./engine/detectors/season-streaks');
+      const ctx = await ctxAt('2026-02-25');
+      const { facts, gameIds } = await streakDetector('season').run(ctx);
+      expect(gameIds).toBeNull();
+      const star = facts.find((f) => f.subject.name === 'Star Clipper' && f.stat === 'scoring_30');
+      expect(star).toMatchObject({ kind: 'streak', surface: 'season', value: 5, polarity: 'positive' });
+      expect(star!.keyExtra).toBe(star!.data.start_date);
+      expect(star!.keyExtra).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(star!.sample).toMatchObject({ kind: 'rate', power: 5 });
+      expect((star!.sample as { n: number }).n).toBeGreaterThan(50);
+      expect(star!.data.streak_games).toHaveLength(5);
+      expect(star!.proof.match).toEqual({ player_id: '1' });
+      expect(facts.find((f) => f.subject.name === 'Big Clipper' && f.stat === 'rebounding_10')?.value).toBe(6);
+      const team = facts.find((f) => f.subject.type === 'team' && ['wins', 'losses'].includes(f.stat));
+      expect(team).toBeDefined();
+      expect(team!.keyExtra).toBe(team!.data.start_date);
+      const pRef = (team!.sample as { pRef: number }).pRef;
+      expect(pRef).toBeGreaterThan(0);
+      expect(pRef).toBeLessThan(1);
+      expect(facts.some((f) => f.subject.name === 'LAC Player 3')).toBe(false);
+    }, TIMEOUT);
+
+    it('clippersTeamResultShare is a proper share of final regular-season games', async () => {
+      const { clippersTeamResultShare } = await import('./engine/rates');
+      const ctx = await ctxAt('2026-02-25');
+      const w = await clippersTeamResultShare(ctx, true);
+      const l = await clippersTeamResultShare(ctx, false);
+      expect(w).toBeGreaterThan(0);
+      expect(w).toBeLessThan(1);
+      expect(w + l).toBeCloseTo(1, 6);
+    }, TIMEOUT);
+
+    it('no team streak after the season or on the player surface', async () => {
+      const { streakDetector } = await import('./engine/detectors/season-streaks');
+      const done = await ctxAt(laToday());
+      expect((await streakDetector('season').run(done)).facts.some((f) => f.subject.type === 'team')).toBe(false);
+      const player = await streakDetector('player').run(await ctxAt('2026-02-25'));
+      expect(player.facts.length).toBeGreaterThan(0);
+      expect(player.facts.every((f) => f.subject.type === 'player' && f.surface === 'player')).toBe(true);
+    }, TIMEOUT);
+
+    it('emits the highest season milestone reached, regular season only', async () => {
+      const { milestoneDetector } = await import('./engine/detectors/season-milestones');
+      const facts = (await milestoneDetector('season').run(await ctxAt(laToday()))).facts;
+      const pts = facts.find((f) => f.subject.name === 'Star Clipper' && f.stat === 'season_points');
+      expect(pts).toBeDefined();
+      expect(pts!.keyExtra).toBe(String(pts!.value));
+      expect(pts!.data.games).toBe(60);
+      expect(pts!.data.total_value!).toBeGreaterThanOrEqual(pts!.value);
+      expect(pts!.data.expr).toBe('SUM(pb.points)');
+      expect(pts!.sample.kind).toBe('share');
+      expect(facts.some((f) => f.subject.name === 'LAC Player 3')).toBe(false);
+    }, TIMEOUT);
+  });
 });
