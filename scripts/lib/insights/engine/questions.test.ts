@@ -148,6 +148,12 @@ describe('kind questions', () => {
     const crossed = makeFact({ kind: 'milestone_crossed', surface: 'postgame', stat: 'season_points', value: 1000, keyExtra: '1000', seasonId: 2025, context: { date: '2025-12-01' }, data: { threshold: 1000, step: 0, expr: 'SUM(pb.points)', career: false } });
     expect(milestoneFirstSince.build(crossed, ctx)!.params).toEqual(['1', 2020, 2025, 1000, '2025-12-01']);
     expect(milestoneFirstSince.build({ ...crossed, data: { ...crossed.data, career: true } }, ctx)).toBeNull();
+    // a crossing also searches this season's earlier games; a plain milestone does not
+    expect(milestoneFirstSince.build(crossed, ctx)!.sql).toContain('g.season_id = $3::int AND g.game_date < $5::date');
+    expect(milestoneFirstSince.build(m, ctx)!.sql).not.toContain('g.game_date < $5::date');
+    // I1: a teammate who already crossed this season means no first_since / records_best claim
+    expect(milestoneFirstSince.interpret([{ season_id: 2025 }], crossed, ctx)).toBeNull();
+    expect(milestoneFirstSince.interpret([{ season_id: 2023 }], crossed, ctx)).toMatchObject({ type: 'first_since', years: 2 });
     expect(milestoneFirstSince.interpret([{ season_id: 2021 }], m, ctx))
       .toMatchObject({ type: 'first_since', since_label: '2021-22', years: 4, strength: 0.65 });
     expect(milestoneFirstSince.interpret([], m, ctx)).toMatchObject({ type: 'records_best', records_seasons: 6 });

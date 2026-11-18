@@ -343,13 +343,19 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
 
     // A player whose only LAC box score is the Clippers' last regular-season game of the season, with 1,100 points
     // (as if the rest of his season were missing): first LAC game after LAC's first game, so a late joiner.
-    async function withLateJoiner(ctx: EngineContext, body: () => Promise<void>): Promise<void> {
+    // The Clippers' last regular-season game of the stats season (with box scores) as of the cutoff.
+    async function lastLacGameId(ctx: EngineContext): Promise<string> {
       const [last] = await sql<{ game_id: string }[]>`
         SELECT g.game_id::text AS game_id FROM games g
         WHERE ${ctx.lac.teamId}::bigint IN (g.home_team_id, g.away_team_id) AND g.season_id = ${ctx.season.id}
           AND ${sql.unsafe(REGULAR_SEASON)} AND g.game_date <= ${ctx.asOf}::date
           AND EXISTS (SELECT 1 FROM game_player_box_scores b WHERE b.game_id = g.game_id AND b.team_id = ${ctx.lac.teamId}::bigint)
         ORDER BY g.game_date DESC, g.game_id DESC LIMIT 1`;
+      return last.game_id;
+    }
+
+    async function withLateJoiner(ctx: EngineContext, body: () => Promise<void>): Promise<void> {
+      const last = { game_id: await lastLacGameId(ctx) };
       try {
         await sql`
           INSERT INTO players (player_id, nba_player_id, nba_person_id, first_name, last_name, display_name)
@@ -391,13 +397,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     // The Clippers' last regular-season game, as a postgame ctx for it alone.
     async function lastGameCtx(): Promise<EngineContext> {
       const ctx = await ctxAt(laToday());
-      const [last] = await sql<{ game_id: string }[]>`
-        SELECT g.game_id::text AS game_id FROM games g
-        WHERE ${ctx.lac.teamId}::bigint IN (g.home_team_id, g.away_team_id) AND g.season_id = ${ctx.season.id}
-          AND ${sql.unsafe(REGULAR_SEASON)} AND g.game_date <= ${ctx.asOf}::date
-          AND EXISTS (SELECT 1 FROM game_player_box_scores b WHERE b.game_id = g.game_id AND b.team_id = ${ctx.lac.teamId}::bigint)
-        ORDER BY g.game_date DESC, g.game_id DESC LIMIT 1`;
-      return { ...ctx, gameId: last.game_id };
+      return { ...ctx, gameId: await lastLacGameId(ctx) };
     }
 
     it('crossedSql: every total is bounded at the game date, every bind is used', async () => {
@@ -407,7 +407,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       for (const n of [1, 2, 3, 4]) expect(q).toContain(`$${n}`);
       expect(q).not.toMatch(/\$5/);
       // 3 season + 4 career milestones, each a total and a "before" total
-      expect(q.split('g.game_date <= $4::date').length - 1).toBe(2 * (3 + 4));
+      expect(q.split('g.game_date <= $4::date').length - 1).toBe(2 * (3 + 4) + 1); // + first_season
       expect(q.split('pb.game_id <> $1::bigint').length - 1).toBe(3 + 4);
       const s = playerTotalSub('x', 'SUM(pb.points)::int', ' AND g.season_id = $3::int');
       expect(s).toContain('pb.player_id = x.player_id');
@@ -442,7 +442,42 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         expect(full.find((f) => f.stat === 'career_points')).toMatchObject({ value: 5000, data: { career: true } });
         const guarded = (await milestonesCrossedDetector().run(incomplete(ctx))).facts;
         expect(guarded.some((f) => f.subject.id === String(LATE_ID))).toBe(false);
+        // positive control: another Clipper's crossing survives the incomplete-league ctx
+        const [row] = await sql<{ points: number }[]>`SELECT points::int AS points FROM game_player_box_scores WHERE game_id = ${ctx.gameId}::bigint AND player_id = 1`;
+        try {
+          await sql`UPDATE game_player_box_scores SET points = 5200 WHERE game_id = ${ctx.gameId}::bigint AND player_id = 1`;
+          const others = (await milestonesCrossedDetector().run(incomplete(ctx))).facts.filter((f) => f.subject.id === '1');
+          expect(others.some((f) => f.stat === 'season_points')).toBe(true);
+        } finally {
+          await sql`UPDATE game_player_box_scores SET points = ${row.points} WHERE game_id = ${ctx.gameId}::bigint AND player_id = 1`;
+        }
       });
+    }, TIMEOUT);
+
+    it('postgame milestones: a game outside the stats season counts as incomplete league data', async () => {
+      const { milestonesCrossedDetector } = await import('./engine/detectors/postgame-milestones');
+      const ctx = await lastGameCtx();
+      await withLateJoiner(ctx, async () => {
+        await sql`UPDATE game_player_box_scores SET points = 5200 WHERE player_id = ${LATE_ID}`;
+        // the stats season is a different one: coverage for the game's season is unknown, so the late joiner is skipped
+        const other = { ...ctx, season: { ...ctx.season, id: ctx.season.id + 1 } };
+        const facts = (await milestonesCrossedDetector().run(other)).facts;
+        expect(facts.some((f) => f.subject.id === String(LATE_ID))).toBe(false);
+      });
+    }, TIMEOUT);
+
+    it('postgame milestones: a veteran (first season = records start) gets season but no career crossing', async () => {
+      const { milestonesCrossedDetector } = await import('./engine/detectors/postgame-milestones');
+      const ctx = await lastGameCtx();
+      const [row] = await sql<{ points: number }[]>`SELECT points::int AS points FROM game_player_box_scores WHERE game_id = ${ctx.gameId}::bigint AND player_id = 1`;
+      try {
+        await sql`UPDATE game_player_box_scores SET points = 5200 WHERE game_id = ${ctx.gameId}::bigint AND player_id = 1`;
+        const facts = (await milestonesCrossedDetector().run(ctx)).facts.filter((f) => f.subject.id === '1');
+        expect(facts.some((f) => f.stat === 'season_points')).toBe(true);
+        expect(facts.some((f) => f.stat === 'career_points')).toBe(false);
+      } finally {
+        await sql`UPDATE game_player_box_scores SET points = ${row.points} WHERE game_id = ${ctx.gameId}::bigint AND player_id = 1`;
+      }
     }, TIMEOUT);
 
     it('loadEngineContext: a roster snapshot changes nothing while the league is complete', async () => {

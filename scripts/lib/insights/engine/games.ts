@@ -74,23 +74,23 @@ export function gameFactBase(g: PostgameGame, ctx: EngineContext) {
 }
 
 /**
- * Players whose first regular-season game for the Clippers this season (as of the cutoff) came after the
+ * Players whose first regular-season game for the Clippers in `seasonId` (through `asOf`, default the stats season and cutoff) came after the
  * Clippers' first one: acquired mid-season, so a season total over league box scores may miss games for
  * their previous team when league data is incomplete.
  */
-export async function lateJoiners(ctx: EngineContext): Promise<Set<string>> {
+export async function lateJoiners(ctx: EngineContext, seasonId: number = ctx.season.id, asOf: string = ctx.asOf): Promise<Set<string>> {
   const rows = await sql<{ player_id: string }[]>`
     SELECT pb.player_id::text AS player_id
     FROM game_player_box_scores pb
     JOIN games g ON g.game_id = pb.game_id
-    WHERE pb.team_id = ${ctx.lac.teamId}::bigint AND g.season_id = ${ctx.season.id}::int
-      AND ${sql.unsafe(REGULAR_SEASON)} AND g.game_date <= ${ctx.asOf}::date
+    WHERE pb.team_id = ${ctx.lac.teamId}::bigint AND g.season_id = ${seasonId}::int
+      AND ${sql.unsafe(REGULAR_SEASON)} AND g.game_date <= ${asOf}::date
     GROUP BY pb.player_id
     HAVING MIN(g.game_date) > (
       SELECT MIN(g2.game_date)
       FROM game_player_box_scores pb2
       JOIN games g2 ON g2.game_id = pb2.game_id
-      WHERE pb2.team_id = ${ctx.lac.teamId}::bigint AND g2.season_id = ${ctx.season.id}::int
-        AND ${sql.unsafe(REGULAR_SEASON.replace(/\bg\./g, 'g2.'))} AND g2.game_date <= ${ctx.asOf}::date)`;
+      WHERE pb2.team_id = ${ctx.lac.teamId}::bigint AND g2.season_id = ${seasonId}::int
+        AND ${sql.unsafe(REGULAR_SEASON.replace(/\bg\./g, 'g2.'))} AND g2.game_date <= ${asOf}::date)`;
   return new Set(rows.map((r) => r.player_id));
 }

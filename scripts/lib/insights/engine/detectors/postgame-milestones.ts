@@ -33,7 +33,7 @@ WITH in_game AS (
   SELECT pb.player_id FROM game_player_box_scores pb WHERE pb.game_id = $1::bigint AND pb.team_id = $2::bigint
 )
 SELECT x.player_id::text AS player_id, p.display_name,
-       (SELECT MIN(g.season_id) FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id WHERE pb.player_id = x.player_id)::int AS first_season,
+       (SELECT MIN(g.season_id) FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id WHERE pb.player_id = x.player_id AND g.game_date <= $4::date)::int AS first_season,
        ${[...season, ...career].join(',\n       ')}
 FROM in_game x
 JOIN players p ON p.player_id = x.player_id
@@ -54,8 +54,16 @@ export function milestonesCrossedDetector(): Detector {
         return shares.get(key)!;
       };
       // Incomplete league data: an acquired player's games for his old team may be missing from his sums.
-      const skip = ctx.league.complete || games.length === 0 ? new Set<string>() : await lateJoiners(ctx);
+      // Coverage is only assessed for the stats season, so any other season counts as incomplete.
+      const skips = new Map<string, Set<string>>();
+      const skipFor = async (g: { seasonId: number; date: string }): Promise<Set<string>> => {
+        if (ctx.league.complete && g.seasonId === ctx.season.id) return new Set<string>();
+        const key = `${g.seasonId}:${g.date}`;
+        if (!skips.has(key)) skips.set(key, await lateJoiners(ctx, g.seasonId, g.date));
+        return skips.get(key)!;
+      };
       for (const g of games) {
+        const skip = await skipFor(g);
         const q = { sql: crossedSql(), params: [g.gameId, ctx.lac.teamId, g.seasonId, g.date] };
         for (const r of await runQuery(q)) {
           const playerId = String(r.player_id);
