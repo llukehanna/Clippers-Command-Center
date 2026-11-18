@@ -14,6 +14,7 @@ import { recentFormTemplates } from './recent-form.js';
 import type { TemplateModule } from './shared.js';
 import { standingsTemplates } from './standings.js';
 import { teamLineTemplates } from './team-line.js';
+import { milestoneProgressTemplates, seasonBestTemplates } from './player-surface.js';
 import { vsOpponentTemplates } from './vs-opponent.js';
 import { streakTemplates } from './streak.js';
 import { yoyTemplates } from './yoy.js';
@@ -41,4 +42,6 @@ export const TEMPLATES: Record<FactKind, TemplateModule> = {
   rest: restTemplates,
   line: lineTemplates,
   vs_opponent: vsOpponentTemplates,
+  season_best: seasonBestTemplates,
+  milestone_progress: milestoneProgressTemplates,
 };

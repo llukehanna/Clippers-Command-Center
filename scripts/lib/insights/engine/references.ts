@@ -364,6 +364,7 @@ function pbpStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
 export function refsFor(fact: Fact, ctx: EngineContext): RefSpec | null {
   switch (fact.kind) {
     case 'player_game_stat':
+    case 'season_best':
       return playerStatRefs(fact, ctx);
     case 'player_combo':
       return comboRefs(fact, ctx);

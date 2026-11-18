@@ -37,6 +37,7 @@ export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
         : null;
     case 'milestone':
     case 'milestone_crossed':
+    case 'milestone_progress':
       return { type: 'milestone_progress', current: d.total_value ?? f.value, target: d.threshold ?? f.value, label: d.unit ?? '' };
     case 'league_rank':
     case 'recent_form':
@@ -61,6 +62,7 @@ export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
         betterIsHigher: d.higherIsBetter ?? true,
       };
     case 'player_game_stat':
+    case 'season_best':
     case 'team_game_stat':
       return gameStatEvidence(f, fr, season);
     case 'game_flow':

@@ -852,6 +852,206 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     });
   });
 
+  describe('player surface', () => {
+    const PROGRESS_AS_OF = '2026-01-19'; // Star Clipper: 992 season points after 46 games, 8 short of 1,000
+    const incomplete = (ctx: EngineContext): EngineContext => ({ ...ctx, league: { complete: false, reason: 'test' } });
+    /** Runs the proof query and returns the rows that match the fact's `match` (an unused bind makes Postgres error). */
+    const proofRows = async (f: { proof: { sql: string; params: (string | number | boolean | null)[]; match: Record<string, string | number | boolean> } }) => {
+      const rows = await sql.unsafe(f.proof.sql, f.proof.params as never[]);
+      return rows.filter((r) => Object.entries(f.proof.match).every(([k, v]) => String(r[k]) === String(v)));
+    };
+
+    it('season highs stay off game pages; milestone progress only in season and within reach', async () => {
+      const { seasonBestDetector, milestoneProgressDetector, SEASON_BEST_FLOORS } = await import('./engine/detectors/player-surface');
+      const [g] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM game_player_box_scores WHERE player_id = 1 AND points = 55`;
+      const ctx = await ctxAt('2026-02-25');
+      const bests = (await seasonBestDetector().run(ctx)).facts;
+      expect(bests.length).toBeGreaterThan(0);
+      expect(bests.find((f) => f.subject.id === '1' && f.stat === 'pts')).toMatchObject({
+        kind: 'season_best', surface: 'player', value: 55, gameId: null, window: { game_id: g.game_id },
+      });
+      expect(bests.some((f) => f.subject.id === '3')).toBe(false);
+      for (const f of bests) {
+        expect(f.value).toBeGreaterThanOrEqual(SEASON_BEST_FLOORS[f.stat as keyof typeof SEASON_BEST_FLOORS]);
+        expect(f.gameId).toBeNull();
+        expect(await proofRows(f), `${f.subject.name} ${f.stat} proof`).toHaveLength(1);
+      }
+      const near = (await milestoneProgressDetector().run(await ctxAt(PROGRESS_AS_OF))).facts;
+      expect(near.length).toBeGreaterThan(0);
+      expect(near.find((f) => f.subject.id === '1' && f.stat === 'season_points')).toMatchObject({
+        kind: 'milestone_progress', value: 1000, keyExtra: '1000',
+        data: { threshold: 1000, total_value: 992, remaining: 8, games: 46, career: false },
+      });
+      for (const f of near) {
+        expect(f.data.remaining!).toBeLessThanOrEqual(2 * f.data.per_game!);
+        expect(f.data.career).toBe(false);
+        expect(await proofRows(f), `${f.subject.name} ${f.stat} proof`).toHaveLength(1);
+      }
+      expect((await milestoneProgressDetector().run(await ctxAt(laToday()))).facts).toEqual([]);
+    }, TIMEOUT);
+
+    it('season highs: every bind is used; drafts build and read as season highs, or name the season once it is over', async () => {
+      const { seasonBestDetector, seasonBestSql, progressSql } = await import('./engine/detectors/player-surface');
+      for (const text of [seasonBestSql('points'), progressSql()]) for (const n of [1, 2, 3]) expect(text).toContain(`$${n}::`);
+      const { buildDraft } = await import('./engine/run');
+      const { factKey } = await import('./engine/keys');
+      const ctx = await ctxAt('2026-02-25');
+      const facts = (await seasonBestDetector().run(ctx)).facts;
+      expect(facts.length).toBeGreaterThan(0);
+      let built = 0;
+      for (const f of facts) {
+        const draft = await buildDraft(f, factKey(f), 'player.season_bests', ctx);
+        if ('reason' in draft) { expect(['trivial', 'former'], `${f.subject.name} ${f.stat}`).toContain(draft.reason); continue; }
+        built++;
+        expect(draft.surface).toBe('player');
+        expect(draft.game_id).toBeNull();
+        expect(draft.headline).toMatch(/season high/);
+        expect(draft.headline.length).toBeLessThanOrEqual(90);
+      }
+      expect(built, 'at least one season high survives scoring').toBeGreaterThan(0);
+      // The stats season is not the current one: the headline names the season instead of claiming "season high".
+      const done = await ctxAt(laToday());
+      expect(done.season.isCurrent).toBe(false);
+      const doneFacts = (await seasonBestDetector().run(done)).facts;
+      expect(doneFacts.length).toBeGreaterThan(0);
+      let named = 0;
+      for (const f of doneFacts) {
+        const draft = await buildDraft(f, factKey(f), 'player.season_bests', done);
+        if ('reason' in draft) continue;
+        named++;
+        expect(draft.headline).toMatch(/2025-26 high/);
+        expect(draft.headline).not.toMatch(/season high/);
+      }
+      expect(named, 'at least one completed-season high survives scoring').toBeGreaterThan(0);
+    }, TIMEOUT);
+
+    it('season high is the best game of the season for any team, with opponent, home and result read from his own side', async () => {
+      const { seasonBestDetector } = await import('./engine/detectors/player-surface');
+      const ctx = await ctxAt('2026-02-25');
+      const starPts = async () => (await seasonBestDetector().run(ctx)).facts.find((f) => f.subject.id === '1' && f.stat === 'pts')!;
+      expect((await starPts()).value).toBe(55);
+      let gameId: string | null = null;
+      try {
+        // Star Clipper scored 60 earlier this season in a game for team 5 (home, a win over team 6).
+        const [g] = await sql<{ game_id: string }[]>`
+          INSERT INTO all_games (nba_game_id, season_id, game_date, status, home_team_id, away_team_id, home_score, away_score, is_playoffs)
+          VALUES (43700001, 2025, '2025-12-02'::date, 'final', 5, 6, 120, 100, false) RETURNING game_id::text AS game_id`;
+        gameId = g.game_id;
+        await sql`
+          INSERT INTO game_player_box_scores (game_id, team_id, player_id, minutes, points, rebounds, fg3_made, fg_made, fg_attempted)
+          VALUES (${gameId}::bigint, 5, 1, '30:00', 60, 5, 2, 22, 30)`;
+        const f = await starPts();
+        expect(f).toMatchObject({ value: 60, window: { game_id: gameId }, context: { date: '2025-12-02', opponent_id: '6', home: true, result: 'W' } });
+        expect(await proofRows(f)).toHaveLength(1);
+        // the same game from the other side: team 5 away, a loss
+        await sql`UPDATE all_games SET home_team_id = 6, away_team_id = 5 WHERE game_id = ${gameId}::bigint`;
+        expect((await starPts()).context).toMatchObject({ opponent_id: '6', home: false, result: 'L' });
+      } finally {
+        if (gameId) await sql`DELETE FROM all_games WHERE game_id = ${gameId}::bigint`;
+      }
+      expect((await starPts()).value).toBe(55);
+    }, TIMEOUT);
+
+    it('milestone progress: career thresholds only for complete careers; a late joiner is skipped while league data is incomplete', async () => {
+      const { milestoneProgressDetector } = await import('./engine/detectors/player-surface');
+      const asOf = '2026-02-08'; // Star Clipper: 1,227 season points after 56 games, 23 short of 1,250
+      const ctx = await ctxAt(asOf);
+      const lacGames = await sql<{ game_id: string }[]>`
+        SELECT g.game_id::text AS game_id FROM games g
+        WHERE ${ctx.lac.teamId}::bigint IN (g.home_team_id, g.away_team_id) AND g.season_id = ${ctx.season.id}
+          AND ${sql.unsafe(REGULAR_SEASON)} AND g.game_date <= ${asOf}::date
+          AND EXISTS (SELECT 1 FROM game_player_box_scores b WHERE b.game_id = g.game_id AND b.team_id = ${ctx.lac.teamId}::bigint)
+        ORDER BY g.game_date, g.game_id`;
+      const first5 = lacGames.slice(0, 5);
+      const last5 = lacGames.slice(-5);
+      const [oldGame] = await sql<{ game_id: string }[]>`
+        SELECT g.game_id::text AS game_id FROM games g WHERE g.season_id = 2024 AND ${sql.unsafe(REGULAR_SEASON)}
+          AND ${ctx.lac.teamId}::bigint IN (g.home_team_id, g.away_team_id) ORDER BY g.game_date LIMIT 1`;
+      // 9101 joins late (first LAC game after the Clippers' first); 9102 is there from the start and his career begins this season;
+      // 9103 is as 9102 but also played in 2024-25, the first season of records, so his career is not wholly in the data.
+      const rows: [number, string][] = [
+        ...last5.map((g) => [9101, g.game_id] as [number, string]),
+        ...first5.map((g) => [9102, g.game_id] as [number, string]),
+        ...first5.map((g) => [9103, g.game_id] as [number, string]),
+        [9103, oldGame.game_id],
+      ];
+      try {
+        for (const id of [9101, 9102, 9103]) {
+          await sql`
+            INSERT INTO players (player_id, nba_player_id, nba_person_id, first_name, last_name, display_name)
+            VALUES (${id}, ${id}, ${1_000_000 + id}, 'Test', ${'P' + id}, ${'Test P' + id})`;
+        }
+        // 2,400 points a game: 12,000 career points after five games, 3,000 short of 15,000 and within two games' reach
+        for (const [id, gameId] of rows) {
+          await sql`
+            INSERT INTO game_player_box_scores (game_id, team_id, player_id, minutes, points, rebounds, fg3_made, fg_made, fg_attempted)
+            VALUES (${gameId}::bigint, ${ctx.lac.teamId}::bigint, ${id}, '30:00', 2400, 5, 2, 900, 1600)`;
+        }
+        const career = (facts: { subject: { id: string }; stat: string }[], id: number) =>
+          facts.filter((f) => f.subject.id === String(id) && f.stat === 'career_points');
+        const full = (await milestoneProgressDetector().run(ctx)).facts;
+        expect(career(full, 9101)[0]).toMatchObject({ value: 15000, data: { career: true, total_value: 12000, remaining: 3000 } });
+        expect(career(full, 9102)).toHaveLength(1);
+        expect(career(full, 9103), 'a career that began in the first season of records is not complete').toEqual([]);
+        // incomplete league data: the late joiner is skipped; the others, and Star Clipper's season progress, survive
+        const guarded = (await milestoneProgressDetector().run(incomplete(ctx))).facts;
+        expect(guarded.some((f) => f.subject.id === '9101')).toBe(false);
+        expect(career(guarded, 9102)).toHaveLength(1);
+        expect(guarded.find((f) => f.subject.id === '1' && f.stat === 'season_points')).toMatchObject({ value: 1250, data: { remaining: 23 } });
+      } finally {
+        await sql`DELETE FROM game_player_box_scores WHERE player_id IN (9101, 9102, 9103)`;
+        await sql`DELETE FROM players WHERE player_id IN (9101, 9102, 9103)`;
+      }
+    }, TIMEOUT);
+
+    it('once the Clippers have a playoff game: no team streak, closed player streaks, no present-tense headlines', async () => {
+      const { streakDetector } = await import('./engine/detectors/season-streaks');
+      const { buildDraft } = await import('./engine/run');
+      const { factKey } = await import('./engine/keys');
+      const asOf = '2026-02-25';
+      const before = await ctxAt(asOf);
+      for (const surface of ['season', 'player'] as const) {
+        const facts = (await streakDetector(surface).run(before)).facts;
+        expect(facts.some((f) => f.subject.type === 'player'), `${surface} has player streaks`).toBe(true);
+        expect(facts.every((f) => f.data.closed === undefined)).toBe(true);
+      }
+      expect((await streakDetector('season').run(before)).facts.some((f) => f.subject.type === 'team'), 'a team streak before the playoffs').toBe(true);
+      let gameId: string | null = null;
+      try {
+        const [g] = await sql<{ game_id: string }[]>`
+          INSERT INTO all_games (nba_game_id, season_id, game_date, status, home_team_id, away_team_id, home_score, away_score, is_playoffs)
+          VALUES (43700002, ${before.season.id}, ${asOf}::date, 'final', ${before.lac.teamId}::bigint, 7, 100, 90, true) RETURNING game_id::text AS game_id`;
+        gameId = g.game_id;
+        const ctx = await ctxAt(asOf);
+        expect(ctx.season.isCurrent).toBe(true);
+        for (const surface of ['season', 'player'] as const) {
+          const facts = (await streakDetector(surface).run(ctx)).facts;
+          expect(facts.length, `${surface} keeps player streaks`).toBeGreaterThan(0);
+          expect(facts.some((f) => f.subject.type === 'team')).toBe(false);
+          expect(facts.every((f) => f.data.closed === true)).toBe(true);
+          let built = 0;
+          for (const f of facts) {
+            const draft = await buildDraft(f, factKey(f), `${surface}.streaks`, ctx);
+            if ('reason' in draft) continue;
+            built++;
+            expect(draft.headline).toMatch(/ (closed|ended) 2025-26 /);
+            expect(draft.headline).not.toMatch(/\b(has|have|is|are)\b/);
+          }
+          expect(built, `${surface} streaks built`).toBeGreaterThan(0);
+        }
+        // a play-in game (stored as a non-playoff game) does not close the regular season: only playoff games do
+        await sql`UPDATE all_games SET is_playoffs = false WHERE game_id = ${gameId}::bigint`;
+        const playIn = await streakDetector('season').run(await ctxAt(asOf));
+        expect(playIn.facts.some((f) => f.data.closed === true)).toBe(false);
+      } finally {
+        if (gameId) await sql`DELETE FROM all_games WHERE game_id = ${gameId}::bigint`;
+      }
+      const { LAC_PLAYOFFS_SQL } = await import('./engine/detectors/season-ranks');
+      const [r] = await sql.unsafe(LAC_PLAYOFFS_SQL, [before.season.id, before.lac.teamId, asOf]);
+      expect(r.playoffs).toBe(false);
+    }, TIMEOUT);
+  });
+
   describe('season detectors: ranks and year over year', () => {
     it('ranks the Clippers and their players league-wide, only with complete league data', async () => {
       const { leagueRankDetector } = await import('./engine/detectors/season-ranks');
@@ -1363,7 +1563,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       const rows = await sql<{ surface: string | null; scope: string; proof_hash: string; is_active: boolean; first: string | null }[]>`
         SELECT surface, scope, proof_hash, is_active, first_emitted_at::text AS first FROM insights`;
       const v2 = rows.filter((r) => r.is_active && r.surface);
-      expect(new Set(v2.map((r) => r.surface))).toEqual(new Set(['season', 'pregame']));
+      expect(new Set(v2.map((r) => r.surface))).toEqual(new Set(['season', 'pregame', 'player']));
       for (const r of v2) {
         expect(r.scope).toBe(r.surface === 'postgame' ? 'historical' : 'between_games');
         expect(r.first).not.toBeNull();

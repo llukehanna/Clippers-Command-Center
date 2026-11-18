@@ -4,10 +4,12 @@
 // Only the team's games count, so a team change ends a streak (as in
 // rb_streaks); playoff games are excluded (regular-season baselines), the
 // play-in (stored non-playoff, NBA ids 5xxxxxxx) counts. The team's win/losing streak is
-// emitted while the season is being played.
+// emitted while the season is being played; once the Clippers have a playoff game the
+// regular season is over, so the team streak goes and player streaks read as closed.
 import { runQuery } from '../query.js';
 import { clippersTeamResultShare, playerHitRates, teamResultRate } from '../rates.js';
 import { rosterSubquery } from '../sql.js';
+import { LAC_PLAYOFFS_SQL } from './season-ranks.js';
 import type { Detector, Fact, StreakGame } from '../types.js';
 
 export interface StreakDef {
@@ -124,6 +126,9 @@ export function streakDetector(surface: 'season' | 'player'): Detector {
     categories: ['streak'],
     async run(ctx) {
       const facts: Fact[] = [];
+      // Streaks count regular-season games only: after the Clippers' first playoff game they are over, whatever the season's phase.
+      const [po] = await runQuery({ sql: LAC_PLAYOFFS_SQL, params: [ctx.season.id, ctx.lac.teamId, ctx.asOf] });
+      const playoffs = po?.playoffs === true;
       for (const def of STREAKS) {
         const q = { sql: playerStreakSql(def), params: [ctx.season.id, ctx.lac.teamId, def.minGames, ctx.asOf] };
         const rows = await runQuery(q);
@@ -148,7 +153,7 @@ export function streakDetector(surface: 'season' | 'player'): Detector {
             data: {
               length, start_date: String(r.streak_start), end_date: String(r.streak_end),
               streak_games: streakGames(def, r.games as Record<string, unknown>[]), hit_threshold: def.threshold,
-              thing: def.thing, best: def.best, by: 'by a Clipper',
+              thing: def.thing, best: def.best, by: 'by a Clipper', ...(playoffs ? { closed: true } : {}),
             },
             gameId: null,
             seasonId: ctx.season.id,
@@ -156,7 +161,7 @@ export function streakDetector(surface: 'season' | 'player'): Detector {
         }
       }
 
-      if (surface === 'season' && ctx.season.isCurrent) {
+      if (surface === 'season' && ctx.season.isCurrent && !playoffs) {
         const q = { sql: TEAM_STREAK_SQL, params: [ctx.season.id, ctx.lac.teamId, ctx.asOf] };
         const [r] = await runQuery(q);
         if (r) {

@@ -204,3 +204,13 @@ describe('renderInsight', () => {
     expect(renderInsight(huge, records, rcDone, '00000000')).toBeNull();
   });
 });
+
+describe('streak wording: closed streaks', () => {
+  it('data.closed words player streaks in the past while the season is current', () => {
+    const closed = makeFact({ data: { closed: true } });
+    expect(say(makeFact(), none, rcNow).headline).toBe('Star Clipper has scored 30+ in 5 straight games');
+    expect(say(closed, none, rcNow).headline).toBe('Star Clipper closed 2025-26 with 30+ points in 5 straight games');
+    expect(say(closed, none, rcNow, 1).headline).toBe('Star Clipper ended 2025-26 with 5 straight 30-point games');
+    expect(say(closed, none, rcDone).headline).toBe(say(makeFact(), none, rcDone).headline);
+  });
+});

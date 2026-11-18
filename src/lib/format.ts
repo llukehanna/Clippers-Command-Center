@@ -12,6 +12,8 @@ const INSIGHT_CATEGORY_LABELS: Record<string, string> = {
   rare_event: 'Rare Performance',
   milestone: 'Milestone',
   milestone_crossed: 'Milestone',
+  milestone_progress: 'Milestone Watch',
+  season_best: 'Season High',
   streak: 'Streak',
   year_over_year: 'Year over Year',
   run: 'Scoring Run',

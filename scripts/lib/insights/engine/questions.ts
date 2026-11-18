@@ -245,6 +245,9 @@ export const GAME_QUESTIONS: readonly Question[] = [
   careerHigh, groupCompany, groupFirstSince, subjectFirstSince, clippersRank, groupSeasonHigh, subjectSeasonHigh, leagueRank, nthTime,
 ];
 
+/** A season high is his season high by construction, so the subject's own season-high frame would only repeat the headline. */
+export const SEASON_BEST_QUESTIONS: readonly Question[] = GAME_QUESTIONS.filter((q) => q.name !== subjectSeasonHigh.name);
+
 /**
  * Quarters, halves and clutch: no clippers_rank. Their reference rows are one per player-game (or per game),
  * so a rank would count games while the copy ranks quarters and halves, and a game with two bigger quarters would understate it.
@@ -449,6 +452,8 @@ export const QUESTIONS_BY_KIND: Record<FactKind, readonly Question[]> = {
   opp_hot_player: [],
   rest: [],
   line: [],
+  season_best: SEASON_BEST_QUESTIONS,
+  milestone_progress: [],
 };
 
 export function questionsFor(fact: Fact): readonly Question[] {

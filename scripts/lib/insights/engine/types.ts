@@ -20,7 +20,7 @@ export const FACT_KINDS = [
   'streak', 'milestone', 'milestone_crossed', 'league_rank', 'standings', 'recent_form', 'yoy_change',
   'opp_rank', 'h2h', 'last_meeting', 'player_game_stat', 'player_combo',
   'team_game_stat', 'game_flow', 'player_period_stat', 'team_period_stat', 'clutch',
-  'opp_form', 'opp_hot_player', 'rest', 'line', 'vs_opponent',
+  'opp_form', 'opp_hot_player', 'rest', 'line', 'vs_opponent', 'season_best', 'milestone_progress',
 ] as const;
 export type FactKind = (typeof FACT_KINDS)[number];
 
@@ -59,11 +59,14 @@ export interface FactData {
   end_date?: string;
   streak_games?: StreakGame[];
   hit_threshold?: number;
+  closed?: boolean;          // a player streak the Clippers' playoffs have closed: past tense while the season is current
   // Milestones / season totals
   career?: boolean;          // career (not season) milestone; for vs_opponent, the whole career is in the data
   threshold?: number;
   step?: number;
   total_value?: number;
+  remaining?: number;        // milestone progress: what is left to the threshold
+  per_game?: number;         // milestone progress: the average that makes it reachable
   games?: number;
   expr?: string;             // SQL aggregate over game_player_box_scores pb (frames re-run it)
   // Comparisons

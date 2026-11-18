@@ -20,3 +20,13 @@ export function crossedThreshold(before: number, through: number, thresholds: re
   for (const t of thresholds) if (before < t && through >= t && (best === null || t > best)) best = t;
   return best;
 }
+
+/** The lowest threshold above `total`, or null once every one is behind. */
+export function nextThreshold(total: number, thresholds: readonly number[]): number | null {
+  return thresholds.find((t) => t > total) ?? null;
+}
+
+/** True when `remaining` can plausibly be covered in the next two games at `perGame` (and the player is producing at all). */
+export function withinReach(remaining: number, perGame: number): boolean {
+  return perGame > 0 && remaining <= 2 * perGame;
+}
