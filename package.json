@@ -24,6 +24,7 @@
     "sync-odds": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/sync-odds.ts",
     "build-record-book": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/build-record-book.ts",
     "backfill-history": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/backfill-history.ts",
+    "seed:franchise-fixture": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/dev/seed-franchise-fixture.ts",
     "fetch-franchise-sources": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/fetch-franchise-sources.ts",
     "import-kaggle-history": "NODE_OPTIONS=--max-old-space-size=8192 node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/import-kaggle-history.ts",
     "cleanup-player-raw-payload": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/cleanup-player-raw-payload.ts",
