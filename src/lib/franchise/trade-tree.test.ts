@@ -48,8 +48,9 @@ function rows(): TreeRows {
       // Used by OKC: becomes the player drafted, who is then traded
       pick({ pick_id: 10, draft_year: 2022, round: 1, original_franchise_id: F.LAC, status: 'used', overall_pick: 25,
         selected_person: 'draftee01', final_owner_franchise_id: F.OKC }),
-      // No later hop recorded, but its final owner is Phoenix: moved on without details
-      pick({ pick_id: 11, draft_year: 2026, round: 1, original_franchise_id: F.LAC, status: 'future', final_owner_franchise_id: F.PHX }),
+      // Used by Phoenix with no later hop recorded: it moved on without details.
+      // (Future picks never carry final_owner_franchise_id, so only drafted picks can show this.)
+      pick({ pick_id: 11, draft_year: 2026, round: 1, original_franchise_id: F.LAC, status: 'used', overall_pick: 19, final_owner_franchise_id: F.PHX }),
       // Unknown protections, still with OKC
       pick({ pick_id: 12, draft_year: 2028, round: 1, original_franchise_id: F.LAC, status: 'future',
         protections_known: null, final_owner_franchise_id: F.OKC }),
@@ -109,7 +110,9 @@ describe('buildTradeTree', () => {
     const p = find(became, /^2026 first-round pick/);
     expect(p.kind).toBe('pick');
     expect(p.note).toBe('traded on to Phoenix Suns (details not recorded)');
-    expect(p.children).toEqual([]);
+    expect(p.children).toHaveLength(1);
+    expect(p.children[0]).toMatchObject({ label: 'Used in the 2026 draft (No. 19)', note: 'player not recorded' });
+    expect(p.children[0].team?.abbreviation).toBe('PHX');
   });
 
   it('turns a used pick into the player drafted, then that player\'s next move', () => {

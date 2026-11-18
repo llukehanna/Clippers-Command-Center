@@ -431,16 +431,27 @@ export interface TradeLink {
   date: string | null
 }
 
+/**
+ * held: the Clippers hold it. owed: someone else holds a pick/right the Clippers gave.
+ * uncertain: a Clippers pick with no linked trade out, but a Clippers trade sent an
+ * unidentified pick of the same year and round — "may have been traded; details not recorded".
+ */
+export type PickHolderStatus = 'held' | 'owed' | 'uncertain'
+
 export interface OwedAsset {
   kind: 'pick' | 'swap'
+  holder_status: PickHolderStatus
   key: string
   draft_year: number
   round: number
   /** Picks: the original team. Swaps: null. */
   original_team: FranchiseTeamRef | null
-  /** Picks: current owner. Swaps: who holds the swap right. */
+  /**
+   * Current holder: the receiver of the latest linked trade part (the original team when no
+   * part links it). Swaps: who holds the right. null when unknown (uncertain, or no receiver).
+   */
   owner: FranchiseTeamRef | null
-  /** The other team: owner (owed), original team (owned), the other swap party. */
+  /** The other team: owner (owed), original team (held), the other swap party, where it may have gone (uncertain). */
   counterparty: FranchiseTeamRef | null
   /** Originally the Clippers' own pick. */
   is_own: boolean
@@ -449,16 +460,21 @@ export interface OwedAsset {
   protections_known: boolean | null
   /** Plain words; "Protections not recorded" unless protections_known is true. */
   protections_label: string
-  /** Owned: the trade it came in. Owed: the trade it went out in. */
+  /** Held: the trade it came in. Owed: the trade it went out in. Uncertain: the trade that may have sent it. */
   trade: TradeLink | null
+  /** Uncertain: "may have been traded; details not recorded" (or "holder not recorded"); else null. */
+  note: string | null
   gap_notes: string[]
 }
 
 export interface PicksOwedPayload {
   meta: MetaEnvelope
-  /** By draft year, round; picks before swaps. */
+  /** By draft year, round; picks before swaps. holder_status 'held'. */
   owned: OwedAsset[]
+  /** holder_status 'owed'. */
   owed: OwedAsset[]
+  /** Clippers picks that may have been traded without a link; holder_status 'uncertain', owner null. */
+  uncertain: OwedAsset[]
 }
 
 export interface CoachSeason {

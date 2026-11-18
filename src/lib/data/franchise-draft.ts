@@ -7,6 +7,7 @@
 import { type ApiResult } from './result';
 import { sql } from '@/src/lib/db';
 import { CLIPPERS_FRANCHISE_ID } from '@/src/lib/franchise/franchise-ids';
+import { currentHolder } from '@/src/lib/franchise/pick-holder';
 import { pickSeason, tradeHref } from '@/src/lib/franchise/trade-tree';
 import type { DraftLottery, DraftPick, FranchiseTeamRef, PickHop } from '@/src/lib/ui/types';
 import { internalError, num, ok, personRef } from './franchise-common';
@@ -36,6 +37,7 @@ interface PickRow {
 
 interface HopRow {
   pick_id: number;
+  transaction_id: string;
   slug: string;
   date: string | null;
   season_id: number | null;
@@ -79,7 +81,7 @@ export async function loadFranchiseDraft(): Promise<ApiResult> {
 
     const ids = picks.map((p) => p.pick_id);
     const hops = ids.length === 0 ? [] : await sql<HopRow[]>`
-      SELECT p.pick_id, t.slug, t.date::text AS date, t.season_id, t.kind, p.from_franchise_id, p.to_franchise_id
+      SELECT p.pick_id, t.transaction_id::text AS transaction_id, t.slug, t.date::text AS date, t.season_id, t.kind, p.from_franchise_id, p.to_franchise_id
       FROM transaction_parts p
       JOIN transactions t ON t.transaction_id = p.transaction_id
       WHERE p.pick_id = ANY(${ids}::int[])
@@ -118,7 +120,9 @@ export async function loadFranchiseDraft(): Promise<ApiResult> {
         from: h.from_franchise_id == null ? null : team(h.from_franchise_id, h.season_id),
         to: h.to_franchise_id == null ? null : team(h.to_franchise_id, h.season_id),
       }));
-      const ownerId = p.final_owner_franchise_id ?? chainRows.at(-1)?.to_franchise_id ?? null;
+      // Used picks record who used them; otherwise the holder rule: the latest linked part's
+      // receiver, or the original franchise when nothing links it.
+      const ownerId = p.final_owner_franchise_id ?? currentHolder(p.original_franchise_id, chainRows);
       const viaIds: number[] = [];
       // Owners in order: each hop's sender (an acquisition we may not have recorded) then its receiver.
       for (const h of chainRows) {

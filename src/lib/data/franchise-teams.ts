@@ -14,7 +14,7 @@ import type { FranchiseTeamRef } from '@/src/lib/ui/types';
 /** Stand-in season for "no season" (future picks): after every team_seasons row, inside the current era. */
 const LATEST = 9999;
 
-interface TeamRow {
+export interface TeamRow {
   franchise_id: number;
   season_id: number;
   ts_abbr: string | null; ts_name: string | null; ts_city: string | null;
@@ -23,6 +23,18 @@ interface TeamRow {
 }
 
 const key = (f: number, s: number) => `${f}|${s}`;
+
+/** One resolution row → a team, field by field: season row, then era row, then latest row, then static name. */
+export function teamFromRow(r: TeamRow): FranchiseTeamRef {
+  const fallback = staticTeam(r.franchise_id);
+  return {
+    franchise_id: r.franchise_id,
+    abbreviation: r.ts_abbr ?? r.era_abbr ?? r.last_abbr ?? fallback.abbreviation,
+    name: r.ts_name ?? r.era_name ?? r.last_name ?? fallback.name,
+    city: r.ts_city ?? r.era_city ?? r.last_city ?? fallback.city,
+    is_clippers: fallback.is_clippers,
+  };
+}
 
 export async function resolveTeams(pairs: Array<[number, number | null]>): Promise<TeamLookup> {
   const unique = new Map<string, [number, number]>();
@@ -51,16 +63,7 @@ export async function resolveTeams(pairs: Array<[number, number | null]>): Promi
         WHERE nba_franchise_id = q.f ORDER BY season_id DESC LIMIT 1
       ) l ON true
     `;
-    for (const r of rows) {
-      const fallback = staticTeam(r.franchise_id);
-      resolved.set(key(r.franchise_id, r.season_id), {
-        franchise_id: r.franchise_id,
-        abbreviation: r.ts_abbr ?? r.era_abbr ?? r.last_abbr ?? fallback.abbreviation,
-        name: r.ts_name ?? r.era_name ?? r.last_name ?? fallback.name,
-        city: r.ts_city ?? r.era_city ?? r.last_city ?? fallback.city,
-        is_clippers: fallback.is_clippers,
-      });
-    }
+    for (const r of rows) resolved.set(key(r.franchise_id, r.season_id), teamFromRow(r));
   }
   return (f, s) => resolved.get(key(f, s ?? LATEST)) ?? staticTeam(f);
 }

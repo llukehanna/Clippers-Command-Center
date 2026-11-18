@@ -122,6 +122,79 @@ describe('GET /api/franchise/moves', () => {
   });
 });
 
+// ─── Era names (R1) through the real resolution query ───────────────────────
+// A fake team_seasons/team_era_names answer keyed by the (franchise, season) arrays the
+// query sends, so the payload's names come from the SQL row, not the static fallback.
+
+type FakeTeamRow = Record<string, string | number | null>;
+function teamRow(franchise_id: number, season_id: number, fields: Partial<Record<
+  'ts_abbr' | 'ts_name' | 'ts_city' | 'era_abbr' | 'era_name' | 'era_city' | 'last_abbr' | 'last_name' | 'last_city', string>>): FakeTeamRow {
+  return {
+    franchise_id, season_id, ts_abbr: null, ts_name: null, ts_city: null, era_abbr: null, era_name: null, era_city: null,
+    last_abbr: null, last_name: null, last_city: null, ...fields,
+  };
+}
+function fakeTeams(rows: FakeTeamRow[]) {
+  return (values: unknown[]): FakeTeamRow[] => {
+    const [fids, sids] = values as [number[], number[]];
+    return fids.flatMap((f, i) => rows.filter((r) => r.franchise_id === f && r.season_id === sids[i]));
+  };
+}
+
+describe('resolveTeams (R1 era names)', () => {
+  it('reads (OKC, 1975) as the Seattle SuperSonics from the query, and falls back to the static name otherwise', async () => {
+    const teams = fakeTeams([teamRow(OKC, 1975, { era_abbr: 'SEA', era_name: 'SuperSonics', era_city: 'Seattle',
+      last_abbr: 'OKC', last_name: 'Thunder', last_city: 'Oklahoma City' })]);
+    route((q, values) => (q.includes('unnest(') ? teams(values) : []));
+    const { resolveTeams } = await import('./data/franchise-teams.js');
+    const team = await resolveTeams([[OKC, 1975], [OKC, 2019], [OKC, 1975]]);
+    expect(team(OKC, 1975)).toEqual({ franchise_id: OKC, abbreviation: 'SEA', name: 'SuperSonics', city: 'Seattle', is_clippers: false });
+    expect(team(OKC, 2019)).toMatchObject({ abbreviation: 'OKC', name: 'Thunder' }); // no row → static
+    const call = callFor('unnest(')!;
+    const q = call[0].join('?');
+    expect(q).toContain('LEFT JOIN team_seasons ts ON ts.nba_franchise_id = q.f AND ts.season_id = q.s');
+    expect(q).toContain('LEFT JOIN team_era_names e ON e.team_id = tid.team_id');
+    expect(call[1]).toEqual([OKC, OKC]); // de-duplicated pairs
+    expect(call[2]).toEqual([1975, 2019]);
+  });
+
+  it('prefers the season row, then the era row, then the latest row, then the static name — field by field', async () => {
+    const { teamFromRow } = await import('./data/franchise-teams.js');
+    const all = { ts_abbr: 'SEA', ts_name: 'SuperSonics', ts_city: 'Seattle', era_abbr: 'XXE', era_name: 'Era', era_city: 'EraCity',
+      last_abbr: 'OKC', last_name: 'Thunder', last_city: 'Oklahoma City' };
+    expect(teamFromRow(teamRow(OKC, 1975, all) as never)).toMatchObject({ abbreviation: 'SEA', name: 'SuperSonics', city: 'Seattle' });
+    expect(teamFromRow(teamRow(OKC, 1975, { ...all, ts_abbr: undefined, ts_name: undefined, ts_city: undefined }) as never))
+      .toMatchObject({ abbreviation: 'XXE', name: 'Era', city: 'EraCity' });
+    expect(teamFromRow(teamRow(OKC, 1975, { ts_name: 'SuperSonics', last_abbr: 'OKC', last_city: 'Oklahoma City' }) as never))
+      .toMatchObject({ abbreviation: 'OKC', name: 'SuperSonics', city: 'Oklahoma City' });
+    expect(teamFromRow(teamRow(LAC, 1975, {}) as never)).toEqual({ franchise_id: LAC, abbreviation: 'LAC', name: 'Clippers', city: 'LA', is_clippers: true });
+  });
+
+  it('names a 1975 move by its era: Buffalo Braves and Seattle SuperSonics, not LAC/OKC', async () => {
+    const teams = fakeTeams([
+      teamRow(LAC, 1975, { ts_abbr: 'BUF', ts_name: 'Braves', ts_city: 'Buffalo' }),
+      teamRow(OKC, 1975, { era_abbr: 'SEA', era_name: 'SuperSonics', era_city: 'Seattle', last_abbr: 'OKC', last_name: 'Thunder' }),
+    ]);
+    route((q, values) => {
+      if (q.includes('unnest(')) return teams(values);
+      if (q.includes('FROM transactions t')) {
+        return [{ transaction_id: '7', slug: '1975-10-14-braves-supersonics', date: '1975-10-14', season_id: 1975, kind: 'trade',
+          description: 'The Buffalo Braves traded Bob Kauffman to Seattle.', is_complete: true }];
+      }
+      if (q.includes('FROM transaction_parts p')) {
+        return [{ transaction_id: '7', from_franchise_id: LAC, to_franchise_id: OKC, person_key: 'kaufmbo01', display_name: 'Bob Kauffman', player_id: null }];
+      }
+      return [];
+    });
+    const { GET } = await import('../../app/api/franchise/moves/route.js');
+    const body = await (await GET(new Request('http://localhost/api/franchise/moves?season=1975'))).json();
+    expect(body.moves[0].teams).toEqual([
+      { franchise_id: LAC, abbreviation: 'BUF', name: 'Braves', city: 'Buffalo', is_clippers: true },
+      { franchise_id: OKC, abbreviation: 'SEA', name: 'SuperSonics', city: 'Seattle', is_clippers: false },
+    ]);
+  });
+});
+
 // ─── Picks owed ──────────────────────────────────────────────────────────────
 
 describe('GET /api/franchise/picks', () => {
@@ -129,17 +202,18 @@ describe('GET /api/franchise/picks', () => {
     route((q) => {
       if (q.includes('FROM draft_picks dp')) {
         return [
+          // final_owner_franchise_id stays null for future picks: the holder comes from linked parts.
           { pick_id: 6, pick_key: `2028-1-${LAC}`, draft_year: 2028, round: 1, original_franchise_id: LAC,
-            protections: null, protections_text: null, protections_known: null, final_owner_franchise_id: PHI },
+            protections: null, protections_text: null, protections_known: null, final_owner_franchise_id: null },
           { pick_id: 7, pick_key: `2028-2-${PHI}`, draft_year: 2028, round: 2, original_franchise_id: PHI,
-            protections: null, protections_text: null, protections_known: true, final_owner_franchise_id: LAC },
+            protections: null, protections_text: null, protections_known: true, final_owner_franchise_id: null },
         ];
       }
       if (q.includes('FROM transaction_parts p') && q.includes('p.pick_id')) {
         return [
-          { pick_id: 6, slug: '2023-10-31-james-harden', date: '2023-10-31', season_id: 2023, kind: 'trade',
+          { pick_id: 6, transaction_id: '31', slug: '2023-10-31-james-harden', date: '2023-10-31', season_id: 2023, kind: 'trade',
             from_franchise_id: LAC, to_franchise_id: PHI, gap_reason: 'protections_unknown' },
-          { pick_id: 7, slug: '2023-10-31-james-harden', date: '2023-10-31', season_id: 2023, kind: 'trade',
+          { pick_id: 7, transaction_id: '31', slug: '2023-10-31-james-harden', date: '2023-10-31', season_id: 2023, kind: 'trade',
             from_franchise_id: PHI, to_franchise_id: LAC, gap_reason: null },
         ];
       }
@@ -155,14 +229,107 @@ describe('GET /api/franchise/picks', () => {
     expect(owed.protections_text).toBeNull();
     expect(owed.protections).toBeNull();
     expect(owed.protections_label).toBe('Protections not recorded');
-    expect(owed).toMatchObject({ kind: 'pick', draft_year: 2028, round: 1, is_own: true,
+    expect(owed).toMatchObject({ kind: 'pick', holder_status: 'owed', draft_year: 2028, round: 1, is_own: true,
       trade: { slug: '2023-10-31-james-harden', href: '/franchise/trades/2023-10-31-james-harden', date: '2023-10-31' },
       gap_notes: ['protections not recorded'] });
     expect(owed.owner.abbreviation).toBe('PHI');
     const owned = body.owned[0];
-    expect(owned).toMatchObject({ kind: 'pick', is_own: false, protections_known: true, protections_label: 'Unprotected' });
+    expect(owned).toMatchObject({ kind: 'pick', holder_status: 'held', is_own: false, protections_known: true, protections_label: 'Unprotected' });
+    expect(body.uncertain).toEqual([]);
+    expect(callFor('FROM draft_picks dp')![0].join('?')).not.toContain('final_owner');
     expect(owned.original_team.abbreviation).toBe('PHI');
     expect(JSON.stringify(body.owed)).not.toMatch(/Unprotected/);
+  });
+
+  // A future pick's holder: to_franchise_id of its latest linked part; no part → the original franchise.
+  const BKN = 1610612751;
+  const DEN = 1610612743;
+  const futurePick = (pick_id: number, draft_year: number, round: number, original_franchise_id: number) => ({
+    pick_id, pick_key: `${draft_year}-${round}-${original_franchise_id}`, draft_year, round, original_franchise_id,
+    protections: null, protections_text: null, protections_known: true, final_owner_franchise_id: null,
+  });
+
+  it("takes a future pick's holder from its latest linked part", async () => {
+    route((q) => {
+      if (q.includes('FROM draft_picks dp')) return [futurePick(20, 2027, 1, LAC)];
+      if (q.includes('FROM transaction_parts p') && q.includes('p.pick_id')) {
+        // Returned out of order on purpose: the loader must pick the latest by date.
+        return [
+          { pick_id: 20, transaction_id: '30', slug: 'phi-bkn', date: '2025-02-01', season_id: 2024, kind: 'trade',
+            from_franchise_id: PHI, to_franchise_id: BKN, gap_reason: null },
+          { pick_id: 20, transaction_id: '20', slug: 'lac-phi', date: '2023-10-31', season_id: 2023, kind: 'trade',
+            from_franchise_id: LAC, to_franchise_id: PHI, gap_reason: null },
+        ];
+      }
+      return [];
+    });
+    const { GET } = await import('../../app/api/franchise/picks/route.js');
+    const body = await (await GET()).json();
+    expect(body.owned).toEqual([]);
+    expect(body.owed).toHaveLength(1);
+    expect(body.owed[0]).toMatchObject({ holder_status: 'owed', note: null, trade: { slug: 'lac-phi' } });
+    expect(body.owed[0].owner.abbreviation).toBe('BKN');
+    expect(body.owed[0].counterparty.abbreviation).toBe('BKN');
+  });
+
+  it('treats a future pick with no linked part as held by its original franchise', async () => {
+    route((q) => (q.includes('FROM draft_picks dp') ? [futurePick(21, 2030, 1, LAC)] : []));
+    const { GET } = await import('../../app/api/franchise/picks/route.js');
+    const body = await (await GET()).json();
+    expect(body.owed).toEqual([]);
+    expect(body.uncertain).toEqual([]);
+    expect(body.owned).toHaveLength(1);
+    expect(body.owned[0]).toMatchObject({ holder_status: 'held', is_own: true, trade: null, counterparty: null, note: null });
+    expect(body.owned[0].owner.abbreviation).toBe('LAC');
+  });
+
+  it('marks a Clippers pick uncertain when a Clippers trade sent an unidentified pick of the same year and round', async () => {
+    route((q) => {
+      if (q.includes('FROM draft_picks dp')) return [futurePick(22, 2029, 2, LAC), futurePick(23, 2029, 1, LAC)];
+      if (q.includes('FROM transaction_parts u')) {
+        return [
+          { transaction_id: '40', slug: '2024-02-08-lac-den', date: '2024-02-08', season_id: 2023, kind: 'trade',
+            unlinked_text: 'a 2029 second round draft pick', from_franchise_id: LAC, to_franchise_id: DEN },
+          { transaction_id: '41', slug: '2024-06-01-other', date: '2024-06-01', season_id: 2023, kind: 'trade',
+            unlinked_text: 'a 2031 first round draft pick', from_franchise_id: LAC, to_franchise_id: DEN },
+        ];
+      }
+      return [];
+    });
+    const { GET } = await import('../../app/api/franchise/picks/route.js');
+    const body = await (await GET()).json();
+    expect(body.uncertain).toHaveLength(1);
+    const u = body.uncertain[0];
+    expect(u).toMatchObject({
+      kind: 'pick', key: `2029-2-${LAC}`, holder_status: 'uncertain', owner: null, is_own: true,
+      note: 'may have been traded; details not recorded',
+      trade: { slug: '2024-02-08-lac-den', href: '/franchise/trades/2024-02-08-lac-den', date: '2024-02-08' },
+    });
+    expect(u.counterparty.abbreviation).toBe('DEN');
+    // The 2029 first (round differs) is still held.
+    expect(body.owned.map((a: { key: string }) => a.key)).toEqual([`2029-1-${LAC}`]);
+    const unlinked = callFor('FROM transaction_parts u')![0].join('?');
+    expect(unlinked).toContain('u.pick_id IS NULL');
+    expect(unlinked).toContain("u.gap_reason = 'pick_unidentified'");
+  });
+
+  it('does not mark a pick uncertain once a linked part already sent it out', async () => {
+    route((q) => {
+      if (q.includes('FROM draft_picks dp')) return [futurePick(24, 2029, 2, LAC)];
+      if (q.includes('FROM transaction_parts p') && q.includes('p.pick_id')) {
+        return [{ pick_id: 24, transaction_id: '50', slug: 'lac-den-linked', date: '2024-02-08', season_id: 2023, kind: 'trade',
+          from_franchise_id: LAC, to_franchise_id: DEN, gap_reason: null }];
+      }
+      if (q.includes('FROM transaction_parts u')) {
+        return [{ transaction_id: '40', slug: 'x', date: '2024-02-08', season_id: 2023, kind: 'trade',
+          unlinked_text: 'a 2029 second round draft pick', from_franchise_id: LAC, to_franchise_id: DEN }];
+      }
+      return [];
+    });
+    const { GET } = await import('../../app/api/franchise/picks/route.js');
+    const body = await (await GET()).json();
+    expect(body.uncertain).toEqual([]);
+    expect(body.owed[0]).toMatchObject({ holder_status: 'owed', trade: { slug: 'lac-den-linked' } });
   });
 
   it('lists a future swap the Clippers hold as owned', async () => {
@@ -178,7 +345,7 @@ describe('GET /api/franchise/picks', () => {
     const { GET } = await import('../../app/api/franchise/picks/route.js');
     const body = await (await GET()).json();
     expect(body.owned).toHaveLength(1);
-    expect(body.owned[0]).toMatchObject({ kind: 'swap', draft_year: 2029, protections_known: null, protections_label: 'Protections not recorded' });
+    expect(body.owned[0]).toMatchObject({ kind: 'swap', holder_status: 'held', draft_year: 2029, protections_known: null, protections_label: 'Protections not recorded' });
     expect(body.owned[0].counterparty.abbreviation).toBe('PHI');
     expect(body.owed).toEqual([]);
   });
@@ -222,6 +389,25 @@ describe('GET /api/franchise/draft', () => {
     expect(kyrie).toMatchObject({ traded_away: true, player: { href: '/players/77' } });
     expect(kyrie.owner.abbreviation).toBe('CLE');
     expect(kyrie.lottery).toEqual({ pre_lottery_slot: 8, odds_first: 2.8, pick_won: 1, tie_unresolved: false, movement: 'jumped', source: 'wiki' });
+  });
+
+  it('falls back to the latest linked part for a pick with no recorded final owner', async () => {
+    const HOU = 1610612745;
+    route((q) => {
+      if (q.includes('FROM draft_picks dp')) {
+        return [{ pick_id: 30, pick_key: `2019-2-${LAC}`, draft_year: 2019, round: 2, original_franchise_id: LAC, status: null, overall_pick: null,
+          final_owner_franchise_id: null, selected_person: null, display_name: null, player_id: null,
+          pre_lottery_slot: null, odds_first: null, pick_won: null, tie_unresolved: null, lottery_source: null }];
+      }
+      if (q.includes('FROM transaction_parts p')) {
+        return [{ pick_id: 30, transaction_id: '5', slug: 'lac-hou', date: '2017-06-28', season_id: 2016, kind: 'trade', from_franchise_id: LAC, to_franchise_id: HOU }];
+      }
+      return [];
+    });
+    const { GET } = await import('../../app/api/franchise/draft/route.js');
+    const pick = (await (await GET()).json()).years[0].picks[0];
+    expect(pick.owner.abbreviation).toBe('HOU');
+    expect(pick.traded_away).toBe(true);
   });
 
   it('keeps unknown lottery odds null', async () => {
