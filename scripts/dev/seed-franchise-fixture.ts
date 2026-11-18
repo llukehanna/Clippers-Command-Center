@@ -237,7 +237,7 @@ person('name:michael-winger-1982', 'executive', 'Michael Winger', '1982-01-01');
 interface PickDef {
   year: number; round: number; orig: Tri;
   known?: boolean | null; text?: string | null; prot?: unknown;
-  status: 'future' | 'used' | 'conveyed_as_other' | 'extinguished' | 'forfeited';
+  status: 'future' | 'used' | 'conveyed_as_other' | 'extinguished' | 'forfeited' | null;
   overall?: number; selected?: string; owner?: Tri;
 }
 const pickRef = (year: number, round: number, orig: Tri) => `${year}-${round}-${orig}`;
@@ -274,6 +274,12 @@ const picks: PickDef[] = [
   { year: 2014, round: 1, orig: 'MIL', known: true, status: 'used', overall: 2, selected: 'parkeja01', owner: 'MIL' },
   { year: 1985, round: 1, orig: 'NYK', known: true, status: 'used', overall: 1, selected: 'ewingpa01', owner: 'NYK' },
   { year: 2015, round: 1, orig: 'LAL', known: true, status: 'used', overall: 2, selected: 'russeda01', owner: 'LAL' },
+  // Never used (Draft tab outcomes): not conveyed, forfeited, outcome not recorded
+  { year: 2019, round: 1, orig: 'LAC', known: true, status: 'extinguished' },
+  { year: 2016, round: 2, orig: 'LAC', known: true, status: 'forfeited' },
+  { year: 2018, round: 2, orig: 'LAC', known: true, status: null },
+  // Stale import: that draft has passed but the row still says future (Picks owed skips it)
+  { year: 2026, round: 2, orig: 'LAC', known: true, status: 'future' },
 ];
 
 interface SwapDef {
@@ -285,6 +291,7 @@ const swaps: SwapDef[] = [
   { year: 2023, round: 1, a: 'LAC', b: 'OKC', known: true, exercised: true },
   { year: 2025, round: 1, a: 'LAC', b: 'OKC', known: true, text: 'Top-10 protected', exercised: false },
   { year: 2029, round: 1, a: 'LAC', b: 'PHI', known: null, text: null, exercised: null }, // future swap
+  { year: 2024, round: 1, a: 'LAC', b: 'PHI', known: true, exercised: null }, // past swap no source settled (Picks owed skips it)
 ];
 
 interface LotteryDef { year: number; pick: string; slot: number | null; odds: number | null; won: number; tie: boolean; source: 'wiki' | 'derived' }
@@ -400,7 +407,7 @@ const txs: TxDef[] = [
   // 2023-10-31 Harden trade: gives the Clippers a pick they owe with unknown protections, a pick they own, and a future swap
   {
     key: 'nba:Trade 1311000', slug: '2023-10-31-james-harden', date: '2023-10-31', clippers: true, kind: 'trade',
-    desc: 'The Clippers acquired James Harden, P.J. Tucker and Filip Petrusev from Philadelphia for four players and a 2028 first-round pick. They also gained a 2028 second-round pick and a 2029 first-round swap.',
+    desc: 'The Clippers acquired James Harden, P.J. Tucker and Filip Petrusev from Philadelphia for four players and a 2028 first-round pick. They also gained a 2028 second-round pick and 2024 and 2029 first-round swaps.',
     parts: [
       pl('PHI', LAC, 'hardeja01'),
       pl('PHI', LAC, 'tuckepj01'),
@@ -412,6 +419,7 @@ const txs: TxDef[] = [
       pk(LAC, 'PHI', pickRef(2028, 1, 'LAC'), { gap: 'protections_unknown' }),
       pk('PHI', LAC, pickRef(2028, 2, 'PHI')),
       { f: 'PHI', t: LAC, k: 'swap', swap: swapRef(swaps[2]), gap: 'protections_unknown' },
+      { f: 'PHI', t: LAC, k: 'swap', swap: swapRef(swaps[3]) },
     ],
   },
   // Pick chain, hop 1 (not a Clippers move): ORL -> HOU
@@ -532,6 +540,7 @@ const execTerms: Array<[string, string | null, string | null, string | null]> = 
   ['name:lawrence-frank-1970', 'President of Basketball Operations', '2017-06-12', null], // open-ended
   ['name:michael-winger-1982', 'General Manager', '2019-09-01', '2024-06-30'],
   ['baylore01', 'Vice President of Basketball Operations', '1986-07-01', '2008-10-01'],
+  ['baylore01', 'General Manager', '1986-07-01', null], // end date not recorded: an older open term, never "present"
 ];
 
 // Only honors earned with the franchise (plus the league-wide Russell number).
