@@ -103,7 +103,21 @@ export function createPoller(
         // Leave sbAt as-is so the periodic refresh is retried next tick.
       }
     }
-    if (!sbGame || !started()) return;
+    if (!sbGame) return;
+    if (!started() && tipAt !== null && now >= tipAt) {
+      // The CDN scoreboard can lag the tip by 10+ minutes (seen on 2026-11-17:
+      // NYK@TOR still "scheduled" mid-Q1 while its box score was live). Past
+      // the scheduled tip, ask the box score too; its gameStatus counts toward
+      // started(). A failure here (file not published yet) must not fail the tick.
+      try {
+        const b = await deps.fetchBox(sbGame.gameId, boxValidators);
+        boxValidators = b.validators;
+        if (b.status === 200) box = b.body.game;
+      } catch (err) {
+        log(`tip-watch box probe failed: ${(err as Error).message}`);
+      }
+    }
+    if (!started()) return;
 
     const pbp = await deps.fetchPbp(sbGame.gameId, pbpValidators);
     pbpValidators = pbp.validators;

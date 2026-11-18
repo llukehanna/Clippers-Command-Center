@@ -1,6 +1,6 @@
 # Live Hub
 
-The Live Hub is the central push server for Live v2 (see [spec §6.1](../../Docs/superpowers/specs/2026-09-27-live-v2-realtime-design.md#61-the-hub-cloudflare-durable-object)). The game-night runner POSTs live state updates here, and fans' browsers connect via WebSocket to receive real-time game updates. Each game maintains its own isolated message stream with a 150-second replay window for reconnecting clients.
+The Live Hub is the central push server for Live v2. The game-night runner POSTs live state updates here, and fans' browsers connect via WebSocket to receive real-time game updates. Each game maintains its own isolated message stream with a 150-second replay window for reconnecting clients.
 
 ## Endpoints
 

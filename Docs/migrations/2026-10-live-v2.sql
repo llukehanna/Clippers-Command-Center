@@ -1,4 +1,4 @@
--- Live v2 (Docs/superpowers/specs/2026-09-27-live-v2-realtime-design.md §5).
+-- Live v2.
 -- Idempotent; safe to re-run.
 BEGIN;
 

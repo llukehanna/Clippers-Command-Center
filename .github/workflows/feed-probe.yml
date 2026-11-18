@@ -1,6 +1,6 @@
 name: Feed probe (spike)
 
-# Live v2 spike (Docs/superpowers/specs/2026-09-27-live-v2-realtime-design.md §10).
+# Live v2 spike.
 # Polls the NBA CDN and ESPN live feeds once a second during a live game and
 # uploads the raw records plus a summary. Triggered manually (needs this file on
 # main) or by pushing any probe/** branch (auto-discovers the first live game).
