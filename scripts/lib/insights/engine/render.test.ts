@@ -113,6 +113,69 @@ describe('every template renders clean and fits', () => {
   });
 });
 
+describe('review fixes: yoy context only claims what the fact supports', () => {
+  const player = FIXTURES.yoy_player;
+  const team = FIXTURES.yoy_team;
+  const recordsFrame = fr('records_best', { records_label: '2020-21', records_seasons: 6 });
+  it('player records_best and first_since use player wording and pronoun', () => {
+    expect(say(player, recordsFrame, rcNow).context).toBe('His best scoring in 6 seasons of records');
+    expect(say(player, fr('first_since', { since_label: '2021-22' }), rcNow).context).toBe('His best scoring since 2021-22');
+  });
+  it('team_rank yoy falls back to the rank move for records, first_since and career_high', () => {
+    for (const frame of [recordsFrame, fr('first_since', { since_label: '2021-22' }), fr('career_high')]) {
+      expect(say(team, frame, rcDone).context).toBe('-1.2 → +8.4');
+    }
+  });
+  it('win-percentage wording appears only on record yoy, and career-best only on player yoy', () => {
+    for (const f of [player, team]) for (const frame of [recordsFrame, fr('first_since', { since_label: '2021-22' }), fr('career_high')]) {
+      const ctx = say(f, frame, rcDone).context;
+      expect(ctx, `${f.stat}/${frame.type}`).not.toMatch(/win percentage/);
+      if (f.subject.type === 'team') expect(ctx, `${f.stat}/${frame.type}`).not.toMatch(/career/i);
+    }
+    expect(say(FIXTURES.yoy_record, recordsFrame, rcDone).context).toBe('Their best win percentage in 6 seasons of records');
+    expect(say(player, fr('career_high'), rcNow).context).toBe('A career-best season');
+  });
+});
+
+describe('review fixes: frame lines drop when their fields are missing', () => {
+  it('never leaves a dangling since or an empty records span', () => {
+    const bare: Frame[] = [
+      fr('first_since'), fr('longest_since'), fr('records_best'), fr('only_one'),
+      fr('joins_company'), fr('clippers_rank'), fr('nth_time'), fr('career_high'),
+    ];
+    const facts = [FIXTURES.streak, FIXTURES.team_streak, FIXTURES.night, FIXTURES.yoy_player, FIXTURES.yoy_record, FIXTURES.yoy_team, FIXTURES.milestone];
+    for (const f of facts) for (const frame of bare) for (const p of phrasingsFor(f, frame)) {
+      const ctx = p(f, frame, rcDone).context;
+      expect(ctx, `${f.kind}/${frame.type}: ${ctx}`).not.toMatch(/since\s*$|\s{2}|\bin\s+seasons|\bin\s*$|of records/);
+    }
+  });
+});
+
+describe('review fixes: direction words and team streak tense', () => {
+  it('a player who fell is not described as having risen', () => {
+    const fell = makeFact({
+      kind: 'yoy_change', stat: 'player_ppg', value: 27.1,
+      data: { yoy: 'player', label: 'scoring', formatted: '27.1 PPG', prev_formatted: '30.2 PPG', games: 60, prev_games: 58 },
+    });
+    expect(say(fell, none, rcNow).headline)
+      .toBe("Star Clipper's scoring fell from 30.2 PPG last season to 27.1 PPG this season");
+  });
+  it('a team rank that holds is not described as slipping', () => {
+    const held = makeFact({
+      kind: 'yoy_change', subject: { type: 'team', id: '1', name: 'Clippers' }, stat: 'team_rank_net_rating', value: 3,
+      data: { yoy: 'team_rank', rank: 3, total: 30, prev_rank: 3, label: 'net rating', formatted: '+8.4', prev_formatted: '+8.4', higherIsBetter: true },
+    });
+    const out = say(held, none, rcNow).headline;
+    expect(out).toBe("Clippers' net rating held at 3rd this season");
+    expect(out).not.toMatch(/slipped|improved/);
+  });
+  it('team streaks use past tense once the season is complete', () => {
+    expect(say(FIXTURES.team_streak, none, rcDone).headline).toBe('Clippers won 6 straight in 2025-26');
+    expect(say(FIXTURES.team_streak, none, rcDone, 1).headline).toBe('Clippers: 6 straight wins in 2025-26');
+    expect(say(FIXTURES.team_streak, none, rcNow).headline).toBe('Clippers have won 6 straight');
+  });
+});
+
 describe('renderInsight', () => {
   it('chooses a stable phrasing by key', () => {
     const f = FIXTURES.streak;

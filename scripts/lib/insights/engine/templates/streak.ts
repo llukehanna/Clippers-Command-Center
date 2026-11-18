@@ -27,14 +27,20 @@ const PLAYER_WORDS: Record<string, Words> = {
   },
 };
 
-const TEAM_WORDS: Record<string, ((n: number) => string)[]> = {
-  wins: [(n) => `Clippers have won ${n} straight`, (n) => `Clippers: ${n} straight wins`],
-  losses: [(n) => `Clippers have lost ${n} straight`, (n) => `Clippers: ${n} straight losses`],
+const TEAM_WORDS: Record<string, Words> = {
+  wins: {
+    current: [(n) => `Clippers have won ${n} straight`, (n) => `Clippers: ${n} straight wins`],
+    closed: [(n, s) => `Clippers won ${n} straight in ${s}`, (n, s) => `Clippers: ${n} straight wins in ${s}`],
+  },
+  losses: {
+    current: [(n) => `Clippers have lost ${n} straight`, (n) => `Clippers: ${n} straight losses`],
+    closed: [(n, s) => `Clippers lost ${n} straight in ${s}`, (n, s) => `Clippers: ${n} straight losses in ${s}`],
+  },
 };
 
 const headline = (i: number): Headline => (f, rc) => {
   const team = TEAM_WORDS[f.stat];
-  if (team) return team[i](f.value);
+  if (team) return rc.season.isCurrent ? team.current[i](f.value) : team.closed[i](f.value, rc.season.label);
   const words = PLAYER_WORDS[f.stat];
   if (!words) throw new Error(`no streak wording for ${f.stat}`);
   return `${f.subject.name} ${rc.season.isCurrent ? words.current[i](f.value) : words.closed[i](f.value, rc.season.label)}`;

@@ -1,16 +1,36 @@
 // Year-over-year phrasings: team rank moves, record, player rises.
 import { ordinal } from '../../proof-utils.js';
-import { overrides, phrasings, prevPhrase, prevSeasonLabel, sinceText, type ContextLine, type Headline, type TemplateModule } from './shared.js';
+import type { Fact } from '../types.js';
+import { overrides, pron, prevPhrase, prevSeasonLabel, sinceText, type ContextLine, type Headline, type TemplateModule } from './shared.js';
 
 const pctWhole = (v: number | undefined) => `${Math.round((v ?? 0) * 100)}%`;
+
+/** The player's previous value: numeric when the detector sets it, else read from its formatted text. */
+const playerPrev = (f: Fact) => f.data.prev_value ?? parseFloat(f.data.prev_formatted ?? '');
+
+/** Direction of a player move, read from the numbers (polarity says good or bad, not up or down). */
+const playerMove = (f: Fact): 'rose' | 'fell' | 'held' | 'changed' => {
+  const prev = playerPrev(f);
+  if (Number.isNaN(prev)) return 'changed';
+  if (f.value > prev) return 'rose';
+  if (f.value < prev) return 'fell';
+  return 'held';
+};
 
 const headline = (i: number): Headline => (f, rc) => {
   const d = f.data;
   if (d.yoy === 'team_rank') {
-    const verb = (d.prev_rank ?? 0) > (d.rank ?? 0) ? 'improved' : 'slipped';
+    const prev = d.prev_rank ?? 0;
+    const cur = d.rank ?? 0;
+    if (prev === cur) {
+      return i === 0
+        ? `Clippers' ${d.label} held at ${ordinal(cur)} ${rc.season.phrase}`
+        : `Clippers' ${d.label}: ${ordinal(prev)} ${prevPhrase(rc)}, ${ordinal(cur)} ${rc.season.phrase}`;
+    }
+    const verb = prev > cur ? 'improved' : 'slipped';
     return i === 0
-      ? `Clippers' ${d.label} ${verb} from ${ordinal(d.prev_rank ?? 0)} ${prevPhrase(rc)} to ${ordinal(d.rank ?? 0)} ${rc.season.phrase}`
-      : `Clippers' ${d.label}: ${ordinal(d.prev_rank ?? 0)} ${prevPhrase(rc)}, ${ordinal(d.rank ?? 0)} ${rc.season.phrase}`;
+      ? `Clippers' ${d.label} ${verb} from ${ordinal(prev)} ${prevPhrase(rc)} to ${ordinal(cur)} ${rc.season.phrase}`
+      : `Clippers' ${d.label}: ${ordinal(prev)} ${prevPhrase(rc)}, ${ordinal(cur)} ${rc.season.phrase}`;
   }
   if (d.yoy === 'record') {
     const up = f.polarity === 'positive' ? 'up' : 'down';
@@ -23,8 +43,14 @@ const headline = (i: number): Headline => (f, rc) => {
       ? `Clippers are winning ${pctWhole(d.cur_value)} of their games, ${up} from ${pctWhole(d.prev_value)} last season`
       : `Clippers' win rate is ${up} to ${pctWhole(d.cur_value)} from ${pctWhole(d.prev_value)} last season`;
   }
+  const move = playerMove(f);
+  if (move === 'held') {
+    return i === 0
+      ? `${f.subject.name}'s ${d.label} held steady at ${d.formatted} ${rc.season.phrase}`
+      : `${f.subject.name}: ${d.prev_formatted} ${prevPhrase(rc)}, ${d.formatted} ${rc.season.phrase}`;
+  }
   return i === 0
-    ? `${f.subject.name}'s ${d.label} rose from ${d.prev_formatted} ${prevPhrase(rc)} to ${d.formatted} ${rc.season.phrase}`
+    ? `${f.subject.name}'s ${d.label} ${move} from ${d.prev_formatted} ${prevPhrase(rc)} to ${d.formatted} ${rc.season.phrase}`
     : `${f.subject.name}: ${d.prev_formatted} ${prevPhrase(rc)}, ${d.formatted} ${rc.season.phrase}`;
 };
 
@@ -35,17 +61,29 @@ const detail: ContextLine = (f, _fr, rc) => {
   return `${d.prev_games} games ${prevPhrase(rc)} → ${d.games} games ${rc.season.phrase} (regular season)`;
 };
 
-const framed: ContextLine = (f, fr, rc, i) => {
-  if (fr.type === 'career_high') return 'A career-best season';
-  if (fr.type === 'first_since') return f.data.yoy === 'record' ? `Their best win percentage since ${sinceText(fr)}` : `His best since ${sinceText(fr)}`;
-  if (fr.type === 'records_best') return `Their best win percentage in ${fr.records_seasons ?? 1} seasons of records`;
+/**
+ * Context per frame, switched on what the fact measures. Win-percentage wording only
+ * for record facts; career-best only for players; team rank facts never take frame wording.
+ */
+const context: ContextLine = (f, fr, rc, i) => {
+  const d = f.data;
+  const since = sinceText(fr);
+  if (d.yoy === 'record') {
+    if (fr.type === 'first_since' && since) return `Their best win percentage since ${since}`;
+    if (fr.type === 'records_best' && fr.records_seasons !== undefined) {
+      return `Their best win percentage in ${fr.records_seasons} season${fr.records_seasons === 1 ? '' : 's'} of records`;
+    }
+  }
+  if (d.yoy === 'player') {
+    if (fr.type === 'career_high') return 'A career-best season';
+    if (fr.type === 'first_since' && since) return `${pron(f)} best ${d.label ?? 'performance'} since ${since}`;
+    if (fr.type === 'records_best' && fr.records_seasons !== undefined) {
+      return `${pron(f)} best ${d.label ?? 'performance'} in ${fr.records_seasons} season${fr.records_seasons === 1 ? '' : 's'} of records`;
+    }
+  }
   return detail(f, fr, rc, i);
 };
 
-const headlines = [headline(0), headline(1)];
 export const yoyTemplates: TemplateModule = {
-  default: phrasings(headlines, detail),
-  career_high: overrides(headlines, framed),
-  first_since: overrides(headlines, framed),
-  records_best: overrides(headlines, framed),
+  default: overrides([headline(0), headline(1)], context),
 };

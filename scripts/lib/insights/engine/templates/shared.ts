@@ -27,40 +27,66 @@ export const oppShort = (f: Fact, rc: RenderContext) =>
   rc.teams.get(f.context.opponent_id ?? '')?.name ?? f.context.opponent_name ?? 'opponent';
 export const prevSeasonLabel = (rc: RenderContext) => seasonLabel(rc.season.id - 1);
 export const prevPhrase = (rc: RenderContext) => (rc.season.isCurrent ? 'last season' : `in ${prevSeasonLabel(rc)}`);
+/** Short span start ("Jan 2024" or a season label); '' when the frame has neither field. */
 export const sinceText = (fr: Frame) => fr.since_label ?? (fr.since_date ? monthYear(fr.since_date) : '');
-const since = sinceText;
+/** Long span start ("Mar 1, 2021" or a season label); '' when the frame has neither field. */
 const sinceLong = (fr: Frame) => fr.since_label ?? (fr.since_date ? fmtDate(fr.since_date) : '');
 
-/** Context line for the frame types every kind words the same way; null for kind-specific types. */
+/**
+ * Context line for the frame types every kind words the same way; null for kind-specific
+ * types and when the frame lacks the field the line needs (a null lets the fallback speak).
+ */
 export function frameLine(f: Fact, fr: Frame, rc: RenderContext, variant: number): string | null {
   const thing = f.data.thing ?? 'performance';
   const best = f.data.best ?? `best ${thing}`;
   const by = f.data.by ?? (f.subject.type === 'player' ? 'by a Clipper' : 'by the Clippers');
-  const label = fr.records_label ?? '';
-  const seasons = fr.records_seasons ?? 1;
-  const lines: Partial<Record<FrameType, string[]>> = {
-    career_high: [
-      `A career high${fr.prior_value !== undefined ? ` (previous best ${fmtNum(fr.prior_value)})` : ''}`,
-      `${pron(f)} career best`,
-    ],
-    only_one: [`The only ${thing} ${by} since ${label}`, `No other ${thing} ${by} since ${label}`],
-    records_best: [
-      `${cap(best)} ${by} since ${label}`,
-      `${cap(best)} ${by} in ${seasons} season${seasons === 1 ? '' : 's'} of records`,
-    ],
-    joins_company: [`Joins ${listNames(fr.names ?? [])} as the only Clippers with a ${thing} since ${label}`],
-    first_since: fr.who === 'subject'
-      ? [`${pron(f)} first ${thing} since ${since(fr)}`, `${pron(f)} first since ${sinceLong(fr)}`]
-      : [`First ${thing} ${by} since ${since(fr)}`, `The first ${thing} ${by} since ${sinceLong(fr)}`],
-    longest_since: [`${cap(best)} ${by} since ${since(fr)}`, `The ${best} ${by} since ${sinceLong(fr)}`],
-    clippers_rank: [`${ordinal(fr.rank ?? 0)}-${best} ${by} since ${label}`],
-    season_high: fr.who === 'subject'
-      ? [`${pron(f)} season high`, `${pron(f)} ${best} ${rc.season.phrase}`]
-      : [`The ${best} ${by} ${rc.season.phrase}`, `${cap(best)} ${by} ${rc.season.phrase}`],
-    nth_time: [`${pron(f)} ${ordinal(fr.count ?? 0)} ${thing} ${rc.season.phrase}`, `${ordinal(fr.count ?? 0)} ${thing} ${rc.season.phrase}`],
+  const label = fr.records_label || null;
+  const since = sinceText(fr) || null;
+  const sinceFull = sinceLong(fr) || null;
+  const seasonsText = fr.records_seasons !== undefined
+    ? `${fr.records_seasons} season${fr.records_seasons === 1 ? '' : 's'} of records`
+    : null;
+  /** The variant-th option among those whose fields are present. */
+  const pick = (options: (string | null)[]): string | null => {
+    const ok = options.filter((o): o is string => o !== null);
+    return ok.length ? ok[variant % ok.length] : null;
   };
-  const options = lines[fr.type];
-  return options ? options[variant % options.length] : null;
+  switch (fr.type) {
+    case 'career_high':
+      return pick([
+        `A career high${fr.prior_value !== undefined ? ` (previous best ${fmtNum(fr.prior_value)})` : ''}`,
+        `${pron(f)} career best`,
+      ]);
+    case 'only_one':
+      return label ? pick([`The only ${thing} ${by} since ${label}`, `No other ${thing} ${by} since ${label}`]) : null;
+    case 'records_best':
+      return pick([
+        label ? `${cap(best)} ${by} since ${label}` : null,
+        seasonsText ? `${cap(best)} ${by} in ${seasonsText}` : null,
+      ]);
+    case 'joins_company':
+      return label && fr.names?.length
+        ? pick([`Joins ${listNames(fr.names)} as the only Clippers with a ${thing} since ${label}`])
+        : null;
+    case 'first_since':
+      return fr.who === 'subject'
+        ? pick([since ? `${pron(f)} first ${thing} since ${since}` : null, sinceFull ? `${pron(f)} first since ${sinceFull}` : null])
+        : pick([since ? `First ${thing} ${by} since ${since}` : null, sinceFull ? `The first ${thing} ${by} since ${sinceFull}` : null]);
+    case 'longest_since':
+      return pick([since ? `${cap(best)} ${by} since ${since}` : null, sinceFull ? `The ${best} ${by} since ${sinceFull}` : null]);
+    case 'clippers_rank':
+      return label && fr.rank !== undefined ? pick([`${ordinal(fr.rank)}-${best} ${by} since ${label}`]) : null;
+    case 'season_high':
+      return fr.who === 'subject'
+        ? pick([`${pron(f)} season high`, `${pron(f)} ${best} ${rc.season.phrase}`])
+        : pick([`The ${best} ${by} ${rc.season.phrase}`, `${cap(best)} ${by} ${rc.season.phrase}`]);
+    case 'nth_time':
+      return fr.count !== undefined
+        ? pick([`${pron(f)} ${ordinal(fr.count)} ${thing} ${rc.season.phrase}`, `${ordinal(fr.count)} ${thing} ${rc.season.phrase}`])
+        : null;
+    default:
+      return null;
+  }
 }
 
 /** One phrasing per headline; the context is the shared frame line, else `fallback`. */
