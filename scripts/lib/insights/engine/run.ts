@@ -56,7 +56,7 @@ export function ageDays(fact: Fact, ctx: EngineContext): number {
 export async function buildDraft(
   fact: Fact, key: string, detector: string, ctx: EngineContext, run: Runner = runQuery,
 ): Promise<InsightDraft | { reason: DropReason }> {
-  const cls = fact.data.opponent_player ? 'opponent' : salienceClass(fact.subject, ctx.roster);
+  const cls = fact.surface === 'pregame' && fact.data.opponent_player ? 'opponent' : salienceClass(fact.subject, ctx.roster);
   if (cls === 'former' && fact.surface !== 'postgame') return { reason: 'former' };
 
   // Play-by-play record frames are only honest when every earlier Clippers game in range has play-by-play.

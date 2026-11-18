@@ -98,13 +98,22 @@ FROM lac_games
 WHERE recency < COALESCE((SELECT recency FROM first_change), 2147483647)
 HAVING COUNT(*) > 0`.trim();
 
-/** $1 season, $2 team, $3 as-of: the team's last ten games of the season (same games as TEAM_STREAK_SQL). */
-export const TEAM_LAST10_SQL = `
+/** $1 season, $2 team, $3 as-of: the team's current streak and last ten, from the same games (the opponent form facts' one proof). */
+export const TEAM_FORM_SQL = `
 WITH team_games AS (${TEAM_FORM_GAMES}
+), latest AS (
+  SELECT won FROM team_games WHERE recency = 1
+), first_change AS (
+  SELECT MIN(recency) AS recency FROM team_games WHERE won <> (SELECT won FROM latest)
+), streak_run AS (
+  SELECT * FROM team_games WHERE recency < COALESCE((SELECT recency FROM first_change), 2147483647)
 )
-SELECT COUNT(*) FILTER (WHERE won)::int AS wins, COUNT(*)::int AS games
-FROM team_games
-WHERE recency <= 10`.trim();
+SELECT (SELECT won FROM latest) AS winning,
+       (SELECT COUNT(*) FROM streak_run)::int AS streak,
+       (SELECT MIN(game_date) FROM streak_run)::text AS streak_start,
+       (SELECT MAX(game_date) FROM streak_run)::text AS streak_end,
+       (SELECT COUNT(*) FILTER (WHERE won) FROM team_games WHERE recency <= 10)::int AS last10_wins,
+       (SELECT COUNT(*) FROM team_games WHERE recency <= 10)::int AS last10_games`.trim();
 
 export const TEAM_STREAK_MIN = { wins: 3, losses: 4 } as const;
 

@@ -566,7 +566,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     it('the opponent streak is rated from the opponent\'s own record, on one shared form rule', async () => {
       const { matchupDetector } = await import('./engine/detectors/pregame-matchup');
       const { clippersTeamResultShare, teamResultRate } = await import('./engine/rates');
-      const { TEAM_LAST10_SQL, TEAM_STREAK_SQL } = await import('./engine/detectors/season-streaks');
+      const { TEAM_FORM_SQL } = await import('./engine/detectors/season-streaks');
       // 2026-02-06: the next opponent (Raptors) has lost 20 straight.
       const ctx = await ctxAt('2026-02-06');
       const next = await nextAt('2026-02-06');
@@ -574,8 +574,13 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       const streak = facts.find((f) => f.stat === 'opp_streak');
       expect(streak, 'an opponent streak').toBeDefined();
       expect(streak!.data).toMatchObject({ winning: false, length: 20 });
-      expect(streak!.proof.sql).toBe(TEAM_STREAK_SQL);
-      expect(facts.find((f) => f.stat === 'opp_last10')!.proof.sql).toBe(TEAM_LAST10_SQL);
+      expect(streak!.proof.sql).toBe(TEAM_FORM_SQL);
+      const last10 = facts.find((f) => f.stat === 'opp_last10')!;
+      expect(last10.proof.sql).toBe(TEAM_FORM_SQL);
+      // One proof row holds every number both facts word (streak and last 10).
+      const [row] = await proofRows(streak!);
+      expect(row).toMatchObject({ streak: 20, last10_wins: 0, last10_games: 10, streak_start: streak!.data.start_date, streak_end: streak!.data.end_date });
+      expect(last10.data).toMatchObject({ wins: 0, losses: 10, length: 20 });
       const pRef = await clippersTeamResultShare(ctx, false, next.opponentId);
       const rate = await teamResultRate(ctx, false, streak!.data.start_date!, next.opponentId);
       expect(streak!.sample).toEqual({ kind: 'rate', k: rate.k, n: rate.n, pRef, power: 20 });
@@ -611,7 +616,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       const created: string[] = [];
       try {
         // A game against the Clippers on the as-of day: both teams on the second night of a back-to-back.
-        const [b2b] = await insertGame(90_000_001, IN_SEASON, 1, Number(next.opponentId));
+        const [b2b] = await insertGame(90_000_001, IN_SEASON, Number(ctx.lac.teamId), Number(next.opponentId));
         created.push(b2b.game_id);
         const open = await matchupDetector().run(ctx);
         expect(open.facts.filter((f) => f.kind === 'rest').map((f) => f.stat).sort()).toEqual(['lac_b2b', 'opp_b2b']);
@@ -640,7 +645,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       const next = await nextAt(IN_SEASON);
       let id: string | undefined;
       try {
-        [{ game_id: id }] = await insertGame(90_000_003, IN_SEASON, 1, Number(next.opponentId));
+        [{ game_id: id }] = await insertGame(90_000_003, IN_SEASON, Number(ctx.lac.teamId), Number(next.opponentId));
         const full = await matchupDetector().run(ctx);
         const rest = full.facts.filter((f) => f.kind === 'rest');
         expect(rest.map((f) => f.stat).sort()).toEqual(['lac_b2b', 'opp_b2b']);
@@ -651,6 +656,28 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         expect(rest.find((f) => f.stat === 'lac_b2b')).toMatchObject({ value: 0, data: { lac_rest: 0, lac_last_game: IN_SEASON } });
         const partial = await matchupDetector().run({ ...ctx, league: { complete: false, reason: 'x' } });
         expect(partial.facts.map((f) => `${f.kind}/${f.stat}`)).toEqual(['rest/lac_b2b']);
+      } finally {
+        if (id) await sql`DELETE FROM games WHERE game_id = ${id}::bigint`;
+      }
+    }, TIMEOUT);
+
+    it('rest counts the opponent\'s scheduled game between as-of and the next game (the schedule is known)', async () => {
+      const { matchupDetector } = await import('./engine/detectors/pregame-matchup');
+      const ctx = await ctxAt(IN_SEASON);
+      const next = await nextAt(IN_SEASON);
+      expect(next.date).toBe('2026-01-11');
+      let id: string | undefined;
+      try {
+        // The opponent plays the night before the next game, but that game is not final yet (no score).
+        [{ game_id: id }] = await sql<{ game_id: string }[]>`
+          INSERT INTO games (nba_game_id, season_id, game_date, status, home_team_id, away_team_id)
+          VALUES (90000004, 2025, ${IN_SEASON}::date, 'scheduled', ${next.opponentId}::bigint, 5)
+          RETURNING game_id::text AS game_id`;
+        const { facts } = await matchupDetector().run(ctx);
+        const rest = facts.filter((f) => f.kind === 'rest');
+        expect(rest.map((f) => f.stat)).toEqual(['opp_b2b']);
+        expect(rest[0].data).toMatchObject({ opp_rest: 0, opp_last_game: IN_SEASON });
+        expect((await proofRows(rest[0])).length).toBeGreaterThan(0);
       } finally {
         if (id) await sql`DELETE FROM games WHERE game_id = ${id}::bigint`;
       }
@@ -667,6 +694,10 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         await snap('2026-01-09T12:00:00-08:00', -3, 220);
         // 18:00 PT on the as-of day is 02:00 UTC the next day: a UTC-midnight cutoff would miss it.
         await snap('2026-01-10T18:00:00-08:00', -4.5, 228.5);
+        // A later snapshot with no spread must not hide the valid one.
+        await sql`
+          INSERT INTO odds_snapshots (game_id, provider, captured_at, total_points)
+          VALUES (${next.gameId}::bigint, 'test', '2026-01-10T20:00:00-08:00'::timestamptz, 230)`;
         // 00:30 PT the day after is after the as-of day.
         await snap('2026-01-11T00:30:00-08:00', -9, 240);
         const { facts } = await matchupDetector().run(ctx);
