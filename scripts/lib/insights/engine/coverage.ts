@@ -11,15 +11,24 @@ export const MAX_STALE_DAYS = 3;
 
 export interface TeamGames { team_id: string; games: number; last_date: string }
 
-export function assessLeagueCoverage(rows: TeamGames[], lacTeamId: string, expectedTeams = 30): LeagueCoverage {
+/**
+ * `leagueLatest` is the newest final game that does NOT involve the Clippers
+ * (null when there is none). It cannot come from `rows`: ESPN-finalized
+ * Clippers games write box scores for both sides, so the Clippers' latest
+ * opponent always carries the Clippers' own last date.
+ */
+export function assessLeagueCoverage(
+  rows: TeamGames[], lacTeamId: string, leagueLatest: string | null, expectedTeams = 30,
+): LeagueCoverage {
   if (rows.length < expectedTeams) return { complete: false, reason: `${rows.length} of ${expectedTeams} teams have box scores` };
   const counts = rows.map((r) => r.games);
   const min = Math.min(...counts);
   const max = Math.max(...counts);
   if (max - min > MAX_GAMES_SPREAD) return { complete: false, reason: `games played range ${min}–${max}` };
   const lac = rows.find((r) => r.team_id === lacTeamId);
-  const leagueLatest = rows.filter((r) => r.team_id !== lacTeamId).map((r) => r.last_date).sort().at(-1);
-  if (lac && leagueLatest && daysBetween(leagueLatest, lac.last_date) > MAX_STALE_DAYS) {
+  if (!lac) return { complete: false, reason: 'Clippers have no box scores' };
+  if (!leagueLatest) return { complete: false, reason: 'no league games without the Clippers have box scores' };
+  if (daysBetween(leagueLatest, lac.last_date) > MAX_STALE_DAYS) {
     return { complete: false, reason: `league box scores end ${leagueLatest}, Clippers ${lac.last_date}` };
   }
   return { complete: true, reason: null };

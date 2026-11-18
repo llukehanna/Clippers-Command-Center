@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { laToday } from './engine/dates';
+import { REGULAR_SEASON } from '../sql-fragments';
 import type { EngineContext, InsightDraft } from './engine/types';
 
 const url = process.env.FIXTURE_DATABASE_URL;
@@ -156,8 +157,8 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       const share = await seasonTotalShare(ctx, 'SUM(pb.points)', 1000);
       expect(share).toBeGreaterThan(0);
       expect(share).toBeLessThan(1);
-      const [g] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM game_player_box_scores WHERE player_id = 1 AND points = 55`;
-      expect(await playerValueRate(ctx, 'points', '1', 55, g.game_id)).toMatchObject({ k: 0 });
+      const [g] = await sql<{ game_id: string; d: string }[]>`SELECT pb.game_id::text, g.game_date::text AS d FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id WHERE pb.player_id = 1 AND pb.points = 55`;
+      expect(await playerValueRate(ctx, 'points', '1', 55, g.game_id, g.d)).toMatchObject({ k: 0 });
     }, TIMEOUT);
 
     it('hit-rate n is exactly the player\'s games strictly before the date', async () => {
@@ -167,12 +168,12 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         const [r] = await sql<{ n: number }[]>`
           SELECT COUNT(*)::int AS n FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
           WHERE pb.player_id = 1 AND g.season_id >= ${ctx.season.id - 1} AND g.game_date < ${date}::date
-            AND NOT g.is_playoffs AND g.nba_game_id NOT BETWEEN 50000000 AND 59999999`;
+            AND ${sql.unsafe(REGULAR_SEASON)}`;
         return r.n;
       };
       const [last] = await sql<{ d: string }[]>`
         SELECT MAX(g.game_date)::text AS d FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
-        WHERE pb.player_id = 1 AND g.game_date <= ${ctx.asOf}::date AND NOT g.is_playoffs AND g.nba_game_id NOT BETWEEN 50000000 AND 59999999`;
+        WHERE pb.player_id = 1 AND g.game_date <= ${ctx.asOf}::date AND ${sql.unsafe(REGULAR_SEASON)}`;
       const dayAfter = new Date(new Date(`${last.d}T12:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10);
       const at = (await playerHitRates(ctx, 'pb.points >= 0', [{ playerId: '1', date: last.d }])).rates.get('1')!;
       const after = (await playerHitRates(ctx, 'pb.points >= 0', [{ playerId: '1', date: dayAfter }])).rates.get('1')!;
@@ -180,6 +181,33 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(after.n).toBe(await countBefore(dayAfter));
       // The game on the date itself is not counted at that date, only the day after.
       expect(after.n).toBe(at.n + 1);
+    }, TIMEOUT);
+
+    it('value-rate n counts only games strictly before the fact date', async () => {
+      const { playerValueRate } = await import('./engine/rates');
+      const ctx = await ctxAt('2026-02-25');
+      const countBefore = async (date: string) => {
+        const [r] = await sql<{ n: number }[]>`
+          SELECT COUNT(*)::int AS n FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
+          WHERE pb.player_id = 1 AND g.season_id >= ${ctx.season.id - 1} AND g.game_date < ${date}::date
+            AND g.game_date <= ${ctx.asOf}::date AND ${sql.unsafe(REGULAR_SEASON)}`;
+        return r.n;
+      };
+      const dates = await sql<{ d: string }[]>`
+        SELECT g.game_date::text AS d FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
+        WHERE pb.player_id = 1 AND g.season_id >= ${ctx.season.id - 1} AND g.game_date <= ${ctx.asOf}::date AND ${sql.unsafe(REGULAR_SEASON)}
+        ORDER BY g.game_date`;
+      const mid = dates[Math.floor(dates.length / 2)].d;
+      const last = dates[dates.length - 1].d;
+      const other = { game_id: '0' }; // no such game: nothing is excluded by id
+      const atMid = await playerValueRate(ctx, 'points', '1', 0, other.game_id, mid);
+      const atLast = await playerValueRate(ctx, 'points', '1', 0, other.game_id, last);
+      expect(atMid.n).toBe(await countBefore(mid));
+      expect(atLast.n).toBe(await countBefore(last));
+      expect(atLast.n).toBeGreaterThan(atMid.n);
+      // A future fact date cannot read past asOf.
+      const future = await playerValueRate(ctx, 'points', '1', 0, other.game_id, '2099-01-01');
+      expect(future.n).toBe(await countBefore('2099-01-01'));
     }, TIMEOUT);
   });
 });

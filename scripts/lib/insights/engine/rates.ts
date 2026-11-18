@@ -35,7 +35,7 @@ export async function playerHitRates(
     JOIN games g ON g.game_id = pb.game_id
     JOIN unnest(${before.map((b) => b.playerId)}::bigint[], ${before.map((b) => b.date)}::date[]) AS s(player_id, before_date)
       ON s.player_id = pb.player_id
-    WHERE g.season_id >= ${ctx.season.id - 1} AND g.game_date < s.before_date AND ${regular()}
+    WHERE g.season_id >= ${ctx.season.id - 1} AND g.game_date < s.before_date AND g.game_date <= ${ctx.asOf}::date AND ${regular()}
     GROUP BY pb.player_id`;
   return { rates: new Map(rows.map((r) => [r.player_id, { k: r.k, n: r.n }])), pRef: await clippersPlayerRate(ctx, predicate) };
 }
@@ -49,13 +49,13 @@ export async function teamResultRate(ctx: EngineContext, wins: boolean, beforeDa
     FROM games g
     WHERE ${lac}::bigint IN (g.home_team_id, g.away_team_id) AND g.status = 'final'
       AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
-      AND g.season_id >= ${ctx.season.id - 1} AND g.game_date < ${beforeDate}::date AND ${regular()}`;
+      AND g.season_id >= ${ctx.season.id - 1} AND g.game_date < ${beforeDate}::date AND g.game_date <= ${ctx.asOf}::date AND ${regular()}`;
   return { k: r?.k ?? 0, n: r?.n ?? 0 };
 }
 
-/** A player's other games at or above `value` (k/n) and the Clippers-wide rate, excluding the fact's game. */
+/** A player's earlier games (strictly before `factDate`, never past asOf) at or above `value` (k/n) and the Clippers-wide rate over the same games, excluding the fact's game. */
 export async function playerValueRate(
-  ctx: EngineContext, column: string, playerId: string, value: number, gameId: string,
+  ctx: EngineContext, column: string, playerId: string, value: number, gameId: string, factDate: string,
 ): Promise<{ k: number; n: number; pRef: number }> {
   const col = sql.unsafe(`pb.${column}`);
   const lac = ctx.lac.teamId;
@@ -66,7 +66,7 @@ export async function playerValueRate(
     FROM game_player_box_scores pb
     JOIN games g ON g.game_id = pb.game_id
     WHERE (pb.player_id = ${playerId}::bigint OR pb.team_id = ${lac}::bigint)
-      AND pb.game_id <> ${gameId}::bigint AND g.game_date <= ${ctx.asOf}::date
+      AND pb.game_id <> ${gameId}::bigint AND g.game_date < ${factDate}::date AND g.game_date <= ${ctx.asOf}::date
       AND ${regular()} AND ${col} IS NOT NULL`;
   return { k: r?.k ?? 0, n: r?.n ?? 0, pRef: r?.p_ref ?? 0 };
 }
@@ -80,7 +80,7 @@ export async function seasonTotalShare(ctx: EngineContext, expr: string, thresho
       FROM game_player_box_scores pb
       JOIN games g ON g.game_id = pb.game_id
       WHERE pb.team_id = ${ctx.lac.teamId}::bigint AND g.season_id >= ${recordsFrom(ctx)} AND g.season_id < ${ctx.season.id}
-        AND ${regular()}
+        AND g.game_date <= ${ctx.asOf}::date AND ${regular()}
       GROUP BY pb.player_id, g.season_id
       HAVING COUNT(*) >= 20
     ) s`;

@@ -83,6 +83,14 @@ export async function loadEngineContext(opts: LoadOptions): Promise<EngineContex
     GROUP BY t.team_id`,
   [chosen.season_id, asOf])) as unknown as TeamGames[];
 
+  const [latest] = (await sql.unsafe(`
+    SELECT MAX(g.game_date)::text AS d
+    FROM games g
+    WHERE g.season_id = $1::int AND g.status = 'final' AND g.game_date <= $2::date AND ${REGULAR_SEASON}
+      AND $3::bigint NOT IN (g.home_team_id, g.away_team_id)
+      AND EXISTS (SELECT 1 FROM game_team_box_scores b WHERE b.game_id = g.game_id)`,
+  [chosen.season_id, asOf, lac.teamId])) as unknown as { d: string | null }[];
+
   const prior: Map<string, PriorState> = opts.withPrior ? await loadPrior() : new Map();
 
   return {
@@ -94,7 +102,7 @@ export async function loadEngineContext(opts: LoadOptions): Promise<EngineContex
     recordsStart: parseRecordsStart(kvValue('insights.records_start')),
     pbpRecordsStart: parseRecordsStart(kvValue('insights.pbp_records_start')),
     roster,
-    league: assessLeagueCoverage(coverage, lac.teamId),
+    league: assessLeagueCoverage(coverage, lac.teamId, latest?.d ?? null),
     gameId: opts.gameId ?? null,
     prior,
   };
