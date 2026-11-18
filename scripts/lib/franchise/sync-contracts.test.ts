@@ -78,6 +78,8 @@ describe('fetchWeekly', () => {
     // ...plus the current Wikipedia season page, nothing else.
     expect(urls.filter((u) => !u.includes('basketball-reference.com'))).toEqual([expect.stringContaining('2026%E2%80%9327%20Los%20Angeles%20Clippers%20season')]);
     expect(urls).toHaveLength(3);
+    // Contracts first: fetchAll stops at the first BBRef non-200, so a missing season page can't cost the contracts.
+    expect(urls[0]).toBe('https://www.basketball-reference.com/contracts/LAC.html');
     // BBRef paced 6,000 ms apart.
     expect(PACE_MS.bbref).toBe(6000);
     expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([PACE_MS.bbref]);
@@ -92,6 +94,19 @@ describe('fetchWeekly', () => {
     expect(err).toBeInstanceOf(FetchStopped);
     expect(err).toMatchObject({ key: 'bbref/contracts', status: 403 });
     await expect(fetchWeekly(2026, deps(fakeFetch({ 'wikipedia.org': 503 })))).rejects.toMatchObject({ key: expect.stringMatching(/^wiki\//), status: 503 });
+    for (const status of [403, 429, 500]) {
+      await expect(fetchWeekly(2026, deps(fakeFetch({ '2027_transactions': status })))).rejects.toMatchObject({ key: 'bbref/LAC-2027_transactions', status });
+    }
+  });
+
+  it('reads a 404 on the season page as not published yet: contracts only, no Wikipedia fetch', async () => {
+    const fetch = fakeFetch({ '2027_transactions': 404 });
+    const got = await fetchWeekly(2026, { fetch: fetch as unknown as typeof globalThis.fetch, sleep: async () => {}, now: () => 0 });
+    expect(got).toMatchObject({ contractsHtml: CONTRACTS, transactionsHtml: null, wiki: null, transactionsPage: 'LAC-2027_transactions' });
+    expect(fetch.mock.calls.map(([u]) => String(u))).toEqual([
+      'https://www.basketball-reference.com/contracts/LAC.html',
+      'https://www.basketball-reference.com/teams/LAC/2027_transactions.html',
+    ]);
   });
 });
 
@@ -99,8 +114,8 @@ describe('fetchWeekly', () => {
 
 describe('buildWeekly', () => {
   it('fills a draft consideration from the current transactions page', () => {
-    const { data, unparsed } = weekly();
-    expect(unparsed).toEqual([]);
+    const { data, fillsSkipped } = weekly();
+    expect(fillsSkipped).toBeNull();
     // Only the stored incomplete trade is written (Wikipedia's June draft-rights deals match nothing stored).
     expect(data.moves).toHaveLength(1);
     const [m] = data.moves;
@@ -154,16 +169,42 @@ describe('buildWeekly', () => {
     expect(() => weekly({ pages: pages({ contractsHtml: '<html><body>Payroll moved</body></html>' }) })).toThrow(/contracts/);
     // A contracts page with no column for this season gives no salaries: also a failure.
     expect(() => weekly({ season: 2027 })).toThrow(/2027-28/);
-    // And a transactions page with no list of moves.
-    expect(() => weekly({ pages: pages({ transactionsHtml: '<html><body>Not found</body></html>' }) })).toThrow(/transactions page/);
   });
 
-  it('gates on unparsed lines, and an ignore override settles one', () => {
+  it('skips only the trade fills on a transactions page with no list of moves', () => {
+    const { data, fillsSkipped } = weekly({ pages: pages({ transactionsHtml: '<html><body>Not found</body></html>' }) });
+    expect(fillsSkipped).toMatchObject({ reason: 'shape', detail: expect.stringMatching(/transactions page/) });
+    expect(data.moves).toEqual([]);
+    expect(data.contracts.length).toBeGreaterThan(0);
+    expect(data.salaries.length).toBeGreaterThan(0);
+  });
+
+  it('skips only the trade fills when the season page is not published yet', () => {
+    const { data, fillsSkipped } = weekly({ pages: pages({ transactionsHtml: null, wiki: null }) });
+    expect(fillsSkipped).toMatchObject({ reason: 'not_published', detail: expect.stringMatching(/season page not published yet/) });
+    expect(data.moves).toEqual([]);
+    expect(data.contracts.length).toBeGreaterThan(0);
+    expect(data.salaries.length).toBeGreaterThan(0);
+  });
+
+  it('skips only the trade fills on unparsed lines, and an ignore override settles one', () => {
     const odd = 'The Los Angeles Clippers did something new.';
-    const { unparsed } = weekly({ pages: pages({ transactionsHtml: txPage(STRUS_TRADE, odd) }) });
-    expect(unparsed.map((l) => l.text)).toEqual([odd]);
+    const { data, fillsSkipped } = weekly({ pages: pages({ transactionsHtml: txPage(STRUS_TRADE, odd) }) });
+    expect(fillsSkipped).toMatchObject({ reason: 'unparsed' });
+    expect(fillsSkipped!.lines!.map((l) => l.text)).toEqual([odd]);
+    // Contracts and salaries are still written; the trade isn't.
+    expect(data.moves).toEqual([]);
+    expect(data.picks).toEqual([]);
+    expect(data.contracts.length).toBeGreaterThan(0);
+    expect(data.salaries.length).toBeGreaterThan(0);
     const ignore: Override = { kind: 'ignore', match: { source: 'LAC-2027_transactions', text: odd }, reason: 'test', source: 'test' };
-    expect(weekly({ pages: pages({ transactionsHtml: txPage(STRUS_TRADE, odd) }), overrides: [ignore] }).unparsed).toEqual([]);
+    const settled = weekly({ pages: pages({ transactionsHtml: txPage(STRUS_TRADE, odd) }), overrides: [ignore] });
+    expect(settled.fillsSkipped).toBeNull();
+    expect(settled.data.moves).toHaveLength(1);
+  });
+
+  it('lists the contracts page players for the possible-duplicate check', () => {
+    expect(weekly().contractPeople).toContainEqual({ bbrefId: 'garlada01', name: 'Darius Garland' });
   });
 });
 

@@ -9,7 +9,7 @@ import { NBA_TEAM_IDS } from '../nba-teams.js';
 import type { Db } from '../history/write.js';
 import { IMPORT_SOURCES } from './build-dataset.js';
 import { FetchStopped } from './fetcher.js';
-import { FeedShapeError, SALARY_SOURCE, syncContracts, UnparsedLinesError } from './sync-contracts.js';
+import { FeedShapeError, SALARY_SOURCE, syncContracts } from './sync-contracts.js';
 import { syncMoves, SYNCED_THROUGH_KEY } from './sync-moves.js';
 import type { FranchiseDataset, Override } from './types.js';
 import { writeFranchise } from './write.js';
@@ -107,7 +107,7 @@ describe.skipIf(!url)('weekly contracts job (fixture DB)', () => {
       'https://www.basketball-reference.com/teams/LAC/2027_transactions.html',
     ]);
     expect(urls).toHaveLength(3);
-    expect(r).toMatchObject({ season: 2026, filledPicks: 1, stillIncomplete: [], skipped: 0 });
+    expect(r).toMatchObject({ season: 2026, filledPicks: 1, stillIncomplete: [], skipped: 0, fillsSkipped: null, possibleDuplicates: [] });
     expect(r.contracts).toBeGreaterThan(0);
     expect(r.salaries).toBeGreaterThan(0);
 
@@ -147,8 +147,8 @@ describe.skipIf(!url)('weekly contracts job (fixture DB)', () => {
     expect(r).toMatchObject({ filledPicks: 0, stillIncomplete: ['nba:Trade 2026021'] });
     const [t] = await trades();
     expect(t.is_complete).toBe(false);
-    // Not better, so not rewritten: the job only adds its (weekly:) source.
-    expect(t.sources).toEqual(['nba:Trade 2026021', 'weekly:bbref:2026-11-18:trade:pick2032r2|weslebl01']);
+    // Not better, so the row is left as it was: no weekly: source for a mere re-read.
+    expect(t.sources).toEqual(['nba:Trade 2026021']);
     expect(await sql`SELECT person_key, gap_reason FROM transaction_parts ORDER BY part_id`).toEqual([
       { person_key: 'weslebl01', gap_reason: null },
       { person_key: null, gap_reason: 'pick_unidentified' },
@@ -176,28 +176,79 @@ describe.skipIf(!url)('weekly contracts job (fixture DB)', () => {
     expect(await dump()).toEqual(before);
   });
 
-  it('changes nothing on an unparsed line', async () => {
+  it('writes contracts and salaries but skips the trade fills on an unparsed line', async () => {
     await nightly(...nbaTrade('Trade 2026020', 'Max Strus', 1629622));
     const before = await dump();
     const odd = 'The Los Angeles Clippers did something new.';
-    const err = await syncContracts(deps(fakeFetch({ transactions: txPage(STRUS_TRADE, odd) }))).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(UnparsedLinesError);
-    expect((err as UnparsedLinesError).lines.map((l) => l.text)).toEqual([odd]);
-    expect(await dump()).toEqual(before);
+    const r = await syncContracts(deps(fakeFetch({ transactions: txPage(STRUS_TRADE, odd) })));
+    expect(r.fillsSkipped).toMatchObject({ reason: 'unparsed' });
+    expect(r.fillsSkipped!.lines!.map((l) => l.text)).toEqual([odd]);
+    expect(r).toMatchObject({ filledPicks: 0, stillIncomplete: ['nba:Trade 2026020'] });
+    expect(await sql`SELECT DISTINCT snapshot_id FROM contracts`).toEqual([{ snapshot_id: '2026-11-23T15:00:00.000Z' }]);
+    expect(r.salaries).toBeGreaterThan(0);
+    const after = await dump();
+    for (const t of ['transactions', 'transaction_parts', 'draft_picks'] as const) expect(after[t]).toEqual(before[t]);
   });
 
-  it('an import never deletes what the weekly job wrote (R16)', async () => {
-    // An import-only incomplete trade, keyed by its BBRef line (no NBA.com source).
+  it('skips the trade fills while the season page is not published (404), and still writes contracts', async () => {
+    await nightly(...nbaTrade('Trade 2026020', 'Max Strus', 1629622));
+    const before = await dump();
+    const fetch = fakeFetch({ status: { '2027_transactions': 404 } });
+    const r = await syncContracts(deps(fetch));
+    // Contracts first, then the 404; Wikipedia isn't asked.
+    expect(fetch.mock.calls.map(([u]) => String(u))).toEqual([
+      'https://www.basketball-reference.com/contracts/LAC.html',
+      'https://www.basketball-reference.com/teams/LAC/2027_transactions.html',
+    ]);
+    expect(r.fillsSkipped).toMatchObject({ reason: 'not_published', detail: expect.stringMatching(/season page not published yet/) });
+    expect(r.contracts).toBeGreaterThan(0);
+    expect(r.salaries).toBeGreaterThan(0);
+    expect(r.stillIncomplete).toEqual(['nba:Trade 2026020']);
+    expect(await sql`SELECT DISTINCT snapshot_id FROM contracts`).toEqual([{ snapshot_id: '2026-11-23T15:00:00.000Z' }]);
+    const after = await dump();
+    for (const t of ['transactions', 'transaction_parts', 'draft_picks'] as const) expect(after[t]).toEqual(before[t]);
+  });
+
+  it('updates a changed current-season salary, never an earlier season\'s', async () => {
+    await sql`INSERT INTO person_xref (person_key, kind, display_name) VALUES ('garlada01', 'player', 'Darius Garland')`;
     await sql`
-      INSERT INTO transactions (transaction_key, slug, date, season_id, involves_clippers, kind, description, sources, is_complete)
-      VALUES (${STRUS_KEY}, '2026-11-18-abcdef', '2026-11-18', 2026, true, 'trade', 'x', ${[STRUS_KEY]}::text[], false)`;
-    await sql`
-      INSERT INTO transaction_parts (transaction_id, from_franchise_id, to_franchise_id, asset_kind, person_key, unlinked_text, gap_reason)
-      SELECT transaction_id, ${CLE}::int, ${LAC}::int, 'player', 'strusma01', NULL, NULL FROM transactions UNION ALL
-      SELECT transaction_id, ${LAC}::int, ${CLE}::int, 'pick', NULL, NULL, 'pick_unidentified' FROM transactions`;
+      INSERT INTO salaries (season_id, person_key, amount_usd, source) VALUES
+        (2026, 'garlada01', 1, 'bbref:LAC-2027'), (2025, 'garlada01', 7, 'bbref:LAC-2026')`;
     const r = await syncContracts(deps(fakeFetch()));
-    expect(r).toMatchObject({ filledPicks: 1, stillIncomplete: [] });
-    expect(await trades()).toEqual([{ transaction_key: STRUS_KEY, sources: [STRUS_KEY, `weekly:${STRUS_KEY}`], is_complete: true }]);
+    expect(r.salaries).toBeGreaterThan(0);
+    expect(await sql`SELECT season_id, amount_usd::int, source FROM salaries WHERE person_key = 'garlada01' ORDER BY season_id`).toEqual([
+      { season_id: 2025, amount_usd: 7, source: 'bbref:LAC-2026' },
+      { season_id: 2026, amount_usd: 42166510, source: SALARY_SOURCE },
+    ]);
+  });
+
+  it('lists a contract player whose name matches an nba: person as a possible duplicate, never merging them', async () => {
+    await sql`INSERT INTO person_xref (person_key, kind, display_name, nba_person_id) VALUES ('nba:999', 'player', 'Darius Garland', 999)`;
+    const r = await syncContracts(deps(fakeFetch()));
+    expect(r.possibleDuplicates).toEqual([{ personKey: 'garlada01', name: 'Darius Garland', nbaKey: 'nba:999' }]);
+    expect((await sql`SELECT person_key FROM person_xref WHERE person_key IN ('nba:999', 'garlada01') ORDER BY 1`).map((x) => x.person_key))
+      .toEqual(['garlada01', 'nba:999']);
+  });
+
+  it('an import never deletes what the weekly job wrote, and still prunes what it only re-read (R16)', async () => {
+    // Two import-only incomplete trades, keyed by their BBRef lines (no NBA.com source). The page fills Strus's; Wesley's
+    // pick has no stated original, so his trade is only re-read.
+    const WESLEY_KEY = 'bbref:2026-11-18:trade:pick2032r2|weslebl01';
+    await sql`INSERT INTO person_xref (person_key, kind, display_name) VALUES ('weslebl01', 'player', 'Blake Wesley')`;
+    for (const [key, slug, person] of [[STRUS_KEY, '2026-11-18-abcdef', 'strusma01'], [WESLEY_KEY, '2026-11-18-fedcba', 'weslebl01']]) {
+      const [{ id }] = await sql`
+        INSERT INTO transactions (transaction_key, slug, date, season_id, involves_clippers, kind, description, sources, is_complete)
+        VALUES (${key}, ${slug}, '2026-11-18', 2026, true, 'trade', 'x', ${[key]}::text[], false) RETURNING transaction_id AS id`;
+      await sql`
+        INSERT INTO transaction_parts (transaction_id, from_franchise_id, to_franchise_id, asset_kind, person_key, unlinked_text, gap_reason) VALUES
+          (${id}, ${CLE}, ${LAC}, 'player', ${person}, NULL, NULL), (${id}, ${LAC}, ${CLE}, 'pick', NULL, NULL, 'pick_unidentified')`;
+    }
+    const r = await syncContracts(deps(fakeFetch({ transactions: txPage(STRUS_TRADE, WESLEY_TRADE) })));
+    expect(r).toMatchObject({ filledPicks: 1, stillIncomplete: [WESLEY_KEY] });
+    expect(await trades()).toEqual([
+      { transaction_key: STRUS_KEY, sources: [STRUS_KEY, `weekly:${STRUS_KEY}`], is_complete: true },
+      { transaction_key: WESLEY_KEY, sources: [WESLEY_KEY], is_complete: false },
+    ]);
     const salaries = (await sql`SELECT count(*)::int AS n FROM salaries`)[0].n as number;
 
     // A re-import of 2026 that no longer produces that trade nor those salaries: its stale-row deletes skip them.
@@ -213,9 +264,12 @@ describe.skipIf(!url)('weekly contracts job (fixture DB)', () => {
       }],
     };
     const res = await writeFranchise(db(), empty, { kind: 'import', importSources: IMPORT_SOURCES, seasons: [2026] });
-    expect(res.deleted.transactions ?? 0).toBe(0);
+    // The improved trade carries weekly: and stays; the merely re-read one is still import-owned, so it's pruned.
+    expect(res.deleted.transactions ?? 0).toBe(1);
     expect(res.deleted.salaries ?? 0).toBe(0);
-    expect((await trades()).map((t) => t.transaction_key)).toContain(STRUS_KEY);
+    const left = (await trades()).map((t) => t.transaction_key);
+    expect(left).toContain(STRUS_KEY);
+    expect(left).not.toContain(WESLEY_KEY);
     // Strus's row is the import's to overwrite (it lists him); every other weekly row stays.
     expect((await sql`SELECT count(*)::int AS n FROM salaries`)[0].n).toBe(salaries);
     expect((await sql`SELECT count(*)::int AS n FROM salaries WHERE source = ${SALARY_SOURCE}`)[0].n).toBe(salaries - 1);

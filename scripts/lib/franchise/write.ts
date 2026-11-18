@@ -10,7 +10,9 @@
 //     run must not wipe it). People are never deleted.
 //   - job mode (nightly moves, weekly contracts) only adds rows or fills nulls; it never deletes. An existing
 //     incomplete transaction is rewritten by a job only when the job's version is strictly better (never losing a
-//     linked part); otherwise the job only adds its source key.
+//     linked part); otherwise the nightly job only adds its source key, and the weekly job leaves the row as it is
+//     (its `weekly:` source would make an import-owned row unprunable, Ruling R16).
+//   - The weekly job also overwrites salaries: its dataset carries one season's (the current one), which it upserts.
 // A move matches an existing row by key, then by a shared source key, then by adoptExisting (same event already
 // stored under another key): the existing key and slug are kept, so URLs never change, and sources are unioned.
 // A person stored as `nba:<id>` is merged into the BBRef row once the dataset gives that id (write-people.ts).
@@ -272,7 +274,8 @@ async function writeMoves(
     const before = oldParts.get(old.transaction_id) ?? [];
     const rewrite = mode.kind === 'import' || (!old.is_complete && strictlyBetter(b.parts, before, b.fields.is_complete));
     const union = [...old.sources, ...b.fields.sources.filter((s) => !old.sources.includes(s))];
-    const next = rewrite ? { ...b.fields, sources: union } : { ...old, sources: union };
+    const weeklyReRead = !rewrite && mode.kind === 'job' && mode.job === 'weekly';
+    const next = rewrite ? { ...b.fields, sources: union } : weeklyReRead ? old : { ...old, sources: union };
     if (TX_FIELDS.some((f) => JSON.stringify(next[f]) !== JSON.stringify(old[f]))) {
       await tx`
         UPDATE transactions SET date = ${next.date}, season_id = ${next.season_id}, involves_clippers = ${next.involves_clippers},
@@ -379,11 +382,16 @@ async function writeTables(
     season_id: c.seasonId, person_key: c.bbrefId, ordinal: c.order, games: c.games, wins: c.wins, losses: c.losses,
     playoff_wins: c.playoffWins, playoff_losses: c.playoffLosses,
   }));
+  // The weekly job upserts the current season's salaries (a changed amount is updated); only ever one season.
+  const weekly = mode.kind === 'job' && mode.job === 'weekly';
+  if (weekly && new Set(data.salaries.map((x) => x.seasonId)).size > 1) {
+    throw new Error('writeFranchise: the weekly job writes one season\'s salaries (the current one)');
+  }
   for (const [table, key, rows] of [
     ['salaries', ['season_id', 'person_key'], salaries], ['payroll_seasons', ['season_id'], payroll],
     ['coach_seasons', ['season_id', 'person_key', 'ordinal'], coaches],
   ] as const) {
-    const r = await upsert(tx, table, [...key], rows, how);
+    const r = await upsert(tx, table, [...key], rows, table === 'salaries' && weekly ? 'overwrite' : how);
     bump(res.inserted, table, r.ins);
     bump(res.updated, table, r.upd);
   }
