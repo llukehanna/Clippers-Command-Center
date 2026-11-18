@@ -56,7 +56,7 @@ export const PLAYERS_COLUMNS = {
   personId: 'personId',
   firstName: 'firstName',
   lastName: 'lastName',
-  birthdate: 'birthdate',
+  birthdate: 'birthDate',
 } as const;
 
 const requiredOf = (cols: Record<string, string | null>): string[] =>
