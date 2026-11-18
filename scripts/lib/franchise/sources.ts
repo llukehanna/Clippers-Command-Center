@@ -6,7 +6,7 @@ import { wikiQueryUrl, type SourceSpec } from './fetcher.js';
 const BBREF = 'https://www.basketball-reference.com';
 
 /** Basketball-Reference franchise code for a season, by the season's END year. */
-function bbrefEra(endYear: number): 'BUF' | 'SDC' | 'LAC' {
+export function bbrefEra(endYear: number): 'BUF' | 'SDC' | 'LAC' {
   if (endYear <= 1978) return 'BUF';
   if (endYear <= 1984) return 'SDC';
   return 'LAC';
@@ -28,20 +28,30 @@ export function bbrefSources(fromSeason: number, toSeason: number): SourceSpec[]
   return specs;
 }
 
+/** The cache key (file name without `.json`) of a Wikipedia page title. */
+export function wikiKey(title: string): string {
+  return title.replace(/ /g, '_').replace(/\//g, '_');
+}
+
 function wikiSpec(title: string): SourceSpec {
   return {
     source: 'wiki',
-    key: title.replace(/ /g, '_').replace(/\//g, '_'),
+    key: wikiKey(title),
     title,
     url: wikiQueryUrl([title]),
     ext: 'json',
   };
 }
 
-function wikiSeasonTitle(start: number): string {
-  const team = start <= 1977 ? 'Buffalo Braves' : start <= 1983 ? 'San Diego Clippers' : 'Los Angeles Clippers';
+/** "<start>–<yy> <team> season" (1999–2000 spells the year out), the title Wikipedia gives a team's season page. */
+export function teamSeasonTitle(start: number, team: string): string {
   const second = start === 1999 ? '2000' : String((start + 1) % 100).padStart(2, '0');
   return `${start}–${second} ${team} season`;
+}
+
+/** The Clippers' season page title for a season start year. */
+export function wikiSeasonTitle(start: number): string {
+  return teamSeasonTitle(start, start <= 1977 ? 'Buffalo Braves' : start <= 1983 ? 'San Diego Clippers' : 'Los Angeles Clippers');
 }
 
 export function wikiSources(fromSeason: number, toSeason: number, futureDrafts: number[]): SourceSpec[] {

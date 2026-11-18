@@ -10,6 +10,10 @@
 // trade we can't read must never be silently dropped, so it comes back in `unparsed` (whole trade, as
 // plain text) for the import report. UnparsedLine.index is the trade's 1-based position in the section,
 // the same n as in its would-be sourceKey `wiki:<page>#<n>`.
+//
+// `home` (default the Clippers) is the team whose season page it is. The import also reads other teams' season
+// pages (counterparty pages, for trade trees before 2015-16): their trades are grouped and checked against that
+// team, and a move gets involvesClippers only when one of its sides is the Clippers.
 import { NBA_TEAM_IDS } from '../nba-teams.js';
 import { franchiseFromName } from './team-names.js';
 import type { FranchiseId, MoveKind, MovePart, ParsedMove, PickRef, SwapRef, UnparsedLine } from './types.js';
@@ -283,11 +287,11 @@ interface Group {
   cells: Cell[];
 }
 
-function groupHasLac(g: Group): boolean {
-  return g.sides.some((s) => s.team === LAC);
+function groupHas(g: Group, team: FranchiseId): boolean {
+  return g.sides.some((s) => s.team === team);
 }
 
-export function parseSeasonTrades(wikitext: string, seasonId: number, page: string): SeasonTrades {
+export function parseSeasonTrades(wikitext: string, seasonId: number, page: string, home: FranchiseId = LAC): SeasonTrades {
   const out: SeasonTrades = { moves: [], unparsed: [] };
   const body = section(stripComments(wikitext), 'Trades');
   if (body == null) return out;
@@ -319,7 +323,7 @@ export function parseSeasonTrades(wikitext: string, seasonId: number, page: stri
         prev == null ||
         (firstIsDate && !first.spanned) ||
         (label && prev.sides.length > 0) ||
-        (sides.some((s) => s.team === LAC) && groupHasLac(prev));
+        (sides.some((s) => s.team === home) && groupHas(prev, home));
       const g: Group = startNew ? { dateCell: firstIsDate ? first : (prev?.dateCell ?? null), sides: [], extra: [], cells: [] } : prev!;
       if (startNew) groups.push(g);
       cur = g;
@@ -339,13 +343,13 @@ export function parseSeasonTrades(wikitext: string, seasonId: number, page: stri
     try {
       if (date == null) throw new Unreadable('no date');
       if (g.extra.length) throw new Unreadable(`unexpected cell "${g.extra[0]}"`);
-      const built = buildTrade(g, seasonId);
+      const built = buildTrade(g, seasonId, home);
       out.moves.push({
         sourceKey: `wiki:${page}#${n}`,
         date,
         kind: built.kind,
         parts: built.parts,
-        involvesClippers: true,
+        involvesClippers: groupHas(g, LAC),
         complete: built.parts.every((p) => !p.gap),
         ...(built.notes.length ? { notes: built.notes } : {}),
       });
@@ -358,11 +362,11 @@ export function parseSeasonTrades(wikitext: string, seasonId: number, page: stri
   return out;
 }
 
-function buildTrade(g: Group, seasonId: number): { kind: MoveKind; parts: MovePart[]; notes: string[] } {
+function buildTrade(g: Group, seasonId: number, home: FranchiseId): { kind: MoveKind; parts: MovePart[]; notes: string[] } {
   if (g.sides.length < 2) throw new Unreadable(`${g.sides.length} side(s)`);
   const bad = g.sides.find((s) => s.team === -1);
   if (bad) throw new Unreadable(`unknown team "${bad.names[0]}"`);
-  if (!groupHasLac(g)) throw new Unreadable('no Clippers side');
+  if (!groupHas(g, home)) throw new Unreadable(home === LAC ? 'no Clippers side' : 'no side for the page\'s team');
   const multi = g.sides.length > 2;
   const notes: string[] = [];
   const parts: MovePart[] = [];
@@ -385,9 +389,9 @@ function buildTrade(g: Group, seasonId: number): { kind: MoveKind; parts: MovePa
         }
         if (signRight) {
           // Matches the BBRef shape: the signing team gets the player from nowhere (he's a free agent);
-          // the other way, he leaves the Clippers.
+          // the other way, he leaves the page's team.
           signing = true;
-          from = side.team === LAC ? null : LAC;
+          from = side.team === home ? null : home;
         }
         if (asset.kind === 'swap') {
           const s = asset.swap!;

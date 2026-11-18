@@ -1,0 +1,110 @@
+{
+  "bbref/LAC-2018": {
+    "url": "https://www.basketball-reference.com/teams/LAC/2018.html",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 6152
+  },
+  "bbref/LAC-2018_transactions": {
+    "url": "https://www.basketball-reference.com/teams/LAC/2018_transactions.html",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 2748
+  },
+  "bbref/LAC-2027": {
+    "url": "https://www.basketball-reference.com/teams/LAC/2027.html",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 6017
+  },
+  "bbref/LAC-2027_transactions": {
+    "url": "https://www.basketball-reference.com/teams/LAC/2027_transactions.html",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 2105
+  },
+  "bbref/coaches": {
+    "url": "https://www.basketball-reference.com/teams/LAC/coaches.html",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 7307
+  },
+  "bbref/contracts": {
+    "url": "https://www.basketball-reference.com/contracts/LAC.html",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:29:01.474Z",
+    "bytes": 5734
+  },
+  "bbref/draft": {
+    "url": "https://www.basketball-reference.com/teams/LAC/draft.html",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 8769
+  },
+  "bbref/executives": {
+    "url": "https://www.basketball-reference.com/teams/LAC/executives.html",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 2526
+  },
+  "espn/draft-2018": {
+    "url": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2018/draft/rounds?limit=100",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 2269
+  },
+  "espn/draft-2026": {
+    "url": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2026/draft/rounds?limit=100",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 765
+  },
+  "nba/movement": {
+    "url": "https://stats.nba.com/js/data/playermovement/NBA_Player_Movement.json",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 6689
+  },
+  "wiki/2017–18_Los_Angeles_Clippers_season": {
+    "url": "https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=2017%E2%80%9318%20Los%20Angeles%20Clippers%20season",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 2673
+  },
+  "wiki/2018_NBA_draft": {
+    "url": "https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=2018%20NBA%20draft",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 1637
+  },
+  "wiki/2026_NBA_draft": {
+    "url": "https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=2026%20NBA%20draft",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 1397
+  },
+  "wiki/2026–27_Los_Angeles_Clippers_season": {
+    "url": "https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=2026%E2%80%9327%20Los%20Angeles%20Clippers%20season",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 1052
+  },
+  "wiki/2027_NBA_draft": {
+    "url": "https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=2027%20NBA%20draft",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 302
+  },
+  "wiki/Los_Angeles_Clippers": {
+    "url": "https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=Los%20Angeles%20Clippers",
+    "status": 200,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 4724
+  },
+  "wiki/2033_NBA_draft": {
+    "url": "https://en.wikipedia.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&format=json&formatversion=2&titles=2033%20NBA%20draft",
+    "status": 404,
+    "fetchedAt": "2026-11-18T02:20:00.000Z",
+    "bytes": 0
+  }
+}
