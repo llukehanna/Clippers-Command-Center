@@ -89,6 +89,11 @@ export interface TreeRows {
   people: TreePerson[];
   /** Defaults to the static current team names. */
   team?: TeamLookup;
+  /**
+   * The next draft's year (src/lib/season.ts nextDraftYear). A swap with no recorded outcome
+   * drafted before it is past, not undecided; absent, no open swap is called undecided.
+   */
+  nextDraftYear?: number;
 }
 
 // ─── Gap notes ───────────────────────────────────────────────────────────────
@@ -174,6 +179,7 @@ class Ctx {
   readonly picks: Map<number, TreePick>;
   readonly swaps: Map<number, TreeSwap>;
   readonly people: Map<string, TreePerson>;
+  readonly nextDraftYear: number | null;
   private readonly lookup: TeamLookup;
 
   constructor(rows: TreeRows) {
@@ -187,6 +193,7 @@ class Ctx {
     this.swaps = new Map(rows.swaps.map((s) => [s.swap_id, s]));
     this.people = new Map(rows.people.map((p) => [p.person_key, p]));
     this.lookup = rows.team ?? ((f) => staticTeam(f));
+    this.nextDraftYear = rows.nextDraftYear ?? null;
   }
 
   team(franchiseId: number | null, seasonId: number | null): FranchiseTeamRef | null {
@@ -386,7 +393,10 @@ function nextStep(ctx: Ctx, state: State, cursor: Cursor): { step: Step | null; 
       const { swap } = state;
       const ev = ctx.next((p) => p.swap_id === swap.swap_id, cursor);
       if (ev) return { step: eventStep(ctx, ev, state, 'swap'), note: null, terminal: null };
-      const terminal = swap.exercised === true ? 'swap exercised' : swap.exercised === false ? 'swap not exercised' : 'swap not yet decided';
+      // The pipeline leaves exercised null unless a source says "not exercised": only a future swap is undecided.
+      const future = ctx.nextDraftYear != null && swap.draft_year >= ctx.nextDraftYear;
+      const terminal = swap.exercised === true ? 'swap exercised' : swap.exercised === false ? 'swap not exercised'
+        : future ? 'swap not yet decided' : 'swap outcome not recorded';
       return { step: null, note: null, terminal };
     }
     case 'end':

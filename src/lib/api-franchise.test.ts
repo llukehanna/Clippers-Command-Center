@@ -708,9 +708,36 @@ describe('GET /api/franchise/trades/[slug]', () => {
     expect(body.became[1].person).toMatchObject({ nba_person_id: 201587 });
     expect(queries().some((q) => q.includes('WHERE t.slug'))).toBe(true);
   });
+
+  it('tells a past open swap from a future one by the next draft year', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-18T12:00:00Z')); // next draft: 2027
+    try {
+      const txn = { transaction_id: '9', slug: '2023-10-31-swaps', date: '2023-10-31', season_id: 2023, kind: 'trade', involves_clippers: true };
+      const swapPart = (swap_id: number) => ({ ...txn, from_franchise_id: PHI, to_franchise_id: LAC, asset_kind: 'swap', person_key: null,
+        pick_id: null, swap_id, unlinked_text: null, gap_reason: null });
+      route((q) => {
+        if (q.includes('WHERE t.slug')) return [{ ...txn, description: 'The Clippers gained two swaps.', is_complete: true, sources: [] }];
+        if (q.includes('FROM transaction_parts p')) return [swapPart(1), swapPart(2)];
+        if (q.includes('FROM pick_swaps')) {
+          return [2024, 2029].map((draft_year, i) => ({ swap_id: i + 1, swap_key: `s${i + 1}`, draft_year, round: 1, franchise_a: LAC,
+            franchise_b: PHI, protections_text: null, protections_known: true, exercised: null }));
+        }
+        return [];
+      });
+      const { GET } = await import('../../app/api/franchise/trades/[slug]/route.js');
+      const body = await (await GET(new Request('http://localhost/api/franchise/trades/x'), { params: Promise.resolve({ slug: txn.slug }) })).json();
+      expect(body.became.map((n: { label: string; note: string }) => [n.label, n.note])).toEqual([
+        ['2024 first-round swap', 'swap outcome not recorded'],
+        ['2029 first-round swap', 'swap not yet decided'],
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
-// ─── People (Moves player search) ────────────────────────────────────────────
+// ─── People (Moves player search)────────────────────────────────────────────
 
 describe('GET /api/franchise/people', () => {
   it('lists the distinct people in Clippers moves by name, with move counts and headshot ids', async () => {

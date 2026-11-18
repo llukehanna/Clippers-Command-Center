@@ -8,6 +8,7 @@
 
 import { json, type ApiResult } from './result';
 import { sql } from '@/src/lib/db';
+import { nextDraftYear } from '@/src/lib/season';
 import { buildError } from '@/src/lib/api-utils';
 import {
   buildTradeTree, gapNote, TREE_DEPTH, treeTeamKeys,
@@ -118,7 +119,7 @@ export async function loadFranchiseTrade(slug: string): Promise<ApiResult> {
     }));
     const base = { transactions, parts, picks, swaps, people };
     const team = await resolveTeams(treeTeamKeys(base));
-    const { sides, became } = buildTradeTree(root.slug, { ...base, team }, TREE_DEPTH);
+    const { sides, became } = buildTradeTree(root.slug, { ...base, team, nextDraftYear: nextDraftYear() }, TREE_DEPTH);
 
     const rootParts = parts.filter((p) => p.transaction_id === root.transaction_id);
     return ok({

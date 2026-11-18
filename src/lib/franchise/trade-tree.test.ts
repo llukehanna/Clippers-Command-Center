@@ -154,6 +154,35 @@ describe('buildTradeTree', () => {
     expect(find(became, /Paul George/).note).toBe('trade date not recorded; later moves not followed');
   });
 
+  it('says a past swap with no recorded outcome is not recorded, and only a future swap is undecided', () => {
+    const swapRows = (): TreeRows => ({
+      transactions: [txn('1', 'swaps', '2021-02-01', 'trade', true)],
+      parts: [
+        part('1', F.PHI, F.LAC, { asset_kind: 'swap', swap_id: 1 }),
+        part('1', F.PHI, F.LAC, { asset_kind: 'swap', swap_id: 2 }),
+        part('1', F.PHI, F.LAC, { asset_kind: 'swap', swap_id: 3 }),
+        part('1', F.PHI, F.LAC, { asset_kind: 'swap', swap_id: 4 }),
+      ],
+      picks: [],
+      swaps: [
+        { swap_id: 1, swap_key: 's1', draft_year: 2024, round: 1, franchise_a: F.LAC, franchise_b: F.PHI, protections_text: null, protections_known: true, exercised: null },
+        { swap_id: 2, swap_key: 's2', draft_year: 2029, round: 1, franchise_a: F.LAC, franchise_b: F.PHI, protections_text: null, protections_known: true, exercised: null },
+        { swap_id: 3, swap_key: 's3', draft_year: 2023, round: 2, franchise_a: F.LAC, franchise_b: F.PHI, protections_text: null, protections_known: true, exercised: true },
+        { swap_id: 4, swap_key: 's4', draft_year: 2027, round: 2, franchise_a: F.LAC, franchise_b: F.PHI, protections_text: null, protections_known: true, exercised: null },
+      ],
+      people: [],
+      nextDraftYear: 2027,
+    });
+    const { became } = buildTradeTree('swaps', swapRows());
+    expect(find(became, /^2024 first-round swap/).note).toBe('swap outcome not recorded');
+    expect(find(became, /^2029 first-round swap/).note).toBe('swap not yet decided');
+    expect(find(became, /^2027 second-round swap/).note).toBe('swap not yet decided');
+    expect(find(became, /^2023 second-round swap/).note).toBe('swap exercised');
+    // Without the next draft year, an open swap can't be called undecided.
+    const { became: unknown } = buildTradeTree('swaps', { ...swapRows(), nextDraftYear: undefined });
+    expect(find(unknown, /^2029 first-round swap/).note).toBe('swap outcome not recorded');
+  });
+
   it('marks unknown protections and never calls them unprotected', () => {
     const { became } = buildTradeTree('root-george', rows());
     const p = find(became, /^2028 first-round pick/);
