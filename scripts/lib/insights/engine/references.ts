@@ -1,0 +1,90 @@
+// scripts/lib/insights/engine/references.ts
+// Reference sets the framer compares a game-level fact against (spec §2.3).
+// Each is a SELECT of (value, game_id, game_date, season_id, subject_id,
+// subject_name), regular season only, as of the cutoff. `group` starts at
+// records start, so no frame cites an incomplete era. Pure.
+import { REGULAR_SEASON } from '../../sql-fragments.js';
+import type { EngineContext, Fact, ProofQuery, RecordsStart } from './types.js';
+
+export interface RefSpec {
+  /** Every Clippers occurrence since `start` (null: no records). */
+  group: ProofQuery | null;
+  /** The subject's own games, all teams, all data (career-high / nth-time questions). */
+  subject: ProofQuery | null;
+  /** League-wide this season (null: league data incomplete). */
+  league: ProofQuery | null;
+  start: RecordsStart | null;
+  betterIsHigher: boolean;
+  /** false for 0/1 facts (combos): no ranks, highs or career highs. */
+  ordinal: boolean;
+}
+
+export interface PlayerGameStat { column: string; noun: string; plural: string; label: string }
+
+export const PLAYER_GAME_STATS: Record<'pts' | 'reb' | 'ast' | 'fg3m' | 'stl' | 'blk', PlayerGameStat> = {
+  pts: { column: 'points', noun: 'point', plural: 'points', label: 'scoring' },
+  reb: { column: 'rebounds', noun: 'rebound', plural: 'rebounds', label: 'rebounding' },
+  ast: { column: 'assists', noun: 'assist', plural: 'assists', label: 'assist' },
+  fg3m: { column: 'fg3_made', noun: 'three', plural: 'threes', label: 'three-point' },
+  stl: { column: 'steals', noun: 'steal', plural: 'steals', label: 'steal' },
+  blk: { column: 'blocks', noun: 'block', plural: 'blocks', label: 'shot-blocking' },
+};
+
+const playerColumns = (valueExpr: string) =>
+  `(${valueExpr})::float8 AS value, g.game_id::text AS game_id, g.game_date::text AS game_date,
+       g.season_id::int AS season_id, pb.player_id::text AS subject_id, p.display_name AS subject_name`;
+
+const playerFrom = `FROM game_player_box_scores pb
+JOIN games g ON g.game_id = pb.game_id
+JOIN players p ON p.player_id = pb.player_id`;
+
+export function clippersPlayerRef(valueExpr: string, lacTeamId: string, start: RecordsStart, asOf: string): ProofQuery {
+  return {
+    sql: `SELECT ${playerColumns(valueExpr)}
+${playerFrom}
+WHERE pb.team_id = $1::bigint AND ${REGULAR_SEASON} AND g.season_id >= $2::int AND g.game_date <= $3::date
+  AND (${valueExpr}) IS NOT NULL`,
+    params: [lacTeamId, start.season_id, asOf],
+  };
+}
+
+export function playerCareerRef(valueExpr: string, playerId: string, asOf: string): ProofQuery {
+  return {
+    sql: `SELECT ${playerColumns(valueExpr)}
+${playerFrom}
+WHERE pb.player_id = $1::bigint AND ${REGULAR_SEASON} AND g.game_date <= $2::date AND (${valueExpr}) IS NOT NULL`,
+    params: [playerId, asOf],
+  };
+}
+
+export function leagueSeasonPlayerRef(valueExpr: string, seasonId: number, asOf: string): ProofQuery {
+  return {
+    sql: `SELECT ${playerColumns(valueExpr)}
+${playerFrom}
+WHERE g.season_id = $1::int AND ${REGULAR_SEASON} AND g.game_date <= $2::date AND (${valueExpr}) IS NOT NULL`,
+    params: [seasonId, asOf],
+  };
+}
+
+function playerStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
+  const stat = PLAYER_GAME_STATS[fact.stat as keyof typeof PLAYER_GAME_STATS];
+  if (!stat) return null;
+  const expr = `pb.${stat.column}`;
+  return {
+    group: ctx.recordsStart ? clippersPlayerRef(expr, ctx.lac.teamId, ctx.recordsStart, ctx.asOf) : null,
+    subject: playerCareerRef(expr, fact.subject.id, ctx.asOf),
+    league: ctx.league.complete ? leagueSeasonPlayerRef(expr, fact.seasonId ?? ctx.season.id, ctx.asOf) : null,
+    start: ctx.recordsStart,
+    betterIsHigher: true,
+    ordinal: true,
+  };
+}
+
+export function refsFor(fact: Fact, ctx: EngineContext): RefSpec | null {
+  switch (fact.kind) {
+    case 'league_night':
+      return playerStatRefs(fact, ctx);
+    default:
+      return null;
+  }
+}
