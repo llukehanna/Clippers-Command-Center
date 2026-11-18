@@ -5,16 +5,15 @@
 // admits seasons that are up to 5% short (records-start.ts). DB-free: the caller
 // passes the Runner (query.ts in production).
 import { REGULAR_SEASON } from '../../sql-fragments.js';
-import { seasonStartDate } from './records.js';
 import type { EngineContext, Runner } from './types.js';
 
-/** $1 LAC, $2 first season, $3 before-date (exclusive), $4 as-of. Counts final Clippers games with no game_flow row. */
+/** $1 LAC, $2 first season (by season, not date: the 2019-20 bubble games run into Aug-Oct 2020), $3 before-date (exclusive), $4 as-of. Counts final Clippers games with no game_flow row. */
 export const PBP_MISSING_SQL = `
 SELECT COUNT(*)::int AS missing
 FROM games g
 WHERE $1::bigint IN (g.home_team_id, g.away_team_id) AND g.status = 'final'
   AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL AND ${REGULAR_SEASON}
-  AND g.game_date >= $2::date AND g.game_date < $3::date AND g.game_date <= $4::date
+  AND g.season_id >= $2::int AND g.game_date < $3::date AND g.game_date <= $4::date
   AND NOT EXISTS (SELECT 1 FROM game_flow gf WHERE gf.game_id = g.game_id)`.trim();
 
 /** One answer per context and date bound, so a run asks the database once per distinct fact date. */
@@ -33,7 +32,7 @@ export function pbpRecordsComplete(ctx: EngineContext, beforeDate: string, run: 
   if (!byDate) cache.set(ctx, (byDate = new Map()));
   let answer = byDate.get(key);
   if (!answer) {
-    answer = run({ sql: PBP_MISSING_SQL, params: [ctx.lac.teamId, seasonStartDate(start.season_id), beforeDate, ctx.asOf] })
+    answer = run({ sql: PBP_MISSING_SQL, params: [ctx.lac.teamId, start.season_id, beforeDate, ctx.asOf] })
       .then(([r]) => Number(r?.missing ?? 1) === 0);
     byDate.set(key, answer);
     answer.catch(() => byDate!.delete(key));

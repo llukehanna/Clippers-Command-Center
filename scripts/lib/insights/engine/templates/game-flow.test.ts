@@ -4,6 +4,7 @@ import { makeCtx, makeFact } from '../__fixtures__/facts';
 import { expectCleanPhrasings, fr, rcFor, say } from '../__fixtures__/sweep';
 import { blockedFrames, frameFact, PBP_RECORD_FRAMES, type Question } from '../framer';
 import { pbpRecordsComplete, PBP_MISSING_SQL } from '../pbp-coverage';
+import { seasonStartDate } from '../records';
 import { FLOW_SQL, FLOW_STATS, refsFor } from '../references';
 import type { Frame } from '../../../../../src/lib/insights/types';
 import type { ProofQuery } from '../types';
@@ -73,6 +74,14 @@ describe('game flow references', () => {
   });
 });
 
+describe('seasonStartDate', () => {
+  it('starts 2020-21 after the bubble, everything else Aug 1', () => {
+    expect(seasonStartDate(2020)).toBe('2020-11-01');
+    expect(seasonStartDate(2019)).toBe('2019-08-01');
+    expect(seasonStartDate(2021)).toBe('2021-08-01');
+  });
+});
+
 describe('play-by-play record gate (R7)', () => {
   const frame = (type: Frame['type']): Frame => ({ type, strength: type === 'longest_since' ? 0.5 : 0.9, who: 'group', text: '', proof_rows: [] });
   const emits = (type: Frame['type']): Question => ({ name: type, build: () => ({ sql: 'SELECT 1', params: [] }), interpret: () => frame(type) });
@@ -104,7 +113,7 @@ describe('play-by-play record gate (R7)', () => {
     expect(await pbpRecordsComplete(ctx, '2025-11-28', run)).toBe(true);
     expect(calls).toHaveLength(1);
     expect(calls[0].sql).toBe(PBP_MISSING_SQL);
-    expect(calls[0].params).toEqual(['1', '2019-08-01', '2025-11-28', '2026-02-25']);
+    expect(calls[0].params).toEqual(['1', 2019, '2025-11-28', '2026-02-25']);
     await pbpRecordsComplete(ctx, '2025-12-01', run);
     expect(calls).toHaveLength(2);
     await pbpRecordsComplete(makeCtx(), '2025-11-28', run);

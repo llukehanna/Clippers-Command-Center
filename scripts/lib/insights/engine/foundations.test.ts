@@ -37,7 +37,7 @@ describe('records', () => {
     expect(parseRecordsStart({})).toBeNull();
   });
   it('dates a season start and counts seasons of records', () => {
-    expect(seasonStartDate(2020)).toBe('2020-08-01');
+    expect(seasonStartDate(2020)).toBe('2020-11-01');
     expect(recordsSeasons({ season_id: 2020, label: '2020-21' }, 2026)).toBe(7);
     expect(recordsSeasons({ season_id: 2026, label: '2026-27' }, 2025)).toBe(1);
   });

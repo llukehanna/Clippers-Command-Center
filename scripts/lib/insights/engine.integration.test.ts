@@ -685,6 +685,26 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(refs.group!.params[2]).not.toBe(ctx.asOf);
     }, TIMEOUT);
 
+    it('bounds the gate by season: an earlier-season game dated after the start date does not close it (bubble)', async () => {
+      const { pbpRecordsComplete } = await import('./engine/pbp-coverage');
+      const { runQuery } = await import('./engine/query');
+      const [old] = await sql<{ game_id: string; d: string }[]>`
+        SELECT g.game_id::text, g.game_date::text AS d FROM games g
+        WHERE g.season_id = 2024 AND 1 IN (g.home_team_id, g.away_team_id) AND g.status = 'final' AND ${sql.unsafe(REGULAR_SEASON)}
+          AND NOT EXISTS (SELECT 1 FROM game_flow gf WHERE gf.game_id = g.game_id)
+        ORDER BY g.game_date DESC LIMIT 1`;
+      expect(old, 'a season-2024 Clippers final without play-by-play').toBeDefined();
+      const ctx = await ctxAt(laToday());
+      expect(ctx.pbpRecordsStart?.season_id).toBe(2025);
+      try {
+        // Dated inside the 2025-26 date range (after Aug 1 2025) but belonging to the previous season.
+        await sql`UPDATE games SET game_date = '2025-09-01' WHERE game_id = ${old.game_id}::bigint`;
+        expect(await pbpRecordsComplete(ctx, laToday(), runQuery)).toBe(true);
+      } finally {
+        await sql`UPDATE games SET game_date = ${old.d}::date WHERE game_id = ${old.game_id}::bigint`;
+      }
+    }, TIMEOUT);
+
     it('drops the record frames, and only those, when an earlier game has no play-by-play (R7)', async () => {
       const { runEngine } = await import('./engine/run');
       const { PBP_RECORD_FRAMES } = await import('./engine/framer');

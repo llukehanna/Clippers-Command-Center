@@ -127,7 +127,7 @@ describe('game questions', () => {
 describe('kind questions', () => {
   const streak = makeFact();
   it('longest_since reads rb_streaks inside the records', () => {
-    expect(streakLongestSince.build(streak, ctx)!.params).toEqual(['player', 'scoring_30', '1', 5, '2026-02-13', '2020-08-01', '2026-02-25', streak.subject.id]);
+    expect(streakLongestSince.build(streak, ctx)!.params).toEqual(['player', 'scoring_30', '1', 5, '2026-02-13', '2020-11-01', '2026-02-25', streak.subject.id]);
     expect(streakLongestSince.build(streak, ctx)!.sql).toContain('s.end_date <= $7::date');
     // overlapping longer-or-equal streak by another Clipper ends after this one started: no frame
     expect(streakLongestSince.interpret([{ end_date: '2026-02-20' }], streak, ctx)).toBeNull();

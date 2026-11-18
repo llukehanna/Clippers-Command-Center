@@ -16,9 +16,14 @@ export function parseRecordsStart(value: unknown): RecordsStart | null {
   return null;
 }
 
-/** Date before any game of a season (same rule as record-book/highs.ts firstSeason). */
+/**
+ * Date before any game of a season, after every game of the one before. Normally Aug 1,
+ * but 2019-20 finished in the NBA bubble (to 2020-10-11), so 2020-21 starts after Nov 1.
+ * record-book/highs.ts keeps its own `${firstSeason}-08-01` for stat eras (1970-1996),
+ * where the rule is identical (the bubble never applies there).
+ */
 export function seasonStartDate(seasonId: number): string {
-  return `${seasonId}-08-01`;
+  return seasonId === 2020 ? '2020-11-01' : `${seasonId}-08-01`;
 }
 
 /** Seasons of records from the start through `throughSeason`, at least 1. */
