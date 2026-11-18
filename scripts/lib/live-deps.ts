@@ -14,8 +14,7 @@ import {
   athleteNames,
   fetchEspnScoreboard,
   fetchEspnSummary,
-  nameResolver,
-  normalizeName,
+  loadPersonIdResolver,
   toActions,
   toBoxResponse,
   toBoxscore,
@@ -25,6 +24,8 @@ import {
   type PersonIdResolver,
 } from './espn-live-client';
 import type { PollerDeps } from './live-poller';
+
+export { loadPersonIdResolver };
 import { saveLiveMoment, saveLiveState } from './live-store';
 import { hubPublisherFromEnv, saveThenPublish, type Publisher } from './live-publish';
 
@@ -52,17 +53,6 @@ export interface EspnGameContext {
   awayTricode: string;
   gameDate: string; // US Eastern, YYYY-MM-DD
   resolve: PersonIdResolver;
-}
-
-/** ESPN athlete → NBA personId by name, from the players table. */
-export async function loadPersonIdResolver(sql: Sql): Promise<PersonIdResolver> {
-  // Active, recently updated rows win a (rare) name collision.
-  const players = await sql<{ nba_person_id: number; display_name: string }[]>`
-    SELECT nba_person_id, display_name FROM players
-    WHERE nba_person_id IS NOT NULL
-    ORDER BY is_active, updated_at
-  `;
-  return nameResolver(new Map(players.map((p) => [normalizeName(p.display_name), p.nba_person_id])));
 }
 
 async function loadEspnContext(sql: Sql, gameDbId: string): Promise<EspnGameContext> {
