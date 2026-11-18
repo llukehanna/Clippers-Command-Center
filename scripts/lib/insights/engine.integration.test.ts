@@ -303,4 +303,46 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(facts.some((f) => f.subject.name === 'LAC Player 3')).toBe(false);
     }, TIMEOUT);
   });
+
+  describe('season detectors: ranks and year over year', () => {
+    it('ranks the Clippers and their players league-wide, only with complete league data', async () => {
+      const { leagueRankDetector } = await import('./engine/detectors/season-ranks');
+      const ctx = await ctxAt(laToday());
+      const facts = (await leagueRankDetector('season', { teams: true }).run(ctx)).facts;
+      expect(facts.some((f) => f.subject.type === 'team' && f.data.rank! <= 5 && f.polarity === 'positive')).toBe(true);
+      expect(facts.some((f) => f.subject.name === 'Star Clipper' && f.stat === 'player_ppg')).toBe(true);
+      for (const f of facts) expect(f.sample.kind).toBe('share');
+      expect((await leagueRankDetector('season', { teams: true }).run({ ...ctx, league: { complete: false, reason: 'test' } })).facts).toEqual([]);
+      const players = (await leagueRankDetector('player', { teams: false }).run(ctx)).facts;
+      expect(players.every((f) => f.subject.type === 'player' && f.surface === 'player')).toBe(true);
+      // Controller ruling F4: a player rank without a frame strength (rank > 10) is a bare rank.
+      expect(players.every((f) => f.kind === 'league_rank' && f.value <= 10)).toBe(true);
+      expect(facts.filter((f) => f.subject.type === 'player').every((f) => f.value <= 10)).toBe(true);
+    }, TIMEOUT);
+
+    it('standings only when notable; regular season only; recent form only in season', async () => {
+      const { standingsDetector, recentFormDetector } = await import('./engine/detectors/season-ranks');
+      const ctx = await ctxAt(laToday());
+      const facts = (await standingsDetector().run(ctx)).facts;
+      expect(facts).toHaveLength(1);
+      expect(facts[0].data.wins! + facts[0].data.losses!).toBe(60);
+      expect(facts[0].data.rank!).toBeLessThanOrEqual(5);
+      expect(facts[0].data.conference).toBe('West');
+      expect((await recentFormDetector().run(ctx)).facts).toEqual([]);
+    }, TIMEOUT);
+
+    it('year over year: record, net rating, the star’s scoring', async () => {
+      const { yoyDetector } = await import('./engine/detectors/season-yoy');
+      const facts = (await yoyDetector('season').run(await ctxAt(laToday()))).facts;
+      expect(facts.find((f) => f.stat === 'record')).toMatchObject({ polarity: 'positive', data: { yoy: 'record' } });
+      expect(facts.some((f) => f.stat === 'team_rank_net_rating' && f.polarity === 'positive')).toBe(true);
+      const star = facts.find((f) => f.subject.name === 'Star Clipper' && f.stat === 'player_ppg');
+      expect(star!.data.prev_value!).toBeLessThan(star!.value);
+      expect(star!.data.expr).toBe('AVG(pb.points)');
+      for (const f of facts) {
+        expect(f.sample.kind).toBe('share');
+        expect((f.sample as { p: number }).p).toBeGreaterThan(0);
+      }
+    }, TIMEOUT);
+  });
 });
