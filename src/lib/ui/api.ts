@@ -18,6 +18,7 @@ import { loadMedia } from '@/src/lib/data/media'
 import { loadHistorySeasons } from '@/src/lib/data/history-seasons'
 import { loadHistoryGames } from '@/src/lib/data/history-games'
 import { loadHistoryGame } from '@/src/lib/data/history-game'
+import { loadGameStory } from '@/src/lib/data/game-story'
 import { unstable_cache } from 'next/cache'
 import { type ApiResult } from '@/src/lib/data/result'
 
@@ -33,6 +34,7 @@ const ROUTES: Array<[RegExp, Loader]> = [
   [/^\/api\/media$/, (_, url) => loadMedia(url)],
   [/^\/api\/history\/seasons$/, () => loadHistorySeasons()],
   [/^\/api\/history\/games$/, (_, url) => loadHistoryGames(url)],
+  [/^\/api\/history\/games\/([^/]+)\/story$/, (m) => loadGameStory(decodeURIComponent(m[1]))],
   [/^\/api\/history\/games\/([^/]+)$/, (m) => loadHistoryGame(decodeURIComponent(m[1]))],
 ]
 
