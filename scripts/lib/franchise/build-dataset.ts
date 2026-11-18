@@ -14,6 +14,9 @@
 // season pages); ESPN `espn/draft-<Y>.json`; NBA.com `nba/movement.json`.
 //
 // Covered seasons (the writer's `seasons`): those whose BBRef transactions page AND team-season page are both cached.
+// Every in-range season that isn't covered is reported (checks.uncoveredSeasons), with the missing page and its status.
+// Honors and the people they name resolve against EVERY cached season's roster and coaches, whatever the range; a run
+// over part of the cached seasons never prunes undated honors (Hall of Fame, retired numbers).
 // `--only` narrows the dataset to some tables, and the write scope with it, so a partial run can never delete rows
 // another part of the import owns (ONLY_TABLES says which tables each value writes).
 import fs from 'node:fs';
@@ -26,8 +29,8 @@ import {
   type CoachSeasonRow, type DraftRow, type RosterRow,
 } from './bbref-tables.js';
 import {
-  buildCoachSeasons, buildContracts, buildExecTerms, buildSalaries, checkCoachStints, completePeople, resolveHonors,
-  type PlayoffRecord, type SalaryPage,
+  buildCoachSeasons, buildContracts, buildExecTerms, buildSalaries, checkCoachStints, completePeople, kindOfBbrefId,
+  resolveHonors, type PlayoffRecord, type SalaryPage,
 } from './build-tables.js';
 import { collectCounterparties } from './counterparties.js';
 import { seasonOfDate } from './describe.js';
@@ -91,10 +94,17 @@ export interface BuildOptions {
   overrides?: Override[];
 }
 
-export interface WriteScope { importSources: string[]; seasons: number[] }
+export interface WriteScope {
+  importSources: string[];
+  seasons: number[];
+  /** False when the range leaves out cached seasons: undated honors can't all resolve, so none are pruned. */
+  pruneUndatedHonors: boolean;
+}
 
 export interface ImportChecks {
   coveredSeasons: number[];
+  /** In-range seasons whose BBRef team or transactions page isn't cached at status 200, and why. */
+  uncoveredSeasons: string[];
   writeScope: WriteScope;
   /** Moves NBA.com and BBRef both list that merged into one (R15). */
   nbaBbrefMerged: number;
@@ -165,12 +175,13 @@ function unmergedSignings(moves: MergedMove[]): ImportChecks['unmergedSignings']
 
 // ---- --only ------------------------------------------------------------------------------------------------------------
 
-export function writeScope(only: OnlyValue | null | undefined, covered: number[]): WriteScope {
+export function writeScope(only: OnlyValue | null | undefined, covered: number[], fullRange: boolean): WriteScope {
+  const pruneUndatedHonors = fullRange;
   switch (only) {
-    case 'trades': return { importSources: IMPORT_SOURCES, seasons: [] }; // a trades-only run must not prune other moves
-    case 'salaries': return { importSources: ['bbref:'], seasons: covered };
-    case 'draft': case 'people': case 'honors': return { importSources: [], seasons: covered };
-    default: return { importSources: IMPORT_SOURCES, seasons: covered };
+    case 'trades': return { importSources: IMPORT_SOURCES, seasons: [], pruneUndatedHonors }; // never prunes other moves
+    case 'salaries': return { importSources: ['bbref:'], seasons: covered, pruneUndatedHonors };
+    case 'draft': case 'people': case 'honors': return { importSources: [], seasons: covered, pruneUndatedHonors };
+    default: return { importSources: IMPORT_SOURCES, seasons: covered, pruneUndatedHonors };
   }
 }
 
@@ -209,22 +220,45 @@ export function buildDataset(dir: string, db: DbInput, opts: BuildOptions): Buil
   const salaryPages: SalaryPage[] = [];
   const coachRows: CoachSeasonRow[] = [];
   const covered: number[] = [];
+  const uncovered: string[] = [];
+  // Every cached team season: rosters and coaches for honors and their people, whatever the range.
+  const allRosters = new Map<number, RosterRow[]>();
+  const allCoachRows: CoachSeasonRow[] = [];
+  const cachedTeamSeasons = Object.keys(cache.manifest)
+    .map((k) => /^bbref\/(?:BUF|SDC|LAC)-(\d{4})$/.exec(k))
+    .filter((m): m is RegExpExecArray => m != null)
+    .map((m) => Number(m[1]) - 1)
+    .filter((s) => cache.ok(`bbref/${bbrefEra(s + 1)}-${s + 1}`))
+    .sort((a, b) => a - b);
+  for (const s of cachedTeamSeasons) {
+    const page = `${bbrefEra(s + 1)}-${s + 1}`;
+    const team = cache.text(`bbref/${page}`) as string;
+    const roster = parseRoster(team);
+    const coaches = parseCoaches(team);
+    allRosters.set(s, roster);
+    allCoachRows.push(...coaches);
+    if (!inRange(s)) continue;
+    rosterBySeason.set(s, roster);
+    salaryPages.push({ seasonId: s, source: `bbref:${page}`, rows: parseSalaries(team) });
+    coachRows.push(...coaches);
+  }
+  const fullRange = cachedTeamSeasons.every(inRange);
   for (let s = opts.from; s <= opts.to; s++) {
     const page = `${bbrefEra(s + 1)}-${s + 1}`;
-    const team = cache.text(`bbref/${page}`);
+    const team = rosterBySeason.has(s);
     const tx = cache.text(`bbref/${page}_transactions`);
-    if (team != null) {
-      rosterBySeason.set(s, parseRoster(team));
-      salaryPages.push({ seasonId: s, source: `bbref:${page}`, rows: parseSalaries(team) });
-      coachRows.push(...parseCoaches(team));
-    }
+    const missing = [page, `${page}_transactions`].filter((k) => !cache.ok(`bbref/${k}`)).map((k) => {
+      const status = cache.manifest[`bbref/${k}`]?.status;
+      return `${k} ${status == null ? 'not fetched' : status === 200 ? 'file missing' : `HTTP ${status}`}`;
+    });
+    if (missing.length) uncovered.push(`season ${s} not covered: ${missing.join(', ')}`);
     if (tx != null) {
       const p = parseTransactionPage(tx, s, `${page}_transactions`);
       bbref.push(...p.moves);
       unparsed.push(...p.unparsed);
       skipped.push(...p.skipped);
     }
-    if (team != null && tx != null) covered.push(s);
+    if (team && tx != null) covered.push(s);
     const w = cache.wiki(wikiSeasonTitle(s));
     if (w) {
       const p = parseSeasonTrades(w.wikitext, s, w.title ?? wikiSeasonTitle(s));
@@ -322,9 +356,23 @@ export function buildDataset(dir: string, db: DbInput, opts: BuildOptions): Buil
   const team = article ? parseTeamArticle(article.wikitext) : null;
   const honors = team
     ? resolveHonors([...team.retired, ...team.awards, ...team.allStars].filter((h) => h.seasonId == null || inRange(h.seasonId)), {
-      rosterBySeason, coachSeasons, execTerms: execs.terms, people,
+      rosterBySeason: allRosters, coachSeasons: allCoachRows, execTerms: execs.terms, people,
     })
     : [];
+  // An honoree resolved on a season outside the range still needs a person row.
+  const known = new Set(people.map((p) => p.personKey));
+  const nameOf = new Map<string, string>([
+    ...[...allRosters.values()].flat().map((r) => [r.bbrefId, r.name] as [string, string]),
+    ...allCoachRows.map((c) => [c.bbrefId, c.name] as [string, string]),
+  ]);
+  for (const h of honors) {
+    if (!h.personKey || known.has(h.personKey)) continue;
+    known.add(h.personKey);
+    people.push({
+      personKey: h.personKey, kind: kindOfBbrefId(h.personKey), displayName: nameOf.get(h.personKey) ?? h.name,
+      birthdate: null, nbaPersonId: null, playerId: null,
+    });
+  }
 
   const assembled: FranchiseDataset = {
     currentDraftYear, people, moves, picks: pr.picks, swaps: pr.swaps, lottery,
@@ -346,7 +394,8 @@ export function buildDataset(dir: string, db: DbInput, opts: BuildOptions): Buil
 
   const checks: ImportChecks = {
     coveredSeasons: covered,
-    writeScope: writeScope(opts.only, covered),
+    uncoveredSeasons: uncovered,
+    writeScope: writeScope(opts.only, covered, fullRange),
     nbaBbrefMerged: p2.data.moves.filter((m) => { const p = prefixes(m); return p.has('nba:') && p.has('bbref:'); }).length,
     unmergedSignings: unmergedSignings(p2.data.moves),
     draftPagesSkipped,

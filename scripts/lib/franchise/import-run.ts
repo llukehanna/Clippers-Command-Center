@@ -38,15 +38,25 @@ export interface ImportOutcome {
   write?: WriteResult;
 }
 
+/** July on is the next season (as seasonOfDate and defaultDraftYear). */
 function currentSeasonStart(now: Date): number {
-  return now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+  return now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
 }
 
 export function parseImportArgs(argv: string[], now = new Date()): ImportArgs {
-  const known = ['dry-run', 'allow-gaps', 'only', 'report', 'cap-mb', 'dir', 'from', 'to'];
+  // Booleans take no value (`--dry-run=false` must never mean a real run); value flags need `=`.
+  const booleans = ['dry-run', 'allow-gaps'];
+  const values = ['only', 'report', 'cap-mb', 'dir', 'from', 'to'];
   for (const a of argv) {
-    const name = /^--([a-z-]+)/.exec(a)?.[1];
-    if (!name || !known.includes(name)) throw new Error(`Unknown argument "${a}" (flags: ${known.map((k) => `--${k}`).join(' ')})`);
+    const m = /^--([a-z-]+)(=.*)?$/.exec(a);
+    const name = m?.[1] ?? '';
+    if (booleans.includes(name)) {
+      if (m![2] !== undefined) throw new Error(`--${name} takes no value (got "${a}")`);
+    } else if (values.includes(name)) {
+      if (m![2] === undefined || m![2] === '=') throw new Error(`--${name} needs a value: --${name}=<value> (got "${a}")`);
+    } else {
+      throw new Error(`Unknown argument "${a}" (flags: ${[...booleans, ...values].map((k) => `--${k}`).join(' ')})`);
+    }
   }
   const val = (name: string) => argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
   const year = (name: string, dflt: number) => {
@@ -116,6 +126,7 @@ function summary(args: ImportArgs, built: BuiltDataset, reportPath: string, cpPa
     );
   }
   for (const d of c.degraded) out.push(`NOTE: ${d}`);
+  for (const u of c.uncoveredSeasons) out.push(`NOTE: ${u}`);
   if (c.draftPagesSkipped.length) out.push(`draft pages skipped (redirects): ${c.draftPagesSkipped.join(', ')}`);
   if (c.lotteryFailedYears.length) out.push(`lottery sections unreadable: ${c.lotteryFailedYears.join(', ')}`);
   if (c.contractDuplicates.length) out.push(`contracts listed twice (first kept): ${c.contractDuplicates.join(', ')}`);

@@ -77,6 +77,10 @@ describe.skipIf(!url)('import-franchise-history (fake cache, fixture DB)', () =>
     // The 2027 five-team BBRef line is unreadable (it names a team with no link): a gate.
     expect(report.unparsed.map((l: { source: string }) => l.source)).toContain('LAC-2027_transactions');
     expect(report.import.coveredSeasons).toEqual([2017, 2026]);
+    // A season whose BBRef page 404'd (or was never fetched) is reported, never silently skipped.
+    const miss = 'season 2018 not covered: LAC-2019 not fetched, LAC-2019_transactions HTTP 404';
+    expect(report.import.uncoveredSeasons).toContain(miss);
+    expect(out.lines).toContain(`NOTE: ${miss}`);
     // 2027's draft page redirects to the general article: skipped, not parsed.
     expect(report.import.draftPagesSkipped).toEqual(['2027 NBA draft']);
     // R15: Gallinari's three-team trade merges NBA.com and BBRef; Jamil Wilson's two-way signing can't (no roster row).
@@ -115,5 +119,18 @@ describe.skipIf(!url)('import-franchise-history (fake cache, fixture DB)', () =>
     expect(total(second.write!.updated)).toBe(0);
     expect(total(second.write!.deleted)).toBe(0);
     expect(await snapshot()).toEqual(before);
+  });
+
+  it('a narrowed real run keeps an existing undated honor', async () => {
+    await sql`INSERT INTO person_xref (person_key, kind, display_name) VALUES ('waltobi01', 'player', 'Bill Walton')`;
+    await sql`INSERT INTO honors (season_id, person_key, honor, detail) VALUES (NULL, 'waltobi01', 'hall_of_fame', '1993')`;
+    const out = await runImport(db(), parseImportArgs(
+      [`--dir=${dir}`, `--report=${path.join(dir, 'report.json')}`, '--from=2026', '--to=2026', '--allow-gaps'],
+      new Date('2026-11-17T12:00:00Z'),
+    ), quiet);
+    expect(out.status).toBe('written');
+    expect(out.checks.writeScope.pruneUndatedHonors).toBe(false);
+    const rows = await sql<{ honor: string }[]>`SELECT honor FROM honors WHERE person_key = 'waltobi01' AND season_id IS NULL`;
+    expect(rows.map((r) => r.honor)).toEqual(['hall_of_fame']);
   });
 });

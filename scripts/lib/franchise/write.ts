@@ -398,7 +398,9 @@ async function writeTables(
     season_id: h.seasonId, person_key: h.personKey, honor: h.honor, detail: h.detail,
   }));
   await writeKeyless(tx, 'honors', 'honor_id', ['season_id', 'person_key', 'honor'], ['detail'], honors, how,
-    prune && data.honors.length ? (r) => r.season_id == null || covered.has(Number(r.season_id)) : null, res);
+    prune && data.honors.length
+      ? (r) => (r.season_id == null ? mode.kind === 'import' && mode.pruneUndatedHonors !== false : covered.has(Number(r.season_id)))
+      : null, res);
 
   if (!prune) return;
   // Stale import rows in covered seasons (salaries: import-owned sources only; the weekly job's rows stay).

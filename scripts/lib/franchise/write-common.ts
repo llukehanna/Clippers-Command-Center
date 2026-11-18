@@ -9,6 +9,11 @@ export type WriteMode =
       importSources: string[];
       /** Seasons (start years) the cache holds pages for. Required: pruning never reaches past them. */
       seasons: number[];
+      /**
+       * Prune honors with no season (Hall of Fame, retired numbers) the dataset doesn't carry. Default true; false for a
+       * run over part of the cached seasons, which can't resolve every honoree.
+       */
+      pruneUndatedHonors?: boolean;
     }
   | { kind: 'job'; job: 'nightly' | 'weekly' };
 
