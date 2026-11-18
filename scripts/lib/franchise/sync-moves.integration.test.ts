@@ -61,9 +61,9 @@ describe.skipIf(!url)('nightly moves job (fixture DB)', () => {
   afterEach(() => { vi.useRealTimers(); });
   afterAll(async () => { await sql?.end(); });
 
-  it('writes only moves after the synced-through date', async () => {
+  it('writes moves dated from three days before the synced-through date on, and a re-run changes nothing', async () => {
     const r = await syncMoves(deps({ fetchNba: async () => nbaFeed(OLD, WESLEY, ...strusTrade('2026-11-18')) }));
-    expect(r).toEqual({ source: 'nba', written: 2, incomplete: ['nba:Trade 2026020'], syncedThrough: '2026-11-18', advanced: true });
+    expect(r).toEqual({ source: 'nba', written: 2, incomplete: ['nba:Trade 2026020'], syncedThrough: '2026-11-18', advanced: true, unmatched: [] });
     expect((await transactions()).map((t) => t.transaction_key)).toEqual(['nba:Signing 2:1631104', 'nba:Trade 2026020']);
     expect(await syncedThrough()).toBe('2026-11-18');
     // The trade's player resolved to the person the import already holds; Wesley is new, as nba:<id>.
@@ -76,7 +76,7 @@ describe.skipIf(!url)('nightly moves job (fixture DB)', () => {
 
     // The next night the same feed brings nothing new: the overlap is read again, nothing changes, the key stays.
     const again = await syncMoves(deps({ fetchNba: async () => nbaFeed(OLD, WESLEY, ...strusTrade('2026-11-18')) }));
-    expect(again).toEqual({ source: 'nba', written: 0, incomplete: ['nba:Trade 2026020'], syncedThrough: '2026-11-18', advanced: false });
+    expect(again).toEqual({ source: 'nba', written: 0, incomplete: ['nba:Trade 2026020'], syncedThrough: '2026-11-18', advanced: false, unmatched: [] });
     expect(await transactions()).toHaveLength(2);
     expect(await syncedThrough()).toBe('2026-11-18');
   });
@@ -89,6 +89,14 @@ describe.skipIf(!url)('nightly moves job (fixture DB)', () => {
     const r = await syncMoves(deps({ fetchNba: async () => nbaFeed(WESLEY, ...strusTrade('2026-11-18'), late) }));
     expect(r).toMatchObject({ written: 1, syncedThrough: '2026-11-18', advanced: false });
     expect((await transactions()).map((t) => t.transaction_key)).toContain('nba:Waive 4:1');
+  });
+
+  it('writes a future-dated move but never moves the key past today (Pacific)', async () => {
+    const future = row('Signing', '2026-11-25', 'LA Clippers signed guard Future Guy to a contract.', LAC, 77, 'Signing 77');
+    const r = await syncMoves(deps({ fetchNba: async () => nbaFeed(WESLEY, future) }));
+    expect(r).toMatchObject({ written: 2, syncedThrough: '2026-11-19', advanced: true });
+    expect((await transactions()).map((t) => t.transaction_key)).toContain('nba:Signing 77:77');
+    expect(await syncedThrough()).toBe('2026-11-19');
   });
 
   it('starts from the latest NBA.com or ESPN transaction already stored when the key is missing', async () => {
@@ -122,13 +130,17 @@ describe.skipIf(!url)('nightly moves job (fixture DB)', () => {
   });
 
   it('an espn night leaves the key unchanged', async () => {
-    const r = await syncMoves(deps({ fetchEspn: async () => ESPN_STRUS }));
-    expect(r).toMatchObject({ source: 'espn', written: 1, syncedThrough: '2026-11-10', advanced: false });
+    const espn = { transactions: [...ESPN_STRUS.transactions, { date: '2026-11-17T08:00Z', description: 'Waived G Nobody Known.' }] };
+    const r = await syncMoves(deps({ fetchEspn: async () => espn }));
+    expect(r).toMatchObject({ source: 'espn', written: 2, syncedThrough: '2026-11-10', advanced: false, nbaError: 'HTTP 403' });
+    // A name no person_xref key resolves: its row can't be adopted later, so it is listed as a possible duplicate.
+    expect(r.unmatched).toHaveLength(1);
+    expect(r.unmatched[0]).toMatch(/^espn:2026-11-17:/);
     expect(await syncedThrough()).toBe('2026-11-10');
     // With no key yet, an ESPN night doesn't create one either.
     await sql`DELETE FROM app_kv`;
     await sql`DELETE FROM transactions`;
-    expect(await syncMoves(deps({ fetchEspn: async () => ESPN_STRUS }))).toMatchObject({ syncedThrough: null, advanced: false });
+    expect(await syncMoves(deps({ fetchEspn: async () => ESPN_STRUS }))).toMatchObject({ syncedThrough: null, advanced: false, unmatched: [] });
     expect(await syncedThrough()).toBeNull();
   });
 

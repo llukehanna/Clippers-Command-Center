@@ -8,7 +8,8 @@
 //   three days is idempotent (the writer matches by key and source) and catches what a strict `> key` misses: a move
 //   NBA.com posts late with an already-synced date, and NBA.com's report of a trade ESPN wrote first (its `nba:`
 //   source joins that row through adoptExisting, whose window is also three days).
-// - The key moves only on NBA.com nights, to the latest date written, never backwards; with nothing new it stays.
+// - The key moves only on NBA.com nights, to the latest date written (never past today, Pacific time: a move dated
+//   in the future is written but the key waits for its day), never backwards; with nothing new it stays.
 //   ESPN's feed is Clippers-only: an ESPN night writes what ESPN has but leaves the key, so the league-wide moves
 //   NBA.com still holds are read the next NBA.com night. Missing (first run): the latest NBA.com or ESPN transaction
 //   already stored, so the job doesn't rewrite what the import wrote.
@@ -16,8 +17,11 @@
 // - People: the job has no BBRef rosters, so its PeopleIndex is person_xref plus `players` plus the override links.
 //   A part's person resolves to the person_xref key already holding its NBA.com id (or its name, for ESPN), so the
 //   writer's adoption (adoptExisting) finds the row another source wrote first and keeps one row per event.
-// - Unparsed lines in the window (or undated) that no override settles stop the run before anything is written, and
-//   the key stays where it was: a committed override (ignore, or create) settles them the next night.
+// - Unparsed lines in the window (or undated, and parsed moves with no date) that no override settles stop the run
+//   before anything is written, and the key stays where it was: a committed override (ignore, or create) settles them
+//   the next night.
+// - A feed whose shape changed (NBA.com with no movement rows, ESPN with no transactions list) is a failed fetch, never
+//   a quiet night: NBA.com falls back to ESPN, ESPN throws.
 import type { Db } from '../history/write.js';
 import { applyMoveOverrides, applyOverrides } from './apply-overrides.js';
 import { defaultDraftYear } from './build-dataset.js';
@@ -58,11 +62,18 @@ export interface SyncResult {
   syncedThrough: string | null;
   /** Whether this run moved the key (only NBA.com nights do). */
   advanced: boolean;
+  /** Why NBA.com failed, on an ESPN night. */
+  nbaError?: string;
+  /**
+   * ESPN nights: keys of written moves with a person no person_xref key resolved (name only). NBA.com's report of the
+   * same event can't adopt their row, so they may end up duplicated.
+   */
+  unmatched: string[];
 }
 
 /** The run stopped before writing: lines no parser or override could read. */
 export class UnparsedMovesError extends Error {
-  constructor(public readonly source: FeedSource, public readonly lines: UnparsedLine[]) {
+  constructor(public readonly source: FeedSource, public readonly lines: UnparsedLine[], public readonly nbaError?: string) {
     super(`${lines.length} unparsed ${source} line(s); nothing written. Settle them with an override in overrides.ts:\n` +
       lines.map((l) => `  ${l.date ?? '(no date)'} ${l.text}`).join('\n'));
     this.name = 'UnparsedMovesError';
@@ -81,16 +92,28 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
 }
 
-/** NBA.com, or ESPN when NBA.com throws or takes NBA_TIMEOUT_MS. Throws when both fail. */
+/** The parsers read a missing list as empty: a changed shape must fail the fetch instead of looking like a quiet night. */
+function checkNba(json: unknown): unknown {
+  const rows = (json as { NBA_Player_Movement?: { rows?: unknown } } | null)?.NBA_Player_Movement?.rows;
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error('NBA.com feed has no NBA_Player_Movement.rows');
+  return json;
+}
+
+function checkEspn(json: unknown): unknown {
+  if (!Array.isArray((json as { transactions?: unknown } | null)?.transactions)) throw new Error('ESPN feed has no transactions list');
+  return json;
+}
+
+/** NBA.com, or ESPN when NBA.com throws, takes NBA_TIMEOUT_MS or sends no rows. Throws when both fail. */
 export async function fetchFeed(deps: Pick<SyncDeps, 'fetchNba' | 'fetchEspn'>): Promise<{ source: FeedSource; json: unknown; nbaError?: string }> {
   let nbaError: string;
   try {
-    return { source: 'nba', json: await withTimeout(deps.fetchNba(), NBA_TIMEOUT_MS, 'NBA.com') };
+    return { source: 'nba', json: checkNba(await withTimeout(deps.fetchNba(), NBA_TIMEOUT_MS, 'NBA.com')) };
   } catch (e) {
     nbaError = message(e);
   }
   try {
-    return { source: 'espn', json: await deps.fetchEspn(), nbaError };
+    return { source: 'espn', json: checkEspn(await deps.fetchEspn()), nbaError };
   } catch (e) {
     throw new Error(`no feed: NBA.com: ${nbaError}; ESPN: ${message(e)}`);
   }
@@ -122,8 +145,12 @@ export function buildNightly(input: NightlyInput): { data: FranchiseDataset; unp
   const parsed = input.source === 'nba'
     ? parseMovement(input.json)
     : parseEspnTransactions(input.json, input.players.map((p) => ({ name: p.display_name, nbaPersonId: p.nba_person_id })));
-  const moves: ParsedMove[] = parsed.moves.filter((m) => !!m.date && after(m.date));
-  const unparsed = parsed.unparsed.filter((l) => after(l.date));
+  const moves: ParsedMove[] = parsed.moves.filter((m) => m.date && after(m.date));
+  // A move the parser read but couldn't date gates like an undated line.
+  const unparsed = [
+    ...parsed.unparsed.filter((l) => after(l.date)),
+    ...parsed.moves.filter((m) => !m.date).map((m, i) => ({ source: input.source, index: -1 - i, date: null, text: `move with no date: ${m.sourceKey}` })),
+  ];
 
   // As build-dataset: `person` overrides tying an NBA.com id to a BBRef id.
   const links = input.overrides.flatMap((o) => (o.kind === 'person' && /^nba:\d+$/.test(o.match.ref) && !o.personKey.startsWith('nba:') && !o.match.scope
@@ -157,9 +184,14 @@ export function buildNightly(input: NightlyInput): { data: FranchiseDataset; unp
   return { data, unparsed: data.unparsed };
 }
 
-/** The latest of the previous key and the dates written; null when there is neither. */
-export function nextSyncedThrough(prev: string | null, written: string[]): string | null {
-  return [prev, ...written].filter((d): d is string => !!d).sort().at(-1) ?? null;
+/** The latest of the previous key and the dates written, a date after `today` counting as today; null when none. */
+export function nextSyncedThrough(prev: string | null, written: string[], today: string): string | null {
+  return [prev, ...written.map((d) => (d > today ? today : d))].filter((d): d is string => !!d).sort().at(-1) ?? null;
+}
+
+/** YYYY-MM-DD in Los Angeles. */
+export function pacificDate(now: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
 
 // ---- database ----------------------------------------------------------------------
@@ -195,10 +227,12 @@ export async function syncMoves(deps: SyncDeps): Promise<SyncResult> {
     source: feed.source, json: feed.json, syncedThrough: state.syncedThrough, people: state.people, players: state.players,
     overrides: deps.overrides ?? OVERRIDES, currentDraftYear: defaultDraftYear(deps.now()),
   });
-  if (unparsed.length) throw new UnparsedMovesError(feed.source, unparsed);
+  if (unparsed.length) throw new UnparsedMovesError(feed.source, unparsed, feed.nbaError);
 
   // ESPN nights never move the key (see the header).
-  const next = feed.source === 'nba' ? nextSyncedThrough(state.syncedThrough, data.moves.map((m) => m.date)) : state.stored;
+  const next = feed.source === 'nba'
+    ? nextSyncedThrough(state.syncedThrough, data.moves.map((m) => m.date), pacificDate(deps.now()))
+    : state.stored;
   const advanced = next !== state.stored;
   let incomplete: string[] = [];
   let written = 0;
@@ -220,5 +254,10 @@ export async function syncMoves(deps: SyncDeps): Promise<SyncResult> {
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
     }
   });
-  return { source: feed.source, written, incomplete, syncedThrough: next, advanced };
+  const unmatched = feed.source === 'espn'
+    ? data.moves.filter((m) => m.parts.some((p) => p.person && !p.personKey)).map((m) => m.transactionKey) : [];
+  return {
+    source: feed.source, written, incomplete, syncedThrough: next, advanced, unmatched,
+    ...(feed.nbaError ? { nbaError: feed.nbaError } : {}),
+  };
 }

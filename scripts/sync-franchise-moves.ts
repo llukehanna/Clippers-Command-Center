@@ -35,13 +35,25 @@ async function main() {
     const key = r.advanced ? `synced through ${r.syncedThrough} (advanced)`
       : `synced through ${r.syncedThrough ?? 'none'} (unchanged${r.source === 'espn' ? ': ESPN nights never move it' : ''})`;
     const line = `source: ${r.source}; written: ${r.written}; incomplete: ${r.incomplete.length}; ${key}`;
+    const nba = r.nbaError ? `NBA.com failed: ${r.nbaError}` : null;
+    const unmatched = r.unmatched.length
+      ? `possible duplicates: ${r.unmatched.length} ESPN move(s) name a person no person_xref key resolved, so NBA.com's report can't adopt them`
+      : null;
     log(line);
     for (const k of r.incomplete) log(`  incomplete: ${k}`);
-    summary([line, ...r.incomplete.map((k) => `incomplete: \`${k}\``)]);
+    if (unmatched) log(unmatched);
+    for (const k of r.unmatched) log(`  unmatched: ${k}`);
+    summary([
+      line, ...(nba ? [nba] : []), ...r.incomplete.map((k) => `incomplete: \`${k}\``),
+      ...(unmatched ? [unmatched, ...r.unmatched.map((k) => `unmatched: \`${k}\``)] : []),
+    ]);
   } catch (e) {
     if (!(e instanceof UnparsedMovesError)) throw e;
     console.error(`[sync-franchise-moves] source: ${e.source}; ${e.message}`);
-    summary([`source: ${e.source}; nothing written: ${e.lines.length} unparsed line(s)`, ...e.lines.map((l) => `${l.date ?? '(no date)'} ${l.text}`)]);
+    summary([
+      `source: ${e.source}; nothing written: ${e.lines.length} unparsed line(s)`, ...(e.nbaError ? [`NBA.com failed: ${e.nbaError}`] : []),
+      ...e.lines.map((l) => `${l.date ?? '(no date)'} ${l.text}`),
+    ]);
     process.exitCode = 1;
   }
   await sql.end();
@@ -49,6 +61,9 @@ async function main() {
 
 main().catch(async (err) => {
   console.error('[sync-franchise-moves] Failed:', err);
+  try {
+    summary([`failed: ${err instanceof Error ? err.message : String(err)}`]);
+  } catch { /* the summary is best effort */ }
   await sql.end({ timeout: 5 }).catch(() => {});
   process.exit(1);
 });

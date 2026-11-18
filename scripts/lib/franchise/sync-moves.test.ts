@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NBA_TEAM_IDS } from '../nba-teams.js';
 import type { DbPlayer, PersonRow } from './people.js';
-import { buildNightly, fetchFeed, NBA_TIMEOUT_MS, nextSyncedThrough, OVERLAP_DAYS } from './sync-moves.js';
+import { buildNightly, fetchFeed, NBA_TIMEOUT_MS, nextSyncedThrough, OVERLAP_DAYS, pacificDate } from './sync-moves.js';
 import type { Override } from './types.js';
 
 const { LAC, CLE } = NBA_TEAM_IDS;
@@ -70,6 +70,12 @@ describe('buildNightly', () => {
     expect(trade.parts.find((p) => p.kind === 'pick')).toMatchObject({ from: LAC, to: CLE, gap: 'pick_unidentified' });
   });
 
+  it('gates a parsed move with no date like an undated line', () => {
+    const { data, unparsed } = nightly({ transactions: [{ description: 'Waived G Blake Wesley.' }] }, { source: 'espn' });
+    expect(data.moves).toEqual([]);
+    expect(unparsed).toEqual([{ source: 'espn', index: -1, date: null, text: expect.stringMatching(/^move with no date: espn::/) }]);
+  });
+
   it('reads ESPN prose, matching names to players for the NBA.com id', () => {
     const json = { transactions: [
       { date: '2026-11-18T08:00Z', description: 'Acquired G Max Strus from Cleveland.' },
@@ -87,13 +93,24 @@ describe('buildNightly', () => {
 });
 
 describe('nextSyncedThrough', () => {
+  const TODAY = '2026-11-19';
   it('advances to the latest date written, never backwards', () => {
-    expect(nextSyncedThrough('2026-11-10', ['2026-11-12', '2026-11-11'])).toBe('2026-11-12');
-    expect(nextSyncedThrough('2026-11-10', ['2026-11-08'])).toBe('2026-11-10');
+    expect(nextSyncedThrough('2026-11-10', ['2026-11-12', '2026-11-11'], TODAY)).toBe('2026-11-12');
+    expect(nextSyncedThrough('2026-11-10', ['2026-11-08'], TODAY)).toBe('2026-11-10');
   });
   it('stays put when nothing new was written', () => {
-    expect(nextSyncedThrough('2026-11-10', [])).toBe('2026-11-10');
-    expect(nextSyncedThrough(null, [])).toBeNull();
+    expect(nextSyncedThrough('2026-11-10', [], TODAY)).toBe('2026-11-10');
+    expect(nextSyncedThrough(null, [], TODAY)).toBeNull();
+  });
+  it('never moves past today for a future-dated move', () => {
+    expect(nextSyncedThrough('2026-11-10', ['2026-11-25'], TODAY)).toBe(TODAY);
+  });
+});
+
+describe('pacificDate', () => {
+  it('is the date in Los Angeles', () => {
+    expect(pacificDate(new Date('2026-11-19T13:30:00Z'))).toBe('2026-11-19');
+    expect(pacificDate(new Date('2026-11-20T05:00:00Z'))).toBe('2026-11-19'); // 9 pm PST
   });
 });
 
@@ -103,13 +120,27 @@ describe('fetchFeed', () => {
 
   it('uses NBA.com when it answers', async () => {
     const fetchEspn = vi.fn(async () => espn);
-    expect(await fetchFeed({ fetchNba: async () => nbaFeed(), fetchEspn })).toEqual({ source: 'nba', json: nbaFeed() });
+    expect(await fetchFeed({ fetchNba: async () => nbaFeed(WESLEY), fetchEspn })).toEqual({ source: 'nba', json: nbaFeed(WESLEY) });
     expect(fetchEspn).not.toHaveBeenCalled();
   });
 
   it('falls back to ESPN when NBA.com throws', async () => {
     const r = await fetchFeed({ fetchNba: async () => { throw new Error('HTTP 403'); }, fetchEspn: async () => espn });
     expect(r).toEqual({ source: 'espn', json: espn, nbaError: 'HTTP 403' });
+  });
+
+  it('treats an NBA.com payload with no movement rows as a failure, and falls back', async () => {
+    for (const json of [nbaFeed(), { NBA_Player_Movement: {} }, { resultSets: [] }, null]) {
+      expect(await fetchFeed({ fetchNba: async () => json, fetchEspn: async () => espn }))
+        .toEqual({ source: 'espn', json: espn, nbaError: 'NBA.com feed has no NBA_Player_Movement.rows' });
+    }
+  });
+
+  it('treats an ESPN payload with no transactions list as a failure', async () => {
+    for (const json of [{}, { transactions: {} }, null]) {
+      await expect(fetchFeed({ fetchNba: async () => { throw new Error('HTTP 403'); }, fetchEspn: async () => json }))
+        .rejects.toThrow('no feed: NBA.com: HTTP 403; ESPN: ESPN feed has no transactions list');
+    }
   });
 
   it('falls back to ESPN when NBA.com takes 20 s', async () => {
