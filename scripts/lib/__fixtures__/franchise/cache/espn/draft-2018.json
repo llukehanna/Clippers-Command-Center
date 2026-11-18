@@ -1,0 +1,81 @@
+{
+ "_source": "Trimmed from ESPN core API draft-2018 rounds (data/franchise-raw/espn/draft-2018.json)",
+ "items": [
+  {
+   "number": 1,
+   "picks": [
+    {
+     "status": {
+      "id": 3,
+      "name": "SELECTION_MADE",
+      "description": "Selection Made"
+     },
+     "pick": 1,
+     "overall": 1,
+     "round": 1,
+     "traded": false,
+     "athlete": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2018/draft/athletes/80506?lang=en&region=us"
+     },
+     "team": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2018/teams/21?lang=en&region=us"
+     }
+    },
+    {
+     "status": {
+      "id": 3,
+      "name": "SELECTION_MADE",
+      "description": "Selection Made"
+     },
+     "pick": 3,
+     "overall": 3,
+     "round": 1,
+     "traded": true,
+     "tradeNote": "Rights traded to DAL",
+     "athlete": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2018/draft/athletes/80505?lang=en&region=us"
+     },
+     "team": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2018/teams/1?lang=en&region=us"
+     }
+    },
+    {
+     "status": {
+      "id": 3,
+      "name": "SELECTION_MADE",
+      "description": "Selection Made"
+     },
+     "pick": 8,
+     "overall": 8,
+     "round": 1,
+     "traded": true,
+     "tradeNote": "From BOS through BKN",
+     "athlete": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2018/draft/athletes/80510?lang=en&region=us"
+     },
+     "team": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2018/teams/5?lang=en&region=us"
+     }
+    },
+    {
+     "status": {
+      "id": 3,
+      "name": "SELECTION_MADE",
+      "description": "Selection Made"
+     },
+     "pick": 25,
+     "overall": 25,
+     "round": 1,
+     "traded": true,
+     "tradeNote": "From CLE",
+     "athlete": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2018/draft/athletes/80496?lang=en&region=us"
+     },
+     "team": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2018/teams/13?lang=en&region=us"
+     }
+    }
+   ]
+  }
+ ]
+}

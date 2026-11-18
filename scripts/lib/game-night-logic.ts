@@ -12,6 +12,8 @@
 // attempts is reached, at which point it finalizes anyway so the game still
 // gets its box scores.
 
+import type { LivePhase } from '../../src/lib/types/live-state';
+
 export const FINAL_SAVE_MAX_ATTEMPTS = 10;
 const FINAL_RETRY_DELAY_MS = 3_000;
 
@@ -79,6 +81,23 @@ export type Git = (args: string[]) => Promise<number>;
 export async function mainHasNewRunnerCode(git: Git): Promise<boolean> {
   if ((await git(['fetch', '--quiet', '--depth=1', 'origin', 'main'])) !== 0) return false;
   return (await git(['diff', '--quiet', 'HEAD', 'FETCH_HEAD', '--', ...RUNNER_CODE_PATHS])) === 1;
+}
+
+/**
+ * When a run that has seen new runner code may hand the game off. The
+ * successor waits in the workflow's concurrency group until this run exits,
+ * then needs ~45 s to boot (checkout, npm ci) — a gap fans see as "data
+ * delayed". So mid-game the hand-off waits for a break in play (halftime, a
+ * period end, a timeout or review), where nothing is missed. A run that keeps
+ * failing hands off right away: it may be the bug the new code fixes (one
+ * failed tick is just a feed blip). TIP_WATCH waits: the tip is the moment
+ * fans are watching for.
+ */
+export const HAND_OFF_FAILURES = 3;
+
+export function handOffMomentOk(phase: LivePhase | null, consecutiveFailures: number): boolean {
+  if (consecutiveFailures >= HAND_OFF_FAILURES) return true;
+  return phase === null || phase === 'PREGAME' || phase === 'HALFTIME' || phase === 'STOPPAGE';
 }
 
 // ── Finalizing when the NBA refuses box scores ───────────────────────────────

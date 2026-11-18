@@ -10,14 +10,37 @@ import { cn } from '@/lib/utils'
  * phones; `stickyFirst` pins the first column while the rest scrolls.
  */
 export function TableScroll({ children, className, minWidth = 560 }: { children: React.ReactNode; className?: string; minWidth?: number }) {
+  const ref = React.useRef<HTMLDivElement>(null)
+  // Fade the right edge while more columns are hidden, so phones show the
+  // table scrolls sideways.
+  const [more, setMore] = React.useState(false)
+  React.useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const update = () => setMore(el.scrollLeft + el.clientWidth < el.scrollWidth - 2)
+    update()
+    el.addEventListener('scroll', update, { passive: true })
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => {
+      el.removeEventListener('scroll', update)
+      ro.disconnect()
+    }
+  }, [])
   return (
-    <div className={cn('overflow-x-auto', className)}>
+    <div
+      ref={ref}
+      className={cn('overflow-x-auto overscroll-x-contain', className)}
+      style={more ? { maskImage: FADE_RIGHT, WebkitMaskImage: FADE_RIGHT } : undefined}
+    >
       <table className="w-full border-collapse text-[13.5px] tabular-nums" style={{ minWidth }}>
         {children}
       </table>
     </div>
   )
 }
+
+const FADE_RIGHT = 'linear-gradient(to right, #000 calc(100% - 36px), transparent)'
 
 type Align = 'left' | 'right' | 'center'
 
@@ -81,7 +104,7 @@ export function Tr({ href, className, children }: { href?: string; className?: s
   const router = useRouter()
   return (
     <tr
-      className={cn('group', href && 'cursor-pointer', '[&>td]:transition-colors [&>td]:duration-200 hover:[&>td]:bg-[#0f1829]', className)}
+      className={cn('group', href && 'cursor-pointer', '[&>td]:transition-colors [&>td]:duration-200 hover:[&>td]:bg-[#0f1829] active:[&>td]:bg-[#0f1829]', className)}
       onClick={href ? () => router.push(href) : undefined}
     >
       {children}

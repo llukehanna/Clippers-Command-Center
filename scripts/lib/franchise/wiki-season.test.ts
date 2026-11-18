@@ -152,4 +152,28 @@ describe('parseSeasonTrades', () => {
     expect(okc[1].gap).toBe('pick_unidentified');
     expect(moves[1].complete).toBe(false);
   });
+
+  it('reads another team\'s season page (home): its trades without the Clippers are league rows', () => {
+    const wt = [
+      '===Trades===',
+      '{|',
+      '|-',
+      '| June 28, [[2017–18 NBA season|2017]]',
+      "| To '''[[Houston Rockets]]'''<hr>[[Chris Paul]]",
+      "| To '''[[Los Angeles Clippers]]'''<hr>[[Patrick Beverley]]",
+      '|-',
+      '| July 6, [[2017–18 NBA season|2017]]',
+      "| To '''[[Houston Rockets]]'''<hr>[[Isaiah Taylor]]",
+      "| To '''[[Denver Nuggets]]'''<hr>Cash considerations",
+      '|-',
+      '| July 9, [[2017–18 NBA season|2017]]',
+      "| To '''[[Atlanta Hawks]]'''<hr>[[Jamal Crawford]]",
+      "| To '''[[Denver Nuggets]]'''<hr>Cash considerations",
+      '|}',
+    ].join('\n');
+    const { moves, unparsed } = parseSeasonTrades(wt, 2017, '2017–18 Houston Rockets season', HOU);
+    expect(moves.map((m) => [m.date, m.involvesClippers])).toEqual([['2017-06-28', true], ['2017-07-06', false]]);
+    expect(moves[1].parts).toContainEqual({ from: DEN, to: HOU, kind: 'player', person: { name: 'Isaiah Taylor' } });
+    expect(unparsed.map((u) => u.reason)).toEqual(["no side for the page's team"]);
+  });
 });

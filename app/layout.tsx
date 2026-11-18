@@ -5,6 +5,7 @@ import './globals.css'
 import { TopBar } from '@/components/shell/TopBar'
 import { CommandPalette } from '@/components/shell/CommandPalette'
 import { GlassPointer } from '@/components/shell/GlassPointer'
+import { MobileTabBar } from '@/components/shell/MobileTabBar'
 
 const geist = Geist({
   subsets: ['latin'],
@@ -50,6 +51,7 @@ export default function RootLayout({
         <ViewTransition default="page">
           <main>{children}</main>
         </ViewTransition>
+        <MobileTabBar />
         <CommandPalette />
         <GlassPointer />
       </body>

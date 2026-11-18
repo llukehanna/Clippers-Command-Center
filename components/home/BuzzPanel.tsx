@@ -9,7 +9,7 @@ export function BuzzPanel({ articles, social }: { articles: MediaItem[]; social:
   if (articles.length === 0 && social.length === 0) return null
   return (
     <div>
-      <Eyebrow aside={<Link href="/news" className="hover:text-text">All news →</Link>}>Buzz · from around the web</Eyebrow>
+      <Eyebrow aside={<Link href="/news" className="-my-3 inline-block py-3 hover:text-text">All news →</Link>}>Buzz · from around the web</Eyebrow>
       <div className="panel p-1.5">
         {articles.map((a) => <ArticleCard key={a.media_id} item={a} compact />)}
         {social.map((s) => <SocialCard key={s.media_id} item={s} embed={false} />)}

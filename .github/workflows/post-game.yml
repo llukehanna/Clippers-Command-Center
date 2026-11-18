@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 10 * * *'   # nightly at 10:00 UTC (3am PDT / 2am PST)
   workflow_dispatch:
+    inputs:
+      pbp_days:
+        description: 'Play-by-play lookback in days (default 3; raise it to backfill games the nightly run missed)'
+        required: false
+        default: '3'
 
 permissions:
   contents: read
@@ -54,14 +59,18 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      # Clippers play-by-play → game flow / period / clutch tables (last 3 days).
+      # Clippers play-by-play → game flow / period / clutch tables (last 3 days,
+      # or the manual run's pbp_days). Games already ingested are skipped.
       # continue-on-error: Plan 2's insights will depend on this and the record
       # book; until then a failure here must not block the insights steps.
       - name: Ingest play-by-play
         continue-on-error: true
-        run: npm run ingest-pbp
+        run: |
+          [[ "$PBP_DAYS" =~ ^[0-9]{1,3}$ ]] || { echo "Invalid pbp_days: $PBP_DAYS"; exit 1; }
+          npm run ingest-pbp -- --days="$PBP_DAYS"
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PBP_DAYS: ${{ inputs.pbp_days || '3' }}
 
       # Game highs, streaks and records start for insight framing.
       # continue-on-error until Plan 2 depends on it (see Ingest play-by-play).

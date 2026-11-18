@@ -11,8 +11,8 @@ function ev(p: Partial<PbpEvent> & { home: number; away: number; prev: [number, 
     seq: ++seq, actionNumber: seq, actionType: '', subType: '', period: 1, clockSec: 600, elapsedSec: 120, teamTricode: null, personId: null,
     kind: 'other', made: null, shotValue: null, assistPersonId: null,
     points, scoringSide: home > prev[0] ? 'home' : away > prev[1] ? 'away' : null,
-    scoreHome: home, scoreAway: away, description: '', ...rest,
-  };
+    scoreHome: home, scoreAway: away, description: '', shotX: null, shotY: null, ...rest,
+  } as PbpEvent;
 }
 
 // LAC is the AWAY team. Sequence: LAC 3 (0-3), DEN 2 (2-3), DEN 2 (4-3), LAC FT (4-4), LAC 2 (4-6).

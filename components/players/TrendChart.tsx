@@ -68,7 +68,7 @@ export function TrendChart({ charts }: { charts: PlayerDetailPayload['charts'] }
       ) : (
         <div className="mt-5 h-[240px] sm:h-[280px]" role="img" aria-label={`${LABEL[metric]} rolling averages`}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+            <AreaChart data={data} margin={{ top: 8, right: 22, bottom: 0, left: -18 }}>
               <defs>
                 <linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#418fde" stopOpacity={0.32} />

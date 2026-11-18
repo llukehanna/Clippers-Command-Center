@@ -4,7 +4,7 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { TeamLogo } from '@/components/ui/team-mark'
 import { StatusDot } from '@/components/ui/status-dot'
-import { clockLabel, periodLabel } from '@/src/lib/ui/live'
+import { gameMomentLabel } from '@/src/lib/ui/live'
 import type { ScoreSide } from '@/components/game/Scoreboard'
 
 /**
@@ -18,6 +18,7 @@ export function StickyScore({
   period,
   clock,
   delayed,
+  final = false,
 }: {
   sentinel: React.RefObject<HTMLElement | null>
   lac: ScoreSide
@@ -25,6 +26,7 @@ export function StickyScore({
   period: number | null
   clock: string | null
   delayed: boolean
+  final?: boolean
 }) {
   const [visible, setVisible] = React.useState(false)
   const [top, setTop] = React.useState(0)
@@ -66,8 +68,14 @@ export function StickyScore({
           </span>
         </div>
         <span className="flex items-center gap-2 font-mono text-[12px] text-mute tabular-nums">
-          <StatusDot tone={delayed ? 'warn' : 'live'} />
-          {periodLabel(period)} {clockLabel(clock)}
+          {final ? (
+            'Final'
+          ) : (
+            <>
+              <StatusDot tone={delayed ? 'warn' : 'live'} />
+              {gameMomentLabel(period, clock)}
+            </>
+          )}
         </span>
       </div>
     </div>

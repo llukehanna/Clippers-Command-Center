@@ -1,9 +1,10 @@
 // scripts/lib/pbp/types.ts
 // Play-by-play shapes. Raw* mirror the fields cdn.nba.com liveData and
 // stats.nba.com playbyplayv3 share (both wrap actions in { game: { actions } });
+// ESPN's summary is converted into the cdn shape (./espn.ts).
 // PbpEvent is the one normalized shape everything downstream uses.
 
-export type PbpSource = 'cdn' | 'stats_pbp';
+export type PbpSource = 'cdn' | 'stats_pbp' | 'espn';
 export type PbpKind = 'fg' | 'ft' | 'rebound' | 'turnover' | 'steal' | 'block' | 'other';
 
 export interface RawAction {
@@ -21,6 +22,8 @@ export interface RawAction {
   scoreHome?: string | number | null;  // v3 leaves it "" when unchanged
   scoreAway?: string | number | null;
   description?: string | null;
+  shotX?: number | null;               // espn only: feet across the half court (0–50)
+  shotY?: number | null;               // espn only: feet from the baseline
 }
 
 export interface RawPlayByPlay {
@@ -46,11 +49,13 @@ export interface PbpEvent {
   scoreHome: number;
   scoreAway: number;
   description: string;
+  shotX: number | null;                // field goals from espn only; see RawAction
+  shotY: number | null;
 }
 
 export interface NormalizedPbp {
   source: PbpSource;
-  /** Assists, steals and blocks carry player ids (cdn only). */
+  /** Assists, steals and blocks carry player ids (cdn and espn). */
   hasDefensiveCredits: boolean;
   events: PbpEvent[];
 }

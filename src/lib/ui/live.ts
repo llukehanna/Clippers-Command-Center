@@ -19,13 +19,34 @@ export function clockLabel(clock: string | null | undefined): string {
   return `${mins}:${String(secs).padStart(2, '0')}`
 }
 
+/**
+ * A period break while the game is still on: the clock reads 0:00 at the end
+ * of a period ("Halftime", "End of Q3", "End of OT"). Null while the clock runs
+ * (or before tip), so callers show the clock instead. A game that has gone
+ * final never reaches here — its status, not the clock, says so.
+ */
+export function breakLabel(period: number | null | undefined, clock: string | null | undefined): string | null {
+  if (period == null || period <= 0 || !clock) return null
+  // Exactly zero: "PT00M00.40S" still has 0.4 s to play, though clockLabel floors it to 0:00.
+  const parts = clock.match(/[\d.]+/g)
+  if (!parts || parts.some((p) => parseFloat(p) !== 0)) return null
+  if (period === 2) return 'Halftime'
+  return `End of ${periodLabel(period)}`
+}
+
+/** "Q3 7:42", or the break ("Halftime") when the period has ended. */
+export function gameMomentLabel(period: number | null | undefined, clock: string | null | undefined): string {
+  return breakLabel(period, clock) ?? [periodLabel(period), clockLabel(clock)].filter(Boolean).join(' ')
+}
+
 interface TitleSide {
   abbreviation: string | null
   score: number | null
 }
 
-/** Browser tab title during a game, Clippers first: "LAC 84–78 DEN · Q3 7:42". */
+/** Browser tab title during a game, Clippers first: "LAC 84–78 DEN · Q3 7:42" (or "· Final"). */
 export function liveTabTitle(g: {
+  status?: string | null
   period: number | null
   clock: string | null
   home: TitleSide
@@ -34,7 +55,7 @@ export function liveTabTitle(g: {
   const lacHome = g.home.abbreviation === 'LAC'
   const lac = lacHome ? g.home : g.away
   const opp = lacHome ? g.away : g.home
-  const when = [periodLabel(g.period), clockLabel(g.clock)].filter(Boolean).join(' ')
+  const when = g.status === 'final' ? 'Final' : gameMomentLabel(g.period, g.clock)
   return `LAC ${lac.score ?? 0}–${opp.score ?? 0} ${opp.abbreviation ?? 'OPP'} · ${when}`
 }
 
@@ -79,4 +100,13 @@ export function resolveLiveState(
     if (captured && generated && generated.getTime() - captured.getTime() > STALE_SNAPSHOT_IDLE_MS) return 'NO_ACTIVE_GAME'
   }
   return state
+}
+
+/**
+ * A game is on: /api/live has one and it isn't over. /live keeps showing a
+ * game for half an hour after the buzzer (its state stays LIVE), but the
+ * header's "Live" chip and the nav's live dot stop at the final.
+ */
+export function gameIsOn(data: (NonNullable<Parameters<typeof resolveLiveState>[0]> & { game?: { status?: string } | null }) | undefined): boolean {
+  return resolveLiveState(data) !== 'NO_ACTIVE_GAME' && data?.game?.status !== 'final'
 }

@@ -25,6 +25,7 @@ import type {
   ScoreboardTeam,
   TeamStatistics,
 } from '../../src/lib/types/live';
+import type { Sql } from 'postgres';
 import { NBA_TEAM_IDS } from './nba-teams';
 
 const ESPN_SITE = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
@@ -66,7 +67,7 @@ interface EspnAthleteLine {
   active?: boolean;
   stats?: string[];
 }
-interface EspnPlay {
+export interface EspnPlay {
   id?: string;
   sequenceNumber?: string;
   type?: { id?: string; text?: string };
@@ -80,6 +81,8 @@ interface EspnPlay {
   shootingPlay?: boolean;
   team?: { id?: string };
   participants?: Array<{ athlete?: { id?: string } }>;
+  /** Shot location in feet (x across the half court, y from the baseline); a large negative sentinel on free throws. */
+  coordinate?: { x?: number; y?: number };
   wallclock?: string;
 }
 export interface EspnSummaryJson {
@@ -137,6 +140,17 @@ export type PersonIdResolver = (espnId: string, displayName: string) => number;
 
 export function nameResolver(byName: Map<string, number>): PersonIdResolver {
   return (espnId, displayName) => byName.get(normalizeName(displayName)) ?? -Number(espnId || 0);
+}
+
+/** ESPN athlete → NBA personId by name, from the players table. */
+export async function loadPersonIdResolver(sql: Sql): Promise<PersonIdResolver> {
+  // Active, recently updated rows win a (rare) name collision.
+  const players = await sql<{ nba_person_id: number; display_name: string }[]>`
+    SELECT nba_person_id, display_name FROM players
+    WHERE nba_person_id IS NOT NULL
+    ORDER BY is_active, updated_at
+  `;
+  return nameResolver(new Map(players.map((p) => [normalizeName(p.display_name), p.nba_person_id])));
 }
 
 // ── Scoreboard ───────────────────────────────────────────────────────────────

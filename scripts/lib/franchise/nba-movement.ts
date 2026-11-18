@@ -101,8 +101,7 @@ function parseTrade(rows: Row[], date: string): ParsedMove | string {
   for (const row of rows) {
     const m = TRADE_ROW.exec(row.TRANSACTION_DESCRIPTION);
     if (!m) return `unreadable trade row: ${row.TRANSACTION_DESCRIPTION}`;
-    // NBA.com writes "LA Clippers"; the era table has "Los Angeles Clippers".
-    const sender = franchiseFromName(m[2], season) ?? franchiseFromName(m[2].replace(/^LA /, 'Los Angeles '), season);
+    const sender = franchiseFromName(m[2], season);
     if (sender == null) return `unresolved team "${m[2]}": ${row.TRANSACTION_DESCRIPTION}`;
     const what = m[1];
     const base = { from: sender, to: row.TEAM_ID as FranchiseId };
