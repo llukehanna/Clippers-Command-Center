@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { Panel } from '@/components/ui/panel'
 import { InitialsDisc } from './bits'
 import { seasonLabel } from '@/src/lib/franchise/display'
-import { winPct, type Tenure } from '@/src/lib/franchise/tenures'
+import { isCurrentTenure, winPct, type Tenure } from '@/src/lib/franchise/tenures'
 
 const SHOWN = 6
 const OPEN = 2
@@ -15,7 +15,7 @@ const wl = (w: number | null, l: number | null) => (w == null || l == null ? '�
 
 function years(t: Tenure, currentSeason: number): string {
   const n = t.seasons.length
-  const span = t.last >= currentSeason ? `${t.first}–present` : t.first === t.last ? seasonLabel(t.first) : `${t.first}–${t.last + 1}`
+  const span = isCurrentTenure(t, currentSeason) ? `${t.first}–present` : t.first === t.last ? seasonLabel(t.first) : `${t.first}–${t.last + 1}`
   const partial = t.seasons.some((s) => s.note)
   return `${span} · ${n} season${n === 1 ? '' : 's'}${partial && n === 1 ? ', part' : ''}`
 }
@@ -132,8 +132,8 @@ export function CoachTimeline({ tenures, currentSeason }: { tenures: Tenure[]; c
         aria-hidden
         className="absolute bottom-[34px] left-[31px] top-[34px] w-px bg-[linear-gradient(180deg,rgba(65,143,222,0.6),var(--line-2)_18%,var(--line-2)_85%,transparent)] sm:left-[39px]"
       />
-      {shown.map((t, i) => (
-        <TenureBlock key={t.key} t={t} current={i === 0} open={open.has(t.key)} onToggle={() => toggle(t.key)} currentSeason={currentSeason} />
+      {shown.map((t) => (
+        <TenureBlock key={t.key} t={t} current={isCurrentTenure(t, currentSeason)} open={open.has(t.key)} onToggle={() => toggle(t.key)} currentSeason={currentSeason} />
       ))}
       {!all && rest.length > 0 && (
         <button

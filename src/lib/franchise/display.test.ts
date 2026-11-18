@@ -18,7 +18,11 @@ import {
   franchiseTab,
   allowsAllSeasons,
   parseMovesSeason,
+  draftPickOutcome,
+  draftYearMeta,
+  partialWord,
 } from './display'
+import { TEAM_NOT_RECORDED, teamFullName } from './franchise-ids'
 
 const team = (abbreviation: string | null, city: string | null, name: string | null, is_clippers = false) => ({
   franchise_id: 1,
@@ -185,5 +189,45 @@ describe('franchiseTab', () => {
     expect(franchiseTab('/franchise/draft')).toBe('draft')
     expect(franchiseTab('/franchise/front-office')).toBe('front-office')
     expect(franchiseTab('/franchise/trades/2019-07-10-paul-george')).toBe('moves')
+  })
+})
+
+describe('draftPickOutcome and draftYearMeta', () => {
+  const p = (status: string | null, traded_away = false) => ({ status, traded_away })
+  it('branches on pick status before traded_away', () => {
+    expect(draftPickOutcome(p('used'))).toEqual({ view: 'used', label: null })
+    expect(draftPickOutcome(p('used', true))).toEqual({ view: 'traded', label: null })
+    expect(draftPickOutcome(p('extinguished'))).toEqual({ view: 'other', label: 'Not conveyed' })
+    expect(draftPickOutcome(p('extinguished', true))).toEqual({ view: 'other', label: 'Not conveyed' })
+    expect(draftPickOutcome(p('forfeited'))).toEqual({ view: 'other', label: 'Forfeited' })
+    expect(draftPickOutcome(p('conveyed_as_other', true))).toEqual({ view: 'other', label: 'Converted to another pick' })
+    expect(draftPickOutcome(p(null))).toEqual({ view: 'other', label: 'Outcome not recorded' })
+    expect(draftPickOutcome(p('something_new'))).toEqual({ view: 'other', label: 'Outcome not recorded' })
+  })
+
+  it('counts only used picks as picks', () => {
+    expect(draftYearMeta([p('used'), p('used')])).toBe('2 picks')
+    expect(draftYearMeta([p('used'), p('used', true)])).toBe('1 pick · 1 traded')
+    expect(draftYearMeta([p('used', true)])).toBe('1 traded away')
+    expect(draftYearMeta([p('used'), p('forfeited'), p(null), p(null)])).toBe('1 pick · 1 forfeited · 2 outcome not recorded')
+    expect(draftYearMeta([p('extinguished', true)])).toBe('1 not conveyed')
+  })
+})
+
+describe('teamFullName', () => {
+  it('names a team in full, with a heading-safe fallback when nothing is recorded', () => {
+    expect(teamFullName(team('OKC', 'Oklahoma City', 'Thunder'))).toBe('Oklahoma City Thunder')
+    expect(teamFullName(team('SEA', null, null))).toBe('SEA')
+    expect(teamFullName(null)).toBe('an unknown team')
+    expect(teamFullName(team(null, null, null), TEAM_NOT_RECORDED)).toBe('Team not recorded')
+  })
+})
+
+describe('partialWord', () => {
+  it('keeps an unrecorded completeness unknown', () => {
+    expect(partialWord(true)).toBe('partial')
+    expect(partialWord(false)).toBe('recorded')
+    expect(partialWord(null)).toBe('—')
+    expect(partialWord(undefined)).toBe('—')
   })
 })

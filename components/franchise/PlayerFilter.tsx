@@ -14,6 +14,9 @@ const json = (url: string) =>
     return r.json()
   })
 
+const POPOVER_WIDTH = 320
+const GUTTER = 14
+
 const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 
 /**
@@ -26,7 +29,28 @@ export function PlayerFilter({ filters, player }: { filters: MovesFilters; playe
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const root = React.useRef<HTMLDivElement>(null)
+  // Anchored to the button's left edge, shifted left when that would run past the viewport (no page scroll).
+  const [shift, setShift] = React.useState(0)
+  const input = React.useRef<HTMLInputElement>(null)
   const { data, error } = useSWR<PeoplePayload>(open ? '/api/franchise/people' : null, json, { revalidateOnFocus: false })
+
+  React.useLayoutEffect(() => {
+    if (!open || !root.current) return
+    // clientWidth leaves out the scrollbar, which can appear once the list opens; the observer re-places then.
+    const place = () => {
+      if (!root.current) return
+      const vw = document.documentElement.clientWidth
+      const left = root.current.getBoundingClientRect().left
+      const width = Math.min(POPOVER_WIDTH, vw - 2 * GUTTER)
+      setShift(Math.max(GUTTER - left, Math.min(0, vw - GUTTER - width - left)))
+    }
+    place()
+    // Focus without scrolling: autoFocus would scroll the page to the unplaced popover.
+    input.current?.focus({ preventScroll: true })
+    const observer = new ResizeObserver(place)
+    observer.observe(document.documentElement)
+    return () => observer.disconnect()
+  }, [open])
 
   React.useEffect(() => {
     if (!open) return
@@ -93,10 +117,11 @@ export function PlayerFilter({ filters, player }: { filters: MovesFilters; playe
         <div
           role="dialog"
           aria-label="Filter moves by player"
-          className="glass-bar absolute left-0 top-full z-30 mt-2 bg-[rgba(10,17,31,0.94)] w-[min(320px,calc(100vw-28px))] overflow-hidden rounded-[20px] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)] animate-in fade-in-0 zoom-in-[0.98]"
+          style={{ left: shift }}
+          className="glass-bar absolute top-full z-30 mt-2 w-[min(320px,calc(100vw-28px))] origin-top-left overflow-hidden rounded-[20px] bg-[rgba(10,17,31,0.94)] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)] animate-in fade-in-0 zoom-in-[0.98]"
         >
           <input
-            autoFocus
+            ref={input}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {

@@ -1,10 +1,11 @@
+import * as React from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { PlayerAvatar } from '@/components/ui/player-avatar'
 import { TeamLogo } from '@/components/ui/team-mark'
 import { PersonName, RoundBadge, plink } from './bits'
 import { LotteryLine } from './LotteryLine'
-import { monthYear } from '@/src/lib/franchise/display'
+import { draftPickOutcome, draftYearMeta, monthYear } from '@/src/lib/franchise/display'
 import type { DraftPick, FranchiseTeamRef } from '@/src/lib/ui/types'
 
 function Team({ team }: { team: FranchiseTeamRef }) {
@@ -64,10 +65,30 @@ function UsedPick({ pick }: { pick: DraftPick }) {
   )
 }
 
-/** A pick the Clippers owned but traded before the draft: dimmed, with where it went and what it became. */
-function TradedPick({ pick }: { pick: DraftPick }) {
+/**
+ * A pick the Clippers owned but traded before the draft: dimmed, with where it went and what it
+ * became. With `outcome` (a pick never used: not conveyed, forfeited, …) that is the title instead.
+ */
+function TradedPick({ pick, outcome }: { pick: DraftPick; outcome?: string }) {
   const out = [...pick.chain].reverse().find((h) => h.from?.is_clippers)
   const owner = pick.owner
+  const origin = pick.original_team.is_clippers ? (outcome != null ? <span>Own pick</span> : null) : (
+    <span className="inline-flex items-center gap-1.5">
+      <Team team={pick.original_team} /> pick
+    </span>
+  )
+  const trade = out?.href ? (
+    <span>
+      in a{' '}
+      <Link href={out.href} prefetch={false} className={cn('text-mute', plink)}>
+        trade with {out.to?.abbreviation ?? 'another team'}
+      </Link>{' '}
+      <span aria-hidden>·</span> {monthYear(out.date)}
+    </span>
+  ) : outcome == null ? (
+    <span>trade not recorded</span>
+  ) : null
+  const meta = [origin, trade].filter((m) => m != null)
   return (
     <div className={cn(ROW, 'opacity-55 transition-opacity duration-300 hover:opacity-85')}>
       <RoundBadge>{`R${pick.round}`}</RoundBadge>
@@ -76,32 +97,22 @@ function TradedPick({ pick }: { pick: DraftPick }) {
       </span>
       <div className="min-w-0">
         <div className="text-[15px] tracking-[-0.01em] text-mute">
-          {owner ? `Traded to ${owner.abbreviation ?? owner.name ?? 'another team'}` : 'Traded away'}
-          {pick.overall_pick != null && (
+          {outcome ?? (owner ? `Traded to ${owner.abbreviation ?? owner.name ?? 'another team'}` : 'Traded away')}
+          {outcome == null && pick.overall_pick != null && (
             <>
               {' · became '}
               <b className="font-medium text-text">No. {pick.overall_pick}</b>
             </>
           )}
-          {pick.player && <>, {pick.player.name}</>}
+          {outcome == null && pick.player && <>, {pick.player.name}</>}
         </div>
         <div className="mt-[3px] flex flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-[11px] text-dim">
-          {!pick.original_team.is_clippers && (
-            <>
-              <Team team={pick.original_team} /> pick <span aria-hidden>·</span>
-            </>
-          )}
-          {out?.href ? (
-            <>
-              in a{' '}
-              <Link href={out.href} prefetch={false} className={cn('text-mute', plink)}>
-                trade with {out.to?.abbreviation ?? 'another team'}
-              </Link>
-              <span aria-hidden>·</span> {monthYear(out.date)}
-            </>
-          ) : (
-            <span>trade not recorded</span>
-          )}
+          {meta.map((m, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <span aria-hidden>·</span>}
+              {m}
+            </React.Fragment>
+          ))}
         </div>
       </div>
     </div>
@@ -110,9 +121,7 @@ function TradedPick({ pick }: { pick: DraftPick }) {
 
 /** One draft year: the year column, then its picks (with a lottery line under any pick that had one). */
 export function DraftYear({ year, picks }: { year: number; picks: DraftPick[] }) {
-  const away = picks.filter((p) => p.traded_away).length
-  const used = picks.length - away
-  const meta = [used ? `${used} pick${used === 1 ? '' : 's'}` : null, away ? (used ? `${away} traded` : `${away} traded away`) : null].filter(Boolean).join(' · ')
+  const meta = draftYearMeta(picks)
   return (
     <section className="grid gap-y-2 px-3.5 py-4 sm:grid-cols-[132px_minmax(0,1fr)] sm:gap-x-5 sm:px-5 sm:py-[18px] [&+&]:border-t [&+&]:border-line" aria-label={`${year} draft`}>
       <div className="flex items-baseline gap-2.5 sm:block">
@@ -120,12 +129,15 @@ export function DraftYear({ year, picks }: { year: number; picks: DraftPick[] })
         <p className="m-0 font-mono text-[11px] text-dim sm:mt-1">{meta}</p>
       </div>
       <div className="grid min-w-0 gap-1">
-        {picks.map((p) => (
-          <div key={p.pick_key}>
-            {p.traded_away ? <TradedPick pick={p} /> : <UsedPick pick={p} />}
-            {p.lottery && <LotteryLine lottery={p.lottery} />}
-          </div>
-        ))}
+        {picks.map((p) => {
+          const o = draftPickOutcome(p)
+          return (
+            <div key={p.pick_key}>
+              {o.view === 'used' ? <UsedPick pick={p} /> : <TradedPick pick={p} outcome={o.label ?? undefined} />}
+              {p.lottery && <LotteryLine lottery={p.lottery} />}
+            </div>
+          )
+        })}
       </div>
     </section>
   )

@@ -1,11 +1,11 @@
 import { Panel } from '@/components/ui/panel'
 import { Chip } from '@/components/ui/chip'
 import { InitialsDisc, PersonName } from './bits'
-import type { ExecutiveGroup } from '@/src/lib/franchise/tenures'
+import { isCurrentTerm, type ExecutiveGroup } from '@/src/lib/franchise/tenures'
 
 const year = (d: string | null) => (d ? d.slice(0, 4) : '—')
 
-/** General managers and presidents with their dates, grouped by title. */
+/** General managers and presidents with their dates, grouped by title. "present" only for the group's newest open term. */
 export function ExecutiveList({ groups }: { groups: ExecutiveGroup[] }) {
   return (
     <Panel className="py-0.5">
@@ -20,10 +20,12 @@ export function ExecutiveList({ groups }: { groups: ExecutiveGroup[] }) {
                 {year(t.start_date)} –{' '}
                 {t.end_date ? (
                   year(t.end_date)
-                ) : (
+                ) : isCurrentTerm(t, g.terms) ? (
                   <Chip tone="blue" className="align-[1px]">
                     present
                   </Chip>
+                ) : (
+                  '—'
                 )}
               </span>
             </div>

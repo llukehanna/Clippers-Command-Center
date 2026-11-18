@@ -25,13 +25,13 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 export default async function PlayerDetailPage({ params }: Params) {
   const { player_id } = await params
-  const [data, roster] = await Promise.all([
+  const [data, roster, moves] = await Promise.all([
     getJson<PlayerDetailPayload>(`/api/players/${encodeURIComponent(player_id)}`),
     getJson<PlayersPayload>('/api/players?include_traded=true'),
+    /^\d{1,15}$/.test(player_id) ? getJson<MovesPayload>(`/api/franchise/moves?player_id=${player_id}`) : null,
   ])
   if (!data) notFound()
 
-  const moves = /^\d{1,15}$/.test(player_id) ? await getJson<MovesPayload>(`/api/franchise/moves?player_id=${player_id}`) : null
   const personKey = moves?.moves.flatMap((m) => m.people).find((p) => p.player_id === player_id)?.person_key ?? null
 
   const log = data.game_log ?? []

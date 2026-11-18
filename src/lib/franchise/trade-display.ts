@@ -3,7 +3,7 @@
 // unknown: a part with no recorded receiver is never assigned to a team.
 
 import type { FranchiseTeamRef, TradeAsset, TradeSide, TreeNode } from '@/src/lib/ui/types'
-import { ordinal, teamPlace } from './display'
+import { capitalize, ordinal, teamPlace } from './display'
 
 /** The word a team goes by in headings: "Clippers", "Braves", "Thunder". */
 export function teamWord(t: FranchiseTeamRef | null | undefined): string {
@@ -96,6 +96,8 @@ export interface SidePanel {
 }
 
 const NO_RECEIVER = 'Receiver not recorded'
+const NO_SENDER = 'sender not recorded'
+const noSenderKey = (franchiseId: number) => `${franchiseId}-nosender`
 
 /** Assets no side received: sent parts whose receiver isn't stated. */
 function orphans(sides: TradeSide[], skip?: TradeSide): TradeAsset[] {
@@ -104,7 +106,8 @@ function orphans(sides: TradeSide[], skip?: TradeSide): TradeAsset[] {
 
 /**
  * The trade's sides as panels. A two-team Clippers deal reads from the Clippers side
- * ("Clippers got" / "Clippers gave"); any other deal shows what each team got.
+ * ("Clippers got" / "Clippers gave", plus "X got · sender not recorded" for parts the other
+ * team received from an unstated sender); any other deal shows what each team got.
  */
 export function sidePanels(sides: TradeSide[]): SidePanel[] {
   const clippers = sides.find((s) => s.team.is_clippers)
@@ -116,6 +119,10 @@ export function sidePanels(sides: TradeSide[]): SidePanel[] {
       { key: 'got', title: `${word} got`, team: clippers.team, aside: `from ${teamPlace(other.team)}`, assets: clippers.received },
       { key: 'gave', title: `${word} gave`, team: other.team, aside: `to ${teamPlace(other.team)}`, assets: clippers.sent.filter((a) => a.counterparty != null) },
     )
+    const unsent = other.received.filter((a) => a.counterparty == null)
+    if (unsent.length) {
+      panels.push({ key: noSenderKey(other.team.franchise_id), title: `${teamWord(other.team)} got`, team: other.team, aside: NO_SENDER, assets: unsent })
+    }
   } else {
     for (const s of sides) panels.push({ key: String(s.team.franchise_id), title: `${teamWord(s.team)} got`, team: s.team, aside: null, assets: s.received })
   }
@@ -126,6 +133,8 @@ export function sidePanels(sides: TradeSide[]): SidePanel[] {
 
 export interface RootRow {
   node: TreeNode
+  /** The trade asset the row was matched to (by label); null when none matched. */
+  asset: TradeAsset | null
   title: string
   /** Mono detail after the title: the pick's original team. */
   meta: string | null
@@ -133,8 +142,6 @@ export interface RootRow {
   logo: string | null
   glyph: 'person' | 'pick' | 'swap' | 'cash' | 'other'
 }
-
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 /** Pairs each top-level outline row with its trade asset (matched by label) for a compact title and mark. */
 export function rootRows(became: TreeNode[], sides: TradeSide[]): RootRow[] {
@@ -147,11 +154,11 @@ export function rootRows(became: TreeNode[], sides: TradeSide[]): RootRow[] {
     const a = at >= 0 ? pool[at] : null
     if (a?.pick) {
       const abbr = a.pick.original_team.abbreviation
-      return { node, title: `${a.pick.draft_year} ${ordinal(a.pick.round)}`, meta: abbr, logo: abbr, glyph: 'pick' }
+      return { node, asset: a, title: `${a.pick.draft_year} ${ordinal(a.pick.round)}`, meta: abbr, logo: abbr, glyph: 'pick' }
     }
-    if (a?.swap) return { node, title: `${a.swap.draft_year} ${ordinal(a.swap.round)} swap`, meta: null, logo: null, glyph: 'swap' }
+    if (a?.swap) return { node, asset: a, title: `${a.swap.draft_year} ${ordinal(a.swap.round)} swap`, meta: null, logo: null, glyph: 'swap' }
     const glyph: RootRow['glyph'] = node.person ? 'person' : node.kind === 'pick' ? 'pick' : node.kind === 'swap' ? 'swap' : node.kind === 'cash' ? 'cash' : 'other'
-    return { node, title: capitalize(node.label), meta: null, logo: null, glyph }
+    return { node, asset: a, title: capitalize(node.label), meta: null, logo: null, glyph }
   })
 }
 
@@ -169,11 +176,14 @@ export function treeGroups(became: TreeNode[], sides: TradeSide[]): TreeGroup[] 
   const groups: TreeGroup[] = []
   for (const r of rows) {
     const fid = r.node.team?.franchise_id ?? null
-    const panel = fid == null ? null : panels.find((p) => p.team!.franchise_id === fid)
-    const key = fid == null ? 'none' : String(fid)
+    // A part with an unstated sender has its own panel in a two-team deal: never "Clippers gave".
+    const unsent = fid == null || r.asset?.counterparty != null ? null : panels.find((p) => p.key === noSenderKey(fid))
+    const panel = unsent ?? (fid == null ? null : panels.find((p) => p.team!.franchise_id === fid && p.aside !== NO_SENDER))
+    const key = unsent ? unsent.key : fid == null ? 'none' : String(fid)
     let g = groups.find((x) => x.key === key)
     if (!g) {
-      g = { key, heading: panel?.title ?? (fid == null ? NO_RECEIVER : `${teamWord(r.node.team)} got`), team: panel?.team ?? r.node.team, rows: [] }
+      const heading = unsent ? `${unsent.title} · ${NO_SENDER}` : panel?.title ?? (fid == null ? NO_RECEIVER : `${teamWord(r.node.team)} got`)
+      g = { key, heading, team: panel?.team ?? r.node.team, rows: [] }
       groups.push(g)
     }
     g.rows.push(r)

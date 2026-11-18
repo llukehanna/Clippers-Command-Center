@@ -13,6 +13,8 @@
 //
 // season_counts (moves per season for the type and player filters, ignoring season) feeds the
 // era ribbon; player is the filtered person (null without a player filter or when unknown).
+// seasons and season_counts scan every season, so a bounded request (limit or player_id: the
+// History strip, the player page) skips them and gets [] for both, unless season=latest needs them.
 
 import { type ApiResult } from './result';
 import { sql } from '@/src/lib/db';
@@ -91,15 +93,17 @@ export async function loadFranchiseMoves(url: URL): Promise<ApiResult> {
   const include = type && type !== 'all' && type !== 'other' ? KIND_GROUPS[type] : null;
   const exclude = type === 'other' ? NAMED_KINDS : null;
 
+  const aggregates = seasonParam === 'latest' || (limit == null && playerId == null);
+
   try {
     const [seasonRows, countRows, playerRows] = await Promise.all([
-      sql<{ season_id: number }[]>`
+      !aggregates ? Promise.resolve([] as { season_id: number }[]) : sql<{ season_id: number }[]>`
         SELECT DISTINCT season_id FROM transactions
         WHERE involves_clippers = true AND season_id IS NOT NULL
         ORDER BY season_id DESC
       `,
       // Per-season counts for the same type and player filters, across every season (the Moves era ribbon).
-      sql<{ season_id: number; n: number | string }[]>`
+      !aggregates ? Promise.resolve([] as { season_id: number; n: number | string }[]) : sql<{ season_id: number; n: number | string }[]>`
         SELECT s.season_id, count(*)::int AS n
         FROM transactions s
         WHERE s.involves_clippers = true AND s.season_id IS NOT NULL

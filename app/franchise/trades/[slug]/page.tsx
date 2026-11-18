@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -9,7 +10,7 @@ import { SwapGlyph, TradeSides } from '@/components/franchise/TradeSides'
 import { TradeTree } from '@/components/franchise/TradeTree'
 import { getJson } from '@/src/lib/ui/api'
 import { highlightNames, kindLabel, moveDate, movesHref, seasonLabel } from '@/src/lib/franchise/display'
-import { teamFullName } from '@/src/lib/franchise/franchise-ids'
+import { TEAM_NOT_RECORDED, teamFullName } from '@/src/lib/franchise/franchise-ids'
 import { assetSummary, sidePanels, sourceNames, tradeHeadline, treeGroups } from '@/src/lib/franchise/trade-display'
 import type { FranchisePersonRef, TradePayload } from '@/src/lib/ui/types'
 
@@ -18,9 +19,9 @@ export const dynamic = 'force-dynamic'
 
 type Params = { params: Promise<{ slug: string }> }
 
-function load(slug: string) {
-  return getJson<TradePayload>(`/api/franchise/trades/${encodeURIComponent(slug)}`)
-}
+// generateMetadata and the page both need the trade: one load per request (open-next on
+// Workers drops data-cache writes, so nothing else dedupes it).
+const load = cache((slug: string) => getJson<TradePayload>(`/api/franchise/trades/${encodeURIComponent(slug)}`))
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const data = await load((await params).slug)
@@ -105,7 +106,7 @@ export default async function TradePage({ params }: Params) {
                 <span className="flex min-w-0 items-center gap-3.5">
                   <TeamLogo abbr={t.abbreviation} size="lg" priority className="max-sm:!h-11 max-sm:!w-11" />
                   <span className="min-w-0">
-                    <span className="block text-[17px] font-semibold leading-[1.2] tracking-[-0.02em] sm:text-[18px]">{teamFullName(t)}</span>
+                    <span className="block text-[17px] font-semibold leading-[1.2] tracking-[-0.02em] sm:text-[18px]">{teamFullName(t, TEAM_NOT_RECORDED)}</span>
                     <span className="mt-0.5 block font-mono text-[11.5px] text-mute">got {side ? assetSummary(side.received) : 'nothing recorded'}</span>
                   </span>
                 </span>

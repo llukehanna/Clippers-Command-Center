@@ -20,6 +20,15 @@ export function calendarSeasonId(now: Date = new Date()): number {
 }
 
 /**
+ * The next NBA draft's year: this year through June, next year from July 1 —
+ * the pipeline's defaultDraftYear (scripts/lib/franchise/build-dataset.ts), so
+ * a pick or swap drafted before it is never "future".
+ */
+export function nextDraftYear(now: Date = new Date()): number {
+  return calendarSeasonId(now) + 1;
+}
+
+/**
  * Season whose numbers the app shows (record, ratings, roster, player pages):
  * the most recent season with a completed Clippers game that has a box score.
  * Through the offseason and the preseason window this stays on last season —

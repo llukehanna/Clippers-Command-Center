@@ -123,6 +123,37 @@ describe('buildTradeTree', () => {
     expect(drafted.children[0]).toMatchObject({ label: 'Traded to Utah Jazz', href: '/franchise/trades/drafted-guy-traded' });
   });
 
+  it("skips the draftee's own draft row after the drafted step (no second \"Drafted\")", () => {
+    const r = rows();
+    // BBRef writes the selection itself as a draft move: no sender, the drafting team receives.
+    r.transactions.push(txn('8', 'draftee-drafted', '2022-06-23', 'draft'));
+    r.parts.push(part('8', null, F.OKC, { person_key: 'draftee01' }));
+    const { became } = buildTradeTree('root-george', r);
+    const drafted = find(became, /^2022 first-round pick/).children[0];
+    expect(drafted.label).toBe('Drafted Drafted Guy (No. 25, 2022)');
+    expect(drafted.children).toHaveLength(1);
+    expect(drafted.children[0]).toMatchObject({ label: 'Traded to Utah Jazz', href: '/franchise/trades/drafted-guy-traded' });
+  });
+
+  it('still follows a draft-night trade after the drafted step', () => {
+    const r = rows();
+    r.transactions.push(txn('8', 'draftee-drafted', '2022-06-23', 'draft'), txn('9', 'draft-night', '2022-06-23', 'trade'));
+    r.parts.push(part('8', null, F.OKC, { person_key: 'draftee01' }), part('9', F.OKC, F.MEM, { person_key: 'draftee01' }));
+    const { became } = buildTradeTree('root-george', r);
+    const drafted = find(became, /^2022 first-round pick/).children[0];
+    expect(drafted.children[0]).toMatchObject({ label: 'Traded to Memphis Grizzlies', href: '/franchise/trades/draft-night' });
+  });
+
+  it('does not assert "no further record" when the root trade is undated', () => {
+    const r = rows();
+    r.transactions[0] = { ...r.transactions[0], date: null };
+    const { became } = buildTradeTree('root-george', r);
+    const gallo = find(became, /Gallinari/);
+    expect(gallo.children).toEqual([]);
+    expect(gallo.note).toBe('trade date not recorded; later moves not followed');
+    expect(find(became, /Paul George/).note).toBe('trade date not recorded; later moves not followed');
+  });
+
   it('marks unknown protections and never calls them unprotected', () => {
     const { became } = buildTradeTree('root-george', rows());
     const p = find(became, /^2028 first-round pick/);

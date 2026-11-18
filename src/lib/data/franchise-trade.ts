@@ -10,14 +10,13 @@ import { json, type ApiResult } from './result';
 import { sql } from '@/src/lib/db';
 import { buildError } from '@/src/lib/api-utils';
 import {
-  buildTradeTree, gapNote, treeTeamKeys,
+  buildTradeTree, gapNote, TREE_DEPTH, treeTeamKeys,
   type TreePart, type TreePerson, type TreePick, type TreeSwap, type TreeTxn,
 } from '@/src/lib/franchise/trade-tree';
 import { internalError, ok } from './franchise-common';
 import { resolveTeams } from './franchise-teams';
 
 const TTL = 3600;
-const TREE_DEPTH = 3;
 
 interface RootRow extends TreeTxn {
   description: string;

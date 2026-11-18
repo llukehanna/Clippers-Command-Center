@@ -23,6 +23,11 @@ export interface Tenure {
   playoffLosses: number | null
 }
 
+/** A tenure is current when its last season is the current season (or later): "present", highlighted. */
+export function isCurrentTenure(t: Pick<Tenure, 'last'>, currentSeason: number): boolean {
+  return t.last >= currentSeason
+}
+
 export function winPct(w: number | null, l: number | null): number | null {
   if (w == null || l == null || w + l === 0) return null
   return w / (w + l)
@@ -105,4 +110,15 @@ export function executiveGroups(terms: ExecutiveTerm[]): ExecutiveGroup[] {
   return [...groups.entries()]
     .map(([title, list]) => ({ title, terms: [...list].sort(byStart) }))
     .sort((a, b) => (a.title === 'Other' ? 1 : 0) - (b.title === 'Other' ? 1 : 0) || titleRank(a.title) - titleRank(b.title))
+}
+
+/**
+ * Whether a term reads "present": an open term (no end date) that started after every other
+ * term in its title group. The pipeline nulls end dates it can't read, so an open older term,
+ * or one with an unknown start, shows "—" instead.
+ */
+export function isCurrentTerm(term: ExecutiveTerm, group: ExecutiveTerm[]): boolean {
+  const start = term.start_date
+  if (term.end_date != null || start == null) return false
+  return group.every((o) => o === term || (o.start_date != null && o.start_date < start))
 }

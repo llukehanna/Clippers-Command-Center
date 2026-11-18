@@ -181,6 +181,17 @@ describe('sidePanels', () => {
     const panels = sidePanels([threeSides[0], { ...threeSides[1], sent: [...threeSides[1].sent, orphan] }, threeSides[2]])
     expect(panels.at(-1)).toMatchObject({ title: 'Receiver not recorded', team: null, assets: [orphan] })
   })
+
+  it('keeps a part the other team received from an unrecorded sender (two-team deal)', () => {
+    const cash = asset({ kind: 'cash', label: 'cash considerations', counterparty: null })
+    const panels = sidePanels([pgSides[0], { ...pgSides[1], received: [...pgSides[1].received, cash] }])
+    expect(panels.map((p) => [p.title, p.team?.abbreviation, p.aside, p.assets.length])).toEqual([
+      ['Clippers got', 'LAC', 'from Oklahoma City', 1],
+      ['Clippers gave', 'OKC', 'to Oklahoma City', 4],
+      ['Thunder got', 'OKC', 'sender not recorded', 1],
+    ])
+    expect(panels[2].assets).toEqual([cash])
+  })
 })
 
 describe('treeGroups and rootRows', () => {
@@ -202,6 +213,17 @@ describe('treeGroups and rootRows', () => {
       ['2021 1st', 'MIA', 'MIA', 'pick'],
       ['2023 1st swap', null, null, 'swap'],
       ['A future second-round pick', null, null, 'pick'],
+    ])
+  })
+
+  it('does not group a part with an unrecorded sender under "Clippers gave"', () => {
+    const cash = asset({ kind: 'cash', label: 'cash considerations', counterparty: null })
+    const sides = [pgSides[0], { ...pgSides[1], received: [...pgSides[1].received, cash] }]
+    const became = [node('Paul George', LAC), node('Shai Gilgeous-Alexander', OKC), node('cash considerations', OKC, { kind: 'cash' })]
+    expect(treeGroups(became, sides).map((g) => [g.heading, g.team?.abbreviation, g.rows.map((r) => r.title)])).toEqual([
+      ['Clippers got', 'LAC', ['Paul George']],
+      ['Clippers gave', 'OKC', ['Shai Gilgeous-Alexander']],
+      ['Thunder got · sender not recorded', 'OKC', ['Cash considerations']],
     ])
   })
 

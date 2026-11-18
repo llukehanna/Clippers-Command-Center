@@ -9,13 +9,14 @@
 //   - a swap becomes its next trade.
 // After `depth` steps a row stops with `truncatedAt` = the trade page to
 // continue on. Unknowns are notes, never guesses: "no further record",
-// "traded on to T (details not recorded)", "protections not recorded".
+// "traded on to T (details not recorded)", "protections not recorded", and for an
+// undated root trade (later moves can't be ordered after it) UNDATED_ROOT_NOTE.
 
 import type {
   FranchisePersonRef, FranchiseTeamRef, TradeAsset, TradeAssetKind, TradeSide, TreeNode,
 } from '@/src/lib/ui/types';
 import { CLIPPERS_FRANCHISE_ID, staticTeam, teamFullName } from './franchise-ids';
-import { protectionsLabel } from './protections-text';
+import { PROTECTIONS_NOT_RECORDED, protectionsLabel } from './protections-text';
 
 export type { TradeAsset, TradeSide, TreeNode };
 
@@ -94,7 +95,8 @@ export interface TreeRows {
 
 export const GAP_NOTES: Record<string, string> = {
   pick_unidentified: 'pick not identified',
-  protections_unknown: 'protections not recorded',
+  // The same words as the protections label, as a quiet note (one source for both).
+  protections_unknown: PROTECTIONS_NOT_RECORDED.toLowerCase(),
   source_conflict: 'sources disagree',
   person_unmatched: 'player not identified',
   party_unknown: 'team not recorded',
@@ -129,6 +131,8 @@ function joinList(items: string[]): string {
 }
 
 export const tradeHref = (slug: string) => `/franchise/trades/${slug}`;
+/** Steps the "What it became" outline follows from each asset (loader, builder and page share it). */
+export const TREE_DEPTH = 3;
 export const playerHref = (playerId: string | null) => (playerId ? `/players/${playerId}` : null);
 
 /** Every (franchise, season) the builder will ask the team lookup for, so the loader can resolve them in one query. */
@@ -156,7 +160,8 @@ interface Event { txn: TreeTxn; part: TreePart }
 interface Cursor { date: string | null; id: number }
 
 type State =
-  | { type: 'person'; key: string }
+  /** draftYear: set right after a drafted step, so the draft's own row is not shown again. */
+  | { type: 'person'; key: string; draftYear?: number }
   | { type: 'pick'; pick: TreePick; holder: number | null }
   | { type: 'swap'; swap: TreeSwap }
   | { type: 'end' };
@@ -290,6 +295,19 @@ function addNote(node: TreeNode, note: string | null) {
 
 const cursorOf = (txn: TreeTxn): Cursor => ({ date: txn.date, id: Number(txn.transaction_id) });
 
+/** An undated move can't be ordered against later ones: say so rather than assert there were none. */
+export const UNDATED_ROOT_NOTE = 'trade date not recorded; later moves not followed';
+
+/** How a pick that was never used ends, by draft_picks.status (the Draft tab shares this wording). */
+export const PICK_STATUS_NOTES: Record<string, string> = {
+  future: 'not yet drafted',
+  conveyed_as_other: 'converted to another pick',
+  extinguished: 'not conveyed',
+  forfeited: 'forfeited',
+};
+
+const DRAFT_KINDS = new Set(['draft', 'expansion_draft']);
+
 // ─── Steps ───────────────────────────────────────────────────────────────────
 
 function eventStep(ctx: Ctx, ev: Event, state: State, kind: TreeNode['kind']): Step {
@@ -327,7 +345,7 @@ function draftedStep(ctx: Ctx, pick: TreePick): Step {
       date: null,
       team: owner,
     },
-    state: person ? { type: 'person', key: person.person_key } : { type: 'end' },
+    state: person ? { type: 'person', key: person.person_key, draftYear: pick.draft_year } : { type: 'end' },
     // The draft is in late June; later moves of the player follow it.
     cursor: { date: `${pick.draft_year}-06-01`, id: -1 },
     tradeSlug: null,
@@ -338,9 +356,16 @@ function draftedStep(ctx: Ctx, pick: TreePick): Step {
 function nextStep(ctx: Ctx, state: State, cursor: Cursor): { step: Step | null; note: string | null; terminal: string | null } {
   switch (state.type) {
     case 'person': {
-      const ev = ctx.next((p) => p.person_key === state.key, cursor);
+      if (!cursor.date) return { step: null, note: null, terminal: UNDATED_ROOT_NOTE };
+      const match = (p: TreePart) => p.person_key === state.key;
+      let ev = ctx.next(match, cursor);
+      // The drafted step already says "Drafted X": skip that draft's own row (BBRef writes the
+      // selection as a draft move), but keep the June 1 cursor so draft-night trades still follow.
+      while (ev && state.draftYear != null && DRAFT_KINDS.has(ev.txn.kind) && ev.txn.date!.startsWith(`${state.draftYear}-`)) {
+        ev = ctx.next(match, cursorOf(ev.txn));
+      }
       return ev
-        ? { step: eventStep(ctx, ev, state, 'player'), note: null, terminal: null }
+        ? { step: eventStep(ctx, ev, { type: 'person', key: state.key }, 'player'), note: null, terminal: null }
         : { step: null, note: null, terminal: 'no further record' };
     }
     case 'pick': {
@@ -354,12 +379,7 @@ function nextStep(ctx: Ctx, state: State, cursor: Cursor): { step: Step | null; 
         ? `traded on to ${teamFullName(ctx.team(owner, pickSeason(pick.draft_year)))} (details not recorded)`
         : null;
       if (pick.status === 'used') return { step: draftedStep(ctx, pick), note: tradedOn, terminal: null };
-      const terminal = tradedOn ? null : ({
-        future: 'not yet drafted',
-        conveyed_as_other: 'converted to another pick',
-        extinguished: 'not conveyed',
-        forfeited: 'forfeited',
-      } as Record<string, string>)[pick.status ?? ''] ?? 'no further record';
+      const terminal = tradedOn ? null : PICK_STATUS_NOTES[pick.status ?? ''] ?? (cursor.date ? 'no further record' : UNDATED_ROOT_NOTE);
       return { step: null, note: tradedOn, terminal };
     }
     case 'swap': {
@@ -440,7 +460,7 @@ export function sideOrder(parts: TreePart[]): number[] {
 
 // ─── Builder ─────────────────────────────────────────────────────────────────
 
-export function buildTradeTree(rootSlug: string, rows: TreeRows, depth = 3): { sides: TradeSide[]; became: TreeNode[] } {
+export function buildTradeTree(rootSlug: string, rows: TreeRows, depth = TREE_DEPTH): { sides: TradeSide[]; became: TreeNode[] } {
   const root = rows.transactions.find((t) => t.slug === rootSlug);
   if (!root) throw new Error(`buildTradeTree: no transaction with slug "${rootSlug}"`);
   const ctx = new Ctx(rows);

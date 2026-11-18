@@ -11,12 +11,16 @@
 //                  'pick_unidentified') of the same draft year and round — "may have been
 //                  traded; details not recorded". Also a pick whose latest part has no receiver.
 // Swaps: the holder of the right is the receiver of the swap's latest part.
+// Draft-year floor: only drafts from the next one on (nextDraftYear, the pipeline's rule). The
+// pipeline leaves a swap's exercised null unless a source says "not exercised", and a pick stays
+// 'future' until the import after its draft, so neither field alone means "still to come".
 //
 // Protections are returned exactly as stored — unknown stays null — plus a plain-words label
 // ("Protections not recorded" unless protections_known is true).
 
 import { type ApiResult } from './result';
 import { sql } from '@/src/lib/db';
+import { nextDraftYear } from '@/src/lib/season';
 import { CLIPPERS_FRANCHISE_ID } from '@/src/lib/franchise/franchise-ids';
 import { byTime, currentHolder, mentionsPick } from '@/src/lib/franchise/pick-holder';
 import { protectionsLabel } from '@/src/lib/franchise/protections-text';
@@ -120,6 +124,7 @@ export function placePick(pick: PickRow, linked: HopRow[], unlinked: UnlinkedRow
 }
 
 export async function loadFranchisePicks(): Promise<ApiResult> {
+  const floor = nextDraftYear();
   try {
     const [picks, swapRows, unlinked] = await Promise.all([
       sql<PickRow[]>`
@@ -127,13 +132,14 @@ export async function loadFranchisePicks(): Promise<ApiResult> {
                dp.protections, dp.protections_text, dp.protections_known
         FROM draft_picks dp
         WHERE dp.status = 'future'
+          AND dp.draft_year >= ${floor}
           AND (dp.original_franchise_id = ${LAC}
                OR EXISTS (SELECT 1 FROM transaction_parts lp
                           WHERE lp.pick_id = dp.pick_id
                             AND (lp.from_franchise_id = ${LAC} OR lp.to_franchise_id = ${LAC})))
         ORDER BY dp.draft_year, dp.round, dp.pick_key
       `,
-      // Future swaps (not yet exercised or declined) with every part that moved the right.
+      // Future swaps (not yet exercised or declined, from the next draft on) with every part that moved the right.
       sql<SwapRow[]>`
         SELECT s.swap_id, s.swap_key, s.draft_year, s.round, s.franchise_a, s.franchise_b,
                s.protections, s.protections_text, s.protections_known,
@@ -142,7 +148,8 @@ export async function loadFranchisePicks(): Promise<ApiResult> {
         FROM pick_swaps s
         JOIN transaction_parts p ON p.swap_id = s.swap_id
         JOIN transactions t ON t.transaction_id = p.transaction_id
-        WHERE s.exercised IS NULL AND (s.franchise_a = ${LAC} OR s.franchise_b = ${LAC})
+        WHERE s.exercised IS NULL AND s.draft_year >= ${floor}
+          AND (s.franchise_a = ${LAC} OR s.franchise_b = ${LAC})
         ORDER BY s.draft_year, s.round, s.swap_key, t.date NULLS LAST, t.transaction_id
       `,
       // Picks the Clippers sent that no source identified (the uncertain case).

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { coachTenures, executiveGroups, winPct } from './tenures'
+import { coachTenures, executiveGroups, isCurrentTenure, isCurrentTerm, winPct } from './tenures'
 import type { CoachSeason, ExecutiveTerm } from '@/src/lib/ui/types'
 
 const person = (key: string, name: string) => ({ person_key: key, name, player_id: null, nba_person_id: null, href: null })
@@ -56,6 +56,13 @@ describe('coachTenures', () => {
   })
 })
 
+describe('isCurrentTenure', () => {
+  it('is current only when the last season is the current one, not merely the newest tenure', () => {
+    expect(isCurrentTenure({ last: 2026 }, 2026)).toBe(true)
+    expect(isCurrentTenure({ last: 2025 }, 2026)).toBe(false)
+  })
+})
+
 describe('executiveGroups', () => {
   const ex = (name: string, title: string | null, start: string | null, end: string | null): ExecutiveTerm => ({
     person: person(name.toLowerCase(), name),
@@ -77,5 +84,23 @@ describe('executiveGroups', () => {
       ['General Manager', ['Michael Winger', 'Gary Sacks']],
       ['Other', ['Somebody']],
     ])
+  })
+
+  // The pipeline nulls end dates it can't read, so a null end alone never means "present".
+  it('marks only the newest term in a title group as current', () => {
+    const frank = ex('Lawrence Frank', 'President', '2017-06-12', null)
+    const old = ex('Andy Roeser', 'President', '1984-01-01', null)
+    const ended = ex('Somebody Newer', 'President', '2019-01-01', '2020-01-01')
+    expect(isCurrentTerm(frank, [frank, old])).toBe(true)
+    expect(isCurrentTerm(old, [frank, old])).toBe(false)
+    // A newer term that has ended: the older open term isn't current either.
+    expect(isCurrentTerm(frank, [frank, ended])).toBe(false)
+    expect(isCurrentTerm(ended, [frank, ended])).toBe(false)
+    // Alone in its group with a known start.
+    expect(isCurrentTerm(frank, [frank])).toBe(true)
+    // An unknown start can't be placed: never current.
+    const undated = ex('No Dates', 'President', null, null)
+    expect(isCurrentTerm(undated, [undated])).toBe(false)
+    expect(isCurrentTerm(frank, [frank, undated])).toBe(false)
   })
 })

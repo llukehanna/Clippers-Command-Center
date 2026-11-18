@@ -109,7 +109,7 @@ export function CapSheet({ data, currentSeason }: { data: ContractsPayload; curr
           </span>
         ))}
         <span className="inline-flex items-center gap-[7px]">
-          <span className={NG}>$0.0M</span>Not fully guaranteed
+          <span className={NG}>$2.5M</span>Not fully guaranteed
         </span>
         <span className="inline-flex items-center gap-[7px]">
           <span aria-hidden className="inline-block h-px w-2.5 bg-line-2" />

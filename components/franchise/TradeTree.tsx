@@ -11,9 +11,9 @@ import { plink } from './bits'
 import { highlightNames, moveDate } from '@/src/lib/franchise/display'
 import { teamFullName } from '@/src/lib/franchise/franchise-ids'
 import type { RootRow, TreeGroup } from '@/src/lib/franchise/trade-display'
+import { TREE_DEPTH, tradeHref } from '@/src/lib/franchise/trade-tree'
 import type { TreeNode } from '@/src/lib/ui/types'
 
-const tradeHref = (slug: string) => `/franchise/trades/${slug}`
 const expandable = (n: TreeNode) => n.children.length > 0 || n.truncatedAt != null
 
 /** Paths ("g0.1.0") of every row that can open, for "Expand all". */
@@ -209,7 +209,7 @@ function Row({ node, path, depth, root, parentPerson, open, toggle }: RowProps) 
  * "What it became": every asset of the trade as a row that expands into its next event
  * (up to three steps). Every level starts open; every toggle is a real button.
  */
-export function TradeTree({ groups, depth = 3 }: { groups: TreeGroup[]; depth?: number }) {
+export function TradeTree({ groups, depth = TREE_DEPTH }: { groups: TreeGroup[]; depth?: number }) {
   const every = React.useMemo(() => allPaths(groups), [groups])
   // Every level starts open (at most three steps deep); rows still collapse one by one.
   const [open, setOpen] = React.useState<Set<string>>(() => new Set(allPaths(groups)))

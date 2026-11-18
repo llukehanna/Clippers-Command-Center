@@ -1,9 +1,18 @@
 // src/lib/franchise/display.ts
 // Formatting for the /franchise tabs. Pure. Unknown stays unknown: null renders —.
 
-import type { DraftLottery, FranchiseTeamRef, MoveTypeFilter } from '@/src/lib/ui/types'
+import type { DraftLottery, DraftPick, FranchiseTeamRef, MoveTypeFilter } from '@/src/lib/ui/types'
+import { PICK_STATUS_NOTES } from './trade-tree'
 
 export const UNKNOWN = '—'
+
+/** A payroll season's completeness: "partial", "recorded", or — when not recorded. */
+export function partialWord(isPartial: boolean | null | undefined): string {
+  return isPartial === true ? 'partial' : isPartial === false ? 'recorded' : UNKNOWN
+}
+
+/** "no further record" → "No further record". */
+export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 /** 2019 → "2019–20". */
 export function seasonLabel(seasonId: number | null | undefined): string {
@@ -207,3 +216,33 @@ export function franchiseTab(pathname: string): string {
   const seg = pathname.replace(/^\/franchise\/?/, '').split('/')[0]
   return FRANCHISE_TABS.some((t) => t.value === seg) ? seg : 'moves'
 }
+
+/** How a Draft-tab row reads. Status first: only a used pick has a player or a "traded to" line. */
+export interface DraftPickOutcome {
+  /** used: the Clippers used it; traded: someone else used it; other: never used (label says why). */
+  view: 'used' | 'traded' | 'other'
+  label: string | null
+}
+
+export function draftPickOutcome(p: Pick<DraftPick, 'status' | 'traded_away'>): DraftPickOutcome {
+  if (p.status === 'used') return { view: p.traded_away ? 'traded' : 'used', label: null }
+  const note = p.status != null && p.status !== 'future' ? PICK_STATUS_NOTES[p.status] : undefined
+  return { view: 'other', label: note ? capitalize(note) : 'Outcome not recorded' }
+}
+
+/** "2 picks · 1 traded · 1 forfeited": only used picks count as picks. */
+export function draftYearMeta(picks: Array<Pick<DraftPick, 'status' | 'traded_away'>>): string {
+  const outcomes = picks.map(draftPickOutcome)
+  const used = outcomes.filter((o) => o.view === 'used').length
+  const traded = outcomes.filter((o) => o.view === 'traded').length
+  const other = new Map<string, number>()
+  for (const o of outcomes) if (o.view === 'other') other.set(o.label!.toLowerCase(), (other.get(o.label!.toLowerCase()) ?? 0) + 1)
+  return [
+    used ? `${used} pick${used === 1 ? '' : 's'}` : null,
+    traded ? (used ? `${traded} traded` : `${traded} traded away`) : null,
+    ...[...other].map(([label, n]) => `${n} ${label}`),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+

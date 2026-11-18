@@ -36,9 +36,15 @@ export function staticTeam(franchiseId: number): FranchiseTeamRef {
   };
 }
 
-/** "Oklahoma City Thunder"; the abbreviation when the name is unknown. */
-export function teamFullName(t: FranchiseTeamRef | null): string {
-  if (!t) return 'an unknown team';
+/** Heading-safe words for a team with no recorded name. */
+export const TEAM_NOT_RECORDED = 'Team not recorded';
+
+/**
+ * "Oklahoma City Thunder"; the abbreviation when the name is unknown, else `unknown`
+ * ("an unknown team" mid-sentence; pass TEAM_NOT_RECORDED where it stands as a heading).
+ */
+export function teamFullName(t: FranchiseTeamRef | null, unknown = 'an unknown team'): string {
+  if (!t) return unknown;
   if (t.name) return t.city ? `${t.city} ${t.name}` : t.name;
-  return t.abbreviation ?? 'an unknown team';
+  return t.abbreviation ?? unknown;
 }

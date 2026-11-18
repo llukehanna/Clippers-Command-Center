@@ -26,9 +26,11 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
   const seasonsRes = await getJson<{ seasons: Array<{ season_id: number; label: string; team_name: string }> }>('/api/history/seasons')
   const seasons = seasonsRes?.seasons ?? []
   const seasonId = params.season_id ?? String(seasons.at(-1)?.season_id ?? '')
-  const gamesRes = seasonId ? await getJson<{ games: HistoryGame[] }>(`/api/history/games?season_id=${seasonId}&limit=200`) : null
+  const [gamesRes, movesRes] = await Promise.all([
+    seasonId ? getJson<{ games: HistoryGame[] }>(`/api/history/games?season_id=${seasonId}&limit=200`) : null,
+    /^\d{4}$/.test(seasonId) ? getJson<MovesPayload>(`/api/franchise/moves?season=${seasonId}&limit=5&sort=significance`) : null,
+  ])
   const all = gamesRes?.games ?? []
-  const movesRes = /^\d{4}$/.test(seasonId) ? await getJson<MovesPayload>(`/api/franchise/moves?season=${seasonId}&limit=5&sort=significance`) : null
 
   const homeAway = params.home_away === 'home' || params.home_away === 'away' ? params.home_away : 'all'
   const result = params.result === 'W' || params.result === 'L' ? params.result : 'all'

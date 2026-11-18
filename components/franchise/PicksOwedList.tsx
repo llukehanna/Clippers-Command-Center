@@ -3,8 +3,8 @@ import { cn } from '@/lib/utils'
 import { Panel } from '@/components/ui/panel'
 import { TeamLogo } from '@/components/ui/team-mark'
 import { GapNote, RoundBadge, plink } from './bits'
-import { moveDate, ordinal, possessive, teamPlace } from '@/src/lib/franchise/display'
-import { PROTECTIONS_NOT_RECORDED } from '@/src/lib/franchise/protections-text'
+import { capitalize, moveDate, ordinal, possessive, teamPlace } from '@/src/lib/franchise/display'
+import { GAP_NOTES } from '@/src/lib/franchise/trade-tree'
 import type { OwedAsset } from '@/src/lib/ui/types'
 
 const roundWord = (r: number) => (r === 1 ? 'first' : r === 2 ? 'second' : `${ordinal(r)}-round pick`)
@@ -83,7 +83,7 @@ function Source({ a }: { a: OwedAsset }) {
 function AssetRow({ a, wideLogos }: { a: OwedAsset; wideLogos: boolean }) {
   const unknown = a.protections_known !== true
   // The protections line already says "not recorded"; other gap notes stay as quiet notes.
-  const notes = a.gap_notes.filter((n) => n.toLowerCase() !== PROTECTIONS_NOT_RECORDED.toLowerCase())
+  const notes = a.gap_notes.filter((n) => n !== GAP_NOTES.protections_unknown)
   return (
     <div
       className={cn(
@@ -99,7 +99,7 @@ function AssetRow({ a, wideLogos }: { a: OwedAsset; wideLogos: boolean }) {
         <div className="text-[14.5px] font-medium tracking-[-0.01em]">{title(a)}</div>
         {a.kind === 'swap' && <div className="mt-0.5 text-[13px] text-mute">{swapLine(a)}</div>}
         <div className={cn('mt-0.5 text-[13px]', unknown ? 'italic text-dim' : 'text-mute')}>{a.protections_label}</div>
-        {a.note && <div className="mt-0.5 text-[13px] text-mute">{a.note.charAt(0).toUpperCase() + a.note.slice(1)}</div>}
+        {a.note && <div className="mt-0.5 text-[13px] text-mute">{capitalize(a.note)}</div>}
         <Source a={a} />
         {notes.length > 0 && (
           <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1">

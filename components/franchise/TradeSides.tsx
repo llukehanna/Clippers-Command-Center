@@ -4,7 +4,7 @@ import { Panel } from '@/components/ui/panel'
 import { PlayerAvatar } from '@/components/ui/player-avatar'
 import { TeamLogo } from '@/components/ui/team-mark'
 import { GapNote, PersonName } from './bits'
-import { ordinal, teamPlace } from '@/src/lib/franchise/display'
+import { capitalize, ordinal, teamPlace } from '@/src/lib/franchise/display'
 import { teamFullName } from '@/src/lib/franchise/franchise-ids'
 import { protectionsTone, type SidePanel } from '@/src/lib/franchise/trade-display'
 import type { TradeAsset } from '@/src/lib/ui/types'
@@ -17,7 +17,6 @@ export function SwapGlyph({ size = 14, className }: { size?: number; className?:
   )
 }
 
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 function SubLabel({ children }: { children: React.ReactNode }) {
   return <p className="label-mono m-0 mb-1 mt-3.5">{children}</p>

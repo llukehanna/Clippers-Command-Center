@@ -2,7 +2,7 @@
 // Franchise loaders and routes with a mocked sql (same pattern as api-history.test.ts).
 // Rows are illustrative, not real history.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockSql = vi.fn();
 
@@ -130,6 +130,24 @@ describe('GET /api/franchise/moves', () => {
       expect((await GET(new Request(`http://localhost/api/franchise/moves?limit=${bad}`))).status).toBe(400);
     }
     expect((await GET(new Request('http://localhost/api/franchise/moves?sort=newest'))).status).toBe(400);
+  });
+
+  it('skips the all-season aggregates for the strip and the player page, keeping the payload shape', async () => {
+    const { GET } = await import('../../app/api/franchise/moves/route.js');
+    for (const qs of ['season=2019&limit=5&sort=significance', 'player_id=1']) {
+      mockSql.mockClear();
+      const body = await (await GET(new Request(`http://localhost/api/franchise/moves?${qs}`))).json();
+      expect(queries().some((q) => q.includes('DISTINCT season_id') || q.includes('GROUP BY s.season_id'))).toBe(false);
+      expect(body).toMatchObject({ seasons: [], season_counts: [] });
+      expect(body.moves.length).toBeGreaterThan(0);
+    }
+    // The Moves page (no limit, no player_id) and season=latest still get them.
+    for (const qs of ['type=trade', 'season=latest&limit=5']) {
+      mockSql.mockClear();
+      const body = await (await GET(new Request(`http://localhost/api/franchise/moves?${qs}`))).json();
+      expect(queries().some((q) => q.includes('GROUP BY s.season_id'))).toBe(true);
+      expect(body.seasons).toEqual([2025, 2019]);
+    }
   });
 
   it("player filter returns only that person's moves", async () => {
@@ -436,6 +454,48 @@ describe('GET /api/franchise/picks', () => {
     expect(body.owned[0]).toMatchObject({ kind: 'swap', holder_status: 'held', draft_year: 2029, protections_known: null, protections_label: 'Protections not recorded' });
     expect(body.owned[0].counterparty.abbreviation).toBe('PHI');
     expect(body.owed).toEqual([]);
+  });
+
+  // The pipeline leaves exercised null unless a source says "not exercised", and a pick stays
+  // 'future' until the next import after its draft: both need the next-draft-year floor.
+  describe('next-draft-year floor', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-11-18T12:00:00Z')); // next draft: 2027
+    });
+    afterEach(() => vi.useRealTimers());
+
+    /** The value bound right after `marker` in a query, as the fake DB sees it. */
+    const boundAfter = (strings: string[], values: unknown[], marker: string) => {
+      const at = strings.findIndex((s) => s.trimEnd().endsWith(marker));
+      return at >= 0 ? values[at] : undefined;
+    };
+    const swapRow = (swap_id: number, draft_year: number) => ({
+      swap_id, swap_key: `${draft_year}-1-${LAC}-${PHI}`, draft_year, round: 1, franchise_a: LAC, franchise_b: PHI,
+      protections: null, protections_text: null, protections_known: true,
+      transaction_id: String(swap_id), slug: `swap-${draft_year}`, date: '2021-02-01', season_id: 2020, kind: 'trade',
+      from_franchise_id: PHI, to_franchise_id: LAC, gap_reason: null,
+    });
+
+    it('excludes a past swap with null exercised and a stale future pick', async () => {
+      // The fake DB honors the draft-year floor only if the query states it.
+      mockSql.mockImplementation(async (strings: readonly string[], ...values: unknown[]) => {
+        const q = strings.join('?');
+        if (q.includes('FROM pick_swaps s')) {
+          const floor = boundAfter([...strings], values, 's.draft_year >=') as number | undefined;
+          return [swapRow(1, 2024), swapRow(2, 2028)].filter((r) => floor == null || r.draft_year >= floor);
+        }
+        if (q.includes('FROM draft_picks dp')) {
+          const floor = boundAfter([...strings], values, 'dp.draft_year >=') as number | undefined;
+          return [futurePick(30, 2026, 1, LAC), futurePick(31, 2027, 1, LAC)].filter((r) => floor == null || r.draft_year >= floor);
+        }
+        return [];
+      });
+      const { GET } = await import('../../app/api/franchise/picks/route.js');
+      const body = await (await GET()).json();
+      expect(body.owned.map((a: { key: string }) => a.key)).toEqual([`2027-1-${LAC}`, `2028-1-${LAC}-${PHI}`]);
+      expect(boundAfter(callFor('FROM pick_swaps s')![0] as string[], callFor('FROM pick_swaps s')!.slice(1), 's.draft_year >=')).toBe(2027);
+    });
   });
 });
 

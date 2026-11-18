@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils'
 import { Panel } from '@/components/ui/panel'
 import { Stat } from '@/components/ui/stat'
 import { Chip } from '@/components/ui/chip'
-import { money, seasonLabel } from '@/src/lib/franchise/display'
+import { money, partialWord, seasonLabel } from '@/src/lib/franchise/display'
 import type { PayrollSeason } from '@/src/lib/ui/types'
 
 const M = 1_000_000
@@ -30,7 +30,7 @@ export function PayrollChart({ payroll }: { payroll: PayrollSeason[] }) {
   return (
     <Panel className="px-4 pb-4 pt-[18px] sm:px-5 sm:pb-[18px] sm:pt-5">
       <div className="mb-[18px] grid grid-cols-3 gap-4 sm:gap-5">
-        <Stat label={latest ? seasonLabel(latest.season_id) : 'Latest'} value={money(latest?.listed_total_usd)} sub={latest?.is_partial ? 'partial' : 'recorded'} />
+        <Stat label={latest ? seasonLabel(latest.season_id) : 'Latest'} value={money(latest?.listed_total_usd)} sub={partialWord(latest?.is_partial)} />
         <Stat label="Peak" value={money(peak?.listed_total_usd)} sub={peak ? seasonLabel(peak.season_id) : '—'} />
         <Stat label="Seasons" value={n} sub={partial ? `${partial} partial` : 'none partial'} />
       </div>

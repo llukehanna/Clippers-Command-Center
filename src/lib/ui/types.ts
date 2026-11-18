@@ -351,9 +351,9 @@ export interface MoveRow {
 export interface MovesPayload {
   meta: MetaEnvelope
   filters: { season: number | null; type: MoveTypeFilter | null; player: string | null }
-  /** Seasons with at least one Clippers move, newest first. */
+  /** Seasons with at least one Clippers move, newest first. [] for a bounded request (limit or player_id, not season=latest). */
   seasons: number[]
-  /** Moves per season for the type and player filters (season filter ignored), newest first. */
+  /** Moves per season for the type and player filters (season filter ignored), newest first. [] when `seasons` is skipped. */
   season_counts: Array<{ season_id: number; count: number }>
   /** The person named by the player filter; null without one or when unknown. */
   player: FranchisePersonRef | null
