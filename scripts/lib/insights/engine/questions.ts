@@ -318,9 +318,10 @@ export const milestoneFirstSince: Question = {
     const start = ctx.recordsStart;
     const { expr, threshold } = fact.data;
     if ((fact.kind !== 'milestone' && fact.kind !== 'milestone_crossed') || fact.data.career === true || !start || fact.seasonId === null || start.season_id >= fact.seasonId || !expr || threshold === undefined) return null;
-    // A crossing also sees this season's earlier games: a teammate who crossed before tonight makes it not a first.
-    const seasons = fact.kind === 'milestone_crossed'
-      ? 'g.season_id < $3::int OR (g.season_id = $3::int AND g.game_date < $5::date)' : 'g.season_id < $3::int';
+    // The fact's own season counts too, for other Clippers: a teammate who got there first (before tonight's game for a
+    // crossing, as of the run for a season milestone) means this is not the first. The subject's own row is excluded.
+    const sameSeasonDate = fact.kind === 'milestone_crossed' ? '<' : '<=';
+    const seasons = `g.season_id < $3::int OR (g.season_id = $3::int AND pb.player_id <> $6::bigint AND g.game_date ${sameSeasonDate} $5::date)`;
     // The fact's total is cross-team (a mid-season acquisition), so the references total the same expression
     // over every team's games, for players who played for the Clippers that season.
     return {
@@ -331,12 +332,13 @@ JOIN players p ON p.player_id = pb.player_id
 WHERE ${REGULAR_SEASON} AND g.season_id >= $2::int AND (${seasons})
   AND g.game_date <= $5::date
   AND EXISTS (SELECT 1 FROM game_player_box_scores cp JOIN games cg ON cg.game_id = cp.game_id
-              WHERE cp.player_id = pb.player_id AND cp.team_id = $1::bigint AND cg.season_id = g.season_id AND cg.game_date <= $5::date)
+              WHERE cp.player_id = pb.player_id AND cp.team_id = $1::bigint AND cg.season_id = g.season_id AND cg.game_date <= $5::date
+                AND ${REGULAR_SEASON.replace(/\bg\./g, 'cg.')})
 GROUP BY pb.player_id, p.display_name, g.season_id
 HAVING (${expr}) >= $4::int
 ORDER BY 3 DESC, 4 DESC, 1
 LIMIT 1`,
-      params: [ctx.lac.teamId, start.season_id, fact.seasonId, threshold, refAsOf(fact, ctx)],
+      params: [ctx.lac.teamId, start.season_id, fact.seasonId, threshold, refAsOf(fact, ctx), fact.subject.id],
     };
   },
   interpret(rows, fact, ctx) {
@@ -347,7 +349,7 @@ LIMIT 1`,
       records_label: start.label, records_seasons: recordsSeasons(start, fact.seasonId),
     });
     const season = Number(r.season_id);
-    // A teammate already crossed this season: not a first, the milestone frame stands.
+    // Another Clipper already reached it this season: not a first, the milestone frame stands.
     if (season === fact.seasonId) return null;
     const years = fact.seasonId - season;
     return frame('first_since', sinceStrength(years), 'group', { since_label: seasonLabel(season), years, records_label: start.label });

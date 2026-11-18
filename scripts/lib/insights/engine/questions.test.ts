@@ -142,15 +142,18 @@ describe('kind questions', () => {
   });
   it('milestone first_since compares completed Clippers seasons', () => {
     const m = makeFact({ kind: 'milestone', stat: 'season_points', value: 1500, keyExtra: '1500', data: { threshold: 1500, step: 2, expr: 'SUM(pb.points)' } });
-    expect(milestoneFirstSince.build(m, ctx)!.params).toEqual(['1', 2020, 2025, 1500, '2026-02-25']);
+    expect(milestoneFirstSince.build(m, ctx)!.params).toEqual(['1', 2020, 2025, 1500, '2026-02-25', m.subject.id]);
     expect(milestoneFirstSince.build(m, ctx)!.sql).toContain('g.game_date <= $5::date');
     // a postgame crossing is measured at the game date (R2); a career crossing has no season question
     const crossed = makeFact({ kind: 'milestone_crossed', surface: 'postgame', stat: 'season_points', value: 1000, keyExtra: '1000', seasonId: 2025, context: { date: '2025-12-01' }, data: { threshold: 1000, step: 0, expr: 'SUM(pb.points)', career: false } });
-    expect(milestoneFirstSince.build(crossed, ctx)!.params).toEqual(['1', 2020, 2025, 1000, '2025-12-01']);
+    expect(milestoneFirstSince.build(crossed, ctx)!.params).toEqual(['1', 2020, 2025, 1000, '2025-12-01', crossed.subject.id]);
     expect(milestoneFirstSince.build({ ...crossed, data: { ...crossed.data, career: true } }, ctx)).toBeNull();
     // a crossing also searches this season's earlier games; a plain milestone does not
-    expect(milestoneFirstSince.build(crossed, ctx)!.sql).toContain('g.season_id = $3::int AND g.game_date < $5::date');
-    expect(milestoneFirstSince.build(m, ctx)!.sql).not.toContain('g.game_date < $5::date');
+    expect(milestoneFirstSince.build(crossed, ctx)!.sql).toContain('pb.player_id <> $6::bigint AND g.game_date < $5::date');
+    expect(milestoneFirstSince.build(m, ctx)!.sql).toContain('g.season_id = $3::int AND pb.player_id <> $6::bigint AND g.game_date <= $5::date');
+    expect(milestoneFirstSince.build(m, ctx)!.sql).toContain('cg.is_playoffs');
+    // Plan 2 season milestones: another Clipper already there this season means no first_since / records_best
+    expect(milestoneFirstSince.interpret([{ season_id: 2025, subject_id: '2' }], m, ctx)).toBeNull();
     // I1: a teammate who already crossed this season means no first_since / records_best claim
     expect(milestoneFirstSince.interpret([{ season_id: 2025 }], crossed, ctx)).toBeNull();
     expect(milestoneFirstSince.interpret([{ season_id: 2023 }], crossed, ctx)).toMatchObject({ type: 'first_since', years: 2 });

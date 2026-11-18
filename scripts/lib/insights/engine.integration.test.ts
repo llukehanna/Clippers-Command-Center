@@ -415,6 +415,22 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(playerTotalSub('x', 'SUM(pb.points)::int', '', '$7')).toContain('g.game_date <= $7::date');
     });
 
+    it('milestone first_since: with two Clippers over a threshold this season, neither is "first"', async () => {
+      const { milestoneDetector } = await import('./engine/detectors/season-milestones');
+      const { milestoneFirstSince } = await import('./engine/questions');
+      const { runQuery } = await import('./engine/query');
+      const ctx = await ctxAt(laToday());
+      const facts = (await milestoneDetector('season').run(ctx)).facts.filter((f) => f.stat === 'season_points');
+      const over = facts.filter((f) => Number(f.data.total_value) >= 1000);
+      expect(over.length).toBeGreaterThanOrEqual(2);
+      for (const f of over.filter((x) => x.value === 1000)) {
+        const q = milestoneFirstSince.build(f, ctx)!;
+        expect(q).not.toBeNull();
+        expect(milestoneFirstSince.interpret(await runQuery(q), f, ctx)).toBeNull();
+      }
+      expect(over.some((f) => f.value === 1000)).toBe(true);
+    }, TIMEOUT);
+
     it('postgame milestones: the game where a player passed a season total; no career claims in the fixture', async () => {
       const [g] = await sql<{ game_id: string }[]>`
         SELECT game_id FROM (
