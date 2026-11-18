@@ -30,6 +30,13 @@ function settled<T>(r: PromiseSettledResult<T>, label: string): T | null {
   return null;
 }
 
+// app_kv stores { season_id, label } (build-record-book); a bare number is the legacy shape.
+function startYear(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const id = (value as { season_id?: unknown } | null)?.season_id;
+  return typeof id === 'number' && Number.isFinite(id) ? id : null;
+}
+
 const periodLine = (r: PeriodRow | undefined): StoryPeriodLine =>
   ({ pts: r?.pts ?? 0, fgm: r?.fgm ?? 0, fga: r?.fga ?? 0, fg3m: r?.fg3m ?? 0, fg3a: r?.fg3a ?? 0, ftm: r?.ftm ?? 0, fta: r?.fta ?? 0 });
 const clutchLine = (r: ClutchRow): StoryClutchLine =>
@@ -110,7 +117,7 @@ export async function loadGameStory(gameIdParam: string): Promise<ApiResult> {
         LEFT JOIN players p ON p.player_id = h.player_id
         WHERE h.game_id = ${g.game_id}::bigint
       `,
-      sql<{ key: string; value: number }[]>`
+      sql<{ key: string; value: unknown }[]>`
         -- story:starts
         SELECT key, value FROM app_kv WHERE key IN ('insights.records_start', 'insights.pbp_records_start')
       `,
@@ -177,7 +184,7 @@ export async function loadGameStory(gameIdParam: string): Promise<ApiResult> {
     const shots = located.length >= MIN_LOCATED_SHOTS ? { shots: located, located: located.length, total: shotRows.length } : null;
 
     // Record book.
-    const starts = new Map((settled(startsR, 'record starts') ?? []).map((r) => [r.key, Number(r.value)]));
+    const starts = new Map((settled(startsR, 'record starts') ?? []).map((r) => [r.key, startYear(r.value)]));
     const highs: HighRow[] = (settled(highsR, 'record book') ?? []).map((h) => ({ ...h, value: Number(h.value) }));
     const notes = recordNotes(highs, {
       records: starts.get('insights.records_start') ?? null,

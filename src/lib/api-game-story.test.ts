@@ -32,7 +32,7 @@ function respond(overrides: Record<string, Responder> = {}) {
     ],
     '-- story:shots': () => Array.from({ length: 12 }, (_, i) => shot(i + 1)),
     'FROM rb_game_highs': () => [{ scope: 'player_career', stat_key: 'pts', rank: 1, value: '41', player_id: '10', player: 'Kawhi Leonard' }],
-    '-- story:starts': () => [{ key: 'insights.records_start', value: 2020 }, { key: 'insights.pbp_records_start', value: 2019 }],
+    '-- story:starts': () => [{ key: 'insights.records_start', value: { season_id: 2020, label: '2020-21' } }, { key: 'insights.pbp_records_start', value: { season_id: 2019, label: '2019-20' } }],
   };
   const table = { ...base, ...overrides };
   mockSql.mockImplementation(async (strings: readonly string[]) => {
@@ -82,6 +82,24 @@ describe('loadGameStory', () => {
     expect(body.shots.located).toBe(12);
     expect(body.shots.shots[0]).toEqual({ x: 25, y: 1, made: false, value: 2, player_id: '10', player: 'Kawhi Leonard' });
     expect(body.records[0].text).toBe('Kawhi Leonard: 41 points — career high');
+  });
+
+  const lacPlayerHigh = () => [{ scope: 'lac_player', stat_key: 'pts', rank: 4, value: '45', player_id: '10', player: 'Kawhi Leonard' }];
+
+  it('frames a Clippers rank with the stored record-book start season', async () => {
+    respond({ 'FROM rb_game_highs': lacPlayerHigh });
+    const { body } = await load();
+    expect(body.records[0].text).toBe('Kawhi Leonard: 45 points — 4th-most by a Clipper since 2020-21');
+  });
+
+  it('drops the since clause when the start value is malformed', async () => {
+    respond({
+      'FROM rb_game_highs': lacPlayerHigh,
+      '-- story:starts': () => [{ key: 'insights.records_start', value: 'oops' }, { key: 'insights.pbp_records_start', value: { label: 'x' } }],
+    });
+    const { body } = await load();
+    expect(body.records[0].text).toBe('Kawhi Leonard: 45 points — 4th-most by a Clipper');
+    expect(body.records[0].text).not.toMatch(/since|NaN/);
   });
 
   it('nulls each section without data', async () => {
