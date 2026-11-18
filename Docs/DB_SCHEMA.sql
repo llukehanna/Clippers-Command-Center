@@ -448,7 +448,7 @@ CREATE TABLE IF NOT EXISTS game_flow (
   opp_best_run        SMALLINT NOT NULL,
   comeback_margin     SMALLINT,                   -- lac_largest_deficit when LAC won, else NULL
   margin_series       JSONB NOT NULL,             -- [[elapsed_sec, lac_margin], ...]
-  source              TEXT NOT NULL,              -- 'cdn' | 'stats_pbp'
+  source              TEXT NOT NULL,              -- 'cdn' | 'stats_pbp' | 'espn'
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -504,7 +504,8 @@ CREATE TABLE IF NOT EXISTS clutch_stats (
 -- Raw normalized events: current season (live receipts, replay) + games flagged keep.
 -- event_num is the feed order and may shift while a game is live (the provider
 -- inserts or deletes actions); action_number is the stable provider id (cdn
--- actionNumber, stats.nba.com v3 actionId). The rewrite at final is authoritative.
+-- actionNumber, stats.nba.com v3 actionId, espn sequenceNumber * 2). The rewrite
+-- at final is authoritative.
 CREATE TABLE IF NOT EXISTS pbp_events (
   game_id       BIGINT NOT NULL REFERENCES all_games(game_id) ON DELETE CASCADE,
   event_num     INTEGER NOT NULL,                 -- 1-based feed order within the game
@@ -523,6 +524,8 @@ CREATE TABLE IF NOT EXISTS pbp_events (
   score_home    SMALLINT NOT NULL,
   score_away    SMALLINT NOT NULL,
   description   TEXT,
+  shot_x        REAL,                             -- feet across the half court (0–50); espn field goals only
+  shot_y        REAL,                             -- feet from the baseline
   keep          BOOLEAN NOT NULL DEFAULT FALSE,   -- survives season-rollover pruning
   PRIMARY KEY (game_id, event_num),
   CONSTRAINT uq_pbp_events_action UNIQUE (game_id, action_number)

@@ -1,5 +1,6 @@
 // scripts/lib/pbp/normalize.ts
-// cdn.nba.com liveData and stats.nba.com playbyplayv3 → one PbpEvent stream.
+// cdn.nba.com liveData, stats.nba.com playbyplayv3 and ESPN (converted to the
+// cdn shape by ./espn.ts) → one PbpEvent stream.
 // Points come from score changes (robust to both formats and to corrections);
 // shot classification comes from actionType. Pure — no DB, no network.
 import { normalizeTricode } from '../stats-nba.js';
@@ -79,7 +80,7 @@ export function normalizePbp(raw: RawPlayByPlay, source: PbpSource): NormalizedP
     const nextHome = parseScore(a.scoreHome) ?? home;
     const nextAway = parseScore(a.scoreAway) ?? away;
     const clockSec = clockSeconds(a.clock);
-    const cls = source === 'cdn' ? classifyCdn(a) : classifyStats(a);
+    const cls = source === 'stats_pbp' ? classifyStats(a) : classifyCdn(a);
     events.push({
       seq: events.length + 1,
       actionNumber: source === 'stats_pbp' ? a.actionId ?? a.actionNumber : a.actionNumber,
@@ -91,15 +92,17 @@ export function normalizePbp(raw: RawPlayByPlay, source: PbpSource): NormalizedP
       teamTricode: a.teamTricode ? normalizeTricode(a.teamTricode) : null,
       personId: playerId(a.personId),
       ...cls,
-      assistPersonId: source === 'cdn' ? playerId(a.assistPersonId) : null,
+      assistPersonId: source === 'stats_pbp' ? null : playerId(a.assistPersonId),
       points: nextHome - home + (nextAway - away),
       scoringSide: nextHome > home ? 'home' : nextAway > away ? 'away' : null,
       scoreHome: nextHome,
       scoreAway: nextAway,
       description: a.description ?? '',
+      shotX: cls.kind === 'fg' ? a.shotX ?? null : null,
+      shotY: cls.kind === 'fg' ? a.shotY ?? null : null,
     });
     home = nextHome;
     away = nextAway;
   }
-  return { source, hasDefensiveCredits: source === 'cdn', events };
+  return { source, hasDefensiveCredits: source !== 'stats_pbp', events };
 }

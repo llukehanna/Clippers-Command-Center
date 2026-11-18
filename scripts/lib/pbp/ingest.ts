@@ -3,11 +3,13 @@
 // (all seasons) and pbp_events (current season, or keepRaw). Rewrites the
 // game's rows in one transaction, so re-running is safe.
 import { sql as rootSql } from '../db.js';
+import { loadPersonIdResolver, type PersonIdResolver } from '../espn-live-client.js';
 import type { Db } from '../upserts.js';
 import { fetchPlayByPlay } from '../nba-live-client.js';
 import { fetchStatsPlayByPlay } from '../stats-nba.js';
 import { currentSeasonId, toNbaGameId10 } from '../schedule-utils.js';
 import { normalizePbp } from './normalize.js';
+import { fetchEspnPbp, type EspnGame } from './espn.js';
 import { deriveClutch, deriveGameFlow, derivePeriodStats } from './derive.js';
 import type { NormalizedPbp, PbpSource, RawPlayByPlay } from './types.js';
 
@@ -29,18 +31,38 @@ export type IngestPbpResult =
   /** The feed's last score differs from the game's final score (truncated feed) — nothing was written. */
   | { status: 'incomplete'; expected: { home: number; away: number }; got: { home: number; away: number } };
 
+/** What the ESPN fallback needs: the game as ESPN lists it, and ESPN athlete → NBA personId. */
+export interface EspnFallback {
+  game: EspnGame;
+  resolve: () => Promise<PersonIdResolver>;
+}
+
 /**
- * CDN-era seasons use cdn.nba.com only: a failure returns null rather than
- * falling back to stats.nba.com, which blocks cloud IPs and stalls ~25 min per
- * game. stats.nba.com serves only seasons before the CDN archive (or unknown).
+ * CDN-era seasons use cdn.nba.com, then ESPN when the CDN refuses us (it 403s
+ * every client outside nba.com since late October 2026). They never fall back
+ * to stats.nba.com, which blocks cloud IPs and stalls ~25 min per game; it
+ * serves only seasons before the CDN archive (or unknown).
  */
-export async function fetchNormalized(gid: string, seasonId: number | null, log: (m: string) => void): Promise<NormalizedPbp | null> {
+export async function fetchNormalized(
+  gid: string,
+  seasonId: number | null,
+  log: (m: string) => void,
+  espn?: EspnFallback,
+): Promise<NormalizedPbp | null> {
   if (seasonId !== null && seasonId >= CDN_PBP_FIRST_SEASON) {
     try {
       const data = (await fetchPlayByPlay(gid)) as unknown as RawPlayByPlay;
       return normalizePbp(data, 'cdn');
     } catch (err) {
       log(`cdn play-by-play failed for ${gid} (${(err as Error).message})`);
+    }
+    if (!espn) return null;
+    try {
+      const raw = await fetchEspnPbp(espn.game, await espn.resolve());
+      if (!raw) log(`espn has no game ${espn.game.awayTricode} @ ${espn.game.homeTricode} on ${espn.game.gameDate}`);
+      return raw ? normalizePbp(raw, 'espn') : null;
+    } catch (err) {
+      log(`espn play-by-play failed for ${gid} (${(err as Error).message})`);
       return null;
     }
   }
@@ -48,15 +70,27 @@ export async function fetchNormalized(gid: string, seasonId: number | null, log:
   return raw ? normalizePbp(raw, 'stats_pbp') : null;
 }
 
+// One name lookup per database per run, shared by every game the run ingests.
+const resolvers = new WeakMap<object, Promise<PersonIdResolver>>();
+function cachedResolver(db: Db): Promise<PersonIdResolver> {
+  let r = resolvers.get(db);
+  if (!r) {
+    r = loadPersonIdResolver(db as never);
+    r.catch(() => resolvers.delete(db));
+    resolvers.set(db, r);
+  }
+  return r;
+}
+
 export async function ingestGamePbp(gameDbId: string, opts: IngestPbpOptions = {}): Promise<IngestPbpResult> {
   const db = opts.db ?? rootSql;
   const log = opts.log ?? ((m: string) => console.log(`[pbp] ${m}`));
 
   const [game] = await db<{
-    nba_game_id: string; season_id: number | null; home_team_id: string; away_team_id: string; home_abbr: string; away_abbr: string;
+    nba_game_id: string; season_id: number | null; game_date: string; home_team_id: string; away_team_id: string; home_abbr: string; away_abbr: string;
     home_score: number | null; away_score: number | null;
   }[]>`
-    SELECT g.nba_game_id::text AS nba_game_id, g.season_id, g.home_score, g.away_score,
+    SELECT g.nba_game_id::text AS nba_game_id, g.season_id, g.game_date::text AS game_date, g.home_score, g.away_score,
            g.home_team_id::text AS home_team_id, g.away_team_id::text AS away_team_id,
            h.abbreviation AS home_abbr, a.abbreviation AS away_abbr
     FROM games g
@@ -70,7 +104,11 @@ export async function ingestGamePbp(gameDbId: string, opts: IngestPbpOptions = {
   const gid = toNbaGameId10(game.nba_game_id, game.season_id);
   if (!gid) throw new Error(`[pbp] game_id ${gameDbId}: ${game.nba_game_id} is not an NBA game id`);
 
-  const pbp = opts.raw ? normalizePbp(opts.raw.data, opts.raw.source) : await fetchNormalized(gid, game.season_id, log);
+  const espn: EspnFallback = {
+    game: { nbaGameId: gid, gameDate: game.game_date, homeTricode: game.home_abbr, awayTricode: game.away_abbr },
+    resolve: () => cachedResolver(db),
+  };
+  const pbp = opts.raw ? normalizePbp(opts.raw.data, opts.raw.source) : await fetchNormalized(gid, game.season_id, log, espn);
   if (!pbp || pbp.events.length === 0) return { status: 'missing' };
 
   // Never persist a truncated feed: the last event must carry the final score.
@@ -153,7 +191,7 @@ export async function ingestGamePbp(gameDbId: string, opts: IngestPbpOptions = {
         team_id: e.teamTricode ? teamIds.get(e.teamTricode) ?? null : null,
         player_id: e.personId ? playerIds.get(e.personId) ?? null : null,
         kind: e.kind, made: e.made, shot_value: e.shotValue, points: e.points,
-        score_home: e.scoreHome, score_away: e.scoreAway, description: e.description, keep: keepFlag,
+        score_home: e.scoreHome, score_away: e.scoreAway, description: e.description, shot_x: e.shotX, shot_y: e.shotY, keep: keepFlag,
       }));
       for (let i = 0; i < rows.length; i += 500) await tx`INSERT INTO pbp_events ${tx(rows.slice(i, i + 500))}`;
     }
