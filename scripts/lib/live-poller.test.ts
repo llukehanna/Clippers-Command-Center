@@ -43,12 +43,34 @@ describe('createPoller', () => {
     expect(r).toMatchObject({ status: 'ok', phase: 'PREGAME', delayMs: 30_000, saved: true, final: false });
     expect(r.doc?.status).toBe('scheduled');
     expect(deps.fetchPbp).not.toHaveBeenCalled();
+    expect(deps.fetchBox).not.toHaveBeenCalled();
   });
 
   it('past the scheduled tip but not started: watches for the tip every 10 s', async () => {
     const { h, deps } = harness(TIP + 60_000);
     h.sb = scoreboard(sbGame({ status: 1 }));
+    h.box = ok(boxOf(box({ status: 1 })));
     expect((await createPoller(GAME_ID, TIP, deps).tick()).delayMs).toBe(10_000);
+    expect(deps.fetchPbp).not.toHaveBeenCalled();
+  });
+
+  it('past the tip, a stale scheduled scoreboard does not hide a live box score (CDN scoreboard lags ~10+ min)', async () => {
+    const { h, deps } = harness(TIP + 60_000);
+    h.sb = scoreboard(sbGame({ status: 1 }));
+    h.box = ok(boxOf(box({ status: 2, clock: 'PT11M20.00S' })));
+    const r = await createPoller(GAME_ID, TIP, deps).tick();
+    expect(r).toMatchObject({ status: 'ok', phase: 'LIVE' });
+    expect(r.doc?.status).toBe('in_progress');
+    expect(deps.fetchPbp).toHaveBeenCalledTimes(1);
+  });
+
+  it('past the tip, a failed box probe still saves the scheduled state at the tip-watch cadence', async () => {
+    const { h, deps } = harness(TIP + 60_000);
+    h.sb = scoreboard(sbGame({ status: 1 }));
+    deps.fetchBox.mockRejectedValueOnce(new Error('NBA CDN 404'));
+    const r = await createPoller(GAME_ID, TIP, deps).tick();
+    expect(r).toMatchObject({ status: 'ok', phase: 'TIP_WATCH', delayMs: 10_000, saved: true });
+    expect(deps.fetchPbp).not.toHaveBeenCalled();
   });
 
   it('is not_on_scoreboard when the game is missing', async () => {
