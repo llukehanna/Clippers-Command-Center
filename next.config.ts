@@ -21,6 +21,8 @@ const EDGE_TTLS: Array<[source: string, fresh: number, stale: number]> = [
   ["/api/schedule", 600, 1800],
   ["/schedule/:game_id", 300, 600],
   ["/api/schedule/:game_id", 300, 600],
+  ["/schedule/:game_id/ics", 3600, 3600],
+  ["/schedule.ics", 3600, 3600],
   ["/players", 600, 3600],
   ["/players/:player_id", 600, 3600],
   ["/api/players", 600, 3600],
