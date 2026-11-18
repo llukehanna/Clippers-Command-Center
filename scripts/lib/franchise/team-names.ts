@@ -17,6 +17,8 @@ export const ALIASES: Alias[] = [
   { text: 'new orleans/oklahoma city hornets', firstSeason: 2005, lastSeason: 2006, franchiseTricode: 'NOP' },
   { text: 'new orleans oklahoma city hornets', firstSeason: 2005, lastSeason: 2006, franchiseTricode: 'NOP' },
   { text: 'oklahoma city hornets', firstSeason: 2005, lastSeason: 2006, franchiseTricode: 'NOP' },
+  // NBA.com (and some Wikipedia labels) write "LA Clippers"; the era table has "Los Angeles Clippers".
+  { text: 'la clippers', firstSeason: 1984, lastSeason: null, franchiseTricode: 'LAC' },
 ];
 
 function norm(text: string): string {

@@ -22,4 +22,9 @@ describe('franchiseFromName', () => {
     expect(franchiseFromName('New Orleans/Oklahoma City Hornets', 2005)).toBe(1610612740);
     expect(franchiseFromName('the New Orleans/Oklahoma City Hornets', 2006)).toBe(1610612740);
   });
+  it('resolves "LA Clippers" from 1984 on only', () => {
+    expect(franchiseFromName('LA Clippers', 2019)).toBe(1610612746);
+    expect(franchiseFromName('LA Clippers', 1984)).toBe(1610612746);
+    expect(franchiseFromName('LA Clippers', 1983)).toBeNull();
+  });
 });
