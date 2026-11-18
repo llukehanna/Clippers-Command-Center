@@ -395,6 +395,10 @@ function buildTrade(g: Group, seasonId: number): { kind: MoveKind; parts: MovePa
           s.franchiseB = side.team;
           if (!s.franchiseA) throw new Unreadable('swap with unknown giver');
         }
+        // A trade part with no stated sender (a multi-team entry without "(from X)") is a gap, so the move
+        // stays incomplete. Signing compensation is exempt: its null `from` is the free agent's real shape.
+        // A part already carrying a gap (a vague pick) keeps it; the move is incomplete either way.
+        if (from == null && !signRight && !asset.gap) asset.gap = 'party_unknown';
         parts.push({ from, to: side.team, ...asset });
       }
     }

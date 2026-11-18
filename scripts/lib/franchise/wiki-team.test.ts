@@ -6,9 +6,10 @@ const article = readFileSync(new URL('../__fixtures__/franchise/wiki/team-articl
 
 describe('parseTeamArticle', () => {
   it('lists retired numbers with number and name', () => {
-    // The Clippers have retired no numbers of their own; the section records the league-wide No. 6.
+    // The Clippers have retired no numbers of their own; the section records the league-wide No. 6,
+    // which must not read as a Clippers retirement.
     expect(parseTeamArticle(article).retired).toEqual([
-      { seasonId: null, name: 'Bill Russell', honor: 'retired_number', detail: '6' },
+      { seasonId: null, name: 'Bill Russell', honor: 'retired_number_league', detail: '6' },
     ]);
   });
 

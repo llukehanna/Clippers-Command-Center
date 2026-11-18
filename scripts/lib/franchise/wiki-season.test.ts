@@ -78,6 +78,42 @@ describe('parseSeasonTrades', () => {
     ]);
   });
 
+  it('marks multi-team entries with no "(from X)" as party_unknown, leaving the move incomplete', () => {
+    const page = '2025–26 Los Angeles Clippers season';
+    const { moves, unparsed } = parseSeasonTrades(fx('trades-2025-26-three-team.txt'), 2025, page);
+    expect(unparsed).toEqual([]);
+    expect(moves).toHaveLength(1);
+    const t = moves[0];
+    expect(t.sourceKey).toBe(`wiki:${page}#1`);
+    expect(t.date).toBe('2025-07-07');
+    expect(t.parts).toEqual([
+      { from: null, to: LAC, kind: 'player', person: { name: 'John Collins' }, gap: 'party_unknown' },
+      { from: null, to: NBA_TEAM_IDS.MIA, kind: 'player', person: { name: 'Norman Powell' }, gap: 'party_unknown' },
+      { from: null, to: NBA_TEAM_IDS.UTA, kind: 'player', person: { name: 'Kyle Anderson' }, gap: 'party_unknown' },
+      { from: null, to: NBA_TEAM_IDS.UTA, kind: 'player', person: { name: 'Kevin Love' }, gap: 'party_unknown' },
+      // The one entry that names its sender has no gap.
+      { from: LAC, to: NBA_TEAM_IDS.UTA, kind: 'pick', pick: { year: 2027, round: 2 } },
+    ]);
+    expect(t.complete).toBe(false);
+  });
+
+  it('keeps signing compensation free of party_unknown: a free agent has no sending team', () => {
+    const { moves } = parseSeasonTrades([
+      '===Trades===',
+      '{|',
+      '|- bgcolor="eeeeee"',
+      '| style="width:12%" | October 6, [[1977–78 NBA season|1977]]',
+      "| style=\"width:30%\" valign=\"top\"| To '''[[Buffalo Braves]]'''<hr>",
+      '* The right to sign [[Ted McClain]] as a veteran free agent',
+      "| style=\"width:30%\" valign=\"top\"| To '''[[Denver Nuggets]]'''<hr>",
+      '* A 1978 3rd round draft pick as compensation',
+      '|}',
+    ].join('\n'), 1977, 'p'); // shape from "1977–78 Buffalo Braves season"
+    expect(moves[0].kind).toBe('signing');
+    expect(moves[0].parts[0]).toEqual({ from: null, to: LAC, kind: 'player', person: { name: 'Ted McClain' } });
+    expect(moves[0].complete).toBe(true);
+  });
+
   it('returns empty arrays when the page has no Trades section or no trades', () => {
     expect(parseSeasonTrades('==Roster==\nx', 2000, 'p')).toEqual({ moves: [], unparsed: [] });
     expect(parseSeasonTrades('===Trades===\nNo trades occurred for this team.\n', 2006, 'p')).toEqual({ moves: [], unparsed: [] });

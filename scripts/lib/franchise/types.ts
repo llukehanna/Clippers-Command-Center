@@ -6,7 +6,13 @@ export type MoveKind =
   | 'trade' | 'draft' | 'signing' | 're_signing' | 'extension' | 'two_way' | 'ten_day' | 'conversion'
   | 'waiver' | 'claim' | 'release' | 'expansion_draft' | 'sale' | 'retirement' | 'hire' | 'fire' | 'other';
 export type AssetKind = 'player' | 'draft_rights' | 'pick' | 'swap' | 'cash' | 'exception' | 'other';
-export type GapReason = 'pick_unidentified' | 'protections_unknown' | 'source_conflict' | 'person_unmatched';
+export type GapReason =
+  | 'pick_unidentified'
+  | 'protections_unknown'
+  | 'source_conflict'
+  | 'person_unmatched'
+  /** A trade part whose sending or receiving team isn't stated (e.g. a multi-team entry with no "(from X)"). */
+  | 'party_unknown';
 
 export interface PersonRef {
   bbrefId?: string;

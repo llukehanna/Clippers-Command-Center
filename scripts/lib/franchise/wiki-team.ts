@@ -7,6 +7,9 @@
 // seasonId = year - 1. Categories with no honor code (Sportsmanship, Hustle, Teammate of the Year,
 // Slam Dunk) are listed in skippedCategories, never silently dropped.
 //
+// Retired numbers: a table row is a Clippers retirement ('retired_number'); the prose form records a
+// number the NBA retired league-wide (Bill Russell's No. 6) and gets 'retired_number_league'.
+//
 // Beyond the plan's interface: Hall of Famers (honor 'hall_of_fame', seasonId null, detail = induction
 // year) go into `awards`, and `skippedCategories` reports the award headings that have no honor code.
 // The real article's "Head coaches" section is only a {{main|…}} pointer, so coaches is usually empty;
@@ -91,7 +94,10 @@ function categoryHonors(body: string | null, skipped: string[]): Honor[] {
   return out;
 }
 
-/** Retired numbers: table rows (number cell + player link) and prose ("[[Bill Russell]]'s No. 6"). */
+/**
+ * Retired numbers: table rows (number cell + player link) are Clippers retirements ('retired_number');
+ * prose ("[[Bill Russell]]'s No. 6", retired by the whole NBA) is 'retired_number_league'.
+ */
 function retiredNumbers(body: string | null): Honor[] {
   const out: Honor[] = [];
   if (body == null) return out;
@@ -105,8 +111,10 @@ function retiredNumbers(body: string | null): Honor[] {
   }
   let prose = text;
   for (const t of tables(text)) prose = prose.replace(t, '');
+  // Prose records a number the NBA retired league-wide ("[[Bill Russell]]'s No. 6 for all its member
+  // teams"): not a Clippers retirement, so it gets its own code.
   for (const m of prose.matchAll(/\[\[([^\]|]*)(?:\|([^\]]*))?\]\]'s No\. (\d{1,2})\b/g)) {
-    out.push({ seasonId: null, name: (m[2] ?? m[1]).trim(), honor: 'retired_number', detail: m[3] });
+    out.push({ seasonId: null, name: (m[2] ?? m[1]).trim(), honor: 'retired_number_league', detail: m[3] });
   }
   return out;
 }
