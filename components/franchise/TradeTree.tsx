@@ -27,11 +27,6 @@ function allPaths(groups: TreeGroup[]): string[] {
   return out
 }
 
-/** Top-level rows start open (spec: the first step of every asset is visible). */
-function topPaths(groups: TreeGroup[]): string[] {
-  return groups.flatMap((g) => g.rows.flatMap((r, i) => (expandable(r.node) ? [`${g.key}:${i}`] : [])))
-}
-
 function Chevron({ open }: { open: boolean }) {
   return (
     <span
@@ -72,16 +67,16 @@ function StepMark({ node, parentPerson }: { node: TreeNode; parentPerson: string
   return null
 }
 
-/** Step text with the team and person it names in bright type; the person links only on rows that aren't toggles. */
-function StepLabel({ node, linkPerson }: { node: TreeNode; linkPerson: boolean }) {
+/** Step text with the team and person it names in bright type; the person links to their page when they have one. */
+function StepLabel({ node }: { node: TreeNode }) {
   const names = [node.team ? teamFullName(node.team) : null, node.person?.name ?? null].filter((n): n is string => !!n)
   return (
     <>
       {highlightNames(node.label, names).map((s, i) => {
         if (!s.name) return <span key={i}>{s.text}</span>
-        if (linkPerson && node.person?.href && s.name === node.person.name) {
+        if (node.person?.href && s.name === node.person.name) {
           return (
-            <Link key={i} href={node.person.href} prefetch={false} className={cn('text-text', plink)}>
+            <Link key={i} href={node.person.href} prefetch={false} className={cn('relative z-[1] text-text', plink)}>
               {s.text}
             </Link>
           )
@@ -110,12 +105,13 @@ interface RowProps {
   toggle: (path: string) => void
 }
 
-const ROW = 'row-hover grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-[12px] sm:grid-cols-[minmax(0,1fr)_auto_auto]'
+const ROW = 'row-hover relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-[12px] sm:grid-cols-[minmax(0,1fr)_auto_auto]'
 const MAIN = 'grid min-h-[42px] w-full grid-cols-[18px_minmax(0,1fr)] items-center gap-2.5 px-1.5 py-2 text-left sm:px-2.5'
 const WHEN = 'col-span-full -mt-2 whitespace-nowrap pb-2 pl-[34px] font-mono text-[11px] text-dim sm:col-span-1 sm:mt-0 sm:pb-0 sm:pl-0 sm:pr-2.5 sm:text-right'
 
 function Row({ node, path, depth, root, parentPerson, open, toggle }: RowProps) {
   const id = React.useId()
+  const labelId = React.useId()
   const canOpen = expandable(node)
   const isOpen = canOpen && open.has(path)
   const tradeLink = depth > 0 && node.href?.startsWith('/franchise/trades/') ? node.href : null
@@ -127,11 +123,11 @@ function Row({ node, path, depth, root, parentPerson, open, toggle }: RowProps) 
       <span aria-hidden className="flex shrink-0 empty:hidden">
         {root ? <RootMark row={root} /> : <StepMark node={node} parentPerson={parentPerson} />}
       </span>
-      <span className="min-w-0">
+      <span id={labelId} className="min-w-0">
         {root ? (
           <>
-            {!canOpen && node.person?.href ? (
-              <Link href={node.person.href} prefetch={false} className={plink}>
+            {node.person?.href ? (
+              <Link href={node.person.href} prefetch={false} className={cn('relative z-[1]', plink)}>
                 {root.title}
               </Link>
             ) : (
@@ -140,7 +136,7 @@ function Row({ node, path, depth, root, parentPerson, open, toggle }: RowProps) 
             {root.meta && <span className="font-mono text-[11px] font-normal text-dim"> · {root.meta}</span>}
           </>
         ) : (
-          <StepLabel node={node} linkPerson={!canOpen} />
+          <StepLabel node={node} />
         )}
         {node.note && <Note>{node.note}</Note>}
       </span>
@@ -150,20 +146,28 @@ function Row({ node, path, depth, root, parentPerson, open, toggle }: RowProps) 
   return (
     <li className="m-0 list-none">
       <div className={ROW}>
-        {canOpen ? (
-          <button type="button" aria-expanded={isOpen} aria-controls={id} onClick={() => toggle(path)} className={cn(MAIN, 'cursor-pointer rounded-[12px]')}>
-            <Chevron open={isOpen} />
-            {body}
-          </button>
-        ) : (
-          <div className={MAIN}>
+        <div className={MAIN}>
+          {canOpen ? (
+            // The button's ::after stretches over the whole row, so the label and date toggle too;
+            // links (player page, trade page) are siblings above it, never nested in the button.
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              aria-controls={id}
+              aria-labelledby={labelId}
+              onClick={() => toggle(path)}
+              className="cursor-pointer rounded-[6px] after:absolute after:inset-0 after:rounded-[12px] after:content-[''] focus-visible:outline-none focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:outline-offset-[-2px] focus-visible:after:outline-pacific"
+            >
+              <Chevron open={isOpen} />
+            </button>
+          ) : (
             <Leaf />
-            {body}
-          </div>
-        )}
+          )}
+          {body}
+        </div>
         <span className="pr-1.5 sm:pr-0">
           {tradeLink && (
-            <Link href={tradeLink} prefetch={false} aria-label={`Trade page: ${node.label}`} className="whitespace-nowrap rounded-full px-1 py-1 font-mono text-[11.5px] text-[#9cc7f2] transition-colors hover:text-[#cfe3f8]">
+            <Link href={tradeLink} prefetch={false} aria-label={`Trade page: ${node.label}`} className="relative z-[1] whitespace-nowrap rounded-full px-1 py-1 font-mono text-[11.5px] text-pacific transition-colors hover:text-text">
               Trade<span className="max-sm:hidden"> page</span>
               <span aria-hidden> →</span>
             </Link>
@@ -185,7 +189,7 @@ function Row({ node, path, depth, root, parentPerson, open, toggle }: RowProps) 
               ))}
               {node.truncatedAt && (
                 <li className="m-0 list-none">
-                  <Link href={tradeHref(node.truncatedAt)} prefetch={false} className={cn(MAIN, 'row-hover rounded-[12px] font-mono text-[12px] text-[#9cc7f2] hover:text-[#cfe3f8]')}>
+                  <Link href={tradeHref(node.truncatedAt)} prefetch={false} className={cn(MAIN, 'row-hover rounded-[12px] font-mono text-[12px] text-pacific transition-colors hover:text-text')}>
                     <Leaf />
                     <span>
                       Continue on that trade&apos;s page<span aria-hidden> →</span>
@@ -203,11 +207,12 @@ function Row({ node, path, depth, root, parentPerson, open, toggle }: RowProps) 
 
 /**
  * "What it became": every asset of the trade as a row that expands into its next event
- * (up to three steps). Top-level rows start open; every toggle is a real button.
+ * (up to three steps). Every level starts open; every toggle is a real button.
  */
 export function TradeTree({ groups, depth = 3 }: { groups: TreeGroup[]; depth?: number }) {
   const every = React.useMemo(() => allPaths(groups), [groups])
-  const [open, setOpen] = React.useState<Set<string>>(() => new Set(topPaths(groups)))
+  // Every level starts open (at most three steps deep); rows still collapse one by one.
+  const [open, setOpen] = React.useState<Set<string>>(() => new Set(allPaths(groups)))
   const toggle = React.useCallback(
     (path: string) =>
       setOpen((prev) => {

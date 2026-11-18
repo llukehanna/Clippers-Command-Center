@@ -3,7 +3,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 /** Trade page loading: the Franchise title and tabs stay; the hero, sides and outline are stood in for. */
 export default function Loading() {
   return (
-    <div className="grid gap-5 sm:gap-6 [&>*]:min-w-0" aria-busy="true" aria-label="Loading">
+    <div role="status" aria-busy="true" className="grid gap-5 sm:gap-6 [&>*]:min-w-0">
+      <span className="sr-only">Loading trade</span>
       <Skeleton className="h-3.5 w-28 rounded-full" />
       <Skeleton className="h-[248px] rounded-[22px] sm:h-[268px]" />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] lg:gap-[18px]">
