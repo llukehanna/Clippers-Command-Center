@@ -122,7 +122,13 @@ export function buildIndex(
   }
   const nbaIdByUniqueDbName = new Map<string, number>();
   for (const [k, ds] of dbByName) if (ds.length === 1 && ds[0].nba_person_id != null) nbaIdByUniqueDbName.set(k, ds[0].nba_person_id);
-  const nbaIdByBbref = new Map(links.map((l) => [l.bbrefId, l.nbaPersonId] as [string, number]));
+  // A BBRef id linked to two NBA.com ids, or an NBA.com id linked to two BBRef ids, links nothing.
+  const count = (xs: Array<string | number>) => xs.reduce((m, x) => m.set(x, (m.get(x) ?? 0) + 1), new Map<string | number, number>());
+  const distinct = [...new Map(links.map((l) => [`${l.bbrefId}|${l.nbaPersonId}`, l])).values()];
+  const perBbref = count(distinct.map((l) => l.bbrefId));
+  const perNba = count(distinct.map((l) => l.nbaPersonId));
+  const nbaIdByBbref = new Map(distinct.filter((l) => perBbref.get(l.bbrefId) === 1 && perNba.get(l.nbaPersonId) === 1)
+    .map((l) => [l.bbrefId, l.nbaPersonId] as [string, number]));
   return { byBbref, byNbaId, ambiguousNbaIds, rosterBySeason, allByName, nbaIdByUniqueDbName, nbaIdByBbref };
 }
 

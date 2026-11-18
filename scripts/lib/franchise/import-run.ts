@@ -83,12 +83,6 @@ export function parseImportArgs(argv: string[], now = new Date()): ImportArgs {
 }
 
 /** Part 1's rows the import reads (R13: dates as text). Empty tables come back empty; the dry run says what that costs. */
-/**
- * The Clippers' `teams.nba_team_id`. That column holds the app's own sequential ids (1-30), not NBA.com franchise ids
- * (src/lib/db.ts LAC_NBA_TEAM_ID).
- */
-const LAC_TEAMS_ID = 13;
-
 export async function loadDbInput(db: Db): Promise<DbInput> {
   const players = await db<DbPlayer[]>`
     SELECT player_id::text, nba_person_id, display_name, birthdate::text AS birthdate FROM players`;
@@ -102,7 +96,8 @@ export async function loadDbInput(db: Db): Promise<DbInput> {
     SELECT g.season_id,
            count(*) FILTER (WHERE (g.home_team_id = t.team_id) = (g.home_score > g.away_score))::int AS wins,
            count(*) FILTER (WHERE (g.home_team_id = t.team_id) <> (g.home_score > g.away_score))::int AS losses
-    FROM games g JOIN teams t ON t.nba_team_id = ${LAC_TEAMS_ID} AND t.team_id IN (g.home_team_id, g.away_team_id)
+    -- teams.nba_team_id holds the app's own ids (LAC = 13), not NBA.com's: find the Clippers by abbreviation.
+    FROM games g JOIN teams t ON t.abbreviation = 'LAC' AND t.team_id IN (g.home_team_id, g.away_team_id)
     WHERE g.is_playoffs AND g.status = 'final' AND g.season_id IS NOT NULL
       AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL AND g.home_score <> g.away_score
       AND g.nba_game_id NOT BETWEEN 50000000 AND 59999999

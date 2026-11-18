@@ -202,6 +202,7 @@ export interface PeopleSources {
  */
 export function completePeople(base: PersonRow[], src: PeopleSources): PersonRow[] {
   const byKey = new Map(base.map((p) => [p.personKey, p]));
+  const baseKeys = new Set(base.map((p) => p.personKey));
   const nbaHeld = new Set(base.map((p) => p.nbaPersonId).filter((x): x is number => x != null));
   const playerByNba = new Map<number, string>();
   const nbaClaims = new Map<number, number>();
@@ -213,7 +214,7 @@ export function completePeople(base: PersonRow[], src: PeopleSources): PersonRow
     const had = byKey.get(personKey);
     if (had) {
       // A later ref (a move NBA.com and BBRef both list) may be the first to carry this person's NBA.com id.
-      if (had.nbaPersonId == null && nba != null && !base.includes(had)) {
+      if (had.nbaPersonId == null && nba != null && !baseKeys.has(personKey)) {
         nbaHeld.add(nba);
         byKey.set(personKey, { ...had, nbaPersonId: nba, playerId: playerByNba.get(nba) ?? null });
       }
