@@ -15,6 +15,7 @@ const INSIGHT_CATEGORY_LABELS: Record<string, string> = {
   year_over_year: 'Year over Year',
   run: 'Scoring Run',
   clutch: 'Clutch',
+  comeback: 'Comeback',
 }
 
 /** Display label for an insight category ("league_comparison" → "League Rank"). */

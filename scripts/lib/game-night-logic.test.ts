@@ -5,6 +5,8 @@ import {
   finalizeRetryDelay,
   FINAL_SAVE_MAX_ATTEMPTS,
   mainHasNewRunnerCode,
+  handOffMomentOk,
+  HAND_OFF_FAILURES,
   RUNNER_CODE_PATHS,
   type GameNightTick,
 } from './game-night-logic.js';
@@ -108,5 +110,22 @@ describe('finalizeRetryDelay', () => {
   it('gives up when an attempt plus the shutdown margin would not fit', () => {
     expect(finalizeRetryDelay(MAX - 19 * 60_000, MAX)).toBeNull();
     expect(finalizeRetryDelay(MAX, MAX)).toBeNull();
+  });
+});
+
+describe('handOffMomentOk', () => {
+  it('waits for a break in play mid-game', () => {
+    expect(handOffMomentOk('LIVE', 0)).toBe(false);
+    expect(handOffMomentOk('CLUTCH', 0)).toBe(false);
+    expect(handOffMomentOk('TIP_WATCH', 0)).toBe(false);
+    expect(handOffMomentOk('HALFTIME', 0)).toBe(true);
+    expect(handOffMomentOk('STOPPAGE', 0)).toBe(true);
+    expect(handOffMomentOk('PREGAME', 0)).toBe(true);
+    expect(handOffMomentOk(null, 0)).toBe(true); // game not on the scoreboard
+  });
+
+  it('hands off at once when the runner keeps failing, not on one blip', () => {
+    expect(handOffMomentOk('LIVE', 1)).toBe(false);
+    expect(handOffMomentOk('LIVE', HAND_OFF_FAILURES)).toBe(true);
   });
 });

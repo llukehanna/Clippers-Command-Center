@@ -247,6 +247,9 @@ export async function GET(): Promise<NextResponse> {
       home_score: snap.home_score,
       away_score: snap.away_score,
       recent_scoring: payload.recent_scoring ?? [],
+      flow: payload.flow,
+      lac_abbr: lacAbbr,
+      opp_abbr: oppAbbr,
     });
 
     // Fetch odds

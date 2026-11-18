@@ -21,7 +21,8 @@
 // (continue=true in $GITHUB_OUTPUT) rather than trusting the next hourly cron.
 // So does a run that sees new runner code on main (mainHasNewRunnerCode, checked
 // every 2 minutes while sleeping and polling), so a fix merged during a game
-// reaches it within minutes.
+// reaches it within minutes — mid-game at the next break in play
+// (handOffMomentOk), since the successor takes ~45 s to boot.
 
 import { execFile } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
@@ -38,6 +39,7 @@ import {
   decideGameNightAction,
   FINAL_SAVE_MAX_ATTEMPTS,
   finalizeRetryDelay,
+  handOffMomentOk,
   mainHasNewRunnerCode,
 } from './lib/game-night-logic.js';
 import { ingestGamePbp } from './lib/pbp/ingest.js';
@@ -152,15 +154,24 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
   let finalAttempts = 0;
 
   let codeCheckedAt = Date.now();
+  // Set once main has new runner code; the hand-off itself waits for a break
+  // in play (handOffMomentOk) so fans never see the successor's boot gap.
+  let handOffPending = false;
+  let failures = 0;
   while (Date.now() - startedAt < MAX_RUNTIME_MS) {
-    if (Date.now() - codeCheckedAt >= CODE_CHECK_MS) {
+    if (!handOffPending && Date.now() - codeCheckedAt >= CODE_CHECK_MS) {
       codeCheckedAt = Date.now();
-      if (await handOffIfMainMoved()) {
-        await flushHub(deps.hub);
-        return;
-      }
+      handOffPending = await mainHasNewRunnerCode(git);
+      if (handOffPending) console.log('[game-night] main has new runner code; handing off at the next break in play.');
     }
     const r = await poller.tick();
+    failures = r.status === 'error' ? failures + 1 : 0;
+    if (handOffPending && !r.final && handOffMomentOk(r.phase, failures)) {
+      console.warn(`[game-night] Handing the game to a successor run on main's new code (${r.phase ?? r.status}).`);
+      requestSuccessor();
+      await flushHub(deps.hub);
+      return;
+    }
 
     if (r.status === 'not_on_scoreboard') {
       // The CDN scoreboard rolls over mid-morning ET; before tip the game can

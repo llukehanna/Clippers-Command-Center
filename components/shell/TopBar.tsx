@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { TeamLogo } from '@/components/ui/team-mark'
 import { useLiveData } from '@/hooks/useLiveData'
-import { resolveLiveState } from '@/src/lib/ui/live'
+import { gameIsOn, resolveLiveState } from '@/src/lib/ui/live'
 import { NavLinks } from './NavLinks'
 import { LiveStatus } from './LiveStatus'
 import { OPEN_PALETTE_EVENT } from './CommandPalette'
@@ -11,7 +11,7 @@ import { OPEN_PALETTE_EVENT } from './CommandPalette'
 export function TopBar() {
   const { data } = useLiveData()
   const state = resolveLiveState(data)
-  const isLive = state === 'LIVE' || state === 'DATA_DELAYED'
+  const isLive = gameIsOn(data)
 
   return (
     <header data-topbar className="sticky top-0 z-40 px-2 pt-[calc(env(safe-area-inset-top,0px)+8px)] sm:px-[14px] sm:pt-[calc(env(safe-area-inset-top,0px)+12px)]">
@@ -27,7 +27,7 @@ export function TopBar() {
         </div>
 
         <div className="flex items-center justify-self-end gap-3">
-          <LiveStatus state={state} data={data} />
+          {isLive && <LiveStatus state={state} data={data} />}
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event(OPEN_PALETTE_EVENT))}
