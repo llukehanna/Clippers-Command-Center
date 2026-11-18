@@ -229,6 +229,8 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       const team = facts.find((f) => f.subject.type === 'team' && ['wins', 'losses'].includes(f.stat));
       expect(team).toBeDefined();
       expect(team!.keyExtra).toBe(team!.data.start_date);
+      // Seeded: the Clippers' last 12 regular-season games (since 2026-01-27) were all wins.
+      expect(team).toMatchObject({ stat: 'wins', value: 12, polarity: 'positive' });
       const pRef = (team!.sample as { pRef: number }).pRef;
       expect(pRef).toBeGreaterThan(0);
       expect(pRef).toBeLessThan(1);
@@ -243,6 +245,37 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(w).toBeGreaterThan(0);
       expect(w).toBeLessThan(1);
       expect(w + l).toBeCloseTo(1, 6);
+    }, TIMEOUT);
+
+    it('playoff games neither extend nor break a streak', async () => {
+      const { streakDetector } = await import('./engine/detectors/season-streaks');
+      const ctx = await ctxAt('2026-02-25');
+      const starStreak = async () => (await streakDetector('season').run(ctx)).facts
+        .find((f) => f.subject.name === 'Star Clipper' && f.stat === 'scoring_30')!.value;
+      const before = await starStreak();
+      const [last] = await sql<{ game_id: string; d: string }[]>`
+        SELECT g.game_id::text AS game_id, g.game_date::text AS d FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
+        WHERE pb.player_id = 1 AND g.season_id = ${ctx.season.id} AND g.game_date <= ${ctx.asOf}::date
+        ORDER BY g.game_date DESC, g.game_id DESC LIMIT 1`;
+      expect(last.d < ctx.asOf).toBe(true);
+      const ids: string[] = [];
+      try {
+        // Two Clippers playoff games after the streak: Star scores 40 (would extend), then 0 (would break).
+        for (const [i, pts] of [40, 0].entries()) {
+          const [g] = await sql<{ game_id: string }[]>`
+            INSERT INTO all_games (nba_game_id, season_id, game_date, status, home_team_id, away_team_id, home_score, away_score, is_playoffs)
+            VALUES (${42_500_001 + i}, ${ctx.season.id}, ${ctx.asOf}::date, 'final', ${ctx.lac.teamId}::bigint, ${3 + i}, 100, 90, true)
+            RETURNING game_id::text AS game_id`;
+          ids.push(g.game_id);
+          await sql`
+            INSERT INTO game_player_box_scores (game_id, team_id, player_id, minutes, points, rebounds, fg3_made, fg_made, fg_attempted)
+            VALUES (${g.game_id}::bigint, ${ctx.lac.teamId}::bigint, 1, '30:00', ${pts}::int, 12, 4, ${pts >= 30 ? 14 : 0}::int, 20)`;
+        }
+        expect(await starStreak()).toBe(before);
+      } finally {
+        if (ids.length) await sql`DELETE FROM all_games WHERE game_id = ANY(${ids}::bigint[])`;
+      }
+      expect(await starStreak()).toBe(before);
     }, TIMEOUT);
 
     it('no team streak after the season or on the player surface', async () => {
@@ -264,6 +297,9 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(pts!.data.total_value!).toBeGreaterThanOrEqual(pts!.value);
       expect(pts!.data.expr).toBe('SUM(pb.points)');
       expect(pts!.sample.kind).toBe('share');
+      const { MILESTONES } = await import('./engine/detectors/season-milestones');
+      const def = MILESTONES.find((m) => m.key === 'season_points')!;
+      expect(pts!.value).toBe(Math.max(...def.thresholds.filter((t) => t <= pts!.data.total_value!)));
       expect(facts.some((f) => f.subject.name === 'LAC Player 3')).toBe(false);
     }, TIMEOUT);
   });

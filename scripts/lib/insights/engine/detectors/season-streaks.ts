@@ -2,7 +2,8 @@
 // Active streaks (v1 streaks.ts on the v2 engine): consecutive qualifying
 // games counted back from each Clipper's latest game of the stats season.
 // Only the team's games count, so a team change ends a streak (as in
-// rb_streaks); the play-in counts, as in v1. The team's win/losing streak is
+// rb_streaks); playoff games are excluded (regular-season baselines), the
+// play-in (stored non-playoff, NBA ids 5xxxxxxx) counts. The team's win/losing streak is
 // emitted while the season is being played.
 import { runQuery } from '../query.js';
 import { clippersTeamResultShare, playerHitRates, teamResultRate } from '../rates.js';
@@ -38,7 +39,7 @@ WITH season_games AS (
          ROW_NUMBER() OVER (PARTITION BY pb.player_id ORDER BY g.game_date DESC, g.game_id DESC) AS recency
   FROM game_player_box_scores pb
   JOIN games g ON g.game_id = pb.game_id
-  WHERE g.season_id = $1::int AND g.game_date <= $4::date AND pb.team_id = $2::bigint
+  WHERE g.season_id = $1::int AND NOT g.is_playoffs AND g.game_date <= $4::date AND pb.team_id = $2::bigint
     AND pb.player_id IN ${rosterSubquery('$1', '$2', '$4')}
 ), first_miss AS (
   SELECT player_id, MIN(recency) FILTER (WHERE NOT qualifies) AS recency
@@ -78,7 +79,7 @@ WITH lac_games AS (
          ((g.home_team_id = $2::bigint) = (g.home_score > g.away_score)) AS won,
          ROW_NUMBER() OVER (ORDER BY g.game_date DESC, g.game_id DESC) AS recency
   FROM games g
-  WHERE g.season_id = $1::int AND g.game_date <= $3::date
+  WHERE g.season_id = $1::int AND NOT g.is_playoffs AND g.game_date <= $3::date
     AND $2::bigint IN (g.home_team_id, g.away_team_id)
     AND g.status = 'final' AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL
 ), latest AS (
