@@ -45,6 +45,8 @@ export interface ParsedMove {
   parts: MovePart[];
   involvesClippers: boolean;
   complete: boolean;
+  /** Raw source note text that followed the sentence (e.g. "swap, not exercised"). In-memory only, never written to the database. */
+  notes?: string[];
 }
 export interface UnparsedLine {
   source: string;

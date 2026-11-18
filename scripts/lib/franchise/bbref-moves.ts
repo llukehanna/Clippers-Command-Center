@@ -78,18 +78,49 @@ function tokenize(p: HTMLElement): { tokens: string; plain: string; refs: Ref[] 
   return { tokens: clean(tokens).trim(), plain: clean(plain).trim(), refs };
 }
 
-/** The main sentence: everything before the first full stop outside parentheses. The rest are notes. */
-function mainSentence(tokens: string): string {
+/** Splits at the first full stop outside parentheses: the main sentence, and the note text after it. */
+function splitSentence(tokens: string): { main: string; rest: string } {
   let depth = 0;
   for (let i = 0; i < tokens.length; i++) {
     const ch = tokens[i];
     if (ch === '(') depth++;
     else if (ch === ')') depth = Math.max(0, depth - 1);
     else if (ch === '.' && depth === 0 && (i + 1 === tokens.length || /\s/.test(tokens[i + 1]))) {
-      return tokens.slice(0, i).trim();
+      return { main: tokens.slice(0, i).trim(), rest: tokens.slice(i + 1).trim() };
     }
   }
-  return tokens.trim();
+  return { main: tokens.trim(), rest: '' };
+}
+
+// BBRef runs several notes together with only spaces between them. A new note starts at a pick note
+// ("2021 1st-rd pick is MIA own", "Conditional 2022 2nd-rd pick did not convey": a pick phrase followed by
+// is/was/did), at "<Team> received ...", or after a full stop. A pick phrase without that verb
+// ("optioned to swap 2025 1st-rd pick", "became LAC 2026 2nd-rd pick") belongs to the note before it.
+const NOTE_PICK = /(?:(?:[Cc]onditional|[Cc]ondition) )?\d{4} \d(?:st|nd|rd|th)-r?d (?:draft )?pick (?:\([^)]*\) )?(?:is|was|did)\b/g;
+const NOTE_RECEIVED = /\b[A-Z][a-z]+(?: [A-Z][a-z]+)* (?:also )?received\b/g;
+
+/** Note text -> separate raw notes, uninterpreted. */
+export function splitNotes(text: string): string[] {
+  const depthAt: number[] = [];
+  let depth = 0;
+  for (const ch of text) {
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    depthAt.push(depth);
+    if (ch === '(') depth++;
+  }
+  const cuts = new Set<number>();
+  for (const m of text.matchAll(NOTE_PICK)) cuts.add(m.index);
+  for (const m of text.matchAll(NOTE_RECEIVED)) cuts.add(m.index);
+  for (const m of text.matchAll(/\.\s+(?=[A-Z(])/g)) cuts.add(m.index + 1);
+  const at = [...cuts].filter((i) => i > 0 && depthAt[i] === 0).sort((a, b) => a - b);
+  const notes: string[] = [];
+  let start = 0;
+  for (const i of [...at, text.length]) {
+    const n = text.slice(start, i).trim();
+    if (n) notes.push(n);
+    start = i;
+  }
+  return notes;
 }
 
 // ---- pieces ------------------------------------------------------------------
@@ -341,7 +372,7 @@ export function parseTransactionPage(html: string, seasonId: number, page: strin
       const i = index++;
       const { tokens, plain, refs } = tokenize(p);
       const line: UnparsedLine = { source: page, index: i, date, text: plain };
-      const main = mainSentence(tokens);
+      const { main, rest } = splitSentence(tokens);
       if (SKIP_PATTERNS.some((re) => re.test(main))) {
         out.skipped.push({ ...line, reason: 'g_league' });
         continue;
@@ -359,7 +390,11 @@ export function parseTransactionPage(html: string, seasonId: number, page: strin
         else out.unparsed.push(line);
         continue;
       }
-      out.moves.push({ sourceKey, ...built, involvesClippers: true, complete: built.parts.every((x) => !x.gap) });
+      const notes = splitNotes(rest.replace(/\{[PTCL](\d+)\}/g, (_, n: string) => refs[Number(n)].name));
+      out.moves.push({
+        sourceKey, ...built, involvesClippers: true, complete: built.parts.every((x) => !x.gap),
+        ...(notes.length ? { notes } : {}),
+      });
     }
   }
   return out;

@@ -86,7 +86,7 @@ describe('parseTransactionPage', () => {
 
   it('returns unmatched sentences as unparsed, never as moves', () => {
     const r = parseTransactionPage(fx('transactions-lac-2014.html'), 2013, '2014_transactions');
-    expect(r.moves).toEqual([]);
+    expect(r.moves.filter((m) => m.date === '2014-02-14')).toEqual([]);
     expect(r.unparsed).toEqual([{
       source: '2014_transactions', index: 0, date: '2014-02-14',
       text: 'Did not re-sign Sasha Vujačić; 10-day contract expires.',
@@ -271,6 +271,36 @@ describe('parseTransactionPage', () => {
     expect(r.moves.map((m) => m.sourceKey)).toEqual(['bbref:1986-11-17:signing:fieldke01', 'bbref:1986-11-17:waiver:johnsst02']);
     expect(r.skipped).toEqual([{ source: '1987_transactions', index: 2, date: '1986-11-17', text: 'Waived Steffond Johnson.', reason: 'duplicate' }]);
     expect(r.unparsed).toEqual([]);
+  });
+
+  // ---- notes after the main sentence (ruling R7: kept raw, not interpreted) --------------------------
+
+  it('keeps note text after the sentence as raw notes', () => {
+    const novak = parseTransactionPage(fx('transactions-lac-2009.html'), 2008, '2009_transactions').moves[0];
+    expect(novak.parts.map((p) => p.kind)).toEqual(['pick', 'player']);
+    expect(novak.notes).toEqual(['swap, not exercised']);
+
+    const y2014 = parseTransactionPage(fx('transactions-lac-2014.html'), 2013, '2014_transactions').moves;
+    const mullens = y2014.find((m) => m.parts.some((p) => p.person?.bbrefId === 'mulleby01'))!;
+    expect(mullens.notes).toEqual(['(Pick is conditional and did not convey.)']);
+    expect(mullens.notes!.some((n) => n.includes('did not convey'))).toBe(true);
+    // no notes -> no field
+    const plain = y2014.find((m) => m.parts.some((p) => p.person?.bbrefId === 'jamisan01'))!;
+    expect('notes' in plain).toBe(false);
+  });
+
+  it('splits notes BBRef runs together', () => {
+    const harris = parseTransactionPage(fx('transactions-lac-2019.html'), 2018, '2019_transactions').moves[0];
+    expect(harris.notes).toEqual(['2021 1st-rd pick was MIA own', '2021 2nd-rd pick was DET own', '2023 2nd-rd pick was DET own']);
+
+    const y2021 = parseTransactionPage(fx('transactions-lac-2021.html'), 2020, '2021_transactions').moves;
+    expect(y2021.find((m) => m.date === '2021-03-22')!.notes).toEqual([
+      'condition 2022 2nd-rd pick (ATL own) did not convey',
+      'conditional 2022 2nd-rd pick did not convey',
+      'Los Angeles received a trade exception.',
+    ]);
+    // the plain-text "James Nnaji was later selected" stays in the sentence, the note after it is kept
+    expect(y2021.find((m) => m.parts.some((p) => p.person?.bbrefId === 'lessoma01'))!.notes).toEqual(['2023 2nd-rd pick was DET own']);
   });
 });
 
