@@ -1,19 +1,26 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { Scoreboard } from '@/components/game/Scoreboard'
 import { BoxScore } from '@/components/game/BoxScore'
 import { LineScore } from '@/components/game/LineScore'
 import { gameTypeLabel } from '@/src/lib/ui/season'
 import { InsightCard } from '@/components/insights/InsightCard'
 import { Eyebrow } from '@/components/ui/eyebrow'
+import { Panel } from '@/components/ui/panel'
+import { GameFlow } from '@/components/live/GameFlow'
+import { FlowStats } from '@/components/postgame/FlowStats'
+import { QuarterTable } from '@/components/postgame/QuarterTable'
+import { ClutchCard } from '@/components/postgame/ClutchCard'
+import { ShotChart } from '@/components/postgame/ShotChart'
+import { RecordMoments } from '@/components/postgame/RecordMoments'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TeamLogo } from '@/components/ui/team-mark'
 import { getJson } from '@/src/lib/ui/api'
 import { playedGames, type HistoryGame } from '@/src/lib/ui/season'
 import { formatDayLong, formatDayShort } from '@/src/lib/ui/time'
 import { teamName } from '@/src/lib/ui/teams'
-import type { HistoryGameDetailPayload, Insight } from '@/src/lib/ui/types'
+import type { GameStoryPayload, HistoryGameDetailPayload, Insight } from '@/src/lib/ui/types'
 
 // Live data on every request (loaders read the database directly).
 export const dynamic = 'force-dynamic'
@@ -37,6 +44,9 @@ export default async function HistoryGamePage({ params }: Params) {
   if (!data) notFound()
 
   const { game, box_score } = data
+  // Not played yet (or still in progress): the preview page owns this game.
+  if (String(game.status).toLowerCase() !== 'final') redirect(`/schedule/${game.game_id}`)
+  const story = await getJson<GameStoryPayload>(`/api/history/games/${encodeURIComponent(game_id)}/story`)
   // The Clippers side is identified by team, not tricode (era abbreviations are BUF/SDC/LAC).
   const lacHome = game.home_team.is_lac ?? game.home_team.abbreviation === 'LAC'
   const lacTeam = lacHome ? game.home_team : game.away_team
@@ -95,9 +105,35 @@ export default async function HistoryGamePage({ params }: Params) {
 
       </section>
 
+      {story?.flow && (
+        <section className="enter" style={{ ['--i' as string]: 1 }} aria-label="Game flow">
+          <Panel className="p-5">
+            <Eyebrow aside={story.flow.expected_source === 'spread' ? 'win probability from the closing spread' : 'win probability from home court'}>
+              Game flow
+            </Eyebrow>
+            <GameFlow flow={story.flow.flow} wp={null} oppAbbr={oppAbbr} />
+            <FlowStats summary={story.flow.summary} oppAbbr={oppAbbr} />
+          </Panel>
+        </section>
+      )}
+
+      {(story?.quarters || story?.clutch) && (
+        <section className={`enter grid items-stretch gap-3 ${story?.quarters && story?.clutch ? 'lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]' : ''}`} style={{ ['--i' as string]: 2 }}>
+          {story?.quarters && <QuarterTable quarters={story.quarters} oppAbbr={oppAbbr} />}
+          {story?.clutch && <ClutchCard clutch={story.clutch} oppAbbr={oppAbbr} />}
+        </section>
+      )}
+
+      {(story?.shots || story?.records) && (
+        <section className={`enter grid items-stretch gap-3 ${story?.shots && story?.records ? 'lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]' : ''}`} style={{ ['--i' as string]: 3 }}>
+          {story?.shots && <ShotChart shots={story.shots.shots} located={story.shots.located} total={story.shots.total} />}
+          {story?.records && <RecordMoments notes={story.records} />}
+        </section>
+      )}
+
       <section
         className={`enter grid grid-cols-1 items-start gap-6 lg:gap-[18px] ${insights.length ? 'lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]' : ''}`}
-        style={{ ['--i' as string]: 1 }}
+        style={{ ['--i' as string]: 4 }}
       >
         <div className="min-w-0">
           <Eyebrow>Box score</Eyebrow>
