@@ -27,6 +27,7 @@ import { loadFranchiseFrontOffice } from '@/src/lib/data/franchise-front-office'
 import { loadFranchiseHonors } from '@/src/lib/data/franchise-honors'
 import { loadFranchiseTrade } from '@/src/lib/data/franchise-trade'
 import { loadGameStory } from '@/src/lib/data/game-story'
+import { cache } from 'react'
 import { unstable_cache } from 'next/cache'
 import { type ApiResult } from '@/src/lib/data/result'
 
@@ -71,11 +72,45 @@ async function load(path: string): Promise<unknown> {
   throw new Error(`getJson: no loader for ${path}`)
 }
 
+// Next's data cache (works under `next start`/dev). On the Cloudflare Worker
+// it is a no-op: the incremental cache there is read-only (open-next.config.ts),
+// so the memory layer below does the caching in production.
 const cachedLoad = unstable_cache(load, ['ccc-get-json'], { revalidate: DATA_TTL_SECONDS, tags: ['ccc-data'] })
+
+// Per-isolate memory cache of *resolved* results. A Worker isolate serves many
+// requests, so a tab switch or a second visit to a game skips the database.
+// Only settled values are shared: a pending promise from one request must not
+// be awaited by another on Workers (cross-request promises can hang).
+const MEMO_MAX = 400
+const memo = new Map<string, { at: number; value: unknown }>()
+
+function remember(path: string, value: unknown) {
+  if (memo.size >= MEMO_MAX) {
+    // Map keeps insertion order: drop the oldest entry.
+    const oldest = memo.keys().next().value
+    if (oldest !== undefined) memo.delete(oldest)
+  }
+  memo.set(path, { at: Date.now(), value })
+}
+
+/** Test hook: forget everything cached in memory. */
+export function clearMemo() {
+  memo.clear()
+}
+
+// Dedupes within one request (generateMetadata, the page and its image all
+// asking for the same path); React clears it between requests.
+const loadOnce = cache(async (path: string): Promise<unknown> => {
+  const hit = memo.get(path)
+  if (hit && Date.now() - hit.at < DATA_TTL_SECONDS * 1000) return hit.value
+  const value = await cachedLoad(path)
+  remember(path, value)
+  return value
+})
 
 export async function getJson<T>(path: string): Promise<T | null> {
   try {
-    return (await cachedLoad(path)) as T
+    return (await loadOnce(path)) as T
   } catch (err) {
     if (!(err instanceof LoaderError)) console.error(`[getJson ${path}]`, err)
     return null

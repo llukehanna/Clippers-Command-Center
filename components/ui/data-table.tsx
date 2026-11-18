@@ -104,6 +104,7 @@ export function Tr({ href, className, children }: { href?: string; className?: s
   const router = useRouter()
   return (
     <tr
+      data-href={href}
       className={cn('group', href && 'cursor-pointer', '[&>td]:transition-colors [&>td]:duration-200 hover:[&>td]:bg-[#0f1829] active:[&>td]:bg-[#0f1829]', className)}
       onClick={href ? () => router.push(href) : undefined}
     >
