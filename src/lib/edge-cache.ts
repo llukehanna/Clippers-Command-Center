@@ -51,10 +51,17 @@ export function isCacheableRequest(request: Request): boolean {
   return true
 }
 
-/** The cache key: the URL, plus which representation (HTML document or RSC payload). */
-export function cacheKey(request: Request): Request {
+/**
+ * The cache key: the URL, plus which representation (HTML document or RSC
+ * payload), plus the deployed Worker version. Pages name the build's hashed
+ * CSS/JS files, and a deploy replaces those files, so a page stored by an
+ * older deploy would load unstyled or fail to hydrate. Keying on the version
+ * makes every deploy start with an empty cache.
+ */
+export function cacheKey(request: Request, version?: string): Request {
   const url = new URL(request.url)
   url.searchParams.set('__edge', request.headers.get('rsc') === '1' ? 'rsc' : 'doc')
+  if (version) url.searchParams.set('__v', version)
   return new Request(url.toString(), { method: 'GET' })
 }
 
@@ -122,6 +129,8 @@ export interface EdgeCacheOptions {
   store: EdgeCacheStore
   ctx: WaitUntil
   now?: () => number
+  /** Deployed Worker version id (CF_VERSION_METADATA); part of the cache key. */
+  version?: string
 }
 
 /**
@@ -131,11 +140,11 @@ export interface EdgeCacheOptions {
 export async function serveWithEdgeCache(
   request: Request,
   render: () => Promise<Response>,
-  { store, ctx, now = Date.now }: EdgeCacheOptions
+  { store, ctx, now = Date.now, version }: EdgeCacheOptions
 ): Promise<Response> {
   if (!isCacheableRequest(request)) return render()
 
-  const key = cacheKey(request)
+  const key = cacheKey(request, version)
   /** Stores `response`, which the caller owns (clone it first if it is also sent to the client). */
   const storeFrom = async (response: Response): Promise<void> => {
     const policy = edgePolicy(response)

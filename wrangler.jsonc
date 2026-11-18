@@ -33,6 +33,9 @@
       "localConnectionString": "postgres://postgres:postgres@127.0.0.1:5432/ccc"
     }
   ],
+  // Deployed version id; keys the edge cache so a deploy never serves pages
+  // that reference the previous build's CSS/JS (src/lib/edge-cache.ts).
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "vars": {
     // Runner + cron route publish here (non-secret). LIVE_HUB_SECRET,
     // CRON_SECRET are Worker secrets (`wrangler secret put`).
