@@ -11,6 +11,7 @@ const INSIGHT_CATEGORY_LABELS: Record<string, string> = {
   opponent_context: 'Scouting Report',
   rare_event: 'Rare Performance',
   milestone: 'Milestone',
+  milestone_crossed: 'Milestone',
   streak: 'Streak',
   year_over_year: 'Year over Year',
   run: 'Scoring Run',

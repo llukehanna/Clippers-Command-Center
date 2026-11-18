@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { addDays, daysBetween, fmtDate, isIsoDate, laToday, monthYear, yearsBetween } from './dates';
-import { parseRecordsStart, recordsSeasons, renderSeason, seasonStartDate } from './records';
+import { careerComplete, parseRecordsStart, recordsSeasons, renderSeason, seasonStartDate } from './records';
 import { factKey, phrasingIndex } from './keys';
 import { combineProof, selectProofRows, shiftPlaceholders, withRef } from './proof';
 import { COMPLETED_SEASON, makeFact } from './__fixtures__/facts';
@@ -40,6 +40,17 @@ describe('records', () => {
     expect(seasonStartDate(2020)).toBe('2020-11-01');
     expect(recordsSeasons({ season_id: 2020, label: '2020-21' }, 2026)).toBe(7);
     expect(recordsSeasons({ season_id: 2026, label: '2026-27' }, 2025)).toBe(1);
+  });
+});
+
+describe('careerComplete', () => {
+  const start = { season_id: 1996, label: '1996-97' };
+  it('needs the first recorded season strictly after the records start', () => {
+    expect(careerComplete(1996, start)).toBe(false);
+    expect(careerComplete(1997, start)).toBe(true);
+    expect(careerComplete(1990, start)).toBe(false);
+    expect(careerComplete(1997, null)).toBe(false);
+    expect(careerComplete(null, start)).toBe(false);
   });
 });
 

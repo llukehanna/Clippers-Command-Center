@@ -142,7 +142,12 @@ describe('kind questions', () => {
   });
   it('milestone first_since compares completed Clippers seasons', () => {
     const m = makeFact({ kind: 'milestone', stat: 'season_points', value: 1500, keyExtra: '1500', data: { threshold: 1500, step: 2, expr: 'SUM(pb.points)' } });
-    expect(milestoneFirstSince.build(m, ctx)!.params).toEqual(['1', 2020, 2025, 1500]);
+    expect(milestoneFirstSince.build(m, ctx)!.params).toEqual(['1', 2020, 2025, 1500, '2026-02-25']);
+    expect(milestoneFirstSince.build(m, ctx)!.sql).toContain('g.game_date <= $5::date');
+    // a postgame crossing is measured at the game date (R2); a career crossing has no season question
+    const crossed = makeFact({ kind: 'milestone_crossed', surface: 'postgame', stat: 'season_points', value: 1000, keyExtra: '1000', seasonId: 2025, context: { date: '2025-12-01' }, data: { threshold: 1000, step: 0, expr: 'SUM(pb.points)', career: false } });
+    expect(milestoneFirstSince.build(crossed, ctx)!.params).toEqual(['1', 2020, 2025, 1000, '2025-12-01']);
+    expect(milestoneFirstSince.build({ ...crossed, data: { ...crossed.data, career: true } }, ctx)).toBeNull();
     expect(milestoneFirstSince.interpret([{ season_id: 2021 }], m, ctx))
       .toMatchObject({ type: 'first_since', since_label: '2021-22', years: 4, strength: 0.65 });
     expect(milestoneFirstSince.interpret([], m, ctx)).toMatchObject({ type: 'records_best', records_seasons: 6 });

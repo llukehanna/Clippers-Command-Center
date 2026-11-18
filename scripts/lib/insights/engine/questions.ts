@@ -9,7 +9,7 @@ import { yearsBetween } from './dates.js';
 import type { Question } from './framer.js';
 import { withRef } from './proof.js';
 import { recordsSeasons, seasonStartDate } from './records.js';
-import { refsFor, type RefSpec } from './references.js';
+import { refAsOf, refsFor, type RefSpec } from './references.js';
 import { FIXED_STRENGTH, clippersRankStrength, rankStrength, sinceStrength } from './strength.js';
 import type { EngineContext, Fact, FactKind } from './types.js';
 
@@ -317,18 +317,19 @@ export const milestoneFirstSince: Question = {
   build(fact, ctx) {
     const start = ctx.recordsStart;
     const { expr, threshold } = fact.data;
-    if (fact.kind !== 'milestone' || !start || fact.seasonId === null || start.season_id >= fact.seasonId || !expr || threshold === undefined) return null;
+    if ((fact.kind !== 'milestone' && fact.kind !== 'milestone_crossed') || fact.data.career === true || !start || fact.seasonId === null || start.season_id >= fact.seasonId || !expr || threshold === undefined) return null;
     return {
       sql: `SELECT pb.player_id::text AS subject_id, p.display_name AS subject_name, g.season_id::int AS season_id, (${expr})::int AS total
 FROM game_player_box_scores pb
 JOIN games g ON g.game_id = pb.game_id
 JOIN players p ON p.player_id = pb.player_id
 WHERE pb.team_id = $1::bigint AND ${REGULAR_SEASON} AND g.season_id >= $2::int AND g.season_id < $3::int
+  AND g.game_date <= $5::date
 GROUP BY pb.player_id, p.display_name, g.season_id
 HAVING (${expr}) >= $4::int
 ORDER BY 3 DESC, 4 DESC, 1
 LIMIT 1`,
-      params: [ctx.lac.teamId, start.season_id, fact.seasonId, threshold],
+      params: [ctx.lac.teamId, start.season_id, fact.seasonId, threshold, refAsOf(fact, ctx)],
     };
   },
   interpret(rows, fact, ctx) {
@@ -417,6 +418,7 @@ ORDER BY season_id`,
 export const QUESTIONS_BY_KIND: Record<FactKind, readonly Question[]> = {
   streak: [streakLongestSince, streakSeasonHigh],
   milestone: [milestoneFirstSince],
+  milestone_crossed: [milestoneFirstSince],
   league_rank: [],
   standings: [],
   recent_form: [],

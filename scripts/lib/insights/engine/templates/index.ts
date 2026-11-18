@@ -4,6 +4,7 @@ import { h2hTemplates } from './h2h.js';
 import { gameFlowTemplates } from './game-flow.js';
 import { lastMeetingTemplates } from './last-meeting.js';
 import { leagueRankTemplates } from './league-rank.js';
+import { milestoneCrossedTemplates } from './milestone-crossed.js';
 import { milestoneTemplates } from './milestone.js';
 import { oppRankTemplates } from './opp-rank.js';
 import { clutchTemplates, playerPeriodTemplates, teamPeriodTemplates } from './period.js';
@@ -18,6 +19,7 @@ import { yoyTemplates } from './yoy.js';
 export const TEMPLATES: Record<FactKind, TemplateModule> = {
   streak: streakTemplates,
   milestone: milestoneTemplates,
+  milestone_crossed: milestoneCrossedTemplates,
   league_rank: leagueRankTemplates,
   standings: standingsTemplates,
   recent_form: recentFormTemplates,

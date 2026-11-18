@@ -7,6 +7,7 @@ import { clutchDetector, periodsDetector } from './postgame-periods.js';
 import { playerLinesDetector } from './postgame-player-lines.js';
 import { teamLinesDetector } from './postgame-team-lines.js';
 import { opponentDetector } from './pregame-opponent.js';
+import { milestonesCrossedDetector } from './postgame-milestones.js';
 import { milestoneDetector } from './season-milestones.js';
 import { leagueRankDetector, recentFormDetector, standingsDetector } from './season-ranks.js';
 import { streakDetector } from './season-streaks.js';
@@ -25,4 +26,5 @@ export const DETECTORS: readonly Detector[] = [
   flowDetector(),
   periodsDetector(),
   clutchDetector(),
+  milestonesCrossedDetector(),
 ];

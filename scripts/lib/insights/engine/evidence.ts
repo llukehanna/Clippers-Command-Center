@@ -35,6 +35,7 @@ export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
         ? { type: 'streak_strip', games: d.streak_games, threshold: d.hit_threshold ?? 0 }
         : null;
     case 'milestone':
+    case 'milestone_crossed':
       return { type: 'milestone_progress', current: d.total_value ?? f.value, target: d.threshold ?? f.value, label: d.unit ?? '' };
     case 'league_rank':
     case 'recent_form':

@@ -26,6 +26,11 @@ export function seasonStartDate(seasonId: number): string {
   return seasonId === 2020 ? '2020-11-01' : `${seasonId}-08-01`;
 }
 
+/** A career is complete when the player's first recorded season is strictly after where records start. */
+export function careerComplete(firstSeason: number | null, start: RecordsStart | null): boolean {
+  return start !== null && firstSeason !== null && firstSeason > start.season_id;
+}
+
 /** Seasons of records from the start through `throughSeason`, at least 1. */
 export function recordsSeasons(start: RecordsStart, throughSeason: number): number {
   return Math.max(1, throughSeason - start.season_id + 1);

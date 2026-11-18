@@ -388,6 +388,63 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       });
     }, TIMEOUT);
 
+    // The Clippers' last regular-season game, as a postgame ctx for it alone.
+    async function lastGameCtx(): Promise<EngineContext> {
+      const ctx = await ctxAt(laToday());
+      const [last] = await sql<{ game_id: string }[]>`
+        SELECT g.game_id::text AS game_id FROM games g
+        WHERE ${ctx.lac.teamId}::bigint IN (g.home_team_id, g.away_team_id) AND g.season_id = ${ctx.season.id}
+          AND ${sql.unsafe(REGULAR_SEASON)} AND g.game_date <= ${ctx.asOf}::date
+          AND EXISTS (SELECT 1 FROM game_player_box_scores b WHERE b.game_id = g.game_id AND b.team_id = ${ctx.lac.teamId}::bigint)
+        ORDER BY g.game_date DESC, g.game_id DESC LIMIT 1`;
+      return { ...ctx, gameId: last.game_id };
+    }
+
+    it('crossedSql: every total is bounded at the game date, every bind is used', async () => {
+      const { crossedSql } = await import('./engine/detectors/postgame-milestones');
+      const { playerTotalSub } = await import('./engine/sql');
+      const q = crossedSql();
+      for (const n of [1, 2, 3, 4]) expect(q).toContain(`$${n}`);
+      expect(q).not.toMatch(/\$5/);
+      // 3 season + 4 career milestones, each a total and a "before" total
+      expect(q.split('g.game_date <= $4::date').length - 1).toBe(2 * (3 + 4));
+      expect(q.split('pb.game_id <> $1::bigint').length - 1).toBe(3 + 4);
+      const s = playerTotalSub('x', 'SUM(pb.points)::int', ' AND g.season_id = $3::int');
+      expect(s).toContain('pb.player_id = x.player_id');
+      expect(s).toContain('g.game_date <= $4::date');
+      expect(playerTotalSub('x', 'SUM(pb.points)::int', '', '$7')).toContain('g.game_date <= $7::date');
+    });
+
+    it('postgame milestones: the game where a player passed a season total; no career claims in the fixture', async () => {
+      const [g] = await sql<{ game_id: string }[]>`
+        SELECT game_id FROM (
+          SELECT pb.game_id::text AS game_id, SUM(pb.points) OVER (ORDER BY gg.game_date, gg.game_id) AS total
+          FROM game_player_box_scores pb JOIN games gg ON gg.game_id = pb.game_id
+          WHERE pb.player_id = 1 AND gg.season_id = 2025 AND ${sql.unsafe(REGULAR_SEASON.replace(/\bg\./g, 'gg.'))}
+        ) x WHERE total >= 1000 ORDER BY total LIMIT 1`;
+      const { milestonesCrossedDetector } = await import('./engine/detectors/postgame-milestones');
+      const ctx = { ...(await ctxAt(laToday())), gameId: g.game_id };
+      const facts = (await milestonesCrossedDetector().run(ctx)).facts.filter((f) => f.subject.id === '1');
+      expect(facts.length).toBeGreaterThan(0);
+      expect(facts.find((f) => f.stat === 'season_points')).toMatchObject({ kind: 'milestone_crossed', value: 1000, keyExtra: '1000', data: { career: false } });
+      // nobody in the fixture reaches 5,000 career points, so no career fact; the career-complete rule itself is pinned by careerComplete's unit test
+      expect(facts.some((f) => f.data.career)).toBe(false);
+    }, TIMEOUT);
+
+    it('postgame milestones: a late joiner gets no season or career crossing while league data is incomplete', async () => {
+      const { milestonesCrossedDetector } = await import('./engine/detectors/postgame-milestones');
+      const ctx = await lastGameCtx();
+      await withLateJoiner(ctx, async () => {
+        // 5,200 points on one line: crosses 1,000 ... 2,500 for the season and 5,000 for his career
+        await sql`UPDATE game_player_box_scores SET points = 5200 WHERE player_id = ${LATE_ID}`;
+        const full = (await milestonesCrossedDetector().run(ctx)).facts.filter((f) => f.subject.id === String(LATE_ID));
+        expect(full.find((f) => f.stat === 'season_points')).toMatchObject({ value: 2500, data: { career: false } });
+        expect(full.find((f) => f.stat === 'career_points')).toMatchObject({ value: 5000, data: { career: true } });
+        const guarded = (await milestonesCrossedDetector().run(incomplete(ctx))).facts;
+        expect(guarded.some((f) => f.subject.id === String(LATE_ID))).toBe(false);
+      });
+    }, TIMEOUT);
+
     it('loadEngineContext: a roster snapshot changes nothing while the league is complete', async () => {
       const { loadEngineContext } = await import('./engine/context');
       const base = await ctxAt('2026-02-25');

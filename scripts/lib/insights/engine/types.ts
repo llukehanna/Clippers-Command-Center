@@ -17,7 +17,7 @@ export interface RecordsStart { season_id: number; label: string }
 
 /** Every fact kind. The template and question registries must cover each one (tests enforce it). */
 export const FACT_KINDS = [
-  'streak', 'milestone', 'league_rank', 'standings', 'recent_form', 'yoy_change',
+  'streak', 'milestone', 'milestone_crossed', 'league_rank', 'standings', 'recent_form', 'yoy_change',
   'opp_rank', 'h2h', 'last_meeting', 'player_game_stat', 'player_combo',
   'team_game_stat', 'game_flow', 'player_period_stat', 'team_period_stat', 'clutch',
 ] as const;
@@ -59,6 +59,7 @@ export interface FactData {
   streak_games?: StreakGame[];
   hit_threshold?: number;
   // Milestones / season totals
+  career?: boolean;          // career (not season) milestone
   threshold?: number;
   step?: number;
   total_value?: number;

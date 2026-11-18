@@ -104,6 +104,21 @@ export async function seasonTotalShare(ctx: EngineContext, expr: string, thresho
   return ((r?.k ?? 0) + 1) / ((r?.n ?? 0) + 2);
 }
 
+/** Share of players (>= 200 regular-season games in the data) whose career total of `column` reached `threshold`; (k+1)/(n+2). */
+export async function careerTotalShare(ctx: EngineContext, column: string, threshold: number): Promise<number> {
+  const [r] = await sql<{ k: number; n: number }[]>`
+    SELECT COUNT(*) FILTER (WHERE total >= ${threshold}::float8)::int AS k, COUNT(*)::int AS n
+    FROM (
+      SELECT pb.player_id, SUM(${sql.unsafe(`pb.${column}`)})::float8 AS total
+      FROM game_player_box_scores pb
+      JOIN games g ON g.game_id = pb.game_id
+      WHERE ${regular()} AND g.game_date <= ${ctx.asOf}::date
+      GROUP BY pb.player_id
+      HAVING COUNT(*) >= 200
+    ) s`;
+  return ((r?.k ?? 0) + 1) / ((r?.n ?? 0) + 2);
+}
+
 /** Share of the Clippers' final regular-season games won (or lost) from records start through as-of, Laplace-smoothed (k+1)/(n+2) so it is strictly inside (0,1); the team streak's p_ref. */
 export async function clippersTeamResultShare(ctx: EngineContext, wins: boolean): Promise<number> {
   const lac = ctx.lac.teamId;
