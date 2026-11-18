@@ -1,7 +1,8 @@
 // scripts/sync-franchise-moves.ts
 // Nightly franchise moves (spec §3.5; the work is syncMoves in lib/franchise/sync-moves.ts): NBA.com's movement feed,
-// or ESPN's Clippers transactions when NBA.com fails or takes 20 s, written after app_kv 'franchise:moves_synced_through'.
-// Prints the source used. Exits non-zero, writing nothing, on any line no parser or override reads.
+// or ESPN's Clippers transactions when NBA.com fails or takes 20 s, from app_kv 'franchise:moves_synced_through' minus
+// 3 days. Prints the source used and whether the key moved (only NBA.com nights move it). Exits non-zero, writing
+// nothing, on any line no parser or override reads.
 //
 // Run via: npm run sync-franchise-moves
 import fs from 'node:fs';
@@ -31,7 +32,9 @@ async function main() {
       fetchNba: () => getJson(NBA_MOVEMENT.url), fetchEspn: () => getJson(ESPN_TRANSACTIONS_URL),
       db: sql as unknown as Db, now: () => new Date(), log,
     });
-    const line = `source: ${r.source}; written: ${r.written}; incomplete: ${r.incomplete.length}`;
+    const key = r.advanced ? `synced through ${r.syncedThrough} (advanced)`
+      : `synced through ${r.syncedThrough ?? 'none'} (unchanged${r.source === 'espn' ? ': ESPN nights never move it' : ''})`;
+    const line = `source: ${r.source}; written: ${r.written}; incomplete: ${r.incomplete.length}; ${key}`;
     log(line);
     for (const k of r.incomplete) log(`  incomplete: ${k}`);
     summary([line, ...r.incomplete.map((k) => `incomplete: \`${k}\``)]);

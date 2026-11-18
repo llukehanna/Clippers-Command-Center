@@ -1,17 +1,23 @@
 // scripts/lib/franchise/sync-moves.ts
 // The nightly moves job (scripts/sync-franchise-moves.ts is the thin entry point; spec §3.5): one download of NBA.com's
 // movement feed, or ESPN's Clippers transactions when NBA.com fails or takes 20 s, then the import's own steps on the
-// moves dated after app_kv 'franchise:moves_synced_through' (parse -> reconcileMoves -> applyMoveOverrides -> people
-// -> applyOverrides), written in job mode (adds rows and fills nulls, never deletes) and the key advanced, in one
-// database transaction.
+// moves in the window (parse -> reconcileMoves -> applyMoveOverrides -> people -> applyOverrides), written in job mode
+// (adds rows and fills nulls, never deletes), in one database transaction with the key.
+//
+// - The window: moves dated after app_kv 'franchise:moves_synced_through' minus OVERLAP_DAYS. Re-reading the last
+//   three days is idempotent (the writer matches by key and source) and catches what a strict `> key` misses: a move
+//   NBA.com posts late with an already-synced date, and NBA.com's report of a trade ESPN wrote first (its `nba:`
+//   source joins that row through adoptExisting, whose window is also three days).
+// - The key moves only on NBA.com nights, to the latest date written, never backwards; with nothing new it stays.
+//   ESPN's feed is Clippers-only: an ESPN night writes what ESPN has but leaves the key, so the league-wide moves
+//   NBA.com still holds are read the next NBA.com night. Missing (first run): the latest NBA.com or ESPN transaction
+//   already stored, so the job doesn't rewrite what the import wrote.
 //
 // - People: the job has no BBRef rosters, so its PeopleIndex is person_xref plus `players` plus the override links.
 //   A part's person resolves to the person_xref key already holding its NBA.com id (or its name, for ESPN), so the
 //   writer's adoption (adoptExisting) finds the row another source wrote first and keeps one row per event.
-// - Unparsed lines dated after the key (or undated) that no override settles stop the run before anything is
-//   written, and the key stays where it was: a committed override (ignore, or create) settles them the next night.
-// - The key: the latest date written, never backwards. Missing (first run): the latest NBA.com or ESPN transaction
-//   already stored, so the job doesn't rewrite what the import wrote.
+// - Unparsed lines in the window (or undated) that no override settles stop the run before anything is written, and
+//   the key stays where it was: a committed override (ignore, or create) settles them the next night.
 import type { Db } from '../history/write.js';
 import { applyMoveOverrides, applyOverrides } from './apply-overrides.js';
 import { defaultDraftYear } from './build-dataset.js';
@@ -27,6 +33,8 @@ import { writeFranchise } from './write.js';
 
 export const SYNCED_THROUGH_KEY = 'franchise:moves_synced_through';
 export const NBA_TIMEOUT_MS = 20_000;
+/** Days before the key the job re-reads. */
+export const OVERLAP_DAYS = 3;
 
 export type FeedSource = 'nba' | 'espn';
 
@@ -42,10 +50,14 @@ export interface SyncDeps {
 
 export interface SyncResult {
   source: FeedSource;
-  /** Moves written (new rows, or sources added to the row of the same event). */
+  /** Transactions this run inserted or changed (a re-read of the overlap that changes nothing counts 0). */
   written: number;
-  /** Transaction keys of the written moves still is_complete = false. */
+  /** Transaction keys of the window's moves still is_complete = false. */
   incomplete: string[];
+  /** franchise:moves_synced_through after the run (null: none yet). */
+  syncedThrough: string | null;
+  /** Whether this run moved the key (only NBA.com nights do). */
+  advanced: boolean;
 }
 
 /** The run stopped before writing: lines no parser or override could read. */
@@ -89,7 +101,7 @@ export async function fetchFeed(deps: Pick<SyncDeps, 'fetchNba' | 'fetchEspn'>):
 export interface NightlyInput {
   source: FeedSource;
   json: unknown;
-  /** Moves dated after this are new; null: everything is (an empty database). */
+  /** Moves dated after this minus OVERLAP_DAYS are read; null: everything is (an empty database). */
   syncedThrough: string | null;
   /** person_xref. */
   people: PersonRow[];
@@ -98,9 +110,15 @@ export interface NightlyInput {
   currentDraftYear: number;
 }
 
-/** The night's dataset (moves after the key, the people person_xref lacks) and the lines still unparsed. */
+/** YYYY-MM-DD `n` days before `date`. */
+function daysBefore(date: string, n: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** The night's dataset (moves in the window, the people person_xref lacks) and the lines still unparsed. */
 export function buildNightly(input: NightlyInput): { data: FranchiseDataset; unparsed: UnparsedLine[] } {
-  const after = (d: string | null) => input.syncedThrough == null || d == null || d > input.syncedThrough;
+  const from = input.syncedThrough == null ? null : daysBefore(input.syncedThrough, OVERLAP_DAYS);
+  const after = (d: string | null) => from == null || d == null || d > from;
   const parsed = input.source === 'nba'
     ? parseMovement(input.json)
     : parseEspnTransactions(input.json, input.players.map((p) => ({ name: p.display_name, nbaPersonId: p.nba_person_id })));
@@ -146,9 +164,11 @@ export function nextSyncedThrough(prev: string | null, written: string[]): strin
 
 // ---- database ----------------------------------------------------------------------
 
-async function loadState(db: Db): Promise<{ syncedThrough: string | null; people: PersonRow[]; players: DbPlayer[] }> {
+/** `stored`: the key as stored; `syncedThrough`: it, or the first run's baseline. */
+async function loadState(db: Db): Promise<{ stored: string | null; syncedThrough: string | null; people: PersonRow[]; players: DbPlayer[] }> {
   const [kv] = await db<{ v: string }[]>`SELECT value #>> '{}' AS v FROM app_kv WHERE key = ${SYNCED_THROUGH_KEY}`;
-  let syncedThrough: string | null = kv?.v ?? null;
+  const stored = kv?.v ?? null;
+  let syncedThrough: string | null = stored;
   if (syncedThrough == null) {
     const [t] = await db<{ d: string | null }[]>`
       SELECT max(date)::text AS d FROM transactions t
@@ -161,7 +181,7 @@ async function loadState(db: Db): Promise<{ syncedThrough: string | null; people
     FROM person_xref`;
   const players = await db<DbPlayer[]>`
     SELECT player_id::text, nba_person_id, display_name, birthdate::text AS birthdate FROM players`;
-  return { syncedThrough, people: [...people], players: [...players] };
+  return { stored, syncedThrough, people: [...people], players: [...players] };
 }
 
 export async function syncMoves(deps: SyncDeps): Promise<SyncResult> {
@@ -177,12 +197,16 @@ export async function syncMoves(deps: SyncDeps): Promise<SyncResult> {
   });
   if (unparsed.length) throw new UnparsedMovesError(feed.source, unparsed);
 
-  const next = nextSyncedThrough(state.syncedThrough, data.moves.map((m) => m.date));
+  // ESPN nights never move the key (see the header).
+  const next = feed.source === 'nba' ? nextSyncedThrough(state.syncedThrough, data.moves.map((m) => m.date)) : state.stored;
+  const advanced = next !== state.stored;
   let incomplete: string[] = [];
+  let written = 0;
   await db.begin(async (t) => {
     const tx = t as unknown as Db;
     if (data.moves.length) {
-      await writeFranchise(tx, data, { kind: 'job', job: 'nightly' });
+      const res = await writeFranchise(tx, data, { kind: 'job', job: 'nightly' });
+      written = (res.inserted.transactions ?? 0) + (res.updated.transactions ?? 0);
       const keys = data.moves.map((m) => m.transactionKey);
       const sources = [...new Set(data.moves.flatMap((m) => m.sources))];
       incomplete = (await tx<{ transaction_key: string }[]>`
@@ -190,11 +214,11 @@ export async function syncMoves(deps: SyncDeps): Promise<SyncResult> {
         WHERE NOT is_complete AND (transaction_key = ANY(${keys}::text[]) OR sources && ${sources}::text[])
         ORDER BY date, transaction_key`).map((r) => r.transaction_key);
     }
-    if (next != null) {
+    if (advanced && next != null) {
       await tx`
         INSERT INTO app_kv (key, value, updated_at) VALUES (${SYNCED_THROUGH_KEY}, ${tx.json(next)}, now())
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
     }
   });
-  return { source: feed.source, written: data.moves.length, incomplete };
+  return { source: feed.source, written, incomplete, syncedThrough: next, advanced };
 }

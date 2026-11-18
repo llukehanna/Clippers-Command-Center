@@ -18,7 +18,7 @@ const row = (type: string, date: string, desc: string, team: number, player: num
   Transaction_Type: type, TRANSACTION_DATE: `${date}T00:00:00`, TRANSACTION_DESCRIPTION: desc, TEAM_ID: team, PLAYER_ID: player, GroupSort: group,
 });
 const nbaFeed = (...rows: unknown[]) => ({ NBA_Player_Movement: { rows } });
-const OLD = row('Signing', '2026-11-08', 'LA Clippers signed guard Old Hand to a contract.', LAC, 1, 'Signing 1');
+const OLD = row('Signing', '2026-11-05', 'LA Clippers signed guard Old Hand to a contract.', LAC, 1, 'Signing 1');
 const WESLEY = row('Signing', '2026-11-17', 'LA Clippers signed guard Blake Wesley to a 10-Day Contract.', LAC, 1631104, 'Signing 2');
 const ODD = row('Signing', '2026-11-18', 'LA Clippers and guard Blake Wesley agreed to terms.', LAC, 1631104, 'Signing 3');
 const strusTrade = (date: string) => [
@@ -63,7 +63,7 @@ describe.skipIf(!url)('nightly moves job (fixture DB)', () => {
 
   it('writes only moves after the synced-through date', async () => {
     const r = await syncMoves(deps({ fetchNba: async () => nbaFeed(OLD, WESLEY, ...strusTrade('2026-11-18')) }));
-    expect(r).toEqual({ source: 'nba', written: 2, incomplete: ['nba:Trade 2026020'] });
+    expect(r).toEqual({ source: 'nba', written: 2, incomplete: ['nba:Trade 2026020'], syncedThrough: '2026-11-18', advanced: true });
     expect((await transactions()).map((t) => t.transaction_key)).toEqual(['nba:Signing 2:1631104', 'nba:Trade 2026020']);
     expect(await syncedThrough()).toBe('2026-11-18');
     // The trade's player resolved to the person the import already holds; Wesley is new, as nba:<id>.
@@ -74,11 +74,21 @@ describe.skipIf(!url)('nightly moves job (fixture DB)', () => {
       { person_key: null, gap_reason: 'pick_unidentified' },
     ]);
 
-    // The next night the same feed brings nothing new: nothing written, the key stays.
+    // The next night the same feed brings nothing new: the overlap is read again, nothing changes, the key stays.
     const again = await syncMoves(deps({ fetchNba: async () => nbaFeed(OLD, WESLEY, ...strusTrade('2026-11-18')) }));
-    expect(again).toEqual({ source: 'nba', written: 0, incomplete: [] });
+    expect(again).toEqual({ source: 'nba', written: 0, incomplete: ['nba:Trade 2026020'], syncedThrough: '2026-11-18', advanced: false });
     expect(await transactions()).toHaveLength(2);
     expect(await syncedThrough()).toBe('2026-11-18');
+  });
+
+  it('writes a move posted late with a date already synced', async () => {
+    await syncMoves(deps({ fetchNba: async () => nbaFeed(WESLEY, ...strusTrade('2026-11-18')) }));
+    expect(await syncedThrough()).toBe('2026-11-18');
+    // NBA.com adds a second 2026-11-18 move after the run: the next night's overlap still reads that day.
+    const late = row('Waive', '2026-11-18', 'LA Clippers waived guard Old Hand.', LAC, 1, 'Waive 4');
+    const r = await syncMoves(deps({ fetchNba: async () => nbaFeed(WESLEY, ...strusTrade('2026-11-18'), late) }));
+    expect(r).toMatchObject({ written: 1, syncedThrough: '2026-11-18', advanced: false });
+    expect((await transactions()).map((t) => t.transaction_key)).toContain('nba:Waive 4:1');
   });
 
   it('starts from the latest NBA.com or ESPN transaction already stored when the key is missing', async () => {
@@ -107,7 +117,19 @@ describe.skipIf(!url)('nightly moves job (fixture DB)', () => {
     expect(t.transaction_key).toMatch(/^espn:2026-11-17:/);
     expect(await sql`SELECT person_key, from_franchise_id, to_franchise_id FROM transaction_parts`)
       .toEqual([{ person_key: 'strusma01', from_franchise_id: CLE, to_franchise_id: LAC }]);
-    expect(await syncedThrough()).toBe('2026-11-17');
+    expect(r).toMatchObject({ syncedThrough: '2026-11-10', advanced: false });
+    expect(await syncedThrough()).toBe('2026-11-10');
+  });
+
+  it('an espn night leaves the key unchanged', async () => {
+    const r = await syncMoves(deps({ fetchEspn: async () => ESPN_STRUS }));
+    expect(r).toMatchObject({ source: 'espn', written: 1, syncedThrough: '2026-11-10', advanced: false });
+    expect(await syncedThrough()).toBe('2026-11-10');
+    // With no key yet, an ESPN night doesn't create one either.
+    await sql`DELETE FROM app_kv`;
+    await sql`DELETE FROM transactions`;
+    expect(await syncMoves(deps({ fetchEspn: async () => ESPN_STRUS }))).toMatchObject({ syncedThrough: null, advanced: false });
+    expect(await syncedThrough()).toBeNull();
   });
 
   it('exits without writing on an unparsed line', async () => {
@@ -120,13 +142,15 @@ describe.skipIf(!url)('nightly moves job (fixture DB)', () => {
   });
 
   it('stays one row when espn then nba report the same trade', async () => {
+    // An earlier NBA.com night already synced through the trade's date.
+    await sql`UPDATE app_kv SET value = ${sql.json('2026-11-17')} WHERE key = ${SYNCED_THROUGH_KEY}`;
     const first = await syncMoves(deps({ fetchEspn: async () => ESPN_STRUS }));
-    expect(first.source).toBe('espn');
+    expect(first).toMatchObject({ source: 'espn', written: 1, advanced: false });
     const [espnRow] = await transactions();
     const [{ slug }] = await sql`SELECT slug FROM transactions`;
 
-    // NBA.com dates it the day it became official, a day after ESPN's line.
-    const second = await syncMoves(deps({ fetchNba: async () => nbaFeed(...strusTrade('2026-11-18')) }));
+    // The next night NBA.com lists the same trade on the same date: the overlap reads it, and its nba: source joins.
+    const second = await syncMoves(deps({ fetchNba: async () => nbaFeed(...strusTrade('2026-11-17')) }));
     expect(second.source).toBe('nba');
     expect(second.written).toBe(1);
     const rows = await transactions();
@@ -134,7 +158,7 @@ describe.skipIf(!url)('nightly moves job (fixture DB)', () => {
     expect(rows[0].transaction_key).toBe(espnRow.transaction_key);
     expect(rows[0].sources).toEqual([espnRow.transaction_key, 'nba:Trade 2026020']);
     expect((await sql`SELECT slug FROM transactions`)[0].slug).toBe(slug);
-    expect(await syncedThrough()).toBe('2026-11-18');
+    expect(await syncedThrough()).toBe('2026-11-17');
   });
 
   it('applies a committed override on the next run', async () => {
