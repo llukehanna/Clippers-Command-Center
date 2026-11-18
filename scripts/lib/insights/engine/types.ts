@@ -84,7 +84,7 @@ export interface FactData {
   lac_score?: number;
   opp_score?: number;
   meeting_date?: string;
-  line?: string;             // "24-12-11" (points-rebounds-assists)
+  line?: string;             // the line's big categories: "12 pts, 11 reb, 10 blk"
   meeting_home?: boolean;
 }
 

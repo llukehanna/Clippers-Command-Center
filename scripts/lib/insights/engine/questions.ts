@@ -127,7 +127,7 @@ LIMIT 1`);
     const r = rows[0];
     // A same-game teammate matched or beat it: neither "best" nor "first since" holds.
     if (r && String(r.game_date) >= fact.context.date) return null;
-    if (!r) return frame('records_best', FIXED_STRENGTH.records_best, 'group', recordsExtra(fact, refs));
+    if (!r) return refs.ordinal ? frame('records_best', FIXED_STRENGTH.records_best, 'group', recordsExtra(fact, refs)) : null;
     const since = String(r.game_date);
     const years = yearsBetween(since, fact.context.date);
     return frame('first_since', sinceStrength(years), 'group', { since_date: since, years: round1(years), records_label: refs.start.label });

@@ -37,8 +37,8 @@ export const playerLineTemplates: TemplateModule = {
 const comboHeadline = (i: number): Headline => (f, rc) =>
   i === 0
     ? `${f.subject.name} posted a ${f.data.thing} vs the ${oppShort(f, rc)}`
-    : `${f.subject.name} had a ${f.data.line} line vs the ${oppShort(f, rc)}`;
+    : `${f.subject.name} had ${f.data.line} vs the ${oppShort(f, rc)}`;
 
 export const playerComboTemplates: TemplateModule = {
-  default: phrasings([comboHeadline(0), comboHeadline(1)], (f) => `${f.data.line} (points-rebounds-assists)`),
+  default: phrasings([comboHeadline(0), comboHeadline(1)], (f) => `${cap(f.data.line ?? '')} in ${f.context.result === 'W' ? 'a win' : 'a loss'}`),
 };

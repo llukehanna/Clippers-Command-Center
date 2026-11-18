@@ -61,10 +61,10 @@ export async function buildDraft(
   const framed = await frameFact(fact, ctx, run, questionsFor(fact));
   if (isTrivial(probability(fact.sample), framed.frame.type, fact.kind)) return { reason: 'trivial' };
 
-  // Postgame claims freeze after their window, so they name their season rather than say "this season".
+  // Postgame claims freeze after their window, so they name their season, "so far" because their references stop at the game date (a later game may beat it).
   const factSeason = renderSeason(fact.seasonId, ctx.season, ctx.asOf, fact.context.date);
   const season = fact.surface === 'postgame'
-    ? { ...factSeason, isCurrent: false, phrase: `in ${factSeason.label}` }
+    ? { ...factSeason, isCurrent: false, phrase: `so far in ${factSeason.label}` }
     : factSeason;
   const rendered = renderInsight(fact, framed.frame, { surface: fact.surface, season, teams: ctx.teams }, key);
   if (!rendered) return { reason: 'too_long' };

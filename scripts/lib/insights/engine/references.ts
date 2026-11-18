@@ -94,12 +94,14 @@ function playerStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
 
 export interface ComboDef { key: 'pts30_reb10' | 'pts30_ast10' | 'triple_double'; cond: string; thing: string }
 
-const TENS = `((pb.points >= 10)::int + (pb.rebounds >= 10)::int + (pb.assists >= 10)::int + (pb.steals >= 10)::int + (pb.blocks >= 10)::int)`;
+/** NULL-safe: a missing stat counts as not reaching the mark, never as an unknown that voids the whole sum. */
+const atLeast = (col: string, n: number) => `COALESCE(pb.${col} >= ${n}, FALSE)`;
+export const TENS = `(${['points', 'rebounds', 'assists', 'steals', 'blocks'].map((c) => `${atLeast(c, 10)}::int`).join(' + ')})`;
 
 /** Combined lines (non-ordinal: did it or didn't). */
 export const COMBOS: ComboDef[] = [
-  { key: 'pts30_reb10', cond: 'pb.points >= 30 AND pb.rebounds >= 10', thing: '30-point, 10-rebound game' },
-  { key: 'pts30_ast10', cond: 'pb.points >= 30 AND pb.assists >= 10', thing: '30-point, 10-assist game' },
+  { key: 'pts30_reb10', cond: `${atLeast('points', 30)} AND ${atLeast('rebounds', 10)}`, thing: '30-point, 10-rebound game' },
+  { key: 'pts30_ast10', cond: `${atLeast('points', 30)} AND ${atLeast('assists', 10)}`, thing: '30-point, 10-assist game' },
   { key: 'triple_double', cond: `${TENS} >= 3`, thing: 'triple-double' },
 ];
 

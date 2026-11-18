@@ -19,8 +19,14 @@ export const SWEEP_FRAMES: Frame[] = [
   fr('milestone', { step: 1 }),
 ];
 
-export const rcFor = (surface: Surface, current = true): RenderContext =>
-  ({ surface, season: current ? CURRENT_SEASON : COMPLETED_SEASON, teams: makeCtx().teams });
+/** Postgame rows are frozen, so buildDraft words their season "so far in {label}" whatever the date (run.ts). */
+export const rcFor = (surface: Surface, current = true): RenderContext => {
+  const season = current ? CURRENT_SEASON : COMPLETED_SEASON;
+  return {
+    surface, teams: makeCtx().teams,
+    season: surface === 'postgame' ? { ...season, isCurrent: false, phrase: `so far in ${season.label}` } : season,
+  };
+};
 
 export const say = (f: Fact, frame: Frame, rc: RenderContext, i = 0): Rendered => phrasingsFor(f, frame)[i](f, frame, rc);
 

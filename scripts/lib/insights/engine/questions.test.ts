@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { COMBOS, refAsOf, refsFor } from './references';
+import { COMBOS, TENS, refAsOf, refsFor } from './references';
 import { FACT_KINDS } from './types';
 import {
   careerHigh, clippersRank, groupCompany, groupFirstSince, groupSeasonHigh, leagueRank, milestoneFirstSince,
@@ -200,6 +200,14 @@ describe('postgame references are bounded at the fact date (R2)', () => {
     expect(refs.subject!.params).toEqual(['1', '2025-11-28']);
     expect(refsFor({ ...combo, stat: 'nope' }, ctx)).toBeNull();
     expect(refsFor(combo, makeCtx({ recordsStart: null }))!.group).toBeNull();
+  });
+  it('combo predicates are NULL-safe: a missing steals or blocks cannot void a triple-double', () => {
+    expect(TENS.match(/COALESCE\(pb\.\w+ >= 10, FALSE\)::int/g)).toHaveLength(5);
+    expect(TENS).not.toMatch(/\(pb\.\w+ >= 10\)::int/);
+    for (const c of COMBOS.filter((x) => x.key !== 'triple_double')) expect(c.cond, c.key).toMatch(/^COALESCE\(.*\) AND COALESCE\(.*\)$/);
+  });
+  it('a combo with nobody earlier is not "the most" (only_one comes from the company question)', () => {
+    expect(groupFirstSince.interpret([], combo, ctx)).toBeNull();
   });
   it('every combo key has a definition', () => {
     for (const key of ['pts30_reb10', 'pts30_ast10', 'triple_double']) {

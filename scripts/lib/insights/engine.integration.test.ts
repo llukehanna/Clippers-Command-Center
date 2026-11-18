@@ -237,7 +237,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       const after = await rate(dayAfter);
       expect(after.kind === 'rate' && after.n).toBe(await countBefore(dayAfter));
       expect(after.kind === 'rate' && after.n).toBe(atLast.kind === 'rate' ? atLast.n + 1 : -1);
-      // The group rate (p_ref) also ignores games on or after the fact date.
+      // The earliest game has no prior games to count.
       const early = await rate(dates[0].d);
       expect(early.kind === 'rate' && early.n).toBe(0);
     }, TIMEOUT);
@@ -526,6 +526,77 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     });
   });
 
+  describe('combos end to end', () => {
+    type Box = { points: number | null; rebounds: number | null; assists: number | null; steals: number | null; blocks: number | null };
+    const GET = (gameId: string) => sql<(Box & { game_id: string })[]>`
+      SELECT game_id::text, points::int, rebounds::int, assists::int, steals::int, blocks::int
+      FROM game_player_box_scores WHERE player_id = 1 AND game_id = ${gameId}::bigint`;
+    const SET = (gameId: string, b: Box) => sql`
+      UPDATE game_player_box_scores SET points = ${b.points}, rebounds = ${b.rebounds}, assists = ${b.assists},
+        steals = ${b.steals}, blocks = ${b.blocks}
+      WHERE player_id = 1 AND game_id = ${gameId}::bigint`;
+    const rerun = async (d: InsightDraft) => {
+      const params = Object.entries(d.proof_params).sort(([a], [b]) => Number(a.slice(1)) - Number(b.slice(1))).map(([, v]) => v);
+      return (await sql.unsafe(d.proof_sql, params as never[])).map((r) => ({ ...r }));
+    };
+
+    it('an earlier triple-double with NULL steals and blocks counts; a later one is framed and its proof verifies', async () => {
+      const games = await sql<{ game_id: string; d: string }[]>`
+        SELECT g.game_id::text, g.game_date::text AS d FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
+        WHERE pb.player_id = 1 AND pb.team_id = 1 AND g.season_id = 2025 AND g.status = 'final' AND ${sql.unsafe(REGULAR_SEASON)}
+        ORDER BY g.game_date`;
+      const early = games[5];
+      const late = games[games.length - 1];
+      const [origEarly] = await GET(early.game_id);
+      const [origLate] = await GET(late.game_id);
+      const { runEngine } = await import('./engine/run');
+      const { refRate } = await import('./engine/rates');
+      try {
+        await SET(early.game_id, { points: 10, rebounds: 10, assists: 10, steals: null, blocks: null });
+        await SET(late.game_id, { points: 12, rebounds: 11, assists: 10, steals: 1, blocks: 0 });
+        const ctx = await ctxAt(laToday());
+        const tdFact = (date: string, gameId: string) => makeFact({
+          kind: 'player_combo', surface: 'postgame', stat: 'triple_double', value: 1,
+          window: { type: 'game', game_id: gameId, season_id: 2025 }, context: { date }, gameId, seasonId: 2025, data: {},
+        });
+        // p_ref counts only games strictly before the fact date, and the NULL-steals triple-double is a hit.
+        const day = (d: string, n: number) => new Date(new Date(`${d}T12:00:00Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
+        const at = await refRate(tdFact(early.d, '0'), ctx);
+        const after = await refRate(tdFact(day(early.d, 1), '0'), ctx);
+        expect(at).toMatchObject({ kind: 'rate', k: 0 });
+        expect((at as { pRef: number }).pRef).toBe(0);
+        expect((after as { pRef: number }).pRef).toBeGreaterThan(0);
+
+        // The earlier triple-double (NULL steals) is the one the later game is "first since".
+        const withEarlier = await runEngine({ surfaces: ['postgame'], asOf: laToday(), write: false, gameId: late.game_id });
+        const combo = withEarlier.drafts.find((d) => d.category === 'player_combo' && d.entities.some((e) => e.id === '1'));
+        expect(combo, 'triple-double combo draft').toBeDefined();
+        expect(combo!.frame.type).toBe('first_since');
+        expect(combo!.frame.since_date).toBe(early.d);
+        expect(combo!.headline).toMatch(/^Star Clipper posted a triple-double|^Star Clipper had 12 pts, 11 reb, 10 ast/);
+
+        // With no earlier one, it is the only one, and the stored proof re-runs to the same rows.
+        await SET(early.game_id, origEarly);
+        const alone = await runEngine({ surfaces: ['postgame'], asOf: laToday(), write: false, gameId: late.game_id });
+        const only = alone.drafts.find((d) => d.category === 'player_combo' && d.entities.some((e) => e.id === '1'));
+        expect(only!.frame.type).toBe('only_one');
+        expect(only!.detail).toMatch(/only triple-double by a Clipper since \d{4}-\d{2}|^12 pts, 11 reb, 10 ast/);
+        const again = await rerun(only!);
+        // The stored rows (this player's fact row plus the frame rows) are all still produced by the proof.
+        const norm = (rows: unknown[]) => rows.map((r) => JSON.stringify(JSON.parse(JSON.stringify(r))));
+        const live = new Set(norm(again));
+        for (const row of norm(only!.proof_result)) expect(live.has(row), row).toBe(true);
+        expect(only!.proof_result.some((r) => (r as { part: string; data: { player_id?: string; triple_double?: boolean } }).part === 'fact'
+          && (r as { data: { player_id?: string } }).data.player_id === '1'
+          && (r as { data: { triple_double?: boolean } }).data.triple_double === true)).toBe(true);
+        expect(only!.proof_result.some((r) => (r as { part: string }).part === 'fact')).toBe(true);
+      } finally {
+        await SET(early.game_id, origEarly);
+        await SET(late.game_id, origLate);
+      }
+    }, TIMEOUT);
+  });
+
   describe('postgame window', () => {
     it('covers the last N days of regular-season finals, or one game', async () => {
       const { loadEngineContext } = await import('./engine/context');
@@ -621,6 +692,21 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         SELECT proof_hash, is_active FROM insights WHERE proof_hash LIKE 'fake-%' ORDER BY 1`;
       expect(rows).toEqual([{ proof_hash: 'fake-g1', is_active: false }, { proof_hash: 'fake-g2', is_active: true }]);
       await sql`DELETE FROM insights WHERE proof_hash LIKE 'fake-%'`;
+      expect(run('scripts/verify-insights.ts')).toMatch(/\b0 failed\b/);
+    }, TIMEOUT);
+
+    it('a single-game run writes that game\'s player lines, and their proofs verify', async () => {
+      const [g] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM game_player_box_scores WHERE player_id = 1 AND points = 55`;
+      run('scripts/generate-insights.ts', ['--surface=postgame', `--game=${g.game_id}`]);
+      const rows = await sql<{ category: string; game_id: string }[]>`
+        SELECT category, game_id::text FROM insights WHERE is_active AND surface = 'postgame' AND game_id = ${g.game_id}::bigint`;
+      expect(rows.some((r) => r.category === 'player_game_stat')).toBe(true);
+      expect(rows.every((r) => r.game_id === g.game_id)).toBe(true);
+      // A frozen postgame claim names its season as "so far in", never "this season" or a bare "in {label}".
+      const details = await sql<{ detail: string }[]>`
+        SELECT detail FROM insights WHERE is_active AND surface = 'postgame' AND game_id = ${g.game_id}::bigint`;
+      for (const d of details) expect(d.detail).not.toMatch(/this season|(?<!so far )\bin \d{4}-\d{2}\b/);
+      expect(run('scripts/verify-insights.ts')).toMatch(/\b0 failed\b/);
     }, TIMEOUT);
 
     it('a dry run writes nothing', async () => {

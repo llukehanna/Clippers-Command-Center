@@ -22,6 +22,14 @@ JOIN players p ON p.player_id = pb.player_id
 WHERE pb.game_id = $1::bigint AND pb.team_id = $2::bigint
 ORDER BY pb.points DESC NULLS LAST, p.display_name`.trim();
 
+/** The categories at 10 or more, e.g. "12 pts, 11 reb, 10 blk" (the line a combo is built from). */
+export function bigCategories(r: Record<string, unknown>): string {
+  return (['pts', 'reb', 'ast', 'stl', 'blk'] as const)
+    .filter((k) => r[k] !== null && r[k] !== undefined && Number(r[k]) >= 10)
+    .map((k) => `${Number(r[k])} ${k}`)
+    .join(', ');
+}
+
 export function playerLinesDetector(): Detector {
   return {
     name: 'postgame.player_lines',
@@ -53,7 +61,7 @@ export function playerLinesDetector(): Detector {
             const fact: Fact = {
               ...gameFactBase(g, ctx), kind: 'player_combo', subject, stat: combo.key, value: 1, polarity: 'positive', proof,
               sample: { kind: 'context' },
-              data: { thing: combo.thing, best: combo.thing, by: 'by a Clipper', line: `${r.pts ?? 0}-${r.reb ?? 0}-${r.ast ?? 0}` },
+              data: { thing: combo.thing, best: combo.thing, by: 'by a Clipper', line: bigCategories(r) },
             };
             const sample = await refRate(fact, ctx);
             if (sample) facts.push({ ...fact, sample });
