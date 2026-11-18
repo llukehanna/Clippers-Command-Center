@@ -2,6 +2,7 @@
 // Season milestones (v1 milestones.ts on the v2 engine): the highest threshold
 // each current Clipper has reached; a new threshold is a new key (novelty).
 // Totals are regular season, across teams for a mid-season acquisition.
+import { lateJoiners } from '../games.js';
 import { highestThreshold } from '../../proof-utils.js';
 import { runQuery } from '../query.js';
 import { seasonTotalShare } from '../rates.js';
@@ -54,9 +55,12 @@ export function milestoneDetector(surface: 'season' | 'player'): Detector {
     async run(ctx) {
       const facts: Fact[] = [];
       const shares = new Map<string, number>();
+      // Incomplete league data: a mid-season acquisition's games for his old team may be missing, so his total undercounts.
+      const skip = ctx.league.complete ? new Set<string>() : await lateJoiners(ctx);
       for (const m of MILESTONES) {
         const q = { sql: milestoneSql(m), params: [ctx.season.id, ctx.lac.teamId, Math.min(...m.thresholds), ctx.asOf] };
         for (const r of await runQuery(q)) {
+          if (skip.has(String(r.player_id))) continue;
           const total = Number(r.total);
           const reached = highestThreshold(total, m.thresholds);
           if (reached === null) continue;

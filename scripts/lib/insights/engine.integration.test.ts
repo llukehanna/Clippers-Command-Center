@@ -322,6 +322,75 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     }, TIMEOUT);
   });
 
+  describe('incomplete league data: roster and season-total guards', () => {
+    const LATE_ID = 9001;
+    const incomplete = (ctx: EngineContext): EngineContext => ({ ...ctx, league: { complete: false, reason: 'test' } });
+
+    // A player whose only LAC box score is the Clippers' last regular-season game of the season, with 1,100 points
+    // (as if the rest of his season were missing): first LAC game after LAC's first game, so a late joiner.
+    async function withLateJoiner(ctx: EngineContext, body: () => Promise<void>): Promise<void> {
+      const [last] = await sql<{ game_id: string }[]>`
+        SELECT g.game_id::text AS game_id FROM games g
+        WHERE ${ctx.lac.teamId}::bigint IN (g.home_team_id, g.away_team_id) AND g.season_id = ${ctx.season.id}
+          AND ${sql.unsafe(REGULAR_SEASON)} AND g.game_date <= ${ctx.asOf}::date
+          AND EXISTS (SELECT 1 FROM game_player_box_scores b WHERE b.game_id = g.game_id AND b.team_id = ${ctx.lac.teamId}::bigint)
+        ORDER BY g.game_date DESC, g.game_id DESC LIMIT 1`;
+      try {
+        await sql`
+          INSERT INTO players (player_id, nba_player_id, nba_person_id, first_name, last_name, display_name)
+          VALUES (${LATE_ID}, ${LATE_ID}, ${1_000_000 + LATE_ID}, 'Late', 'Joiner', 'Late Joiner')`;
+        await sql`
+          INSERT INTO game_player_box_scores (game_id, team_id, player_id, minutes, points, rebounds, fg3_made, fg_made, fg_attempted)
+          VALUES (${last.game_id}::bigint, ${ctx.lac.teamId}::bigint, ${LATE_ID}, '30:00', 1100, 5, 2, 400, 800)`;
+        await body();
+      } finally {
+        await sql`DELETE FROM game_player_box_scores WHERE player_id = ${LATE_ID}`;
+        await sql`DELETE FROM players WHERE player_id = ${LATE_ID}`;
+      }
+    }
+
+    it('lateJoiners: players whose first LAC game came after the Clippers\' first', async () => {
+      const { lateJoiners } = await import('./engine/games');
+      const ctx = await ctxAt(laToday());
+      const before = await lateJoiners(ctx);
+      expect(before.has('1')).toBe(false);
+      expect(before.has(String(LATE_ID))).toBe(false);
+      await withLateJoiner(ctx, async () => {
+        expect(await lateJoiners(ctx)).toEqual(new Set([...before, String(LATE_ID)]));
+      });
+    }, TIMEOUT);
+
+    it('season milestones: a late joiner\'s total is skipped only when league data is incomplete', async () => {
+      const { milestoneDetector } = await import('./engine/detectors/season-milestones');
+      const ctx = await ctxAt(laToday());
+      await withLateJoiner(ctx, async () => {
+        const full = (await milestoneDetector('season').run(ctx)).facts;
+        const lateFull = full.find((f) => f.subject.id === String(LATE_ID) && f.stat === 'season_points');
+        expect(lateFull?.value).toBe(1000);
+        const guarded = (await milestoneDetector('season').run(incomplete(ctx))).facts;
+        expect(guarded.some((f) => f.subject.id === String(LATE_ID))).toBe(false);
+        expect(guarded.some((f) => f.subject.name === 'Star Clipper' && f.stat === 'season_points')).toBe(true);
+      });
+    }, TIMEOUT);
+
+    it('loadEngineContext: a roster snapshot changes nothing while the league is complete', async () => {
+      const { loadEngineContext } = await import('./engine/context');
+      const base = await ctxAt('2026-02-25');
+      expect(base.league.complete).toBe(true);
+      try {
+        await sql`
+          INSERT INTO app_kv (key, value) VALUES ('roster:LAC',
+            ${sql.json({ team: 'LAC', source: 'espn', synced_at: '2026-02-25T08:00:00Z', players: [{ player_id: '1', name: 'Star Clipper' }] })}::jsonb)
+          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
+        const ctx = await loadEngineContext({ asOf: '2026-02-25', withPrior: false });
+        expect([...ctx!.roster.keys()].sort()).toEqual([...base.roster.keys()].sort());
+        expect(ctx!.roster.size).toBeGreaterThan(1);
+      } finally {
+        await sql`DELETE FROM app_kv WHERE key = 'roster:LAC'`;
+      }
+    }, TIMEOUT);
+  });
+
   describe('season detectors: ranks and year over year', () => {
     it('ranks the Clippers and their players league-wide, only with complete league data', async () => {
       const { leagueRankDetector } = await import('./engine/detectors/season-ranks');

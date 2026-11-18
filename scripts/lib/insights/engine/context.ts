@@ -8,6 +8,8 @@ import { sql } from '../../db.js';
 import { currentSeasonId, seasonLabel } from '../../schedule-utils.js';
 import { REGULAR_SEASON } from '../../sql-fragments.js';
 import { assessLeagueCoverage, type TeamGames } from './coverage.js';
+import { laToday } from './dates.js';
+import { applyRosterSnapshot, type RosterSnapshot } from './roster.js';
 import { parseRecordsStart } from './records.js';
 import { rosterSubquery } from './sql.js';
 import { loadPrior } from './store.js';
@@ -17,6 +19,19 @@ export const MIN_SEASON_GAMES = 10;
 export const DEFAULT_POSTGAME_DAYS = 3;
 
 export interface LoadOptions { asOf: string; gameId?: string | null; withPrior: boolean; postgameDays?: number }
+
+/** app_kv 'roster:LAC' (scripts/sync-roster.ts) with its sync time as a Los Angeles date. */
+async function loadRosterSnapshot(): Promise<RosterSnapshot | null> {
+  const [kv] = await sql<{ value: { synced_at?: unknown; players?: unknown } | null }[]>`
+    SELECT value FROM app_kv WHERE key = 'roster:LAC'`;
+  const v = kv?.value;
+  if (!v || typeof v.synced_at !== 'string' || !Array.isArray(v.players)) return null;
+  const synced = new Date(v.synced_at);
+  if (Number.isNaN(synced.getTime())) return null;
+  const ids = (v.players as { player_id?: unknown }[]).map((p) => p?.player_id).filter((id): id is string => typeof id === 'string');
+  if (ids.length === 0) return null;
+  return { syncedDate: laToday(synced), playerIds: new Set(ids) };
+}
 
 export async function loadEngineContext(opts: LoadOptions): Promise<EngineContext | null> {
   const { asOf } = opts;
@@ -72,7 +87,7 @@ export async function loadEngineContext(opts: LoadOptions): Promise<EngineContex
       AND pb.player_id IN ${rosterSubquery('$1', '$2', '$3')}
     GROUP BY pb.player_id, p.display_name`,
   [chosen.season_id, lac.teamId, asOf])) as unknown as { player_id: string; name: string; games: number; mpg: number }[];
-  const roster = new Map<string, RosterPlayer>(
+  const boxRoster = new Map<string, RosterPlayer>(
     rosterRows.map((r) => [r.player_id, { playerId: r.player_id, name: r.name, games: r.games, mpg: r.mpg }]));
 
   const coverage = (await sql.unsafe(`
@@ -92,6 +107,10 @@ export async function loadEngineContext(opts: LoadOptions): Promise<EngineContex
       AND EXISTS (SELECT 1 FROM game_team_box_scores b WHERE b.game_id = g.game_id)`,
   [chosen.season_id, asOf, lac.teamId])) as unknown as { d: string | null }[];
 
+  const league = assessLeagueCoverage(coverage, lac.teamId, latest?.d ?? null);
+  // League box scores are incomplete: a traded player still looks like a Clipper, so intersect with the synced roster.
+  const roster = league.complete ? boxRoster : applyRosterSnapshot(boxRoster, await loadRosterSnapshot(), asOf, league.complete);
+
   const prior: Map<string, PriorState> = opts.withPrior ? await loadPrior() : new Map();
 
   return {
@@ -103,7 +122,7 @@ export async function loadEngineContext(opts: LoadOptions): Promise<EngineContex
     recordsStart: parseRecordsStart(kvValue('insights.records_start')),
     pbpRecordsStart: parseRecordsStart(kvValue('insights.pbp_records_start')),
     roster,
-    league: assessLeagueCoverage(coverage, lac.teamId, latest?.d ?? null),
+    league,
     gameId: opts.gameId ?? null,
     postgameDays: opts.postgameDays ?? DEFAULT_POSTGAME_DAYS,
     prior,
