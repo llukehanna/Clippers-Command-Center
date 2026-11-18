@@ -297,3 +297,293 @@ export interface MediaPayload {
   articles: MediaItem[]
   social: MediaItem[]
 }
+
+// ─── Franchise (/api/franchise/*) ────────────────────────────────────────────
+// Unknown is null end to end: never coerced to 0, false or ''.
+
+/** A franchise in a given season, with that era's name (Buffalo Braves, Seattle SuperSonics…). */
+export interface FranchiseTeamRef {
+  /** NBA franchise id (1610612746 = Clippers), not teams.nba_team_id. */
+  franchise_id: number
+  abbreviation: string | null
+  name: string | null
+  city: string | null
+  is_clippers: boolean
+}
+
+/** A person from person_xref; href is their player page when they have one. */
+export interface FranchisePersonRef {
+  person_key: string
+  name: string
+  player_id: string | null
+  href: string | null
+}
+
+/** Moves `type` filter: kind groups (R2). */
+export type MoveKindGroup = 'trade' | 'signing' | 'release' | 'draft' | 'other'
+export type MoveTypeFilter = MoveKindGroup | 'all'
+
+export interface MoveRow {
+  slug: string
+  date: string | null
+  season_id: number | null
+  kind: string
+  kind_group: MoveKindGroup
+  /** Our generated sentence. */
+  description: string
+  /** false → "details pending". */
+  is_complete: boolean
+  /** Trade page link; null for non-trades. */
+  href: string | null
+  /** Every franchise in the move, era names, Clippers first. */
+  teams: FranchiseTeamRef[]
+  /** Distinct people in the move (R3), in part order. */
+  people: FranchisePersonRef[]
+}
+
+export interface MovesPayload {
+  meta: MetaEnvelope
+  filters: { season: number | null; type: MoveTypeFilter | null; player: string | null }
+  /** Seasons with at least one Clippers move, newest first. */
+  seasons: number[]
+  moves: MoveRow[]
+}
+
+/** One trade that moved a pick. */
+export interface PickHop {
+  slug: string
+  date: string | null
+  href: string | null
+  from: FranchiseTeamRef | null
+  to: FranchiseTeamRef | null
+}
+
+export interface DraftLottery {
+  pre_lottery_slot: number | null
+  /** Odds of landing #1 as stored in draft_lottery.odds_first; null renders —. */
+  odds_first: number | null
+  pick_won: number | null
+  tie_unresolved: boolean | null
+  /** pick_won vs pre_lottery_slot; null when either is unknown. */
+  movement: 'jumped' | 'fell' | 'held' | null
+  source: 'wiki' | 'derived'
+}
+
+export interface DraftPick {
+  pick_key: string
+  draft_year: number
+  round: number
+  overall_pick: number | null
+  status: string | null
+  player: FranchisePersonRef | null
+  /** "from X" (the Clippers when it was their own pick). */
+  original_team: FranchiseTeamRef
+  /** "via Y": owners between the original team and the final owner, in order. */
+  via: FranchiseTeamRef[]
+  /** Who used it (the destination of a traded-away pick). */
+  owner: FranchiseTeamRef | null
+  /** The Clippers owned it once but someone else used it — render dimmed. */
+  traded_away: boolean
+  chain: PickHop[]
+  lottery: DraftLottery | null
+}
+
+export interface DraftPayload {
+  meta: MetaEnvelope
+  /** Newest year first. */
+  years: Array<{ draft_year: number; picks: DraftPick[] }>
+}
+
+export interface ContractSeason {
+  season_id: number
+  amount_usd: number | null
+  guaranteed_usd: number | null
+  option: 'player' | 'team' | 'early_termination' | null
+}
+
+export interface PayrollSeason {
+  season_id: number
+  season_label: string
+  listed_players: number | null
+  roster_players: number | null
+  listed_total_usd: number | null
+  is_partial: boolean | null
+}
+
+export interface ContractsPayload {
+  meta: MetaEnvelope
+  /** Newest snapshot only; null when there is none. */
+  snapshot_id: string | null
+  snapshot_fetched_at: string | null
+  /** Cap-sheet columns, ascending. */
+  seasons: number[]
+  /** Highest first-season amount first. */
+  players: Array<{ person: FranchisePersonRef; seasons: ContractSeason[] }>
+  /** Per season; null when any listed amount is unknown. */
+  totals: Array<{ season_id: number; amount_usd: number | null }>
+  /** From 1984-85, newest first. */
+  payroll: PayrollSeason[]
+}
+
+export interface TradeLink {
+  slug: string
+  href: string
+  date: string | null
+}
+
+export interface OwedAsset {
+  kind: 'pick' | 'swap'
+  key: string
+  draft_year: number
+  round: number
+  /** Picks: the original team. Swaps: null. */
+  original_team: FranchiseTeamRef | null
+  /** Picks: current owner. Swaps: who holds the swap right. */
+  owner: FranchiseTeamRef | null
+  /** The other team: owner (owed), original team (owned), the other swap party. */
+  counterparty: FranchiseTeamRef | null
+  /** Originally the Clippers' own pick. */
+  is_own: boolean
+  protections: unknown | null
+  protections_text: string | null
+  protections_known: boolean | null
+  /** Plain words; "Protections not recorded" unless protections_known is true. */
+  protections_label: string
+  /** Owned: the trade it came in. Owed: the trade it went out in. */
+  trade: TradeLink | null
+  gap_notes: string[]
+}
+
+export interface PicksOwedPayload {
+  meta: MetaEnvelope
+  /** By draft year, round; picks before swaps. */
+  owned: OwedAsset[]
+  owed: OwedAsset[]
+}
+
+export interface CoachSeason {
+  season_id: number
+  season_label: string
+  /** Order within the season (mid-season changes). */
+  ordinal: number
+  coach: FranchisePersonRef
+  games: number | null
+  wins: number | null
+  losses: number | null
+  playoff_wins: number | null
+  playoff_losses: number | null
+}
+
+export interface ExecutiveTerm {
+  person: FranchisePersonRef
+  title: string | null
+  start_date: string | null
+  end_date: string | null
+}
+
+export interface FrontOfficePayload {
+  meta: MetaEnvelope
+  /** Newest season first, ordinal ascending within a season. */
+  coach_seasons: CoachSeason[]
+  /** Newest start first. */
+  executives: ExecutiveTerm[]
+}
+
+export interface HonorRow {
+  season_id: number | null
+  honor: string
+  label: string
+  detail: string | null
+  person: FranchisePersonRef
+}
+
+export interface HonorsPayload {
+  meta: MetaEnvelope
+  /** Numbers the Clippers retired (none so far). */
+  retired_number: HonorRow[]
+  /** Numbers the whole league retired (Bill Russell's No. 6). */
+  retired_number_league: HonorRow[]
+  /** season_id null; detail = induction year. */
+  hall_of_fame: HonorRow[]
+  /** Newest season first. */
+  awards_by_season: Array<{ season_id: number; season_label: string; honors: HonorRow[] }>
+  /** Unseasoned honors of any other code. */
+  other: HonorRow[]
+}
+
+export type TradeAssetKind = 'player' | 'draft_rights' | 'pick' | 'swap' | 'cash' | 'exception' | 'other'
+
+export interface TradeAsset {
+  kind: TradeAssetKind
+  label: string
+  href: string | null
+  person: FranchisePersonRef | null
+  pick: {
+    pick_key: string
+    draft_year: number
+    round: number
+    original_team: FranchiseTeamRef
+    overall_pick: number | null
+    status: string | null
+    protections_known: boolean | null
+    protections_text: string | null
+    protections_label: string
+  } | null
+  swap: {
+    swap_key: string
+    draft_year: number
+    round: number
+    teams: FranchiseTeamRef[]
+    exercised: boolean | null
+    protections_known: boolean | null
+    protections_text: string | null
+    protections_label: string
+  } | null
+  /** The other team: sender for received assets, receiver for sent ones; null when not stated. */
+  counterparty: FranchiseTeamRef | null
+  gap_reason: string | null
+  gap_note: string | null
+}
+
+/** One side per franchise in the trade, Clippers first (R4). */
+export interface TradeSide {
+  team: FranchiseTeamRef
+  received: TradeAsset[]
+  sent: TradeAsset[]
+}
+
+/** One row of the "What it became" outline. */
+export interface TreeNode {
+  label: string
+  kind: 'player' | 'pick' | 'swap' | 'cash' | 'other'
+  href: string | null
+  /** Quiet gap/terminal note: 'protections not recorded', 'no further record', 'traded on to T (details not recorded)'. */
+  note: string | null
+  children: TreeNode[]
+  /** Depth limit reached: slug of the trade page to continue on. */
+  truncatedAt: string | null
+  /** Date of the event (null for the asset rows). */
+  date: string | null
+  /** Who holds the asset after this row. */
+  team: FranchiseTeamRef | null
+}
+
+export interface TradePayload {
+  meta: MetaEnvelope
+  trade: {
+    slug: string
+    date: string | null
+    season_id: number | null
+    kind: string
+    description: string
+    is_complete: boolean
+    involves_clippers: boolean
+    sources: string[]
+  }
+  /** Every franchise in the trade, era names, Clippers first. */
+  teams: FranchiseTeamRef[]
+  sides: TradeSide[]
+  /** Distinct gap notes of the trade's parts. */
+  gap_notes: string[]
+  became: TreeNode[]
+}
