@@ -7,6 +7,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { laToday } from './engine/dates';
 import { REGULAR_SEASON } from '../sql-fragments';
+import { makeFact } from './engine/__fixtures__/facts';
 import type { EngineContext, InsightDraft } from './engine/types';
 
 const url = process.env.FIXTURE_DATABASE_URL;
@@ -19,6 +20,13 @@ function run(script: string, args: string[] = []): string {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 }
+
+/** A postgame Star Clipper points fact dated `date`, for reference-rate tests. */
+const pointsFact = (ctx: EngineContext, gameId: string, date: string) => ({
+  kind: 'player_game_stat' as const, surface: 'postgame' as const, stat: 'pts',
+  window: { type: 'game' as const, game_id: gameId, season_id: ctx.season.id }, context: { date },
+  gameId, seasonId: ctx.season.id, data: {},
+});
 
 describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
   // Imported lazily: scripts/lib/db.ts exits the process without DATABASE_URL.
@@ -45,7 +53,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
 
   describe('storage', () => {
     const draft = (over: Partial<InsightDraft> = {}): InsightDraft => ({
-      key: 'store-test-1', detector: 'test', surface: 'postgame', scope: 'historical', category: 'league_night',
+      key: 'store-test-1', detector: 'test', surface: 'postgame', scope: 'historical', category: 'player_game_stat',
       team_id: '1', game_id: '1', player_id: '1', season_id: 2025,
       headline: 'Star Clipper scored 30 vs the Warriors', detail: 'First 30-point game by a Clipper since Oct 2024', importance: 50,
       proof_sql: 'SELECT 1 AS one', proof_params: {}, proof_result: [{ part: 'fact', data: { one: 1 } }],
@@ -89,11 +97,11 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       await upsertInsight(draft({ key: 'store-g2-a', game_id: '2' }));
       await upsertInsight(draft({ key: 'store-season', surface: 'season', scope: 'between_games', game_id: null }));
       // store-test-1 (game 1) and store-g1-b are in scope and not kept.
-      expect(await deactivateStale({ surface: 'postgame', categories: ['league_night'], gameIds: ['1'] }, ['store-g1-a'])).toBe(2);
+      expect(await deactivateStale({ surface: 'postgame', categories: ['player_game_stat'], gameIds: ['1'] }, ['store-g1-a'])).toBe(2);
       const active = await sql<{ proof_hash: string }[]>`
         SELECT proof_hash FROM insights WHERE is_active AND proof_hash LIKE 'store-%' ORDER BY 1`;
       expect(active.map((r) => r.proof_hash)).toEqual(['store-g1-a', 'store-g2-a', 'store-season']);
-      expect(await deactivateStale({ surface: 'postgame', categories: ['league_night'], gameIds: [] }, [])).toBe(0);
+      expect(await deactivateStale({ surface: 'postgame', categories: ['player_game_stat'], gameIds: [] }, [])).toBe(0);
     });
 
     it('clean cut: legacy batch rows go inactive, live rows stay; prior state reads back', async () => {
@@ -164,7 +172,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     }, TIMEOUT);
 
     it('rates count prior games only', async () => {
-      const { playerHitRates, seasonTotalShare, playerValueRate } = await import('./engine/rates');
+      const { playerHitRates, seasonTotalShare, refRate } = await import('./engine/rates');
       const ctx = await ctxAt('2026-02-25');
       const { rates, pRef } = await playerHitRates(ctx, 'pb.points >= 30', [{ playerId: '1', date: '2026-02-13' }]);
       const star = rates.get('1')!;
@@ -176,7 +184,8 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(share).toBeGreaterThan(0);
       expect(share).toBeLessThan(1);
       const [g] = await sql<{ game_id: string; d: string }[]>`SELECT pb.game_id::text, g.game_date::text AS d FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id WHERE pb.player_id = 1 AND pb.points = 55`;
-      expect(await playerValueRate(ctx, 'points', '1', 55, g.game_id, g.d)).toMatchObject({ k: 0 });
+      const fact = makeFact({ ...pointsFact(ctx, g.game_id, g.d), value: 55 });
+      expect(await refRate(fact, ctx)).toMatchObject({ kind: 'rate', k: 0, power: 1 });
     }, TIMEOUT);
 
     it('hit-rate n is exactly the player\'s games strictly before the date', async () => {
@@ -201,8 +210,8 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(after.n).toBe(at.n + 1);
     }, TIMEOUT);
 
-    it('value-rate n counts only games strictly before the fact date', async () => {
-      const { playerValueRate } = await import('./engine/rates');
+    it('refRate n counts only games strictly before the fact date (k/n ignore the fact game and later ones)', async () => {
+      const { refRate } = await import('./engine/rates');
       const ctx = await ctxAt('2026-02-25');
       const countBefore = async (date: string) => {
         const [r] = await sql<{ n: number }[]>`
@@ -217,15 +226,20 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         ORDER BY g.game_date`;
       const mid = dates[Math.floor(dates.length / 2)].d;
       const last = dates[dates.length - 1].d;
-      const other = { game_id: '0' }; // no such game: nothing is excluded by id
-      const atMid = await playerValueRate(ctx, 'points', '1', 0, other.game_id, mid);
-      const atLast = await playerValueRate(ctx, 'points', '1', 0, other.game_id, last);
-      expect(atMid.n).toBe(await countBefore(mid));
-      expect(atLast.n).toBe(await countBefore(last));
-      expect(atLast.n).toBeGreaterThan(atMid.n);
-      // A future fact date cannot read past asOf.
-      const future = await playerValueRate(ctx, 'points', '1', 0, other.game_id, '2099-01-01');
-      expect(future.n).toBe(await countBefore('2099-01-01'));
+      const rate = async (date: string) => (await refRate(makeFact({ ...pointsFact(ctx, '0', date), value: 0 }), ctx))!;
+      const atMid = await rate(mid);
+      const atLast = await rate(last);
+      expect(atMid.kind === 'rate' && atMid.n).toBe(await countBefore(mid));
+      expect(atLast.kind === 'rate' && atLast.n).toBe(await countBefore(last));
+      expect(atLast.kind === 'rate' && atLast.n).toBeGreaterThan(atMid.kind === 'rate' ? atMid.n : 0);
+      // A game on the fact date is not counted at that date: a fact dated the day after counts exactly one more.
+      const dayAfter = new Date(new Date(`${last}T12:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10);
+      const after = await rate(dayAfter);
+      expect(after.kind === 'rate' && after.n).toBe(await countBefore(dayAfter));
+      expect(after.kind === 'rate' && after.n).toBe(atLast.kind === 'rate' ? atLast.n + 1 : -1);
+      // The group rate (p_ref) also ignores games on or after the fact date.
+      const early = await rate(dates[0].d);
+      expect(early.kind === 'rate' && early.n).toBe(0);
     }, TIMEOUT);
   });
 
@@ -483,19 +497,19 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(facts.find((f) => f.kind === 'h2h')!.sample).toEqual({ kind: 'context' });
     }, TIMEOUT);
 
-    it('postgame: the 55-point night ranks first league-wide; one-game runs stay on that game', async () => {
-      const { leagueNightDetector } = await import('./engine/detectors/postgame-league-nights');
-      const ctx = await ctxAt(laToday());
-      const all = await leagueNightDetector().run(ctx);
-      const star = all.facts.find((f) => f.subject.name === 'Star Clipper' && f.stat === 'pts');
-      expect(star).toMatchObject({ kind: 'league_night', surface: 'postgame', value: 55, data: { rank: 1 } });
-      expect(star!.sample).toMatchObject({ kind: 'rate', k: 0, power: 1 });
-      expect(all.gameIds).toContain(star!.gameId);
-      const one = await leagueNightDetector().run({ ...ctx, gameId: star!.gameId });
-      expect(one.gameIds).toEqual([star!.gameId]);
-      expect(one.facts.length).toBeGreaterThan(0);
-      expect(one.facts.every((f) => f.gameId === star!.gameId)).toBe(true);
-      expect(await leagueNightDetector().run({ ...ctx, league: { complete: false, reason: 'x' } })).toEqual({ facts: [], gameIds: [] });
+    it('postgame: every big line and combo of a game, framed and rated from prior games', async () => {
+      const { playerLinesDetector } = await import('./engine/detectors/postgame-player-lines');
+      const [g] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM game_player_box_scores WHERE player_id = 1 AND points = 55`;
+      const ctx = { ...(await ctxAt(laToday())), gameId: g.game_id };
+      const { facts, gameIds } = await playerLinesDetector().run(ctx);
+      expect(gameIds).toEqual([g.game_id]);
+      const pts = facts.find((f) => f.subject.name === 'Star Clipper' && f.stat === 'pts');
+      expect(pts).toMatchObject({ kind: 'player_game_stat', surface: 'postgame', value: 55, gameId: g.game_id, window: { game_id: g.game_id } });
+      expect(pts!.sample).toMatchObject({ kind: 'rate', k: 0, power: 1 });
+      expect((pts!.sample as { n: number }).n).toBeGreaterThan(0);
+      expect(facts.every((f) => f.gameId === g.game_id && (f.kind === 'player_game_stat' || f.kind === 'player_combo'))).toBe(true);
+      const empty = await playerLinesDetector().run({ ...ctx, gameId: null });
+      expect(empty).toEqual({ facts: [], gameIds: [] });
     }, TIMEOUT);
 
     it('registry: unique names, unique categories per surface', async () => {
@@ -544,7 +558,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       const rows = await sql<{ surface: string | null; scope: string; proof_hash: string; is_active: boolean; first: string | null }[]>`
         SELECT surface, scope, proof_hash, is_active, first_emitted_at::text AS first FROM insights`;
       const v2 = rows.filter((r) => r.is_active && r.surface);
-      expect(new Set(v2.map((r) => r.surface))).toEqual(new Set(['season', 'pregame', 'postgame']));
+      expect(new Set(v2.map((r) => r.surface))).toEqual(new Set(['season', 'pregame']));
       for (const r of v2) {
         expect(r.scope).toBe(r.surface === 'postgame' ? 'historical' : 'between_games');
         expect(r.first).not.toBeNull();
@@ -573,6 +587,25 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(run('scripts/verify-insights.ts')).toMatch(/0 failed/);
     }, TIMEOUT);
 
+    it('retires league_night: its batch rows are deactivated on a write run, live rows are untouched', async () => {
+      const { RETIRED_CATEGORIES } = await import('./engine/store');
+      expect(RETIRED_CATEGORIES).toContain('league_night');
+      for (const [key, scope, surface] of [['retired-batch', 'historical', 'postgame'], ['retired-live', 'live', null]]) {
+        await sql`
+          INSERT INTO insights (scope, surface, category, headline, importance, proof_sql, proof_params, proof_result, proof_hash, first_emitted_at)
+          VALUES (${scope}, ${surface}, 'league_night', 'Old big night', 10, 'SELECT 1 AS one', '{}'::jsonb,
+                  '[{"part":"fact","data":{"one":1}}]'::jsonb, ${key}, now())`;
+      }
+      const { runEngine } = await import('./engine/run');
+      const out = await runEngine({ surfaces: ['postgame'], asOf: laToday(), write: true });
+      expect(out.retiredDeactivated).toBeGreaterThanOrEqual(1);
+      const rows = await sql<{ proof_hash: string; is_active: boolean }[]>`
+        SELECT proof_hash, is_active FROM insights WHERE proof_hash LIKE 'retired-%' ORDER BY 1`;
+      expect(rows).toEqual([{ proof_hash: 'retired-batch', is_active: false }, { proof_hash: 'retired-live', is_active: true }]);
+      expect((await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM insights WHERE category = 'league_night' AND scope <> 'live' AND is_active`)[0].n).toBe(0);
+      await sql`DELETE FROM insights WHERE proof_hash LIKE 'retired-%'`;
+    }, TIMEOUT);
+
     it('a single-game postgame run leaves other games alone', async () => {
       const [g1, g2] = (await sql<{ game_id: string }[]>`
         SELECT game_id::text FROM games WHERE status = 'final' AND 1 IN (home_team_id, away_team_id) AND season_id = 2025
@@ -580,7 +613,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       for (const [key, gameId] of [['fake-g1', g1], ['fake-g2', g2]]) {
         await sql`
           INSERT INTO insights (scope, surface, category, headline, importance, proof_sql, proof_params, proof_result, proof_hash, game_id, first_emitted_at)
-          VALUES ('historical', 'postgame', 'league_night', 'Fake', 10, 'SELECT 1 AS one', '{}'::jsonb,
+          VALUES ('historical', 'postgame', 'player_game_stat', 'Fake', 10, 'SELECT 1 AS one', '{}'::jsonb,
                   '[{"part":"fact","data":{"one":1}}]'::jsonb, ${key}, ${gameId}::bigint, now())`;
       }
       run('scripts/generate-insights.ts', ['--surface=postgame', `--game=${g1}`]);
@@ -605,7 +638,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
 
     it('refuses a postgame detector that would clear every game, before writing anything', async () => {
       const { runEngine } = await import('./engine/run');
-      const rogue = { name: 'postgame.rogue', surface: 'postgame' as const, categories: ['league_night' as const], run: async () => ({ facts: [], gameIds: null }) };
+      const rogue = { name: 'postgame.rogue', surface: 'postgame' as const, categories: ['player_game_stat' as const], run: async () => ({ facts: [], gameIds: null }) };
       const before = (await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM insights WHERE is_active`)[0].n;
       await expect(runEngine({ surfaces: ['postgame'], asOf: laToday(), write: true, detectors: [rogue] }))
         .rejects.toThrow(/postgame\.rogue/);
@@ -618,14 +651,14 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
           SELECT COUNT(*)::int AS n, COALESCE(MD5(STRING_AGG(proof_hash, ',' ORDER BY proof_hash)), '') AS h
           FROM insights WHERE is_active`)[0];
       const stat = (over: object = {}) => ({
-        kind: 'league_night' as const, surface: 'postgame' as const,
+        kind: 'player_game_stat' as const, surface: 'postgame' as const,
         subject: { type: 'player' as const, id: '1', name: 'Star Clipper' }, stat: 'pts', value: 30,
         window: { type: 'game' as const, game_id: '1', season_id: 2025 }, context: { date: '2026-02-16' },
         polarity: 'positive' as const, proof: { sql: 'SELECT 1 AS one', params: [], match: { one: 1 } },
         asOf: '2026-02-17', sample: { kind: 'context' as const }, data: {}, gameId: '1', seasonId: 2025, ...over,
       });
       const rogue = (over: object, gameIds: string[] | null = ['1'], surface: 'postgame' | 'season' = 'postgame') => ({
-        name: 'rogue', surface, categories: ['league_night' as const], run: async () => ({ facts: [stat(over)], gameIds }),
+        name: 'rogue', surface, categories: ['player_game_stat' as const], run: async () => ({ facts: [stat(over)], gameIds }),
       });
 
       it('a fact of a kind outside the detector categories', async () => {
@@ -640,7 +673,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         const { runEngine } = await import('./engine/run');
         const before = await activeRows();
         await expect(runEngine({ surfaces: ['postgame'], asOf: '2026-02-17', write: true, detectors: [rogue({ surface: 'season' })] }))
-          .rejects.toThrow(/rogue emitted season\/league_night/);
+          .rejects.toThrow(/rogue emitted season\/player_game_stat/);
         expect(await activeRows()).toEqual(before);
       }, TIMEOUT);
 

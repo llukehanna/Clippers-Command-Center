@@ -5,7 +5,7 @@ import { makeCtx, makeFact } from './__fixtures__/facts';
 
 const fr = (type: Frame['type'], extra: Partial<Frame> = {}): Frame => ({ type, strength: 0.5, who: 'group', text: '', proof_rows: [], ...extra });
 const night = makeFact({
-  kind: 'league_night', surface: 'postgame', stat: 'pts', value: 55,
+  kind: 'player_game_stat', surface: 'postgame', stat: 'pts', value: 55,
   window: { type: 'game', game_id: '500', season_id: 2025 },
   context: { date: '2025-11-28', opponent_id: '2', home: true, result: 'W' }, gameId: '500',
   data: { rank: 1, total: 18000, label: 'scoring' },

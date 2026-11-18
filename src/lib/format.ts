@@ -24,6 +24,8 @@ const INSIGHT_CATEGORY_LABELS: Record<string, string> = {
   h2h: 'Head to Head',
   last_meeting: 'Last Meeting',
   league_night: 'Big Night',
+  player_game_stat: 'Big Night',
+  player_combo: 'Stat Line',
 }
 
 /** Display label for an insight category ("league_comparison" → "League Rank"). */

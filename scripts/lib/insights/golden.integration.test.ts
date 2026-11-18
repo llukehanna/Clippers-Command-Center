@@ -106,14 +106,16 @@ describe.skipIf(!url)(`insight engine golden expectations (${REAL ? 'real data, 
   });
 
   describe.skipIf(REAL)('fixture league', () => {
-    it('G7 a 55-point game is framed against the records and lands on its game page', async () => {
-      const night = all.drafts.find((d) => d.category === 'league_night' && /^Star Clipper/.test(d.headline) && /\b55\b/.test(d.headline));
+    it('G7 a 55-point game is a records_best postgame insight on its game page', async () => {
+      const [g] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM game_player_box_scores WHERE player_id = 1 AND points = 55`;
+      const r = await dry(today, ['postgame'], g.game_id);
+      const night = r.drafts.find((d) => d.category === 'player_game_stat' && /^Star Clipper scored 55\b|^Star Clipper: 55 points/.test(d.headline));
       expect(night).toBeDefined();
       expect(night!.frame.type).toBe('records_best');
       expect(night!.detail).toMatch(/since 2024-25|in \d+ seasons? of records/);
-      const [g] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM game_player_box_scores WHERE player_id = 1 AND points = 55`;
       expect(night!.game_id).toBe(g.game_id);
-    });
+      expect(r.drafts.every((d) => d.game_id === g.game_id)).toBe(true);
+    }, TIMEOUT);
 
     it('G8 a completed season reads in the past tense', () => {
       const season = all.drafts.filter((d) => d.surface === 'season');

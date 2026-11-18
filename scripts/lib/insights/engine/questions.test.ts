@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { refAsOf, refsFor } from './references';
+import { COMBOS, refAsOf, refsFor } from './references';
 import { FACT_KINDS } from './types';
 import {
   careerHigh, clippersRank, groupCompany, groupFirstSince, groupSeasonHigh, leagueRank, milestoneFirstSince,
@@ -9,7 +9,7 @@ import { makeCtx, makeFact } from './__fixtures__/facts';
 
 const ctx = makeCtx();
 const night = makeFact({
-  kind: 'league_night', surface: 'postgame', stat: 'pts', value: 55,
+  kind: 'player_game_stat', surface: 'postgame', stat: 'pts', value: 55,
   window: { type: 'game', game_id: '500', season_id: 2025 },
   context: { date: '2025-11-28', opponent_id: '2', opponent_name: 'Golden State Warriors', home: true, result: 'W' },
   gameId: '500',
@@ -21,9 +21,10 @@ describe('refsFor', () => {
     const refs = refsFor(night, ctx)!;
     expect(refs.group!.sql).toContain('pb.team_id = $1::bigint');
     expect(refs.group!.sql).toContain('pb.points');
-    expect(refs.group!.params).toEqual(['1', 2020, '2026-02-25']);
-    expect(refs.subject!.params).toEqual(['1', '2026-02-25']);
-    expect(refs.league!.params).toEqual([2025, '2026-02-25']);
+    // R2: a postgame fact older than the as-of reads its references as of the game's date.
+    expect(refs.group!.params).toEqual(['1', 2020, '2025-11-28']);
+    expect(refs.subject!.params).toEqual(['1', '2025-11-28']);
+    expect(refs.league!.params).toEqual([2025, '2025-11-28']);
     expect(refs).toMatchObject({ betterIsHigher: true, ordinal: true, start: { season_id: 2020 } });
   });
   it('drops league refs without complete league data and group refs without records', () => {
@@ -75,7 +76,7 @@ describe('game questions', () => {
     const ch = careerHigh.build(night, ctx)!;
     expect(ch.sql).toContain('FILTER (WHERE game_date < $3::text)');
     expect(ch.sql).not.toContain('game_id <>');
-    expect(ch.params).toEqual(['1', '2026-02-25', '2025-11-28']);
+    expect(ch.params).toEqual(['1', '2025-11-28', '2025-11-28']);
     const gc = groupCompany.build(night, ctx)!;
     expect(gc.sql).toContain('game_date < $5::text OR game_id = $6::text');
   });
@@ -113,7 +114,7 @@ describe('game questions', () => {
     expect(q.sql).toContain('value >= $3::float8');
     expect(q.sql).toContain('game_date < $4::text');
     expect(q.sql).toContain('season_id >= $5::int');
-    expect(q.params).toEqual(['1', '2026-02-25', 55, '2025-11-28', 2020]);
+    expect(q.params).toEqual(['1', '2025-11-28', 55, '2025-11-28', 2020]);
     expect(subjectFirstSince.interpret([{ game_date: '2021-03-01', value: 56 }], night, ctx))
       .toMatchObject({ type: 'first_since', strength: 0.65, who: 'subject', since_date: '2021-03-01' });
     expect(subjectFirstSince.interpret([{ game_date: '2021-03-01', value: 56 }], night, ctx)!.years).toBeCloseTo(4.7, 1);
@@ -177,6 +178,33 @@ describe('refAsOf (R2: postgame references are bounded by the game date)', () =>
     expect(refAsOf(night, ctx)).toBe('2025-11-28');
     expect(refAsOf({ ...night, context: { ...night.context, date: '2026-02-25' } }, ctx)).toBe('2026-02-25');
     expect(refAsOf({ ...night, surface: 'season' }, ctx)).toBe('2026-02-25');
+  });
+});
+
+describe('postgame references are bounded at the fact date (R2)', () => {
+  const combo = {
+    ...night, kind: 'player_combo' as const, stat: 'triple_double', value: 1,
+    data: { thing: 'triple-double', best: 'triple-double', by: 'by a Clipper', line: '24-12-11' },
+  };
+  it('player stat refs: older postgame facts stop at their date, a same-day or non-postgame fact at the as-of', () => {
+    const same = { ...night, context: { ...night.context, date: '2026-02-25' } };
+    expect(refsFor(same, ctx)!.group!.params).toEqual(['1', 2020, '2026-02-25']);
+    const live = refsFor({ ...night, surface: 'season' }, ctx)!;
+    expect(live.subject!.params).toEqual(['1', '2026-02-25']);
+  });
+  it('combo refs are non-ordinal 0/1 sets bounded at the fact date', () => {
+    const refs = refsFor(combo, ctx)!;
+    expect(refs).toMatchObject({ ordinal: false, betterIsHigher: true, league: null, start: { season_id: 2020 } });
+    expect(refs.group!.sql).toContain('CASE WHEN');
+    expect(refs.group!.params).toEqual(['1', 2020, '2025-11-28']);
+    expect(refs.subject!.params).toEqual(['1', '2025-11-28']);
+    expect(refsFor({ ...combo, stat: 'nope' }, ctx)).toBeNull();
+    expect(refsFor(combo, makeCtx({ recordsStart: null }))!.group).toBeNull();
+  });
+  it('every combo key has a definition', () => {
+    for (const key of ['pts30_reb10', 'pts30_ast10', 'triple_double']) {
+      expect(COMBOS.some((c) => c.key === key), key).toBe(true);
+    }
   });
 });
 

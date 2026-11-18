@@ -2,7 +2,7 @@
 // Every detector the engine runs, by surface. Categories must be unique per
 // surface: they define each detector's stale-row deactivation scope.
 import type { Detector } from '../types.js';
-import { leagueNightDetector } from './postgame-league-nights.js';
+import { playerLinesDetector } from './postgame-player-lines.js';
 import { opponentDetector } from './pregame-opponent.js';
 import { milestoneDetector } from './season-milestones.js';
 import { leagueRankDetector, recentFormDetector, standingsDetector } from './season-ranks.js';
@@ -17,5 +17,5 @@ export const DETECTORS: readonly Detector[] = [
   recentFormDetector(),
   yoyDetector('season'),
   opponentDetector(),
-  leagueNightDetector(),
+  playerLinesDetector(),
 ];

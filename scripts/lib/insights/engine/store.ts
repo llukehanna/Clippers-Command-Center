@@ -75,7 +75,8 @@ export async function deactivateLegacy(): Promise<number> {
 }
 
 /** Categories whose detector was retired: their rows are deactivated on every write run. */
-export const RETIRED_CATEGORIES: string[] = [];
+// league_night: v1 rare events, subsumed by postgame player lines (spec §2.2).
+export const RETIRED_CATEGORIES: string[] = ['league_night'];
 
 export async function deactivateRetired(): Promise<number> {
   if (RETIRED_CATEGORIES.length === 0) return 0;

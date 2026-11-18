@@ -48,8 +48,8 @@ describe('composeFeed (spec §2.7)', () => {
 
   it('merges two postgame items about one player in one game', () => {
     const feed = composeFeed([
-      item('x', { surface: 'postgame', player_id: '1', game_id: '9', category: 'league_night', importance: 80, detail: 'Most points' }),
-      item('y', { surface: 'postgame', player_id: '1', game_id: '9', category: 'league_night', importance: 70, detail: 'First 12-rebound game' }),
+      item('x', { surface: 'postgame', player_id: '1', game_id: '9', category: 'player_game_stat', importance: 80, detail: 'Most points' }),
+      item('y', { surface: 'postgame', player_id: '1', game_id: '9', category: 'player_game_stat', importance: 70, detail: 'First 12-rebound game' }),
       item('z', { surface: 'postgame', game_id: '9', category: 'game_flow', importance: 60 }),
     ], 'game_page');
     expect(ids(feed)).toEqual(['x', 'z']);
@@ -62,7 +62,7 @@ describe('composeFeed (spec §2.7)', () => {
       detail: 'Career-high 41 points', frame: { type: 'career_high', strength: 1, text: 'career high' },
     });
     const higher = item('high-imp', {
-      surface: 'postgame', player_id: '1', game_id: '9', category: 'league_night', importance: 85,
+      surface: 'postgame', player_id: '1', game_id: '9', category: 'player_game_stat', importance: 85,
       detail: 'Most rebounds in the league tonight', frame: { type: 'none', strength: 0.2, text: '' },
     });
     const [merged] = mergeSameGamePlayer([higher, strong]);

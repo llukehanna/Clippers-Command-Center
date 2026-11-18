@@ -418,7 +418,8 @@ export const QUESTIONS_BY_KIND: Record<FactKind, readonly Question[]> = {
   opp_rank: [],
   h2h: [],
   last_meeting: [],
-  league_night: GAME_QUESTIONS,
+  player_game_stat: GAME_QUESTIONS,
+  player_combo: GAME_QUESTIONS,
 };
 
 export function questionsFor(fact: Fact): readonly Question[] {

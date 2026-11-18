@@ -18,7 +18,7 @@ export interface RecordsStart { season_id: number; label: string }
 /** Every fact kind. The template and question registries must cover each one (tests enforce it). */
 export const FACT_KINDS = [
   'streak', 'milestone', 'league_rank', 'standings', 'recent_form', 'yoy_change',
-  'opp_rank', 'h2h', 'last_meeting', 'league_night',
+  'opp_rank', 'h2h', 'last_meeting', 'player_game_stat', 'player_combo',
 ] as const;
 export type FactKind = (typeof FACT_KINDS)[number];
 
@@ -84,6 +84,7 @@ export interface FactData {
   lac_score?: number;
   opp_score?: number;
   meeting_date?: string;
+  line?: string;             // "24-12-11" (points-rebounds-assists)
   meeting_home?: boolean;
 }
 

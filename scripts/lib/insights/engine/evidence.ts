@@ -5,7 +5,7 @@ import { seasonLabel } from '../../schedule-utils.js';
 import { fmtDate } from './dates.js';
 import type { EngineContext, Fact } from './types.js';
 
-/** Game-level facts: a ladder of the company joined, else the league-night rank. */
+/** Game-level facts: a ladder of the company joined, else the league rank. */
 export function gameStatEvidence(f: Fact, fr: Frame, seasonText: string): Evidence | null {
   if (fr.type === 'joins_company' && fr.proof_rows.length > 0) {
     return {
@@ -51,7 +51,7 @@ export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
         after: { value: d.cur_value, label: season },
         betterIsHigher: d.higherIsBetter ?? true,
       };
-    case 'league_night':
+    case 'player_game_stat':
       return gameStatEvidence(f, fr, season);
     default:
       return null;

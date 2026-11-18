@@ -79,22 +79,51 @@ function playerStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
   const stat = PLAYER_GAME_STATS[fact.stat as keyof typeof PLAYER_GAME_STATS];
   if (!stat) return null;
   const expr = `pb.${stat.column}`;
+  const asOf = refAsOf(fact, ctx);
   return {
-    group: ctx.recordsStart ? clippersPlayerRef(expr, ctx.lac.teamId, ctx.recordsStart, ctx.asOf) : null,
-    subject: playerCareerRef(expr, fact.subject.id, ctx.asOf),
+    group: ctx.recordsStart ? clippersPlayerRef(expr, ctx.lac.teamId, ctx.recordsStart, asOf) : null,
+    subject: playerCareerRef(expr, fact.subject.id, asOf),
     // League coverage is only assessed for the stats season: a fact in another season gets no league frames.
     league: ctx.league.complete && (fact.seasonId ?? ctx.season.id) === ctx.season.id
-      ? leagueSeasonPlayerRef(expr, ctx.season.id, ctx.asOf) : null,
+      ? leagueSeasonPlayerRef(expr, ctx.season.id, asOf) : null,
     start: ctx.recordsStart,
     betterIsHigher: true,
     ordinal: true,
   };
 }
 
+export interface ComboDef { key: 'pts30_reb10' | 'pts30_ast10' | 'triple_double'; cond: string; thing: string }
+
+const TENS = `((pb.points >= 10)::int + (pb.rebounds >= 10)::int + (pb.assists >= 10)::int + (pb.steals >= 10)::int + (pb.blocks >= 10)::int)`;
+
+/** Combined lines (non-ordinal: did it or didn't). */
+export const COMBOS: ComboDef[] = [
+  { key: 'pts30_reb10', cond: 'pb.points >= 30 AND pb.rebounds >= 10', thing: '30-point, 10-rebound game' },
+  { key: 'pts30_ast10', cond: 'pb.points >= 30 AND pb.assists >= 10', thing: '30-point, 10-assist game' },
+  { key: 'triple_double', cond: `${TENS} >= 3`, thing: 'triple-double' },
+];
+
+function comboRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
+  const combo = COMBOS.find((c) => c.key === fact.stat);
+  if (!combo) return null;
+  const expr = `CASE WHEN ${combo.cond} THEN 1 ELSE 0 END`;
+  const asOf = refAsOf(fact, ctx);
+  return {
+    group: ctx.recordsStart ? clippersPlayerRef(expr, ctx.lac.teamId, ctx.recordsStart, asOf) : null,
+    subject: playerCareerRef(expr, fact.subject.id, asOf),
+    league: null,
+    start: ctx.recordsStart,
+    betterIsHigher: true,
+    ordinal: false,
+  };
+}
+
 export function refsFor(fact: Fact, ctx: EngineContext): RefSpec | null {
   switch (fact.kind) {
-    case 'league_night':
+    case 'player_game_stat':
       return playerStatRefs(fact, ctx);
+    case 'player_combo':
+      return comboRefs(fact, ctx);
     default:
       return null;
   }

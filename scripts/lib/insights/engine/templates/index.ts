@@ -2,10 +2,10 @@
 import type { FactKind } from '../types.js';
 import { h2hTemplates } from './h2h.js';
 import { lastMeetingTemplates } from './last-meeting.js';
-import { leagueNightTemplates } from './league-night.js';
 import { leagueRankTemplates } from './league-rank.js';
 import { milestoneTemplates } from './milestone.js';
 import { oppRankTemplates } from './opp-rank.js';
+import { playerComboTemplates, playerLineTemplates } from './player-line.js';
 import { recentFormTemplates } from './recent-form.js';
 import type { TemplateModule } from './shared.js';
 import { standingsTemplates } from './standings.js';
@@ -22,5 +22,6 @@ export const TEMPLATES: Record<FactKind, TemplateModule> = {
   opp_rank: oppRankTemplates,
   h2h: h2hTemplates,
   last_meeting: lastMeetingTemplates,
-  league_night: leagueNightTemplates,
+  player_game_stat: playerLineTemplates,
+  player_combo: playerComboTemplates,
 };
