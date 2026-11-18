@@ -58,3 +58,6 @@ next-env.d.ts
 
 # local data (Kaggle history dump, import reports)
 /data/
+
+# brainstorm mockups (superpowers visual companion)
+.superpowers/
