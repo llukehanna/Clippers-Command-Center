@@ -43,6 +43,9 @@ export interface MovePart {
   swap?: SwapRef;
   text?: string;
   gap?: GapReason;
+  /** Set by buildPicks (picks.ts) once the part is linked to its draft_picks / pick_swaps row. */
+  pickKey?: string;
+  swapKey?: string;
 }
 export interface ParsedMove {
   sourceKey: string;

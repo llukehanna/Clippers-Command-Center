@@ -5,6 +5,10 @@ describe('keys', () => {
   it('pickKey uses the current franchise tricode', () => {
     expect(pickKey(2022, 1, 1610612746)).toBe('2022-1-LAC');
   });
+  it('pickKey refuses the year-0 / round-0 placeholders of a vague pick', () => {
+    expect(() => pickKey(0, 2, 1610612746)).toThrow();
+    expect(() => pickKey(2022, 0, 1610612746)).toThrow();
+  });
   it('swapKey sorts the franchises', () => {
     expect(swapKey(2024, 1, 1610612747, 1610612746)).toBe(swapKey(2024, 1, 1610612746, 1610612747));
     expect(swapKey(2024, 1, 1610612747, 1610612746)).toBe('2024-1-LAC-LAL');

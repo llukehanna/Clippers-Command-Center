@@ -15,12 +15,17 @@ export function bbrefMoveKey(date: string, kind: MoveKind, tokens: string[]): st
   return `bbref:${date}:${kind}:${[...tokens].sort().join('|')}`;
 }
 
-/** Uses the CURRENT franchise tricode so keys survive relocations. */
+/**
+ * Uses the CURRENT franchise tricode so keys survive relocations. A vague pick's year 0 / round 0 are placeholders,
+ * not an identity: keying them would merge every unknown pick into one, so they throw (Ruling R8).
+ */
 export function pickKey(year: number, round: number, original: FranchiseId): string {
+  if (!(year > 0) || !(round > 0)) throw new Error(`pickKey: no pick identity (year ${year}, round ${round})`);
   return `${year}-${round}-${tricode(original)}`;
 }
 
 export function swapKey(year: number, round: number, a: FranchiseId, b: FranchiseId): string {
+  if (!(year > 0) || !(round > 0)) throw new Error(`swapKey: no swap identity (year ${year}, round ${round})`);
   const [x, y] = [tricode(a), tricode(b)].sort();
   return `${year}-${round}-${x}-${y}`;
 }
