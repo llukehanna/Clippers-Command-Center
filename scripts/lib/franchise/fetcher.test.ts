@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { cachePath, fetchAll, FetchStopped, USER_AGENT, type FetchDeps, type Manifest, type SourceSpec } from './fetcher.js';
+import { cachePath, fetchAll, FetchStopped, HARD_BBREF_CAP, USER_AGENT, type FetchDeps, type Manifest, type SourceSpec } from './fetcher.js';
 
 const bb = (key: string): SourceSpec => ({ source: 'bbref', key, url: `https://www.basketball-reference.com/${key}`, ext: 'html' });
 const wk = (key: string): SourceSpec => ({ source: 'wiki', key, url: `https://en.wikipedia.org/${key}`, ext: 'json' });
@@ -78,6 +78,13 @@ describe('fetchAll', () => {
     const r = await fetchAll([bb('a'), bb('b'), bb('c')], dir, deps(), opts({ bbrefCap: 2 }));
     expect(calls.length).toBe(2);
     expect(r).toEqual({ fetched: 2, skipped: 0, stoppedAt: 'bbref/c' });
+  });
+  it('enforces the hard cap even when bbrefCap is larger', async () => {
+    const specs = Array.from({ length: 320 }, (_, i) => bb(`k${i}`));
+    const r = await fetchAll(specs, dir, deps(), opts({ bbrefCap: 1000 }));
+    expect(HARD_BBREF_CAP).toBe(300);
+    expect(calls.length).toBe(300);
+    expect(r).toEqual({ fetched: 300, skipped: 0, stoppedAt: 'bbref/k300' });
   });
   it('sends the descriptive User-Agent and nothing spoofed', async () => {
     await fetchAll([bb('a')], dir, deps(), opts());

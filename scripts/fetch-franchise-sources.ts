@@ -13,7 +13,7 @@
 // Run via: npm run fetch-franchise-sources -- --only=nba
 import fs from 'node:fs';
 import path from 'node:path';
-import { fetchAll, FetchStopped, type FetchDeps, type SourceSpec } from './lib/franchise/fetcher.js';
+import { fetchAll, FetchStopped, HARD_BBREF_CAP, type FetchDeps, type SourceSpec } from './lib/franchise/fetcher.js';
 import { bbrefSources, espnDraftSources, NBA_MOVEMENT, wikiCounterpartySources, wikiSources } from './lib/franchise/sources.js';
 
 const log = (msg: string) => console.log(`[fetch-franchise] ${msg}`);
@@ -36,7 +36,7 @@ function parseArgs(argv: string[]) {
   const only = (val('only') ?? null) as Only | null;
   if (only !== null && !ONLY.includes(only)) throw new Error(`Invalid --only="${only}" (${ONLY.join('|')})`);
   const bbrefCap = Number(val('bbref-cap') ?? 150);
-  if (!(bbrefCap > 0)) throw new Error('--bbref-cap must be a positive number');
+  if (!(bbrefCap > 0) || bbrefCap > HARD_BBREF_CAP) throw new Error(`--bbref-cap must be between 1 and ${HARD_BBREF_CAP}`);
   return {
     only, from: year('from', 1970), to: year('to', currentSeasonStart()), bbrefCap,
     dir: val('dir') ?? path.join('data', 'franchise-raw'), refresh: new Set(vals('refresh')),

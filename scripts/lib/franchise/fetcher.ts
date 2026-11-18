@@ -12,6 +12,9 @@ export interface Manifest { [key: string]: { url: string; status: number; fetche
 export const USER_AGENT = 'CCC-history-archive/1.0 (private, non-commercial)';
 export const PACE_MS: Record<SourceName, number> = { bbref: 6000, wiki: 1000, espn: 1000, nba: 0 };
 
+/** Absolute ceiling on BBRef requests in one run, whatever the caller asks for. */
+export const HARD_BBREF_CAP = 300;
+
 export class FetchStopped extends Error {
   constructor(public readonly key: string, public readonly status: number) {
     super(`stopped at ${key}: HTTP ${status}`);
@@ -45,6 +48,7 @@ export async function fetchAll(
   opts: { refresh: Set<string>; bbrefCap: number },
 ): Promise<{ fetched: number; skipped: number; stoppedAt?: string }> {
   const manifest = readManifest(dir);
+  const bbrefCap = Math.min(opts.bbrefCap, HARD_BBREF_CAP);
   const lastAt: Partial<Record<SourceName, number>> = {};
   let fetched = 0, skipped = 0, bbrefRequests = 0;
 
@@ -55,7 +59,7 @@ export async function fetchAll(
     if (!refresh && manifest[mk]?.status === 200 && fs.existsSync(file)) { skipped++; continue; }
 
     if (spec.source === 'bbref') {
-      if (bbrefRequests >= opts.bbrefCap) { writeManifest(dir, manifest); return { fetched, skipped, stoppedAt: mk }; }
+      if (bbrefRequests >= bbrefCap) { writeManifest(dir, manifest); return { fetched, skipped, stoppedAt: mk }; }
       bbrefRequests++;
     }
 
