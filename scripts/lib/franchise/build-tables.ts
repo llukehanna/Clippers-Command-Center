@@ -202,6 +202,7 @@ export interface PeopleSources {
  */
 export function completePeople(base: PersonRow[], src: PeopleSources): PersonRow[] {
   const byKey = new Map(base.map((p) => [p.personKey, p]));
+  const baseKeys = new Set(base.map((p) => p.personKey));
   const nbaHeld = new Set(base.map((p) => p.nbaPersonId).filter((x): x is number => x != null));
   const playerByNba = new Map<number, string>();
   const nbaClaims = new Map<number, number>();
@@ -209,8 +210,17 @@ export function completePeople(base: PersonRow[], src: PeopleSources): PersonRow
   for (const p of src.dbPlayers) if (p.nba_person_id != null && nbaClaims.get(p.nba_person_id) === 1) playerByNba.set(p.nba_person_id, p.player_id);
 
   const add = (personKey: string, kind: PersonRow['kind'], displayName: string, nbaPersonId: number | null = null) => {
-    if (byKey.has(personKey) || !displayName) return;
     const nba = nbaPersonId != null && !nbaHeld.has(nbaPersonId) ? nbaPersonId : null;
+    const had = byKey.get(personKey);
+    if (had) {
+      // A later ref (a move NBA.com and BBRef both list) may be the first to carry this person's NBA.com id.
+      if (had.nbaPersonId == null && nba != null && !baseKeys.has(personKey)) {
+        nbaHeld.add(nba);
+        byKey.set(personKey, { ...had, nbaPersonId: nba, playerId: playerByNba.get(nba) ?? null });
+      }
+      return;
+    }
+    if (!displayName) return;
     if (nba != null) nbaHeld.add(nba);
     byKey.set(personKey, {
       personKey, kind, displayName, birthdate: null, nbaPersonId: nba, playerId: nba != null ? playerByNba.get(nba) ?? null : null,

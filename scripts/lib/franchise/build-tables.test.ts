@@ -94,6 +94,29 @@ describe('resolveHonors (only while a Clippers player or coach)', () => {
 });
 
 describe('completePeople', () => {
+  it('lets a later move ref fill a person row with no NBA.com id, but never a base row or an id already held', () => {
+    const base = [{ personKey: 'basepl01', kind: 'player' as const, displayName: 'Base Player', birthdate: null, nbaPersonId: null, playerId: null }];
+    const mvOf = (key: string, person: { bbrefId: string; nbaPersonId?: number; name: string }): MergedMove => ({
+      sourceKey: key, transactionKey: key, sources: [key], date: '2020-01-01', kind: 'waiver', involvesClippers: true, complete: true,
+      conflicts: [], parts: [{ from: LAC, to: null, kind: 'player', person }],
+    });
+    const out = completePeople(base, {
+      moves: [
+        mvOf('bbref:1', { bbrefId: 'loyerfl01', name: 'Fletcher Loyer' }),
+        mvOf('nba:2', { bbrefId: 'loyerfl01', nbaPersonId: 1643630, name: 'Fletcher Loyer' }),
+        mvOf('nba:3', { bbrefId: 'basepl01', nbaPersonId: 55, name: 'Base Player' }),
+        mvOf('bbref:4', { bbrefId: 'otherx01', name: 'Other X' }),
+        mvOf('nba:5', { bbrefId: 'otherx01', nbaPersonId: 1643630, name: 'Other X' }),
+      ],
+      picks: [], draftNames: new Map(), coachSeasons: [], execTerms: [], salaries: [], contracts: [],
+      dbPlayers: [{ player_id: '9', nba_person_id: 1643630, display_name: 'Fletcher Loyer', birthdate: null }],
+    });
+    const by = new Map(out.map((p) => [p.personKey, p]));
+    expect(by.get('loyerfl01')).toMatchObject({ nbaPersonId: 1643630, playerId: '9' });
+    expect(by.get('basepl01')?.nbaPersonId).toBeNull(); // base rows come from matchPeople: not refilled here
+    expect(by.get('otherx01')?.nbaPersonId).toBeNull(); // 1643630 is already held
+  });
+
   it('adds coaches, executives, move people (BBRef id, else nba:<id>) and selections, never twice', () => {
     const base = [{ personKey: 'paulch01', kind: 'player' as const, displayName: 'Chris Paul', birthdate: '1985-05-06', nbaPersonId: 101108, playerId: '7' }];
     const move: MergedMove = {
