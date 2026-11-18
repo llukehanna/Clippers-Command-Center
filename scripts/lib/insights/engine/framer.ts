@@ -23,11 +23,12 @@ export interface FramedFact {
 export const PBP_KINDS: ReadonlySet<Fact['kind']> = new Set<Fact['kind']>(['game_flow']);
 
 /**
- * Frames that claim "nobody has done this since records start". Over play-by-play
- * they are only true when every Clippers game in range has play-by-play.
+ * Frames that claim "nobody has done this since records start" (or this season, or
+ * count occurrences): a missing game could hide a bigger value or an occurrence. Over
+ * play-by-play they are only true when every Clippers game in range has play-by-play.
  */
 export const PBP_RECORD_FRAMES: ReadonlySet<FrameType> = new Set<FrameType>([
-  'records_best', 'first_since', 'only_one', 'joins_company', 'clippers_rank',
+  'records_best', 'first_since', 'only_one', 'joins_company', 'clippers_rank', 'season_high', 'nth_time',
 ]);
 
 /** The frame types a fact may not use: its record frames when it is play-by-play and the games before it are not all ingested. */

@@ -62,22 +62,25 @@ describe('game flow references', () => {
 });
 
 describe('play-by-play record gate (R7)', () => {
-  const frame = (type: Frame['type']): Frame => ({ type, strength: 0.9, who: 'group', text: '', proof_rows: [] });
+  const frame = (type: Frame['type']): Frame => ({ type, strength: type === 'longest_since' ? 0.5 : 0.9, who: 'group', text: '', proof_rows: [] });
   const emits = (type: Frame['type']): Question => ({ name: type, build: () => ({ sql: 'SELECT 1', params: [] }), interpret: () => frame(type) });
 
   it('blocks exactly the record frames, only for play-by-play kinds, only when incomplete', () => {
-    expect([...PBP_RECORD_FRAMES].sort()).toEqual(['clippers_rank', 'first_since', 'joins_company', 'only_one', 'records_best']);
+    expect([...PBP_RECORD_FRAMES].sort()).toEqual(
+      ['clippers_rank', 'first_since', 'joins_company', 'nth_time', 'only_one', 'records_best', 'season_high']);
     expect(blockedFrames(flow('comeback', 22), false)).toBe(PBP_RECORD_FRAMES);
     expect(blockedFrames(flow('comeback', 22), true)).toBeUndefined();
     expect(blockedFrames(makeFact({ kind: 'player_game_stat' }), false)).toBeUndefined();
   });
   it('drops a blocked record frame and keeps the strongest of the rest', async () => {
     const run = async () => [];
-    const qs = [emits('records_best'), { ...emits('season_high'), name: 'sh' }];
+    const qs = [emits('records_best'), { ...emits('season_high'), name: 'sh' }, { ...emits('longest_since'), name: 'ls' }];
     const open = await frameFact(flow('comeback', 22), makeCtx(), run, qs);
     expect(open.frame.type).toBe('records_best');
     const gated = await frameFact(flow('comeback', 22), makeCtx(), run, qs, blockedFrames(flow('comeback', 22), false));
-    expect(gated.frame.type).toBe('season_high');
+    expect(gated.frame.type).toBe('longest_since'); // a non-gated frame survives
+    const gatedLow = await frameFact(flow('comeback', 22), makeCtx(), run, qs.slice(0, 2), blockedFrames(flow('comeback', 22), false));
+    expect(gatedLow.frame.type).toBe('none');
     const onlyRecord = await frameFact(flow('comeback', 22), makeCtx(), run, [emits('first_since')], PBP_RECORD_FRAMES);
     expect(onlyRecord.frame.type).toBe('none');
   });

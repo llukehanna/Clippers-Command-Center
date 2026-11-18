@@ -710,11 +710,11 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         await sql`DELETE FROM game_flow WHERE game_id = ${early.game_id}::bigint`;
         const gated = await comeback();
         expect(PBP_RECORD_FRAMES.has(gated.frame.type)).toBe(false);
-        expect(gated.frame.type).toBe('season_high');
+        // The fixture has no other frame, so nothing is left: the fact itself and its evidence survive.
+        expect(gated.frame.type).toBe('none');
         expect(gated.headline).toBe(complete.headline);
         expect(gated.evidence).toMatchObject({ type: 'margin_spark' });
-        expect(gated.detail).not.toMatch(/since 2025-26|of records/);
-        expect(gated.detail).toMatch(/^(The l|L)argest comeback win by the Clippers so far in 2025-26$/);
+        expect(gated.detail).toBe('Largest lead 8, largest deficit 15');
       } finally {
         await sql`INSERT INTO game_flow SELECT * FROM jsonb_populate_record(NULL::game_flow, ${sql.json(row.j as never)})`;
       }
