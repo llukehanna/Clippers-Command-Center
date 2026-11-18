@@ -1,0 +1,35 @@
+name: Sync Franchise Moves
+
+# Nightly franchise transactions (scripts/sync-franchise-moves.ts): NBA.com's movement feed, or ESPN's Clippers
+# transactions when NBA.com is blocked or slow. The log line says which source was used.
+
+on:
+  schedule:
+    - cron: '30 13 * * *'   # daily at 13:30 UTC, before sync-schedule
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-write
+  cancel-in-progress: false
+
+jobs:
+  sync-franchise-moves:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run sync-franchise-moves
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
