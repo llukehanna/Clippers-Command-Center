@@ -98,5 +98,5 @@ export function flowMoments(flow: LiveFlow | null | undefined, teams: MomentTeam
   return out
     .sort((x, y) => y.t - x.t || y.importance - x.importance)
     .slice(0, MAX_MOMENTS)
-    .map(({ t: _t, ...insight }) => insight);
+    .map(({ insight_id, category, headline, detail, importance, proof }) => ({ insight_id, category, headline, detail, importance, proof }));
 }
