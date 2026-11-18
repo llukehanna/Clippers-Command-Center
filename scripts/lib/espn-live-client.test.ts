@@ -3,11 +3,13 @@ import summary from './__fixtures__/espn-summary-401909920.json';
 import scoreboard from './__fixtures__/espn-scoreboard-20261102.json';
 import {
   athleteNames,
+  injuryLabel,
   isoClock,
   nameResolver,
   normalizeName,
   toActions,
   toBoxscore,
+  toInjuries,
   toScoreboard,
   type EspnSummaryJson,
 } from './espn-live-client';
@@ -108,6 +110,37 @@ describe('toBoxscore', () => {
       reboundsTotal: 4, assists: 1, plusMinusPoints: -1, minus: 1, plus: 0, minutes: 'PT30M00.00S',
     });
     expect(box.homeTeam.statistics.reboundsTotal).toBe(38); // ESPN team total
+  });
+});
+
+describe('injuries', () => {
+  it('labels an injury from its side, body part and detail', () => {
+    expect(injuryLabel({ type: 'Knee', detail: 'Inflammation', side: 'Right' })).toBe('Right knee inflammation');
+    expect(injuryLabel({ type: 'Achilles', detail: 'Surgery', side: 'Right' })).toBe('Right Achilles surgery');
+    expect(injuryLabel({ type: 'Illness', detail: 'Not Specified', side: 'Not Specified' })).toBe('Illness');
+    expect(injuryLabel(undefined)).toBe('');
+  });
+
+  it("reads a team's report, resolving players to NBA ids", () => {
+    const withReport: EspnSummaryJson = {
+      ...json,
+      injuries: [
+        { team: { abbreviation: 'UTAH' }, injuries: [] },
+        {
+          team: { abbreviation: 'LAC' },
+          injuries: [
+            { status: 'Out', athlete: { id: '3102530', displayName: 'Brook Lopez' }, details: { type: 'Foot', detail: 'Strain', side: 'Right', returnDate: '2026-11-20' } },
+            { status: 'Day-To-Day', athlete: { id: '42', displayName: 'Unknown Rookie' }, details: {} },
+          ],
+        },
+      ],
+    };
+    expect(toInjuries(withReport, 'LAC', resolve)).toEqual([
+      { personId: 201572, name: 'Brook Lopez', status: 'Out', injury: 'Right foot strain', returnDate: '2026-11-20' },
+      { personId: -42, name: 'Unknown Rookie', status: 'Day-To-Day', injury: '', returnDate: null },
+    ]);
+    expect(toInjuries(withReport, 'UTA', resolve)).toEqual([]);
+    expect(toInjuries(json, 'LAC', resolve)).toEqual([]);
   });
 });
 

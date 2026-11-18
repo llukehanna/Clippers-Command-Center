@@ -229,8 +229,12 @@ export type Override =
   | {
       kind: 'pick';
       match: { pickKey: string };
-      /** `protections` is required unless `protectionsText` parses (parseProtections); [] means unprotected. */
-      set: { protectionsText?: string; protections?: Protection[] };
+      /**
+       * `protections` is required unless `protectionsText` parses (parseProtections); [] means unprotected.
+       * `status: 'forfeited'` marks a pick the league took away when no draft page lists the forfeit yet (future
+       * drafts); it needs no protections.
+       */
+      set: { protectionsText?: string; protections?: Protection[]; status?: 'forfeited' };
       source: string;
     }
   | ({ kind: 'move'; match: { moveKey: string } } & MoveOverrideBody)

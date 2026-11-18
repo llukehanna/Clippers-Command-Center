@@ -6,7 +6,9 @@
 // Modes:
 //   (default)          Current season, from the cdn.nba.com league schedule:
 //                      final games in the last --days (default 3) that have no
-//                      player box scores yet. This is the nightly job.
+//                      player box scores yet, or only provisional ones (ESPN's
+//                      or the live doc's, written at the buzzer when the NBA
+//                      refused — see lib/finalize.ts). This is the nightly job.
 //   --season=YYYY-YY   A whole past season: every possible game id is fetched
 //                      from cdn.nba.com (see candidateGameIds) because the
 //                      past-season schedule is only on stats.nba.com, which
@@ -29,6 +31,7 @@
 
 import { sql } from './lib/db.js';
 import { upsertSeasons } from './lib/upserts.js';
+import { PROVISIONAL_SOURCES } from './lib/finalize.js';
 import { findLikelyDuplicates, ingestBoxscore, removeStaleDuplicate } from './lib/league-ingest.js';
 import {
   easternDateOf,
@@ -91,13 +94,20 @@ async function selectGameIds(args: Args): Promise<{ seasonId: number; ids: strin
   return { seasonId, ids };
 }
 
-/** NBA ids (10-char) of this season's games that already have player box scores. */
+/**
+ * NBA ids (10-char) of this season's games that already have the NBA's player
+ * box scores. Provisional box scores (ESPN's, the live doc's) don't count: the NBA one replaces them.
+ */
 async function alreadyIngested(seasonId: number): Promise<Set<string>> {
   const rows = await sql<{ nba_game_id: string }[]>`
     SELECT g.nba_game_id::text
     FROM games g
     WHERE g.season_id = ${seasonId}
       AND EXISTS (SELECT 1 FROM game_player_box_scores pb WHERE pb.game_id = g.game_id)
+      AND NOT EXISTS (
+        SELECT 1 FROM game_team_box_scores tb
+        WHERE tb.game_id = g.game_id AND tb.raw_payload->>'source' = ANY(${[...PROVISIONAL_SOURCES]}::text[])
+      )
   `;
   return new Set(rows.map((r) => r.nba_game_id.padStart(10, '0')));
 }

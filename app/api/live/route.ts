@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { liveSql as sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { getLatestOdds } from '@/src/lib/odds';
-import { computeKeyMetrics, buildBoxScore, liveInsights, notStartedPayload, RUNNER_NOT_STARTED_REASON } from '@/src/lib/live/payload';
+import { computeKeyMetrics, buildBoxScore, docExtras, liveInsights, notStartedPayload, RUNNER_NOT_STARTED_REASON } from '@/src/lib/live/payload';
 import { staleThresholdMs } from '@/src/lib/live-utils';
 import type { LiveStateDoc } from '@/src/lib/types/live-state';
 import type { LiveGame } from '@/src/lib/ui/types';
@@ -222,6 +222,7 @@ export async function GET(): Promise<NextResponse> {
           wp: payload.wp ?? null,
           lineups: payload.lineups ?? null,
           observed_at: payload.observed_at ?? null,
+          ...docExtras(payload, lacIsHome),
         },
         CDN_LIVE
       );
@@ -287,6 +288,7 @@ export async function GET(): Promise<NextResponse> {
         wp: payload.wp ?? null,
         lineups: payload.lineups ?? null,
         observed_at: payload.observed_at ?? null,
+        ...docExtras(payload, lacIsHome),
       },
       CDN_LIVE
     );

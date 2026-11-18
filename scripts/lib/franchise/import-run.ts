@@ -12,6 +12,7 @@ import type { PlayoffRecord } from './build-tables.js';
 import type { TeamSeasonRow } from './lottery.js';
 import type { DbPlayer } from './people.js';
 import { gateFailures, summarizeReport } from './report.js';
+import type { Override } from './types.js';
 import { writeFranchise, type WriteResult } from './write.js';
 
 const LAC = NBA_TEAM_IDS.LAC;
@@ -27,6 +28,8 @@ export interface ImportArgs {
   from: number;
   to: number;
   currentDraftYear: number;
+  /** Overrides to apply; default OVERRIDES (overrides.ts). Tests pass [] to exercise the pipeline alone. */
+  overrides?: Override[];
 }
 
 export interface ImportOutcome {
@@ -142,7 +145,7 @@ function summary(args: ImportArgs, built: BuiltDataset, reportPath: string, cpPa
 
 export async function runImport(db: Db, args: ImportArgs, log: (line: string) => void = (l) => console.log(`[import-franchise] ${l}`)): Promise<ImportOutcome> {
   const input = await loadDbInput(db);
-  const built = buildDataset(args.dir, input, { from: args.from, to: args.to, only: args.only, currentDraftYear: args.currentDraftYear });
+  const built = buildDataset(args.dir, input, { from: args.from, to: args.to, only: args.only, currentDraftYear: args.currentDraftYear, overrides: args.overrides });
 
   const cpPath = path.join(args.dir, 'counterparties.json');
   fs.writeFileSync(cpPath, `${JSON.stringify(built.counterparties, null, 2)}\n`);

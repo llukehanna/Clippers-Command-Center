@@ -533,4 +533,114 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
       }
     }
   });
+
+  it('finalizes from ESPN when the NBA refuses: provisional, then replaced by the NBA box score', async () => {
+    const { finalizeGame } = await import('./finalize');
+    const { ingestBoxscore } = await import('./league-ingest');
+    const { upsertGameRow } = await import('./upserts');
+    const [teams] = await sql<{ den: string; lac: string }[]>`
+      SELECT (SELECT team_id::text FROM teams WHERE abbreviation = 'DEN') AS den,
+             (SELECT team_id::text FROM teams WHERE abbreviation = 'LAC') AS lac`;
+    await upsertGameRow({
+      nbaGameId: '0022600078', seasonId: 2026, gameDate: '2026-10-28', status: 'scheduled',
+      startTimeUtc: '2026-10-29T02:30:00Z', homeTeamId: teams.den, awayTeamId: teams.lac,
+      homeScore: null, awayScore: null, period: null, clock: null, isPlayoffs: false,
+    });
+    const [{ game_id: gameId }] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM games WHERE nba_game_id = 22600078`;
+    // Known to us only by name (no NBA personId), so ESPN gives him -espnId.
+    await sql`INSERT INTO players (nba_player_id, first_name, last_name, display_name) VALUES (999002, 'Name', 'Only', 'Name Only')`;
+
+    const game = (request: string, lac: BoxscorePlayer[]): NBABoxscoreResponse => ({
+      meta: { version: 1, code: 200, request, time: '' },
+      game: {
+        gameId: '0022600078', gameStatus: 3, gameStatusText: 'Final', period: 4, gameClock: '',
+        gameTimeUTC: '2026-10-29T02:30:00Z', regulationPeriods: 4,
+        homeTeam: team('DEN', [player(1_000_000 + 49, 'DEN Player 1', 20)]),
+        awayTeam: team('LAC', lac),
+      },
+    });
+    const espn = game('espn', [
+      player(1_000_001, 'Star Clipper', 30),
+      player(-4001, 'Name Only', 6),       // unique name match, not claimed
+      player(-4002, 'Nobody We Know', 4),  // skipped
+    ]);
+    const state = async () => (await sql<{ players: number; espn_teams: number; status: string; away: number }[]>`
+      SELECT (SELECT COUNT(*)::int FROM game_player_box_scores WHERE game_id = ${gameId}::bigint) AS players,
+             (SELECT COUNT(*)::int FROM game_team_box_scores WHERE game_id = ${gameId}::bigint AND raw_payload->>'source' = 'espn') AS espn_teams,
+             status, away_score AS away
+      FROM games WHERE game_id = ${gameId}::bigint`)[0];
+
+    let nbaCalls = 0;
+    await finalizeGame(gameId, '22600078', {
+      fetchNba: async () => { nbaCalls++; throw new Error('NBA CDN 403'); },
+      fetchEspn: async () => espn,
+      retryDelayMs: 0,
+    });
+    expect(nbaCalls).toBe(1);
+    expect(await state()).toEqual({ players: 3, espn_teams: 2, status: 'final', away: 40 });
+    const [neg] = await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM players WHERE nba_person_id < 0`;
+    expect(neg.n).toBe(0);
+    const [nameOnly] = await sql<{ nba_person_id: number | null }[]>`SELECT nba_person_id FROM players WHERE nba_player_id = 999002`;
+    expect(nameOnly.nba_person_id).toBeNull();
+
+    // The nightly sync's ingest brings the NBA box score: every row replaced,
+    // including the name-matched row the NBA's box score doesn't have.
+    await ingestBoxscore(2026, game('', [player(1_000_001, 'Star Clipper', 31)]));
+    expect(await state()).toEqual({ players: 2, espn_teams: 0, status: 'final', away: 31 });
+
+    // ESPN never replaces the NBA's box score.
+    await finalizeGame(gameId, '22600078', { fetchNba: async () => { throw new Error('NBA CDN 403'); }, fetchEspn: async () => espn, retryDelayMs: 0 });
+    expect(await state()).toEqual({ players: 2, espn_teams: 0, status: 'final', away: 31 });
+
+    // Neither source ready: retries, then throws with both reasons.
+    await expect(finalizeGame(gameId, '22600078', {
+      fetchNba: async () => { throw new Error('NBA CDN 403'); },
+      fetchEspn: async () => ({ ...espn, game: { ...espn.game, gameStatus: 2 } }),
+      maxRetries: 2, retryDelayMs: 0,
+    })).rejects.toThrow(/FAILED after 2 attempts .*NBA: NBA CDN 403; ESPN: game not final yet/);
+  }, TIMEOUT);
+
+  it('finalizes from the final live doc when neither the NBA nor ESPN has the box score', async () => {
+    const { finalizeGame } = await import('./finalize');
+    const { upsertGameRow } = await import('./upserts');
+    const { saveLiveState } = await import('./live-store');
+    const { liveDoc } = await import('./live-fixtures');
+    const [teams] = await sql<{ den: string; lac: string }[]>`
+      SELECT (SELECT team_id::text FROM teams WHERE abbreviation = 'DEN') AS den,
+             (SELECT team_id::text FROM teams WHERE abbreviation = 'LAC') AS lac`;
+    await upsertGameRow({
+      nbaGameId: '0022600079', seasonId: 2026, gameDate: '2026-10-30', status: 'scheduled',
+      startTimeUtc: '2026-10-31T02:30:00Z', homeTeamId: teams.lac, awayTeamId: teams.den,
+      homeScore: null, awayScore: null, period: null, clock: null, isPlayoffs: false,
+    });
+    const [{ game_id: gameId }] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM games WHERE nba_game_id = 22600079`;
+    const home = team('LAC', [player(1_000_001, 'Star Clipper', 33), player(-5001, 'Nobody We Know', 2)]);
+    const away = team('DEN', [player(1_000_000 + 49, 'DEN Player 1', 21)]);
+    const finalDoc = liveDoc(7, {
+      nba_game_id: '0022600079', status: 'final', status_text: 'Final', period: 4, clock: '0:00',
+      home_score: home.score, away_score: away.score, home_box: home, away_box: away,
+    });
+    const refuse = { fetchNba: async () => { throw new Error('NBA CDN 403'); }, fetchEspn: async () => { throw new Error('ESPN 503'); }, retryDelayMs: 0 };
+
+    // No live doc yet: every source fails.
+    await expect(finalizeGame(gameId, '22600079', { ...refuse, maxRetries: 1 }))
+      .rejects.toThrow(/NBA: NBA CDN 403; ESPN: ESPN 503; live doc: no final live doc/);
+
+    // A live doc whose box score disagrees with its final score is not used.
+    await saveLiveState(sql, gameId, { ...finalDoc, seq: 6, home_score: home.score + 1 });
+    await expect(finalizeGame(gameId, '22600079', { ...refuse, maxRetries: 1 })).rejects.toThrow(/live doc: no final live doc/);
+
+    // The live doc is only the last attempt's fallback.
+    await saveLiveState(sql, gameId, finalDoc);
+    let nbaCalls = 0;
+    await finalizeGame(gameId, '22600079', { ...refuse, fetchNba: async () => { nbaCalls++; throw new Error('NBA CDN 403'); }, maxRetries: 2 });
+    expect(nbaCalls).toBe(2);
+    const [state] = await sql<{ players: number; live_teams: number; status: string; home: number; away: number }[]>`
+      SELECT (SELECT COUNT(*)::int FROM game_player_box_scores WHERE game_id = ${gameId}::bigint) AS players,
+             (SELECT COUNT(*)::int FROM game_team_box_scores WHERE game_id = ${gameId}::bigint AND raw_payload->>'source' = 'live') AS live_teams,
+             status, home_score AS home, away_score AS away
+      FROM games WHERE game_id = ${gameId}::bigint`;
+    expect(state).toEqual({ players: 2, live_teams: 2, status: 'final', home: 35, away: 21 });
+    await sql`DELETE FROM live_state WHERE game_id = ${gameId}::bigint`;
+  }, TIMEOUT);
 });
