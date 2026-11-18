@@ -43,9 +43,9 @@ describe('fetchAll', () => {
     expect(sleeps.filter((s) => s > 0).length).toBe(2);
     expect(sleeps.every((s) => s >= 6000)).toBe(true);
   });
-  it('paces wiki at 1000 ms and nba not at all', async () => {
+  it('paces wiki at 3000 ms and nba not at all', async () => {
     await fetchAll([wk('a'), wk('b')], dir, deps(), opts());
-    expect(sleeps).toEqual([1000]);
+    expect(sleeps).toEqual([3000]);
     sleeps = [];
     const nba = (k: string): SourceSpec => ({ source: 'nba', key: k, url: `https://x/${k}`, ext: 'json' });
     await fetchAll([nba('a'), nba('b')], dir, deps(), opts());
@@ -57,6 +57,25 @@ describe('fetchAll', () => {
     expect(manifest()['bbref/b'].status).toBe(429);
     expect(calls.length).toBe(2);
     expect(fs.existsSync(cachePath(dir, bb('b')))).toBe(false);
+  });
+  it('stops the whole run on a wiki 429 and reports Retry-After', async () => {
+    statusFor = (u) => (u.endsWith('/b') ? 429 : 200);
+    const d = deps();
+    const inner = d.fetch;
+    d.fetch = (async (url: string, init?: never) => {
+      const r = await inner(url, init);
+      return r.status === 429 ? new Response('x', { status: 429, headers: { 'Retry-After': '120' } }) : r;
+    }) as unknown as typeof fetch;
+    const err = await fetchAll([wk('a'), wk('b'), wk('c')], dir, d, opts()).catch((e) => e);
+    expect(err).toBeInstanceOf(FetchStopped);
+    expect(err.message).toContain('Retry-After: 120');
+    expect(manifest()['wiki/b'].status).toBe(429);
+    expect(calls.length).toBe(2);
+  });
+  it('waits at least 3000 ms between wiki requests', async () => {
+    await fetchAll([wk('a'), wk('b'), wk('c')], dir, deps(), opts());
+    expect(sleeps.length).toBe(2);
+    expect(sleeps.every((s) => s >= 3000)).toBe(true);
   });
   it('skips keys already fetched with status 200 unless refreshed', async () => {
     const specs = [bb('a'), bb('b')];

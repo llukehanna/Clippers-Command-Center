@@ -10,14 +10,14 @@ export interface FetchDeps { fetch: typeof fetch; sleep(ms: number): Promise<voi
 export interface Manifest { [key: string]: { url: string; status: number; fetchedAt: string; bytes: number } }
 
 export const USER_AGENT = 'CCC-history-archive/1.0 (private, non-commercial)';
-export const PACE_MS: Record<SourceName, number> = { bbref: 6000, wiki: 1000, espn: 1000, nba: 0 };
+export const PACE_MS: Record<SourceName, number> = { bbref: 6000, wiki: 3000, espn: 1000, nba: 0 };
 
 /** Absolute ceiling on BBRef requests in one run, whatever the caller asks for. */
 export const HARD_BBREF_CAP = 300;
 
 export class FetchStopped extends Error {
-  constructor(public readonly key: string, public readonly status: number) {
-    super(`stopped at ${key}: HTTP ${status}`);
+  constructor(public readonly key: string, public readonly status: number, public readonly retryAfter?: string | null) {
+    super(`stopped at ${key}: HTTP ${status}${retryAfter ? ` (Retry-After: ${retryAfter})` : ''}`);
     this.name = 'FetchStopped';
   }
 }
@@ -71,10 +71,12 @@ export async function fetchAll(
     lastAt[spec.source] = deps.now();
 
     let status = 0;
+    let retryAfter: string | null = null;
     let body = '';
     try {
       const res = await deps.fetch(spec.url, { headers: { 'User-Agent': USER_AGENT } });
       status = res.status;
+      retryAfter = res.headers.get('retry-after');
       body = status === 200 ? await res.text() : '';
     } catch {
       status = 0;
@@ -88,7 +90,7 @@ export async function fetchAll(
       fetched++;
     }
     writeManifest(dir, manifest);
-    if (spec.source === 'bbref' && status !== 200) throw new FetchStopped(mk, status);
+    if (status === 429 || (spec.source === 'bbref' && status !== 200)) throw new FetchStopped(mk, status, retryAfter);
   }
   writeManifest(dir, manifest);
   return { fetched, skipped };
