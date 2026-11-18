@@ -28,6 +28,8 @@ const INSIGHT_CATEGORY_LABELS: Record<string, string> = {
   player_combo: 'Stat Line',
   team_game_stat: 'Team Night',
   game_flow: 'Game Flow',
+  player_period_stat: 'Big Quarter',
+  team_period_stat: 'Big Quarter',
 }
 
 /** Display label for an insight category ("league_comparison" → "League Rank"). */

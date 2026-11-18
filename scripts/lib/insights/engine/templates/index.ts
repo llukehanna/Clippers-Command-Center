@@ -6,6 +6,7 @@ import { lastMeetingTemplates } from './last-meeting.js';
 import { leagueRankTemplates } from './league-rank.js';
 import { milestoneTemplates } from './milestone.js';
 import { oppRankTemplates } from './opp-rank.js';
+import { clutchTemplates, playerPeriodTemplates, teamPeriodTemplates } from './period.js';
 import { playerComboTemplates, playerLineTemplates } from './player-line.js';
 import { recentFormTemplates } from './recent-form.js';
 import type { TemplateModule } from './shared.js';
@@ -28,4 +29,7 @@ export const TEMPLATES: Record<FactKind, TemplateModule> = {
   player_combo: playerComboTemplates,
   team_game_stat: teamLineTemplates,
   game_flow: gameFlowTemplates,
+  player_period_stat: playerPeriodTemplates,
+  team_period_stat: teamPeriodTemplates,
+  clutch: clutchTemplates,
 };

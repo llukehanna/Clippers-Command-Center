@@ -19,8 +19,8 @@ export interface FramedFact {
   proof: ProofQuery | null;
 }
 
-/** Fact kinds measured from play-by-play (game_flow; quarters and clutch join them). */
-export const PBP_KINDS: ReadonlySet<Fact['kind']> = new Set<Fact['kind']>(['game_flow']);
+/** Fact kinds measured from play-by-play: game flow, quarters, halves and clutch. */
+export const PBP_KINDS: ReadonlySet<Fact['kind']> = new Set<Fact['kind']>(['game_flow', 'player_period_stat', 'team_period_stat', 'clutch']);
 
 /**
  * Frames that claim "nobody has done this since records start" (or this season, or

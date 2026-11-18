@@ -19,7 +19,7 @@ export interface RecordsStart { season_id: number; label: string }
 export const FACT_KINDS = [
   'streak', 'milestone', 'league_rank', 'standings', 'recent_form', 'yoy_change',
   'opp_rank', 'h2h', 'last_meeting', 'player_game_stat', 'player_combo',
-  'team_game_stat', 'game_flow',
+  'team_game_stat', 'game_flow', 'player_period_stat', 'team_period_stat', 'clutch',
 ] as const;
 export type FactKind = (typeof FACT_KINDS)[number];
 
@@ -91,6 +91,11 @@ export interface FactData {
   margin_series?: [number, number][];
   lead?: number;
   deficit?: number;
+  // Clutch
+  fgm?: number;
+  fga?: number;
+  ftm?: number;
+  fta?: number;
 }
 
 export interface Fact {

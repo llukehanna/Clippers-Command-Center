@@ -263,6 +263,104 @@ function flowRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
   };
 }
 
+// ── Quarters, halves and clutch (play-by-play) ─────────────────────────────
+
+/** Regulation only (period <= 4): overtime periods are neither quarters nor halves. $1 game, $2 LAC. */
+export const PLAYER_PERIODS_SQL = `
+SELECT pp.player_id::text AS player_id, p.display_name::text AS display_name, pp.period::int AS period, pp.pts::int AS pts
+FROM period_player_stats pp
+JOIN players p ON p.player_id = pp.player_id
+WHERE pp.game_id = $1::bigint AND pp.team_id = $2::bigint AND pp.period <= 4
+ORDER BY pp.player_id, pp.period`.trim();
+
+/** $1 game, $2 LAC. */
+export const TEAM_PERIODS_SQL = `
+SELECT pt.period::int AS period, pt.pts::int AS pts
+FROM period_team_stats pt
+WHERE pt.game_id = $1::bigint AND pt.team_id = $2::bigint AND pt.period <= 4
+ORDER BY pt.period`.trim();
+
+/** Clutch: the last 5:00 of the 4th and overtime with the margin within 5. Player rows only. $1 game, $2 LAC. */
+export const CLUTCH_SQL = `
+SELECT c.player_id::text AS player_id, p.display_name::text AS display_name, c.pts::int AS pts, c.fgm::int AS fgm, c.fga::int AS fga,
+       c.ftm::int AS ftm, c.fta::int AS fta
+FROM clutch_stats c
+JOIN players p ON p.player_id = c.player_id
+WHERE c.game_id = $1::bigint AND c.team_id = $2::bigint AND c.player_id IS NOT NULL
+ORDER BY c.pts DESC, p.display_name`.trim();
+
+/** Season floor by season_id (the 2019-20 bubble ran into Oct 2020), regular season, through the as-of date. */
+const pbpWhere = `${REGULAR_SEASON} AND g.season_id >= $2::int AND g.game_date <= $3::date`;
+
+/** One row per Clippers player-game: that player's best regulation quarter. */
+export function clippersQuarterRef(lacTeamId: string, start: RecordsStart, asOf: string): ProofQuery {
+  return {
+    sql: `SELECT MAX(pp.pts)::float8 AS value, g.game_id::text AS game_id, g.game_date::text AS game_date, g.season_id::int AS season_id,
+       pp.player_id::text AS subject_id, p.display_name::text AS subject_name
+FROM period_player_stats pp
+JOIN games g ON g.game_id = pp.game_id
+JOIN players p ON p.player_id = pp.player_id
+WHERE pp.team_id = $1::bigint AND pp.period <= 4 AND ${pbpWhere}
+GROUP BY g.game_id, g.game_date, g.season_id, pp.player_id, p.display_name`,
+    params: [lacTeamId, start.season_id, asOf],
+  };
+}
+
+/** One row per Clippers player-game: that player's better regulation half. */
+export function clippersHalfRef(lacTeamId: string, start: RecordsStart, asOf: string): ProofQuery {
+  return {
+    sql: `SELECT GREATEST(COALESCE(SUM(pp.pts) FILTER (WHERE pp.period <= 2), 0),
+                COALESCE(SUM(pp.pts) FILTER (WHERE pp.period BETWEEN 3 AND 4), 0))::float8 AS value,
+       g.game_id::text AS game_id, g.game_date::text AS game_date, g.season_id::int AS season_id,
+       pp.player_id::text AS subject_id, p.display_name::text AS subject_name
+FROM period_player_stats pp
+JOIN games g ON g.game_id = pp.game_id
+JOIN players p ON p.player_id = pp.player_id
+WHERE pp.team_id = $1::bigint AND pp.period <= 4 AND ${pbpWhere}
+GROUP BY g.game_id, g.game_date, g.season_id, pp.player_id, p.display_name`,
+    params: [lacTeamId, start.season_id, asOf],
+  };
+}
+
+/** One row per Clippers game: the team's best regulation quarter. */
+export function clippersTeamQuarterRef(lacTeamId: string, start: RecordsStart, asOf: string): ProofQuery {
+  return {
+    sql: `SELECT MAX(pt.pts)::float8 AS value, g.game_id::text AS game_id, g.game_date::text AS game_date, g.season_id::int AS season_id,
+       pt.team_id::text AS subject_id, 'Clippers'::text AS subject_name
+FROM period_team_stats pt
+JOIN games g ON g.game_id = pt.game_id
+WHERE pt.team_id = $1::bigint AND pt.period <= 4 AND ${pbpWhere}
+GROUP BY g.game_id, g.game_date, g.season_id, pt.team_id`,
+    params: [lacTeamId, start.season_id, asOf],
+  };
+}
+
+/** One row per Clippers player-game with clutch rows: clutch points. */
+export function clippersClutchRef(lacTeamId: string, start: RecordsStart, asOf: string): ProofQuery {
+  return {
+    sql: `SELECT c.pts::float8 AS value, g.game_id::text AS game_id, g.game_date::text AS game_date, g.season_id::int AS season_id,
+       c.player_id::text AS subject_id, p.display_name::text AS subject_name
+FROM clutch_stats c
+JOIN games g ON g.game_id = c.game_id
+JOIN players p ON p.player_id = c.player_id
+WHERE c.team_id = $1::bigint AND c.player_id IS NOT NULL AND ${pbpWhere}`,
+    params: [lacTeamId, start.season_id, asOf],
+  };
+}
+
+const PBP_REFS: Record<string, (lac: string, start: RecordsStart, asOf: string) => ProofQuery> = {
+  q_pts: clippersQuarterRef, half_pts: clippersHalfRef, team_q_pts: clippersTeamQuarterRef, clutch_pts: clippersClutchRef,
+};
+
+function pbpStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
+  const build = PBP_REFS[fact.stat];
+  if (!build || !ctx.pbpRecordsStart) return null;
+  return {
+    group: build(ctx.lac.teamId, ctx.pbpRecordsStart, refAsOf(fact, ctx)),
+    subject: null, league: null, start: ctx.pbpRecordsStart, betterIsHigher: true, ordinal: true,
+  };
+}
+
 export function refsFor(fact: Fact, ctx: EngineContext): RefSpec | null {
   switch (fact.kind) {
     case 'player_game_stat':
@@ -273,6 +371,10 @@ export function refsFor(fact: Fact, ctx: EngineContext): RefSpec | null {
       return teamStatRefs(fact, ctx);
     case 'game_flow':
       return flowRefs(fact, ctx);
+    case 'player_period_stat':
+    case 'team_period_stat':
+    case 'clutch':
+      return pbpStatRefs(fact, ctx);
     default:
       return null;
   }

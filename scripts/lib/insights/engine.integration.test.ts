@@ -705,6 +705,108 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       }
     }, TIMEOUT);
 
+    describe('quarters, halves and clutch', () => {
+      beforeAll(async () => {
+        await sql`
+          INSERT INTO period_player_stats (game_id, player_id, team_id, period, pts, reb, ast, fg3m, fgm, fga, stl, blk)
+          SELECT ${comebackGame}::bigint, 1, 1, p, pts, 0, 0, 0, pts / 2, pts, 0, 0
+          FROM (VALUES (1, 8), (2, 15), (3, 6), (4, 10), (5, 30)) AS v(p, pts)`;
+        await sql`
+          INSERT INTO period_team_stats (game_id, team_id, period, pts, fgm, fga, fg3m, fg3a, ftm, fta, reb, ast, tov)
+          SELECT ${comebackGame}::bigint, 1, p, pts, 10, 22, 3, 8, 4, 5, 11, 6, 3
+          FROM (VALUES (1, 40), (2, 25), (3, 30), (4, 28), (5, 50)) AS v(p, pts)`;
+        await sql`
+          INSERT INTO clutch_stats (game_id, team_id, player_id, pts, fgm, fga, fg3m, ftm, fta, tov)
+          VALUES (${comebackGame}::bigint, 1, NULL, 12, 4, 9, 1, 3, 4, 1), (${comebackGame}::bigint, 1, 1, 9, 3, 5, 0, 3, 4, 0)`;
+      }, TIMEOUT);
+      afterAll(async () => {
+        await sql`DELETE FROM period_player_stats WHERE game_id = ${comebackGame}::bigint`;
+        await sql`DELETE FROM period_team_stats WHERE game_id = ${comebackGame}::bigint`;
+        await sql`DELETE FROM clutch_stats WHERE game_id = ${comebackGame}::bigint`;
+      }, TIMEOUT);
+
+      it('frames the best quarter, half and clutch line of a game (overtime periods ignored)', async () => {
+        const { periodsDetector, clutchDetector } = await import('./engine/detectors/postgame-periods');
+        const ctx = { ...(await ctxAt(laToday())), gameId: comebackGame };
+        const periods = (await periodsDetector().run(ctx)).facts;
+        expect(periods.length).toBeGreaterThan(0);
+        expect(periods.map((f) => `${f.stat}:${f.value}:${f.window.period}`).sort()).toEqual(['half_pts:23:1', 'q_pts:15:2', 'team_q_pts:40:1']);
+        const clutch = (await clutchDetector().run(ctx)).facts;
+        expect(clutch).toHaveLength(1);
+        expect(clutch[0]).toMatchObject({ kind: 'clutch', stat: 'clutch_pts', value: 9, data: { fgm: 3, fga: 5, ftm: 3, fta: 4 } });
+        expect(await periodsDetector().run({ ...ctx, pbpRecordsStart: null })).toEqual({ facts: [], gameIds: [] });
+        expect(await clutchDetector().run({ ...ctx, pbpRecordsStart: null })).toEqual({ facts: [], gameIds: [] });
+      }, TIMEOUT);
+
+      it('a game with no period or clutch rows yields no facts', async () => {
+        const { periodsDetector, clutchDetector } = await import('./engine/detectors/postgame-periods');
+        const [other] = await sql<{ game_id: string }[]>`
+          SELECT game_id::text FROM game_flow WHERE game_id <> ${comebackGame}::bigint LIMIT 1`;
+        const ctx = { ...(await ctxAt(laToday())), gameId: other.game_id };
+        expect(await periodsDetector().run(ctx)).toEqual({ facts: [], gameIds: [other.game_id] });
+        expect(await clutchDetector().run(ctx)).toEqual({ facts: [], gameIds: [other.game_id] });
+      }, TIMEOUT);
+
+      it('values each fact with the expression its reference set uses, and bounds the sets at the game date (R2)', async () => {
+        const { periodsDetector, clutchDetector } = await import('./engine/detectors/postgame-periods');
+        const { refsFor } = await import('./engine/references');
+        const { runQuery } = await import('./engine/query');
+        const ctx = { ...(await ctxAt(laToday())), gameId: comebackGame };
+        const facts = [...(await periodsDetector().run(ctx)).facts, ...(await clutchDetector().run(ctx)).facts];
+        expect(facts.length).toBeGreaterThan(0);
+        for (const f of facts) {
+          expect(f.context.date < ctx.asOf).toBe(true);
+          const refs = refsFor(f, ctx)!;
+          expect(refs.group!.params[2], `${f.stat} refs bound at the game date`).toBe(f.context.date);
+          const own = (await runQuery(refs.group!)).filter((r) => r.game_id === comebackGame && r.subject_id === f.subject.id);
+          expect(own, `${f.stat} own row in its reference set`).toHaveLength(1);
+          expect(Number(own[0].value), `${f.stat} fact value equals its reference value`).toBe(f.value);
+        }
+      }, TIMEOUT);
+
+      it('drops the record frames of a quarter, half and clutch fact when an earlier game has no play-by-play', async () => {
+        const { runEngine } = await import('./engine/run');
+        const { PBP_RECORD_FRAMES } = await import('./engine/framer');
+        const drafts = async () => {
+          const res = await runEngine({ surfaces: ['postgame'], asOf: laToday(), write: false, gameId: comebackGame });
+          const by = (category: string, re: RegExp) => res.drafts.find((d) => d.category === category && re.test(d.headline));
+          return {
+            quarter: by('player_period_stat', /in the 2nd quarter/), half: by('player_period_stat', /first half/),
+            team: by('team_period_stat', /1st quarter/), clutch: by('clutch', /clutch time/),
+          };
+        };
+        const [early] = await sql<{ game_id: string }[]>`
+          SELECT g.game_id::text FROM games g
+          WHERE g.season_id = 2025 AND 1 IN (g.home_team_id, g.away_team_id) AND g.status = 'final' AND ${sql.unsafe(REGULAR_SEASON)}
+            AND g.game_id <> ${comebackGame}::bigint AND g.game_date < (SELECT game_date FROM games WHERE game_id = ${comebackGame}::bigint)
+          ORDER BY g.game_date LIMIT 1`;
+        expect(early, 'a Clippers game before this one').toBeDefined();
+
+        const complete = await drafts();
+        for (const [name, d] of Object.entries(complete)) {
+          expect(d, `${name} draft`).toBeDefined();
+          expect(d!.frame.type, name).toBe('records_best');
+          expect(d!.detail, name).toMatch(/ since 2025-26| in 1 season of records$/);
+        }
+        expect(complete.clutch!.detail).toMatch(/^Most clutch points in a game by a Clipper/);
+
+        const [row] = await sql<{ j: unknown }[]>`SELECT to_jsonb(gf) AS j FROM game_flow gf WHERE game_id = ${early.game_id}::bigint`;
+        try {
+          await sql`DELETE FROM game_flow WHERE game_id = ${early.game_id}::bigint`;
+          const gated = await drafts();
+          for (const [name, d] of Object.entries(gated)) {
+            expect(d, `${name} draft survives`).toBeDefined();
+            expect(PBP_RECORD_FRAMES.has(d!.frame.type), name).toBe(false);
+            expect(d!.headline, name).toBe((complete as Record<string, { headline: string }>)[name].headline);
+          }
+          expect(gated.clutch!.detail).toBe('3-of-5 from the field, 3-of-4 at the line in clutch time');
+        } finally {
+          await sql`INSERT INTO game_flow SELECT * FROM jsonb_populate_record(NULL::game_flow, ${sql.json(row.j as never)})`;
+        }
+        expect((await drafts()).quarter!.frame.type).toBe('records_best');
+      }, TIMEOUT);
+    });
+
     it('drops the record frames, and only those, when an earlier game has no play-by-play (R7)', async () => {
       const { runEngine } = await import('./engine/run');
       const { PBP_RECORD_FRAMES } = await import('./engine/framer');
