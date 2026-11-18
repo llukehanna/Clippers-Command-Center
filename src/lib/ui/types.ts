@@ -2,6 +2,8 @@
 // app/api/**/route.ts on main exactly — the UI never reshapes the API.
 
 import type { MetaEnvelope } from '@/src/lib/api-utils'
+import type { Broadcast } from '../espn/schedule'
+import type { InjuryEntry } from '../espn/injuries'
 import type { LineupState, LivePhase, LivePlay, LiveFlow, LiveWinProb } from '../types/live-state'
 import type { PlayerInjury } from '../types/live'
 
@@ -301,4 +303,46 @@ export interface MediaPayload {
   meta: MetaEnvelope
   articles: MediaItem[]
   social: MediaItem[]
+}
+
+// ─── Game preview (/schedule/[game_id]) ──────────────────────────────────────
+
+export type { Broadcast, InjuryEntry }
+
+export interface PreviewRank { value: number; rank: number; of: number }
+
+export interface PreviewTeamForm {
+  record: { wins: number; losses: number } | null
+  last10: { wins: number; losses: number; net_rating: number | null } | null
+  ranks: { off: PreviewRank; def: PreviewRank; net: PreviewRank } | null
+  days_since_last: number | null
+}
+
+export interface PreviewMeeting {
+  game_id: string
+  game_date: string
+  season_id: number
+  lac_home: boolean
+  lac_score: number
+  opp_score: number
+  won: boolean
+}
+
+export interface GamePreviewPayload {
+  meta: MetaEnvelope
+  game: ScheduleGame & { game_id: string; status: string; arena: string | null; season_id: number }
+  broadcasts: Broadcast[] | null
+  injuries: { updated_at: string | null; lac: InjuryEntry[]; opp: InjuryEntry[] } | null
+  line: {
+    current: { spread: number | null; moneyline: number | null; over_under: number | null; captured_at: string } | null
+    movement: { t: string; spread: number }[]
+    win_prob: { lac: number; source: 'spread' | 'home_court' }
+  } | null
+  matchup: {
+    season_series: { wins: number; losses: number } | null
+    meetings: PreviewMeeting[] | null
+    lac: PreviewTeamForm
+    opp: PreviewTeamForm
+  }
+  insights: Insight[]
 }

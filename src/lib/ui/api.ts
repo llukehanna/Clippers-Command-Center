@@ -10,6 +10,7 @@
 
 import { loadHome } from '@/src/lib/data/home'
 import { loadSchedule } from '@/src/lib/data/schedule'
+import { loadGamePreview } from '@/src/lib/data/game-preview'
 import { loadPlayers } from '@/src/lib/data/players'
 import { loadPlayer } from '@/src/lib/data/player'
 import { loadInsights } from '@/src/lib/data/insights'
@@ -25,6 +26,7 @@ type Loader = (match: RegExpMatchArray, url: URL) => Promise<ApiResult>
 const ROUTES: Array<[RegExp, Loader]> = [
   [/^\/api\/home$/, () => loadHome()],
   [/^\/api\/schedule$/, (_, url) => loadSchedule(url)],
+  [/^\/api\/schedule\/([^/]+)$/, (m) => loadGamePreview(decodeURIComponent(m[1]))],
   [/^\/api\/players$/, (_, url) => loadPlayers(url)],
   [/^\/api\/players\/([^/]+)$/, (m, url) => loadPlayer(decodeURIComponent(m[1]), url)],
   [/^\/api\/insights$/, (_, url) => loadInsights(url)],
