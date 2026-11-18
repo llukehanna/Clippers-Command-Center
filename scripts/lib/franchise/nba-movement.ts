@@ -30,11 +30,18 @@ function personOf(row: Row, name: string) {
   return row.PLAYER_ID ? { nbaPersonId: row.PLAYER_ID, name } : { name };
 }
 
+/** Drops the sentence-ending period but keeps the one that belongs to "Jr." / "Sr.". */
+export function cleanName(raw: string): string {
+  const t = raw.trim();
+  if (/\b(?:Jr|Sr)\.+$/.test(t)) return t.replace(/\.+$/, '.');
+  return t.replace(/\.$/, '').trim();
+}
+
 /** The player name from the text after the verb, with the position word removed and trailing period dropped. */
 function nameFrom(text: string, stop: RegExp): string | null {
   const body = text.replace(POS_RE, '');
   const m = stop.exec(body);
-  const name = (m ? body.slice(0, m.index) : body).replace(/\.$/, '').trim();
+  const name = cleanName(m ? body.slice(0, m.index) : body);
   return name || null;
 }
 
@@ -55,7 +62,7 @@ function singleKind(row: Row): MoveKind | null {
 
 const VERBS: Record<string, { re: RegExp; stop: RegExp }> = {
   signing: { re: /^(.+?) (?:re-)?signed (.+)$/i, stop: / to an? /i },
-  waiver: { re: /^(.+?) waived (.+)$/i, stop: /\.$/ },
+  waiver: { re: /^(.+?) waived (.+)$/i, stop: /(?!)/ },
   conversion: { re: /^(.+?) converted the contract of (.+)$/i, stop: / to an? /i },
   claim: { re: /^(.+?) claimed (.+)$/i, stop: / off waivers/i },
 };

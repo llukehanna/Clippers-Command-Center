@@ -68,4 +68,15 @@ describe('parseMovement', () => {
     expect(r.unparsed[0]).toMatchObject({ source: 'nba', date: '2026-01-05' });
     expect(r.unparsed[0].text).toContain('Atlantis Krakens');
   });
+
+  it('keeps the Jr. period on waiver and trade paths', () => {
+    const base = { TRANSACTION_DATE: '2026-01-05T00:00:00', TEAM_SLUG: 'x', PLAYER_SLUG: 'x', Additional_Sort: 0 };
+    const r = parseMovement({ NBA_Player_Movement: { rows: [
+      { ...base, Transaction_Type: 'Waive', TRANSACTION_DESCRIPTION: 'LA Clippers waived guard Kevin Porter Jr.', TEAM_ID: LAC, PLAYER_ID: 7, GroupSort: 'Waive 1' },
+      { ...base, Transaction_Type: 'Trade', TRANSACTION_DESCRIPTION: 'LA Clippers received guard Kevin Porter Jr. from Toronto Raptors.', TEAM_ID: LAC, PLAYER_ID: 7, GroupSort: 'Trade 2' },
+      { ...base, Transaction_Type: 'Signing', TRANSACTION_DESCRIPTION: 'LA Clippers signed forward P.J. Washington to a Two-Way Contract.', TEAM_ID: LAC, PLAYER_ID: 9, GroupSort: 'Signing 3' },
+    ] } });
+    expect(r.unparsed).toEqual([]);
+    expect(r.moves.map((m) => m.parts[0].person!.name)).toEqual(['Kevin Porter Jr.', 'Kevin Porter Jr.', 'P.J. Washington']);
+  });
 });

@@ -51,4 +51,27 @@ describe('parseEspnTransactions', () => {
     expect(r.moves).toEqual([]);
     expect(r.unparsed[0]).toMatchObject({ source: 'espn', date: '2026-01-01', text: 'Did something odd.' });
   });
+
+  it('keeps initialed names whole and keeps Jr. periods', () => {
+    const r = parseEspnTransactions({ transactions: [
+      { date: '2026-03-01T08:00Z', description: 'Signed F P.J. Washington to a two-way contract. Waived G Kevin Porter Jr.' },
+      { date: '2026-03-02T08:00Z', description: 'Waived Gs C.J. McCollum and Kevin Porter Jr.' },
+    ] }, [{ name: 'Kevin Porter Jr.', nbaPersonId: 1630233 }, { name: 'P.J. Washington', nbaPersonId: 1629023 }]);
+    expect(r.unparsed).toEqual([]);
+    expect(r.moves.map((m) => [m.kind, m.parts[0].person!.name, m.parts[0].person!.nbaPersonId])).toEqual([
+      ['two_way', 'P.J. Washington', 1629023],
+      ['waiver', 'Kevin Porter Jr.', 1630233],
+      ['waiver', 'C.J. McCollum', undefined],
+      ['waiver', 'Kevin Porter Jr.', 1630233],
+    ]);
+  });
+
+  it('matches roster names through normalization and leaves ambiguous ones unmatched', () => {
+    const one = parseEspnTransactions({ transactions: [{ date: '2026-03-01T08:00Z', description: 'Waived G Kevin Porter Jr' }] },
+      [{ name: 'Kevin Porter Jr.', nbaPersonId: 7 }]);
+    expect(one.moves[0].parts[0].person).toEqual({ nbaPersonId: 7, name: 'Kevin Porter Jr' });
+    const two = parseEspnTransactions({ transactions: [{ date: '2026-03-01T08:00Z', description: 'Waived G Kevin Porter' }] },
+      [{ name: 'Kevin Porter Jr.', nbaPersonId: 7 }, { name: 'Kevin Porter', nbaPersonId: 8 }]);
+    expect(two.moves[0].parts[0].person).toEqual({ name: 'Kevin Porter' });
+  });
 });

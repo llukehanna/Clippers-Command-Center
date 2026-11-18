@@ -2,6 +2,8 @@
 // ESPN: draft rounds (core API) -> trade notes by overall pick; site-API transactions prose -> moves.
 import { createHash } from 'node:crypto';
 import { NBA_TEAM_IDS } from '../nba-teams.js';
+import { normalizePersonName } from '../player-match.js';
+import { cleanName } from './nba-movement.js';
 import { franchiseFromName } from './team-names.js';
 import type { MoveKind, ParsedMove, PersonRef, UnparsedLine } from './types.js';
 
@@ -20,7 +22,7 @@ export function parseEspnDraftRounds(json: unknown, _year: number): Array<{ over
 }
 
 const POS = String.raw`(?:[GFC](?:-[GFC])?s?\s+)?`;
-const NAME = String.raw`([^.]+?)`;
+const NAME = String.raw`(.+?)`;
 
 function seasonOf(date: string): number {
   const y = Number(date.slice(0, 4));
@@ -31,7 +33,11 @@ const hash = (s: string) => createHash('sha1').update(s.toLowerCase().replace(/[
 
 /** Split a description into sentences without breaking "Jr." / "Sr." */
 function sentences(text: string): string[] {
-  return text.split(/(?<!\bJr)(?<!\bSr)\.\s+/).map((s) => s.trim().replace(/\.$/, '')).filter(Boolean);
+  // Not after "Jr"/"Sr", a lone initial ("J. Cole") or a dotted pair ("P.J.").
+  return text
+    .split(/(?<!\bJr)(?<!\bSr)(?<!\b[A-Z])(?<![A-Z]\.[A-Z])\.\s+(?=[A-Z])/)
+    .map(cleanName)
+    .filter(Boolean);
 }
 
 export function parseEspnTransactions(
@@ -42,8 +48,9 @@ export function parseEspnTransactions(
   const moves: ParsedMove[] = [];
   const unparsed: UnparsedLine[] = [];
   const person = (name: string): PersonRef => {
-    const hit = roster.find((r) => r.name.toLowerCase() === name.toLowerCase());
-    return hit?.nbaPersonId != null ? { nbaPersonId: hit.nbaPersonId, name } : { name };
+    const key = normalizePersonName(name);
+    const hits = roster.filter((r) => normalizePersonName(r.name) === key);
+    return hits.length === 1 && hits[0].nbaPersonId != null ? { nbaPersonId: hits[0].nbaPersonId, name } : { name };
   };
   txs.forEach((tx, index) => {
     const date = (tx.date ?? '').slice(0, 10);
@@ -64,12 +71,12 @@ export function parseEspnTransactions(
       else if ((m = new RegExp(`^Signed ${POS}${NAME}(?: to an? [a-z0-9 -]+)?$`, 'i').exec(s))) add('signing', m[1], null, LAC);
       else if ((m = new RegExp(`^Re-signed ${POS}${NAME}(?: to an? [a-z0-9 -]+)?$`, 'i').exec(s))) add('re_signing', m[1], null, LAC);
       else if ((m = new RegExp(`^Waived ${POS}(.+)$`, 'i').exec(s))) {
-        for (const name of m[1].split(/\s*,\s*|\s+and\s+/).map((n) => n.trim()).filter(Boolean)) add('waiver', name, LAC, null);
+        for (const name of m[1].split(/\s*,\s*|\s+and\s+/).map(cleanName).filter(Boolean)) add('waiver', name, LAC, null);
       } else if ((m = new RegExp(`^Acquired ${POS}${NAME} from (.+)$`, 'i').exec(s))) {
         const from = date ? franchiseFromName(m[2], seasonOf(date)) : null;
-        if (from == null) unparsed.push({ source: 'espn', index, date: date || null, text: `${s}.` });
+        if (from == null) unparsed.push({ source: 'espn', index, date: date || null, text: s.endsWith(".") ? s : `${s}.` });
         else add('trade', m[1], from, LAC);
-      } else unparsed.push({ source: 'espn', index, date: date || null, text: `${s}.` });
+      } else unparsed.push({ source: 'espn', index, date: date || null, text: s.endsWith(".") ? s : `${s}.` });
     }
   });
   return { moves, unparsed };
