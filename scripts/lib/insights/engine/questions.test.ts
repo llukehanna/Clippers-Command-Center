@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { COMBOS, DOUBLE_DOUBLE, TEAM_GAME_STATS, TENS, refAsOf, refsFor } from './references';
+import { COMBOS, DOUBLE_DOUBLE, TEAM_GAME_STATS, TEAM_LINE_SQL, TENS, refAsOf, refsFor } from './references';
 import { FACT_KINDS } from './types';
 import {
   careerHigh, clippersRank, groupCompany, groupFirstSince, groupSeasonHigh, leagueRank, milestoneFirstSince,
@@ -222,6 +222,26 @@ describe('postgame references are bounded at the fact date (R2)', () => {
     expect(refsFor({ ...teamFact, stat: 'nope' }, ctx)).toBeNull();
     expect(refsFor(teamFact, makeCtx({ league: { complete: false, reason: 'x' } }))!.league).toBeNull();
     expect(Object.keys(TEAM_GAME_STATS).sort()).toEqual(['loss_margin', 'margin', 'opp_pts_low', 'team_fg3m', 'team_fg_pct', 'team_pts']);
+  });
+  it('the FG% fact column and its reference sets use one display-precision expression', () => {
+    const expr = TEAM_GAME_STATS.team_fg_pct.expr;
+    expect(expr).toContain('ROUND(');
+    expect(TEAM_LINE_SQL).toContain(`${expr} AS team_fg_pct`);
+    const teamFact = { ...night, kind: 'team_game_stat' as const, stat: 'team_fg_pct', value: 0.584, subject: { type: 'team' as const, id: '1', name: 'Clippers' } };
+    const refs = refsFor(teamFact, ctx)!;
+    expect(refs.group!.sql).toContain(expr);
+    expect(refs.league!.sql).toContain(expr);
+    expect(TEAM_GAME_STATS.team_fg_pct.fmt(0.584)).toBe('58.4%');
+  });
+  it('a game tied at display precision is first since the tie, not a record; ties do not inflate a rank', () => {
+    const tf = { ...night, kind: 'team_game_stat' as const, stat: 'team_fg_pct', value: 0.584, subject: { type: 'team' as const, id: '1', name: 'Clippers' } };
+    expect(groupFirstSince.interpret([{ subject_id: '1', subject_name: 'Clippers', value: 0.584, game_id: '400', game_date: '2025-11-01' }], tf, ctx))
+      .toMatchObject({ type: 'first_since' });
+    expect(groupFirstSince.build(tf, ctx)!.sql).toContain('>=');
+    expect(groupSeasonHigh.build(tf, ctx)!.sql).toContain('NOT (game_id =');
+    const lr = leagueRank.build(tf, ctx)!.sql;
+    expect(lr).toMatch(/value > /);
+    expect(lr).not.toMatch(/value >= /);
   });
   it('a team league rank needs its own 500-game sample, not the player 2000', () => {
     const teamFact = { ...night, kind: 'team_game_stat' as const, stat: 'team_pts', value: 132, subject: { type: 'team' as const, id: '1', name: 'Clippers' } };

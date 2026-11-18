@@ -140,14 +140,26 @@ export interface TeamGameStat {
 
 const pct1 = (v: number) => `${(v * 100).toFixed(1)}%`;
 
+/** FG% at display precision (3 decimals): the fact value and every reference set use this one expression, so ties and ranks agree with the copy. */
+export const FG_PCT_EXPR = 'ROUND((t.fg_made::numeric / NULLIF(t.fg_attempted, 0)), 3)::float8';
+
 export const TEAM_GAME_STATS: Record<'team_pts' | 'team_fg3m' | 'team_fg_pct' | 'margin' | 'loss_margin' | 'opp_pts_low', TeamGameStat> = {
   team_pts: { expr: 't.points', betterIsHigher: true, floor: 120, when: 'any', polarity: 'positive', thing: (v) => `${v}-point game`, best: 'most points in a game', fmt: String },
   team_fg3m: { expr: 't.fg3_made', betterIsHigher: true, floor: 18, when: 'any', polarity: 'positive', thing: (v) => `${v}-three game`, best: 'most threes in a game', fmt: String },
-  team_fg_pct: { expr: 't.fg_made::float8 / NULLIF(t.fg_attempted, 0)', betterIsHigher: true, floor: 0.55, when: 'any', polarity: 'positive', thing: (v) => `${pct1(v)} shooting game`, best: 'best shooting game', fmt: pct1 },
+  team_fg_pct: { expr: FG_PCT_EXPR, betterIsHigher: true, floor: 0.55, when: 'any', polarity: 'positive', thing: (v) => `${pct1(v)} shooting game`, best: 'best shooting game', fmt: pct1 },
   margin: { expr: 't.points - o.points', betterIsHigher: true, floor: 20, when: 'W', polarity: 'positive', thing: (v) => `${v}-point win`, best: 'largest win', fmt: String },
   loss_margin: { expr: 'o.points - t.points', betterIsHigher: true, floor: 20, when: 'L', polarity: 'negative', thing: (v) => `${v}-point loss`, best: 'worst loss', fmt: String },
   opp_pts_low: { expr: 'o.points', betterIsHigher: false, floor: 95, when: 'any', polarity: 'positive', thing: (v) => `game allowing ${v}`, best: 'fewest points allowed', fmt: String },
 };
+
+/** $1 game, $2 LAC. Every team stat column is the stat's own expr, so a fact value and its reference sets cannot drift. */
+export const TEAM_LINE_SQL = `
+SELECT t.points::int AS team_pts, t.fg3_made::int AS team_fg3m, t.fg_attempted::int AS fga,
+       ${TEAM_GAME_STATS.team_fg_pct.expr} AS team_fg_pct,
+       (${TEAM_GAME_STATS.margin.expr})::int AS margin, (${TEAM_GAME_STATS.loss_margin.expr})::int AS loss_margin, (${TEAM_GAME_STATS.opp_pts_low.expr})::int AS opp_pts_low
+FROM game_team_box_scores t
+JOIN game_team_box_scores o ON o.game_id = t.game_id AND o.team_id <> t.team_id
+WHERE t.game_id = $1::bigint AND t.team_id = $2::bigint`.trim();
 
 const teamColumns = (expr: string) =>
   `(${expr})::float8 AS value, g.game_id::text AS game_id, g.game_date::text AS game_date,
@@ -182,7 +194,7 @@ function teamStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
   return {
     group: ctx.recordsStart ? clippersTeamRef(stat.expr, ctx.lac.teamId, ctx.recordsStart, asOf) : null,
     subject: null,
-    // A loss margin ranks only against the Clippers' own losses (a league set would mix winners in); league coverage covers the stats season only.
+    // No league frame for losses by design (a league-wide worst-loss rank is not a Clippers claim); league coverage covers the stats season only.
     league: ctx.league.complete && fact.stat !== 'loss_margin' && (fact.seasonId ?? ctx.season.id) === ctx.season.id
       ? leagueSeasonTeamRef(stat.expr, ctx.season.id, asOf) : null,
     start: ctx.recordsStart,

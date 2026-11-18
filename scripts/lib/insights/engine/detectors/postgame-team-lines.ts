@@ -6,20 +6,13 @@
 import { gameFactBase, postgameGames } from '../games.js';
 import { runQuery } from '../query.js';
 import { refRate } from '../rates.js';
-import { TEAM_GAME_STATS } from '../references.js';
+import { TEAM_GAME_STATS, TEAM_LINE_SQL } from '../references.js';
+
+export { TEAM_LINE_SQL };
 import type { Detector, Fact } from '../types.js';
 
 /** A percentage needs a real sample of shots. */
 const MIN_FGA_FOR_PCT = 70;
-
-/** $1 game, $2 LAC. */
-export const TEAM_LINE_SQL = `
-SELECT t.points::int AS team_pts, t.fg3_made::int AS team_fg3m, t.fg_attempted::int AS fga,
-       ROUND((t.fg_made::numeric / NULLIF(t.fg_attempted, 0)), 6)::float8 AS team_fg_pct,
-       (t.points - o.points)::int AS margin, (o.points - t.points)::int AS loss_margin, o.points::int AS opp_pts_low
-FROM game_team_box_scores t
-JOIN game_team_box_scores o ON o.game_id = t.game_id AND o.team_id <> t.team_id
-WHERE t.game_id = $1::bigint AND t.team_id = $2::bigint`.trim();
 
 export function teamLinesDetector(): Detector {
   return {

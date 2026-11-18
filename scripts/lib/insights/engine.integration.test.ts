@@ -721,6 +721,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       const rows = await sql<{ category: string; game_id: string }[]>`
         SELECT category, game_id::text FROM insights WHERE is_active AND surface = 'postgame' AND game_id = ${g.game_id}::bigint`;
       expect(rows.some((r) => r.category === 'player_game_stat')).toBe(true);
+      expect(rows.some((r) => r.category === 'team_game_stat')).toBe(true);
       expect(rows.every((r) => r.game_id === g.game_id)).toBe(true);
       // A frozen postgame claim names its season as "so far in", never "this season" or a bare "in {label}".
       const details = await sql<{ detail: string }[]>`
