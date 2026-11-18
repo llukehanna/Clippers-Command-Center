@@ -11,7 +11,7 @@ const { LAC, BOS, MIA } = NBA_TEAM_IDS;
 function ds(d: Partial<FranchiseDataset> = {}): FranchiseDataset {
   return {
     currentDraftYear: 2027, people: [], moves: [], picks: [], swaps: [], lottery: [], salaries: [], payrollSeasons: [],
-    contracts: [], coachSeasons: [], execTerms: [], honors: [], unparsed: [], ignored: [], skipped: [],
+    contracts: [], coachSeasons: [], execTerms: [], honors: [], unparsed: [], ignored: [], dropped: [], skipped: [],
     peopleUnmatched: [], peopleAmbiguous: [], breaks: [], disputes: [], unkeyed: [], skippedCategories: [], ...d,
   };
 }

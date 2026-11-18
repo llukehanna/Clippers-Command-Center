@@ -9,13 +9,13 @@
 // possibleDuplicates (Ruling R14): two Clippers moves no merge joined, whose sources share no prefix (bbref / wiki /
 // nba / …), within 30 days, sharing a counterparty (or both naming none) and at least one person (by key or
 // normalized name) or pick (by key, or year and round) in common: Wikipedia date drift and name variants the 3-day
-// matcher misses. Settled with overrides.
+// matcher misses. Settled with `move` overrides (mergeInto, drop).
 import { normalizePersonName } from '../player-match.js';
 import { NBA_TEAM_IDS } from '../nba-teams.js';
 import { seasonOfDate } from './describe.js';
 import type { ChainBreak, ChainDispute, PicksResult } from './picks.js';
 import type { MergedMove } from './reconcile-moves.js';
-import type { FranchiseDataset, GapReason, IgnoredLine, MovePart, Override, UnparsedLine } from './types.js';
+import type { DroppedMove, FranchiseDataset, GapReason, IgnoredLine, MovePart, Override, UnparsedLine } from './types.js';
 
 const LAC = NBA_TEAM_IDS.LAC;
 const DUPLICATE_WINDOW_DAYS = 30;
@@ -45,6 +45,8 @@ export interface FranchiseReport {
   /** Gate: unparsed lines no override settled. */
   unparsed: UnparsedLine[];
   ignored: IgnoredLine[];
+  /** Moves a `drop` override removed. */
+  dropped: DroppedMove[];
   /** Ruling R9: lines deliberately skipped (G League, duplicates), by reason. */
   skippedByReason: Record<string, number>;
   unmatchedPeople: string[];
@@ -61,6 +63,8 @@ export interface FranchiseReport {
   unsettledSwaps: string[];
   partialPayrolls: number[];
   staleOverrides: Override[];
+  /** Overrides that can't apply as written (e.g. protection text parseProtections can't read, with no `protections`). */
+  invalidOverrides: Override[];
   /** Lottery pick keys whose slot came from tied records. */
   tieUnresolved: string[];
   lotteryFlags: Array<{ pickKey: string; flags: string[] }>;
@@ -126,7 +130,7 @@ function possibleDuplicates(moves: MergedMove[]): PossibleDuplicate[] {
   return out;
 }
 
-export function buildReport(data: FranchiseDataset, staleOverrides: Override[] = []): FranchiseReport {
+export function buildReport(data: FranchiseDataset, staleOverrides: Override[] = [], invalidOverrides: Override[] = []): FranchiseReport {
   const clippers = data.moves.filter((m) => m.involvesClippers);
 
   const bySeasonKind: Record<string, Record<string, number>> = {};
@@ -180,6 +184,7 @@ export function buildReport(data: FranchiseDataset, staleOverrides: Override[] =
     honors: data.honors.length,
     unparsed: data.unparsed.length,
     ignored: data.ignored.length,
+    dropped: data.dropped.length,
     skipped: data.skipped.length,
     ...Object.fromEntries(Object.entries(skippedByReason).map(([k, v]) => [`skipped.${k}`, v])),
     unmatchedPeople: unmatchedPeople.length,
@@ -193,6 +198,7 @@ export function buildReport(data: FranchiseDataset, staleOverrides: Override[] =
     unsettledSwaps: unsettledSwaps.length,
     partialPayrolls: partialPayrolls.length,
     staleOverrides: staleOverrides.length,
+    invalidOverrides: invalidOverrides.length,
     tieUnresolved: tieUnresolved.length,
     lotteryFlags: lotteryFlags.length,
     skippedCategories: data.skippedCategories.length,
@@ -200,9 +206,9 @@ export function buildReport(data: FranchiseDataset, staleOverrides: Override[] =
   };
 
   return {
-    counts, bySeasonKind, unparsed: data.unparsed, ignored: data.ignored, skippedByReason, unmatchedPeople, ambiguousPeople,
+    counts, bySeasonKind, unparsed: data.unparsed, ignored: data.ignored, dropped: data.dropped, skippedByReason, unmatchedPeople, ambiguousPeople,
     gaps, conflicts, chainBreaks: data.breaks, disputes: data.disputes, unkeyed: data.unkeyed, futureWithoutProtections,
-    unsettledSwaps, partialPayrolls, staleOverrides, tieUnresolved, lotteryFlags, skippedCategories: data.skippedCategories,
+    unsettledSwaps, partialPayrolls, staleOverrides, invalidOverrides, tieUnresolved, lotteryFlags, skippedCategories: data.skippedCategories,
     possibleDuplicates: dups,
   };
 }
@@ -228,12 +234,12 @@ export function summarizeReport(r: FranchiseReport): string[] {
   return [
     `moves: ${c.moves} (${c.clippersMoves} Clippers, ${c.clippersIncomplete} incomplete); picks: ${c.picks} (${c.futurePicks} future); swaps: ${c.swaps}; lottery: ${c.lottery}`,
     `people: ${c.people} (${c.unmatchedPeople} unmatched, ${c.ambiguousPeople} ambiguous); salaries: ${c.salaries}; contracts: ${c.contracts}; coach seasons: ${c.coachSeasons}; exec terms: ${c.execTerms}; honors: ${c.honors}`,
-    `unparsed: ${c.unparsed} (${c.ignored} ignored)`,
+    `unparsed: ${c.unparsed} (${c.ignored} ignored); dropped moves: ${c.dropped}`,
     `skipped: ${byReason}`,
     `gaps: ${gaps}`,
     `conflicts: ${c.conflicts}; possible duplicates: ${c.possibleDuplicates}; chain breaks: ${c.chainBreaks}; chain disputes: ${c.disputes}; unkeyed draft rows: ${c.unkeyed}`,
     `future picks without protections: ${c.futureWithoutProtections}; unsettled past swaps: ${c.unsettledSwaps}; partial payrolls: ${c.partialPayrolls}`,
-    `lottery: ${c.tieUnresolved} tie unresolved, ${c.lotteryFlags} flagged; skipped award categories: ${c.skippedCategories}; stale overrides: ${c.staleOverrides}`,
+    `lottery: ${c.tieUnresolved} tie unresolved, ${c.lotteryFlags} flagged; skipped award categories: ${c.skippedCategories}; stale overrides: ${c.staleOverrides}; invalid overrides: ${c.invalidOverrides}`,
     gates.length ? `GATES FAILING: ${gates.join('; ')}` : 'gates: clear',
   ];
 }

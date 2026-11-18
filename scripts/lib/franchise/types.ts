@@ -148,7 +148,7 @@ export interface FranchiseDataset {
   currentDraftYear: number;
   // ---- table rows ----
   people: PersonRow[];
-  /** Reconciled moves, after buildPicks linked their pick parts (PicksResult.moves). */
+  /** Reconciled moves after applyMoveOverrides, then buildPicks linked their pick parts (PicksResult.moves). */
   moves: MergedMove[];
   picks: PickRow[];
   swaps: SwapRow[];
@@ -165,6 +165,8 @@ export interface FranchiseDataset {
   unparsed: UnparsedLine[];
   /** Unparsed lines an `ignore` override settled (filled by applyOverrides). */
   ignored: IgnoredLine[];
+  /** Moves a `drop` override removed (from applyMoveOverrides). */
+  dropped: DroppedMove[];
   /** Lines deliberately not turned into moves (BBRef G League moves, duplicates). */
   skipped: SkippedLine[];
   /** BBRef roster people with no `players` match, and with several (matchPeople). */
@@ -179,6 +181,20 @@ export interface FranchiseDataset {
 
 // ---- overrides (spec §3.2 "Overrides") ----------------------------------------------------------------------------
 
+/** A move an override dropped (never written; listed in the report). */
+export interface DroppedMove {
+  transactionKey: string;
+  sources: string[];
+  reason: string;
+}
+
+/** A draft row's original franchise, set by an override and read by buildPicks (DraftInput.originals). */
+export interface DraftOriginal {
+  year: number;
+  overall: number;
+  originalFranchiseId: FranchiseId;
+}
+
 /** Parts and completeness an override gives a move. */
 interface MoveOverrideBody {
   /** The move's new parts (our own wording in any `text`). Settles the move's conflicts. */
@@ -190,21 +206,26 @@ interface MoveOverrideBody {
 
 /**
  * A fact we've written ourselves. Every entry carries `source`: a one-line note of where the fact comes from.
+ * apply-overrides.ts says which phase applies each kind and what it does.
  *
- * - pick: by `pickKey`, edit a draft_picks row (protections mark it `protectionsKnown`; identity fields re-key it);
- *   by `moveKey` + `partIndex`, fill an unlinked pick part's identity and link it (creating the row if needed).
- * - move: by `moveKey` (a transaction key or any of its source keys), replace the move's parts; or, by an unparsed
- *   line's `{ source, text }` plus `create`, turn that line into a new move (it leaves the unparsed list).
- * - person: every part, honor and executive term whose person matches `ref` (a BBRef id, `nba:<id>`, or a name,
- *   compared normalized) gets `personKey`.
+ * - pick: by `{ draftYear, overall }`, a draft row's original franchise (keys a row buildPicks can't settle); by
+ *   `{ moveKey, partIndex }`, an unlinked pick part's identity (buildPicks then links it); by `pickKey`, protections.
+ * - move: by `moveKey` (a transaction key or any of its source keys): replace the parts, merge the move into another
+ *   (`mergeInto`) or drop it (`drop`, with a reason); or, by an unparsed line's `{ source, text }` plus `create`, turn
+ *   that line into a new move.
+ * - person: parts, honors and executive terms whose person matches `ref` (a BBRef id or `nba:<id>`; or a name, which
+ *   only matches people carrying no id) get `personKey`. `scope` narrows it to one move or season.
  * - ignore: drop an unparsed line (by `{ source, text }`) from the gate, with a reason.
  * - teamName: a team name the parsers can't resolve in that season (read by team-names.ts at parse time).
  */
 export type Override =
+  | { kind: 'pick'; match: { draftYear: number; overall: number }; set: { originalFranchiseId: FranchiseId }; source: string }
+  | { kind: 'pick'; match: { moveKey: string; partIndex: number }; set: Partial<Pick<PickRef, 'year' | 'round' | 'originalFranchiseId'>>; source: string }
   | {
       kind: 'pick';
-      match: { pickKey?: string; moveKey?: string; partIndex?: number };
-      set: Partial<Pick<PickRef, 'year' | 'round' | 'originalFranchiseId'>> & { protectionsText?: string; protections?: Protection[] };
+      match: { pickKey: string };
+      /** `protections` is required unless `protectionsText` parses (parseProtections); [] means unprotected. */
+      set: { protectionsText?: string; protections?: Protection[] };
       source: string;
     }
   | ({ kind: 'move'; match: { moveKey: string } } & MoveOverrideBody)
@@ -214,6 +235,8 @@ export type Override =
       /** The new move's kind, and its date when the line has none; involvesClippers defaults to true. */
       create: { kind: MoveKind; date?: string; involvesClippers?: boolean };
     } & MoveOverrideBody)
-  | { kind: 'person'; match: { ref: string }; personKey: string; source: string }
+  | { kind: 'move'; match: { moveKey: string }; mergeInto: string; source: string }
+  | { kind: 'move'; match: { moveKey: string }; drop: true; reason: string; source: string }
+  | { kind: 'person'; match: { ref: string; scope?: { moveKey?: string; seasonId?: number } }; personKey: string; source: string }
   | { kind: 'ignore'; match: { source: string; text: string }; reason: string; source: string }
   | { kind: 'teamName'; match: { text: string; seasonId: number }; franchise: FranchiseId; source: string };

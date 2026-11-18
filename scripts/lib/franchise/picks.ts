@@ -29,6 +29,9 @@
 // forfeited picks, their own picks in the next seven drafts) plus every pick a stored move part links to. `status`
 // is null when a past pick's outcome is unknown (the DB column is nullable). Clippers selections whose chain no
 // stored parts complete are returned in `breaks`.
+//
+// Overrides that change identities run before this (apply-overrides.ts phase 1): their parts arrive already edited, and
+// a draft row's original from an override comes in as DraftInput.originals, outranking every source reading.
 import { NBA_TEAM_IDS } from '../nba-teams.js';
 import { normalizePersonName } from '../player-match.js';
 import type { DraftRow } from './bbref-tables.js';
@@ -36,7 +39,7 @@ import { personKey, pickKey, swapKey } from './keys.js';
 import { parseProtections, type Protection } from './protections.js';
 import type { MergedMove } from './reconcile-moves.js';
 import { franchiseFromName } from './team-names.js';
-import type { FranchiseId, MovePart, PersonRef } from './types.js';
+import type { DraftOriginal, FranchiseId, MovePart, PersonRef } from './types.js';
 import type { DraftPickRow, ForfeitedPick } from './wiki-draft.js';
 
 const LAC = NBA_TEAM_IDS.LAC;
@@ -99,6 +102,8 @@ export interface DraftInput {
   espn: Map<string, string | null>;
   /** Wikipedia's forfeited picks (DraftPage.forfeited). */
   forfeited?: ForfeitedPick[];
+  /** Draft rows' original franchises from overrides (applyMoveOverrides): they outrank every source reading. */
+  originals?: DraftOriginal[];
 }
 
 export interface PicksResult {
@@ -215,8 +220,10 @@ class DraftIndex {
   private byKey = new Map<string, Slot>();
   private bbByOverall = new Map<string, DraftRow>();
   private bbById = new Map<string, DraftRow[]>();
+  private forced = new Map<string, FranchiseId>();
 
   constructor(draft: DraftInput, disputes: ChainDispute[]) {
+    for (const o of draft.originals ?? []) this.forced.set(`${o.year}-${o.overall}`, o.originalFranchiseId);
     for (const row of draft.wiki) {
       if (!(row.year > 0) || !(row.round > 0)) continue;
       const chain = crossChecked(row, draft.espn, disputes);
@@ -249,12 +256,19 @@ class DraftIndex {
    * 3rd-rounders may show no origin on any), so a chainless row's own-pick default is checked against the stored
    * parts naming its selection (see origin). Rows that still claim the same pick are ranked: a stated chain, then a
    * stated original, then the default; a sole best claim keeps the key, every other claim (and a tie) is left
-   * unkeyed for an override rather than guessed.
+   * unkeyed for an override rather than guessed. An override's original (DraftInput.originals) outranks them all.
    */
   settle(evidence: Map<Slot, Evidence[]>): void {
     const rank = new Map<Slot, number>();
     const groups = new Map<string, Slot[]>();
     for (const s of this.slots) {
+      const forced = this.forced.get(`${s.row.year}-${s.row.overall}`);
+      if (forced != null) {
+        s.original = forced;
+        rank.set(s, 3);
+        push(groups, pickKey(s.row.year, s.row.round, forced), s);
+        continue;
+      }
       const o = s.chain.length === 0 ? origin(evidence.get(s) ?? [], s.row.teamFranchise) : undefined;
       if (o !== undefined) s.original = o;
       rank.set(s, s.chain.length > 0 ? 2 : o != null ? 1 : 0);
