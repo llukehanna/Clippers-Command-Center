@@ -80,10 +80,17 @@ export function GameList({ played, upcoming }: { played: PlayedGame[]; upcoming:
           </summary>
           <ol className="m-0 list-none p-0">
             {upcoming.map((g) => (
-              <li key={g.game_id} className="flex items-center gap-3 px-3.5 py-2 text-[14px] text-mute">
-                <span className="w-[92px] font-mono text-[12px]">{formatDay(g.game_date)}</span>
-                <TeamLogo abbr={g.opponent_abbr} size="xs" />
-                {g.home_away === 'home' ? 'vs' : '@'} {teamName(g.opponent_abbr, g.opponent_name)}
+              <li key={g.game_id}>
+                <Link
+                  href={`/schedule/${g.game_id}`}
+                  prefetch={false}
+                  className="row-hover flex items-center gap-3 rounded-[12px] px-3.5 py-2.5 text-[14px] text-mute transition-colors hover:text-text"
+                >
+                  <span className="w-[92px] font-mono text-[12px]">{formatDay(g.game_date)}</span>
+                  <TeamLogo abbr={g.opponent_abbr} size="xs" />
+                  {g.home_away === 'home' ? 'vs' : '@'} {teamName(g.opponent_abbr, g.opponent_name)}
+                  <span aria-hidden className="ml-auto font-mono text-[12px] text-dim">→</span>
+                </Link>
               </li>
             ))}
           </ol>
