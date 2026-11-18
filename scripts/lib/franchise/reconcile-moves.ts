@@ -66,6 +66,19 @@ function kindFamily(k: MoveKind): string {
   return k === 're_signing' ? 'signing' : k;
 }
 
+/**
+ * Contract kinds the sources label differently for one event: NBA.com files a two-way or 10-day deal as a plain
+ * Signing, and an Exhibit 10 turned two-way as ContractConverted; BBRef names the contract. These match each other
+ * only a day apart at most (kindsMatch), and the merged move takes BBRef's contract kind (mergeGroup).
+ */
+const CONTRACT_KINDS = new Set<MoveKind>(['signing', 're_signing', 'two_way', 'ten_day', 'conversion']);
+const NAMED_CONTRACTS = new Set<MoveKind>(['two_way', 'ten_day', 'conversion']);
+
+function kindsMatch(a: ParsedMove, b: ParsedMove): boolean {
+  if (kindFamily(a.kind) === kindFamily(b.kind)) return true;
+  return CONTRACT_KINDS.has(a.kind) && CONTRACT_KINDS.has(b.kind) && Math.abs(dayNumber(a.date) - dayNumber(b.date)) <= 1;
+}
+
 function team(id: FranchiseId | null): string {
   return id == null ? '?' : (TRICODE_BY_NBA_ID[id] ?? String(id));
 }
@@ -115,12 +128,30 @@ interface Item {
   people: Array<Who | null>;
 }
 
-type Who = { key: string | null; name: string };
+/**
+ * `nbaVia`: for a BBRef key the index can't tie to an NBA.com id, the id a `person` override links it to
+ * (PeopleIndex.nbaIdByBbref), else the id of the one `players` row carrying this name (nbaIdByUniqueDbName). It lets
+ * that key match `nba:<id>` of the same name; a name two players share never links on its own.
+ */
+type Who = { key: string | null; name: string; nbaVia?: number };
+
+function who(ref: PersonRef, index: PeopleIndex, season: number): Who {
+  const key = resolveRef(ref, index, season);
+  const name = normalizePersonName(ref.name);
+  if (key && !key.startsWith('nba:') && index.byBbref.get(key)?.nbaPersonId == null) {
+    const linked = index.nbaIdByBbref.get(key);
+    if (linked != null) return { key, name, nbaVia: linked };
+    const nbaVia = index.nbaIdByUniqueDbName.get(name);
+    if (nbaVia != null && !index.byNbaId.has(nbaVia)) return { key, name, nbaVia };
+  }
+  return { key, name };
+}
 
 /** 'key': the index resolves both to one person. 'name': only the names agree (weak). false: different people. */
 function personMatch(a: Who, b: Who): 'key' | 'name' | false {
   if (a.key && b.key) {
     if (a.key === b.key) return 'key';
+    if (a.name !== '' && a.name === b.name && (a.key === `nba:${b.nbaVia}` || b.key === `nba:${a.nbaVia}`)) return 'key';
     // Two keys of the same kind (two BBRef ids, or two NBA ids) that differ are different people. A BBRef key
     // and an `nba:` key only differ because the index couldn't connect them, so the name may still agree.
     if (a.key.startsWith('nba:') === b.key.startsWith('nba:')) return false;
@@ -136,7 +167,7 @@ function makeItem(move: ParsedMove, source: Source, index: PeopleIndex): Item {
     move,
     source,
     rank: rank(source, move.date),
-    people: move.parts.map((p) => (p.person ? { key: resolveRef(p.person, index, season), name: normalizePersonName(p.person.name) } : null)),
+    people: move.parts.map((p) => (p.person ? who(p.person, index, season) : null)),
   };
 }
 
@@ -160,7 +191,7 @@ function sameWay(x: MovePart, y: MovePart): boolean {
  * must corroborate each other, so a lone name never decides a merge.
  */
 function overlap(a: Item, b: Item): number {
-  if (kindFamily(a.move.kind) !== kindFamily(b.move.kind)) return 0;
+  if (!kindsMatch(a.move, b.move)) return 0;
   if (Math.abs(dayNumber(a.move.date) - dayNumber(b.move.date)) > WINDOW_DAYS) return 0;
   const aPeople = a.people.some((x) => x);
   const bPeople = b.people.some((y) => y);
@@ -226,7 +257,7 @@ function conflict(mg: Merge, part: MovePart | null, baseReading: string, other: 
 }
 
 function personOf(mg: Merge, ref: PersonRef): Who {
-  return { key: resolveRef(ref, mg.index, mg.season), name: normalizePersonName(ref.name) };
+  return who(ref, mg.index, mg.season);
 }
 
 /** The merged part (index) that an other-source part describes, or -1. Prefers one going the same way. */
@@ -362,7 +393,8 @@ function mergeGroup(g: Group, index: PeopleIndex): MergedMove {
   const out: MergedMove = {
     sourceKey: base.move.sourceKey,
     date,
-    kind: base.move.kind,
+    kind: members.find((m) => m.source === 'bbref' && NAMED_CONTRACTS.has(m.move.kind) && CONTRACT_KINDS.has(base.move.kind))?.move.kind
+      ?? base.move.kind,
     parts: mg.parts,
     involvesClippers: members.some((m) => m.move.involvesClippers),
     // A dispute about a part the base doesn't list leaves no gap on any part, but the move still isn't settled.

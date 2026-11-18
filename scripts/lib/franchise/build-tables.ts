@@ -209,8 +209,17 @@ export function completePeople(base: PersonRow[], src: PeopleSources): PersonRow
   for (const p of src.dbPlayers) if (p.nba_person_id != null && nbaClaims.get(p.nba_person_id) === 1) playerByNba.set(p.nba_person_id, p.player_id);
 
   const add = (personKey: string, kind: PersonRow['kind'], displayName: string, nbaPersonId: number | null = null) => {
-    if (byKey.has(personKey) || !displayName) return;
     const nba = nbaPersonId != null && !nbaHeld.has(nbaPersonId) ? nbaPersonId : null;
+    const had = byKey.get(personKey);
+    if (had) {
+      // A later ref (a move NBA.com and BBRef both list) may be the first to carry this person's NBA.com id.
+      if (had.nbaPersonId == null && nba != null && !base.includes(had)) {
+        nbaHeld.add(nba);
+        byKey.set(personKey, { ...had, nbaPersonId: nba, playerId: playerByNba.get(nba) ?? null });
+      }
+      return;
+    }
+    if (!displayName) return;
     if (nba != null) nbaHeld.add(nba);
     byKey.set(personKey, {
       personKey, kind, displayName, birthdate: null, nbaPersonId: nba, playerId: nba != null ? playerByNba.get(nba) ?? null : null,

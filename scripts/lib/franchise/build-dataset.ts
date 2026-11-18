@@ -279,7 +279,10 @@ export function buildDataset(dir: string, db: DbInput, opts: BuildOptions): Buil
 
   // People: roster rows matched to Part 1's players (R15: the index needs their NBA.com ids).
   const matched = matchPeople([...rosterBySeason.values()].flat(), db.players);
-  const index = buildIndex(matched.people, rosterBySeason);
+  // `person` overrides tying an NBA.com id to a BBRef id let reconcile merge the two sources' copies of a move.
+  const links = overrides.flatMap((o) => (o.kind === 'person' && /^nba:\d+$/.test(o.match.ref) && !o.personKey.startsWith('nba:') && !o.match.scope
+    ? [{ bbrefId: o.personKey, nbaPersonId: Number(o.match.ref.slice(4)) }] : []));
+  const index = buildIndex(matched.people, rosterBySeason, db.players, links);
 
   // Counterparty season pages (other teams, before 2015-16), already cached ones read as league rows.
   // Ruling R17: their unreadable lines only cost a tree branch, so they're reported apart and never gate.
