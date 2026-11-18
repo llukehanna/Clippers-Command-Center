@@ -252,7 +252,7 @@ export function LiveView({
             </div>
           ) : (
             <Panel className="p-5 text-[14px] text-mute">
-              {delayed ? 'Insights pause while the feed is delayed.' : 'Scoring runs and clutch moments show up here as they happen.'}
+              {delayed ? 'Insights pause while the feed is delayed.' : 'Scoring runs, comebacks and clutch moments show up here as they happen.'}
             </Panel>
           )}
         </div>
