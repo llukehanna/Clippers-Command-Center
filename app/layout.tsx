@@ -7,6 +7,7 @@ import { TopBar } from '@/components/shell/TopBar'
 import { CommandPalette } from '@/components/shell/CommandPalette'
 import { GlassPointer } from '@/components/shell/GlassPointer'
 import { MobileTabBar } from '@/components/shell/MobileTabBar'
+import { IntentPrefetch } from '@/components/shell/IntentPrefetch'
 
 const geist = Geist({
   subsets: ['latin'],
@@ -62,6 +63,7 @@ export default function RootLayout({
         <MobileTabBar />
         <CommandPalette />
         <GlassPointer />
+        <IntentPrefetch />
       </body>
     </html>
   )

@@ -42,7 +42,9 @@ const nextConfig: NextConfig = {
   experimental: {
     // Keep visited pages in the client router cache briefly so switching back
     // to a tab is instant instead of a fresh server round-trip.
-    staleTimes: { dynamic: 30, static: 180 },
+    // 60 s: data changes only when the pipeline syncs, and the Live page polls
+    // on its own. Also how long an intent prefetch (IntentPrefetch) stays usable.
+    staleTimes: { dynamic: 60, static: 300 },
   },
   images: {
     // Serve images as-is. Headshots come pre-sized from the NBA's CDN and team

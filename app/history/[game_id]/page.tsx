@@ -40,13 +40,15 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 export default async function HistoryGamePage({ params }: Params) {
   const { game_id } = await params
+  // The story only needs the id, so it loads alongside the game.
+  const storyPromise = getJson<GameStoryPayload>(`/api/history/games/${encodeURIComponent(game_id)}/story`)
   const data = await load(game_id)
   if (!data) notFound()
 
   const { game, box_score } = data
   // Not played yet (or still in progress): the preview page owns this game.
   if (String(game.status).toLowerCase() !== 'final') redirect(`/schedule/${game.game_id}`)
-  const story = await getJson<GameStoryPayload>(`/api/history/games/${encodeURIComponent(game_id)}/story`)
+  const story = await storyPromise
   // The Clippers side is identified by team, not tricode (era abbreviations are BUF/SDC/LAC).
   const lacHome = game.home_team.is_lac ?? game.home_team.abbreviation === 'LAC'
   const lacTeam = lacHome ? game.home_team : game.away_team
