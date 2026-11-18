@@ -68,6 +68,17 @@ export interface BoxscoreTeam {
   players: BoxscorePlayer[];
   timeoutsRemaining?: number; // the CDN box score has these; the stats.nba.com fallback doesn't
   inBonus?: string;           // "1" | "0"
+  /** The team's injury report (ESPN summary only; the CDN box score has none). */
+  injuries?: PlayerInjury[];
+}
+
+/** One player on a team's injury report. */
+export interface PlayerInjury {
+  personId: number;           // NBA personId; negative = ESPN athlete id with no match
+  name: string;
+  status: string;             // "Out", "Day-To-Day", "Questionable", …
+  injury: string;             // "Right knee inflammation"; '' when unspecified
+  returnDate: string | null;  // estimated return, YYYY-MM-DD
 }
 
 export interface BoxscorePlayer {
