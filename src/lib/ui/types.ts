@@ -2,7 +2,8 @@
 // app/api/**/route.ts on main exactly — the UI never reshapes the API.
 
 import type { MetaEnvelope } from '@/src/lib/api-utils'
-import type { LineupState, LivePhase, LiveFlow, LiveWinProb } from '../types/live-state'
+import type { LineupState, LivePhase, LivePlay, LiveFlow, LiveWinProb } from '../types/live-state'
+import type { PlayerInjury } from '../types/live'
 
 export type HomeAway = 'home' | 'away'
 
@@ -210,6 +211,10 @@ export interface LivePayload {
   lineups?: LineupState | null
   /** NBA wall-clock time of the newest play in this state (spoiler sync). */
   observed_at?: string | null
+  /** The newest plays, newest first (at most 25). */
+  plays?: LivePlay[]
+  /** Who's out for each side and why; null when the feed has no report. */
+  injuries?: { lac: PlayerInjury[]; opp: PlayerInjury[] } | null
 }
 
 export interface ChartPoint {
