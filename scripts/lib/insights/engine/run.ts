@@ -9,8 +9,9 @@ import { loadEngineContext } from './context.js';
 import { daysBetween } from './dates.js';
 import { DETECTORS } from './detectors/index.js';
 import { buildEntities, buildEvidence } from './evidence.js';
-import { frameFact } from './framer.js';
+import { blockedFrames, frameFact, PBP_KINDS } from './framer.js';
 import { factKey } from './keys.js';
+import { pbpRecordsComplete } from './pbp-coverage.js';
 import { combineProof, selectProofRows, type ProofPart } from './proof.js';
 import { runQuery } from './query.js';
 import { questionsFor } from './questions.js';
@@ -58,7 +59,9 @@ export async function buildDraft(
   const cls = salienceClass(fact.subject, ctx.roster);
   if (cls === 'former' && fact.surface !== 'postgame') return { reason: 'former' };
 
-  const framed = await frameFact(fact, ctx, run, questionsFor(fact));
+  // Play-by-play record frames are only honest when every earlier Clippers game in range has play-by-play.
+  const pbpComplete = PBP_KINDS.has(fact.kind) ? await pbpRecordsComplete(ctx, fact.context.date, run) : true;
+  const framed = await frameFact(fact, ctx, run, questionsFor(fact), blockedFrames(fact, pbpComplete));
   if (isTrivial(probability(fact.sample), framed.frame.type, fact.kind)) return { reason: 'trivial' };
 
   // Postgame claims freeze after their window, so they name their season, "so far" because their references stop at the game date (a later game may beat it).

@@ -2,6 +2,7 @@
 // Every detector the engine runs, by surface. Categories must be unique per
 // surface: they define each detector's stale-row deactivation scope.
 import type { Detector } from '../types.js';
+import { flowDetector } from './postgame-flow.js';
 import { playerLinesDetector } from './postgame-player-lines.js';
 import { teamLinesDetector } from './postgame-team-lines.js';
 import { opponentDetector } from './pregame-opponent.js';
@@ -20,4 +21,5 @@ export const DETECTORS: readonly Detector[] = [
   opponentDetector(),
   playerLinesDetector(),
   teamLinesDetector(),
+  flowDetector(),
 ];

@@ -1,0 +1,42 @@
+// scripts/lib/insights/engine/pbp-coverage.ts
+// Are play-by-play records complete? A record frame over play-by-play ("largest
+// comeback by the Clippers since 2020-21") is only true when every final
+// regular-season Clippers game in that range has play-by-play; the records start
+// admits seasons that are up to 5% short (records-start.ts). DB-free: the caller
+// passes the Runner (query.ts in production).
+import { REGULAR_SEASON } from '../../sql-fragments.js';
+import { seasonStartDate } from './records.js';
+import type { EngineContext, Runner } from './types.js';
+
+/** $1 LAC, $2 first season, $3 before-date (exclusive), $4 as-of. Counts final Clippers games with no game_flow row. */
+export const PBP_MISSING_SQL = `
+SELECT COUNT(*)::int AS missing
+FROM games g
+WHERE $1::bigint IN (g.home_team_id, g.away_team_id) AND g.status = 'final'
+  AND g.home_score IS NOT NULL AND g.away_score IS NOT NULL AND ${REGULAR_SEASON}
+  AND g.game_date >= $2::date AND g.game_date < $3::date AND g.game_date <= $4::date
+  AND NOT EXISTS (SELECT 1 FROM game_flow gf WHERE gf.game_id = g.game_id)`.trim();
+
+/** One answer per context and date bound, so a run asks the database once per distinct fact date. */
+const cache = new WeakMap<EngineContext, Map<string, Promise<boolean>>>();
+
+/**
+ * True when no final regular-season Clippers game dated from the start of the play-by-play
+ * records up to, but not including, `beforeDate` lacks a game_flow row. False without play-by-play
+ * records. Postgame-flow, quarter and clutch frames of "since {records label}" depend on it.
+ */
+export function pbpRecordsComplete(ctx: EngineContext, beforeDate: string, run: Runner): Promise<boolean> {
+  const start = ctx.pbpRecordsStart;
+  if (!start) return Promise.resolve(false);
+  const key = `${start.season_id}|${beforeDate}|${ctx.asOf}`;
+  let byDate = cache.get(ctx);
+  if (!byDate) cache.set(ctx, (byDate = new Map()));
+  let answer = byDate.get(key);
+  if (!answer) {
+    answer = run({ sql: PBP_MISSING_SQL, params: [ctx.lac.teamId, seasonStartDate(start.season_id), beforeDate, ctx.asOf] })
+      .then(([r]) => Number(r?.missing ?? 1) === 0);
+    byDate.set(key, answer);
+    answer.catch(() => byDate!.delete(key));
+  }
+  return answer;
+}

@@ -19,7 +19,7 @@ export interface RecordsStart { season_id: number; label: string }
 export const FACT_KINDS = [
   'streak', 'milestone', 'league_rank', 'standings', 'recent_form', 'yoy_change',
   'opp_rank', 'h2h', 'last_meeting', 'player_game_stat', 'player_combo',
-  'team_game_stat',
+  'team_game_stat', 'game_flow',
 ] as const;
 export type FactKind = (typeof FACT_KINDS)[number];
 
@@ -87,6 +87,10 @@ export interface FactData {
   meeting_date?: string;
   line?: string;             // the line's big categories: "12 pts, 11 reb, 10 blk"
   meeting_home?: boolean;
+  // Game flow
+  margin_series?: [number, number][];
+  lead?: number;
+  deficit?: number;
 }
 
 export interface Fact {

@@ -57,6 +57,8 @@ export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
     case 'player_game_stat':
     case 'team_game_stat':
       return gameStatEvidence(f, fr, season);
+    case 'game_flow':
+      return d.margin_series && d.margin_series.length > 1 ? { type: 'margin_spark', series: d.margin_series } : null;
     default:
       return null;
   }

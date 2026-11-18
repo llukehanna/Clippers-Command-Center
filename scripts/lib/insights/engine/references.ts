@@ -204,6 +204,63 @@ function teamStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
   };
 }
 
+// ── Game flow (play-by-play) ────────────────────────────────────────────────
+
+export type FlowKey = 'comeback' | 'largest_lead' | 'blown_lead' | 'best_run' | 'lead_changes';
+
+export interface FlowStat {
+  /** SQL over game_flow gf and games g; `lac` is the bind placeholder holding the Clippers' team id ('$1', '$2'). */
+  expr: (lac: string) => string;
+  floor: number;
+  when: 'any' | 'W' | 'L';
+  polarity: 'positive' | 'negative' | 'neutral';
+  thing: (v: number) => string;
+  best: string;
+}
+
+const lacWon = (lac: string) => `((g.home_team_id = ${lac}::bigint) = (g.home_score > g.away_score))`;
+
+export const FLOW_STATS: Record<FlowKey, FlowStat> = {
+  comeback: { expr: () => 'COALESCE(gf.comeback_margin, 0)', floor: 10, when: 'W', polarity: 'positive', thing: (v) => `${v}-point comeback`, best: 'largest comeback win' },
+  largest_lead: { expr: (lac) => `CASE WHEN ${lacWon(lac)} THEN gf.lac_largest_lead ELSE 0 END`, floor: 20, when: 'W', polarity: 'positive', thing: (v) => `${v}-point lead`, best: 'largest lead in a win' },
+  blown_lead: { expr: (lac) => `CASE WHEN ${lacWon(lac)} THEN 0 ELSE gf.lac_largest_lead END`, floor: 15, when: 'L', polarity: 'negative', thing: (v) => `blown ${v}-point lead`, best: 'largest blown lead' },
+  best_run: { expr: () => 'gf.lac_best_run', floor: 14, when: 'any', polarity: 'positive', thing: (v) => `${v}-0 run`, best: 'longest scoring run' },
+  lead_changes: { expr: () => 'gf.lead_changes', floor: 20, when: 'any', polarity: 'neutral', thing: (v) => `${v}-lead-change game`, best: 'most lead changes in a game' },
+};
+
+/**
+ * $1 game, $2 LAC. Each stat column is the stat's own expr (the expression its reference sets use too),
+ * so the fact value and the frames cannot drift. The margin series rides along so the evidence is in the receipts.
+ */
+export const FLOW_SQL = `
+SELECT ${(Object.entries(FLOW_STATS) as [FlowKey, FlowStat][]).map(([key, s]) => `(${s.expr('$2')})::int AS ${key}`).join(',\n       ')},
+       gf.lac_largest_lead::int AS lac_lead, gf.lac_largest_deficit::int AS lac_deficit, gf.margin_series::jsonb AS margin_series
+FROM game_flow gf
+JOIN games g ON g.game_id = gf.game_id
+WHERE gf.game_id = $1::bigint AND $2::bigint IN (g.home_team_id, g.away_team_id)`.trim();
+
+/** Every Clippers regular-season game with play-by-play since `start`; `expr` is built with lac = '$1'. */
+export function clippersFlowRef(expr: string, lacTeamId: string, start: RecordsStart, asOf: string): ProofQuery {
+  return {
+    sql: `SELECT (${expr})::float8 AS value, g.game_id::text AS game_id, g.game_date::text AS game_date, g.season_id::int AS season_id,
+       ($1::bigint)::text AS subject_id, 'Clippers'::text AS subject_name
+FROM game_flow gf
+JOIN games g ON g.game_id = gf.game_id
+WHERE $1::bigint IN (g.home_team_id, g.away_team_id) AND ${REGULAR_SEASON} AND g.season_id >= $2::int AND g.game_date <= $3::date
+  AND (${expr}) IS NOT NULL`,
+    params: [lacTeamId, start.season_id, asOf],
+  };
+}
+
+function flowRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
+  const stat = FLOW_STATS[fact.stat as FlowKey];
+  if (!stat || !ctx.pbpRecordsStart) return null;
+  return {
+    group: clippersFlowRef(stat.expr('$1'), ctx.lac.teamId, ctx.pbpRecordsStart, refAsOf(fact, ctx)),
+    subject: null, league: null, start: ctx.pbpRecordsStart, betterIsHigher: true, ordinal: true,
+  };
+}
+
 export function refsFor(fact: Fact, ctx: EngineContext): RefSpec | null {
   switch (fact.kind) {
     case 'player_game_stat':
@@ -212,6 +269,8 @@ export function refsFor(fact: Fact, ctx: EngineContext): RefSpec | null {
       return comboRefs(fact, ctx);
     case 'team_game_stat':
       return teamStatRefs(fact, ctx);
+    case 'game_flow':
+      return flowRefs(fact, ctx);
     default:
       return null;
   }

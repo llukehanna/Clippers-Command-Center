@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { laToday } from './engine/dates';
 import { REGULAR_SEASON } from '../sql-fragments';
 import { makeFact } from './engine/__fixtures__/facts';
+import { seedGameFlows } from './engine/__fixtures__/flows';
 import type { EngineContext, InsightDraft } from './engine/types';
 
 const url = process.env.FIXTURE_DATABASE_URL;
@@ -635,6 +636,89 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       const [first] = await sql<{ game_id: string }[]>`
         SELECT game_id::text FROM games WHERE season_id = 2025 AND 1 IN (home_team_id, away_team_id) ORDER BY game_date LIMIT 1`;
       expect((await at(3, first.game_id)).map((g) => g.gameId)).toEqual([first.game_id]);
+    }, TIMEOUT);
+  });
+
+  describe('postgame flow, quarters and clutch (play-by-play)', () => {
+    let comebackGame: string;
+    beforeAll(async () => {
+      comebackGame = await seedGameFlows(sql);
+      run('scripts/build-record-book.ts');
+    }, TIMEOUT);
+
+    it('frames game flow since play-by-play records start, and skips without them', async () => {
+      const { flowDetector } = await import('./engine/detectors/postgame-flow');
+      const ctx = await ctxAt(laToday());
+      expect(ctx.pbpRecordsStart).toEqual({ season_id: 2025, label: '2025-26' });
+      const out = await flowDetector().run({ ...ctx, gameId: comebackGame });
+      expect(out.facts.map((f) => f.stat)).toEqual(['comeback']);
+      expect(out.facts[0]).toMatchObject({
+        kind: 'game_flow', value: 15, polarity: 'positive', gameId: comebackGame,
+        data: { margin_series: [[0, 0], [1440, -15], [2880, 3]], lead: 8, deficit: 15 },
+      });
+      expect(out.facts[0].sample).toMatchObject({ kind: 'rate', k: 0 });
+      expect(await flowDetector().run({ ...ctx, gameId: comebackGame, pbpRecordsStart: null })).toEqual({ facts: [], gameIds: [] });
+    }, TIMEOUT);
+
+    it('a game with no play-by-play yields no flow facts', async () => {
+      const { flowDetector } = await import('./engine/detectors/postgame-flow');
+      const [row] = await sql<{ j: unknown }[]>`SELECT to_jsonb(gf) AS j FROM game_flow gf WHERE game_id = ${comebackGame}::bigint`;
+      try {
+        await sql`DELETE FROM game_flow WHERE game_id = ${comebackGame}::bigint`;
+        const out = await flowDetector().run({ ...(await ctxAt(laToday())), gameId: comebackGame });
+        expect(out).toEqual({ facts: [], gameIds: [comebackGame] });
+      } finally {
+        await sql`INSERT INTO game_flow SELECT * FROM jsonb_populate_record(NULL::game_flow, ${sql.json(row.j as never)})`;
+      }
+    }, TIMEOUT);
+
+    it('bounds an older flow fact\'s references at its own game date (R2)', async () => {
+      const { flowDetector } = await import('./engine/detectors/postgame-flow');
+      const { refsFor } = await import('./engine/references');
+      const ctx = await ctxAt(laToday());
+      const { facts } = await flowDetector().run({ ...ctx, gameId: comebackGame });
+      expect(facts.length).toBeGreaterThan(0);
+      const fact = facts[0];
+      expect(fact.context.date < ctx.asOf).toBe(true);
+      const refs = refsFor(fact, ctx)!;
+      expect(refs.group!.params[2]).toBe(fact.context.date);
+      expect(refs.group!.params[2]).not.toBe(ctx.asOf);
+    }, TIMEOUT);
+
+    it('drops the record frames, and only those, when an earlier game has no play-by-play (R7)', async () => {
+      const { runEngine } = await import('./engine/run');
+      const { PBP_RECORD_FRAMES } = await import('./engine/framer');
+      const comeback = async () => {
+        const res = await runEngine({ surfaces: ['postgame'], asOf: laToday(), write: false, gameId: comebackGame });
+        const drafts = res.drafts.filter((d) => d.category === 'game_flow');
+        expect(drafts.length, 'a flow draft for the comeback game').toBeGreaterThan(0);
+        return drafts.find((d) => /\b15\b/.test(d.headline))!;
+      };
+      const [early] = await sql<{ game_id: string }[]>`
+        SELECT g.game_id::text FROM games g
+        WHERE g.season_id = 2025 AND 1 IN (g.home_team_id, g.away_team_id) AND g.status = 'final' AND ${sql.unsafe(REGULAR_SEASON)}
+          AND g.game_id <> ${comebackGame}::bigint AND g.game_date < (SELECT game_date FROM games WHERE game_id = ${comebackGame}::bigint)
+        ORDER BY g.game_date LIMIT 1`;
+      expect(early, 'a Clippers game before the comeback').toBeDefined();
+
+      const complete = await comeback();
+      expect(complete.frame.type).toBe('records_best');
+      expect(complete.detail).toMatch(/^Largest comeback win by the Clippers (since 2025-26|in 1 season of records)$/);
+
+      const [row] = await sql<{ j: unknown }[]>`SELECT to_jsonb(gf) AS j FROM game_flow gf WHERE game_id = ${early.game_id}::bigint`;
+      try {
+        await sql`DELETE FROM game_flow WHERE game_id = ${early.game_id}::bigint`;
+        const gated = await comeback();
+        expect(PBP_RECORD_FRAMES.has(gated.frame.type)).toBe(false);
+        expect(gated.frame.type).toBe('season_high');
+        expect(gated.headline).toBe(complete.headline);
+        expect(gated.evidence).toMatchObject({ type: 'margin_spark' });
+        expect(gated.detail).not.toMatch(/since 2025-26|of records/);
+        expect(gated.detail).toMatch(/^(The l|L)argest comeback win by the Clippers so far in 2025-26$/);
+      } finally {
+        await sql`INSERT INTO game_flow SELECT * FROM jsonb_populate_record(NULL::game_flow, ${sql.json(row.j as never)})`;
+      }
+      expect((await comeback()).frame.type).toBe('records_best');
     }, TIMEOUT);
   });
 

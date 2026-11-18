@@ -1,6 +1,7 @@
 // One template module per fact kind (spec §2.5). Plan 3 adds the new kinds.
 import type { FactKind } from '../types.js';
 import { h2hTemplates } from './h2h.js';
+import { gameFlowTemplates } from './game-flow.js';
 import { lastMeetingTemplates } from './last-meeting.js';
 import { leagueRankTemplates } from './league-rank.js';
 import { milestoneTemplates } from './milestone.js';
@@ -26,4 +27,5 @@ export const TEMPLATES: Record<FactKind, TemplateModule> = {
   player_game_stat: playerLineTemplates,
   player_combo: playerComboTemplates,
   team_game_stat: teamLineTemplates,
+  game_flow: gameFlowTemplates,
 };
