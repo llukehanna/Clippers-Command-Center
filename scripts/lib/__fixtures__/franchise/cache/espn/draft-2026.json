@@ -1,0 +1,43 @@
+{
+ "_source": "Trimmed from ESPN core API draft-2026 rounds (data/franchise-raw/espn/draft-2026.json): picks 5, 12, 36 and 52, fields overall/pick/round/traded/tradeNote only",
+ "items": [
+  {
+   "number": 1,
+   "picks": [
+    {
+     "pick": 5,
+     "overall": 5,
+     "round": 1,
+     "traded": false,
+     "tradeNote": "via IND"
+    },
+    {
+     "pick": 12,
+     "overall": 12,
+     "round": 1,
+     "traded": false,
+     "tradeNote": "via LAC"
+    }
+   ]
+  },
+  {
+   "number": 2,
+   "picks": [
+    {
+     "pick": 6,
+     "overall": 36,
+     "round": 2,
+     "traded": false,
+     "tradeNote": "from MEM via ATL and UTA"
+    },
+    {
+     "pick": 22,
+     "overall": 52,
+     "round": 2,
+     "traded": true,
+     "tradeNote": "Traded to ATL"
+    }
+   ]
+  }
+ ]
+}

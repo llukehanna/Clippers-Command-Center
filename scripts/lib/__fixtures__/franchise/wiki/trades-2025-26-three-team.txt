@@ -1,0 +1,22 @@
+<!-- Source: Wikipedia "2025–26 Los Angeles Clippers season", === Trades === section: the table header and the July 7, 2025 three-team trade (John Collins) only (wikitext via the query API cache, fetched 2026-11). Only the Utah pick names a sender ("from"). -->
+=== Trades ===
+{| class="wikitable col2top col3top" style="width:100%; font-size:90%"|-
+! style="{{NBA color cell|Los Angeles Clippers}}" width="14%" | Date
+! style="{{NBA color cell|Los Angeles Clippers}}" colspan=2   | Trade
+! style="{{NBA color cell|Los Angeles Clippers}}" width="3%"  | Ref.
+|- bgcolor="#F4F0EC"
+!width=14% rowspan=3 | July 7, 2025
+|align=center colspan=2 | ''Three-team trade''
+|align=center rowspan=3 | <ref>{{Cite web |title=Clippers Acquire John Collins in a Three-Team Trade
+ |url=https://www.nba.com/clippers/news/clippers-acquire-john-collins-in-a-three-team-trade |date=July 7, 2025 |access-date=July 8, 2025 |website=NBA.com}}</ref>
+|- bgcolor="#F4F0EC"
+|To '''[[Los Angeles Clippers]]'''<hr>
+* [[John Collins (basketball)|John Collins]]
+|To '''[[Miami Heat]]'''<hr>
+* [[Norman Powell]]
+|- bgcolor="#F4F0EC"
+|colspan=2 | To '''[[Utah Jazz]]'''<hr>
+* [[Kyle Anderson (basketball)|Kyle Anderson]]
+* [[Kevin Love]]
+* 2027 second-round pick (from [[Los Angeles Clippers|LA Clippers]])
+|}
