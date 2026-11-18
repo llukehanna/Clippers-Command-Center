@@ -380,4 +380,44 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect((await yd('season').run({ ...ctx, league: { complete: false, reason: 'test' } })).facts).toEqual([]);
     }, TIMEOUT);
   });
+
+  describe('ported pregame and postgame detectors', () => {
+    it('pregame: opponent ranks, season series and last meeting, all for the next game', async () => {
+      const { opponentDetector } = await import('./engine/detectors/pregame-opponent');
+      const ctx = await ctxAt(laToday());
+      const [next] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM games WHERE status <> 'final' ORDER BY game_date LIMIT 1`;
+      const { facts, gameIds } = await opponentDetector().run(ctx);
+      expect(gameIds).toBeNull();
+      expect(facts.map((f) => f.kind).sort()).toEqual(['h2h', 'last_meeting', 'opp_rank', 'opp_rank']);
+      for (const f of facts) {
+        expect(f).toMatchObject({ surface: 'pregame', gameId: next.game_id, window: { game_id: next.game_id } });
+        expect(f.context.opponent_id).toBe('2');
+      }
+      expect(facts.find((f) => f.kind === 'h2h')!.sample).toEqual({ kind: 'context' });
+    }, TIMEOUT);
+
+    it('postgame: the 55-point night ranks first league-wide; one-game runs stay on that game', async () => {
+      const { leagueNightDetector } = await import('./engine/detectors/postgame-league-nights');
+      const ctx = await ctxAt(laToday());
+      const all = await leagueNightDetector().run(ctx);
+      const star = all.facts.find((f) => f.subject.name === 'Star Clipper' && f.stat === 'pts');
+      expect(star).toMatchObject({ kind: 'league_night', surface: 'postgame', value: 55, data: { rank: 1 } });
+      expect(star!.sample).toMatchObject({ kind: 'rate', k: 0, power: 1 });
+      expect(all.gameIds).toContain(star!.gameId);
+      const one = await leagueNightDetector().run({ ...ctx, gameId: star!.gameId });
+      expect(one.gameIds).toEqual([star!.gameId]);
+      expect(one.facts.length).toBeGreaterThan(0);
+      expect(one.facts.every((f) => f.gameId === star!.gameId)).toBe(true);
+      expect(await leagueNightDetector().run({ ...ctx, league: { complete: false, reason: 'x' } })).toEqual({ facts: [], gameIds: [] });
+    }, TIMEOUT);
+
+    it('registry: unique names, unique categories per surface', async () => {
+      const { DETECTORS } = await import('./engine/detectors/index');
+      expect(new Set(DETECTORS.map((d) => d.name)).size).toBe(DETECTORS.length);
+      for (const surface of ['season', 'pregame', 'postgame', 'player'] as const) {
+        const cats = DETECTORS.filter((d) => d.surface === surface).flatMap((d) => d.categories);
+        expect(new Set(cats).size, surface).toBe(cats.length);
+      }
+    });
+  });
 });
