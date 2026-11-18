@@ -599,4 +599,48 @@ describe.skipIf(!url)('stats + insight pipeline (fixture DB)', () => {
       maxRetries: 2, retryDelayMs: 0,
     })).rejects.toThrow(/FAILED after 2 attempts .*NBA: NBA CDN 403; ESPN: game not final yet/);
   }, TIMEOUT);
+
+  it('finalizes from the final live doc when neither the NBA nor ESPN has the box score', async () => {
+    const { finalizeGame } = await import('./finalize');
+    const { upsertGameRow } = await import('./upserts');
+    const { saveLiveState } = await import('./live-store');
+    const { liveDoc } = await import('./live-fixtures');
+    const [teams] = await sql<{ den: string; lac: string }[]>`
+      SELECT (SELECT team_id::text FROM teams WHERE abbreviation = 'DEN') AS den,
+             (SELECT team_id::text FROM teams WHERE abbreviation = 'LAC') AS lac`;
+    await upsertGameRow({
+      nbaGameId: '0022600079', seasonId: 2026, gameDate: '2026-10-30', status: 'scheduled',
+      startTimeUtc: '2026-10-31T02:30:00Z', homeTeamId: teams.lac, awayTeamId: teams.den,
+      homeScore: null, awayScore: null, period: null, clock: null, isPlayoffs: false,
+    });
+    const [{ game_id: gameId }] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM games WHERE nba_game_id = 22600079`;
+    const home = team('LAC', [player(1_000_001, 'Star Clipper', 33), player(-5001, 'Nobody We Know', 2)]);
+    const away = team('DEN', [player(1_000_000 + 49, 'DEN Player 1', 21)]);
+    const finalDoc = liveDoc(7, {
+      nba_game_id: '0022600079', status: 'final', status_text: 'Final', period: 4, clock: '0:00',
+      home_score: home.score, away_score: away.score, home_box: home, away_box: away,
+    });
+    const refuse = { fetchNba: async () => { throw new Error('NBA CDN 403'); }, fetchEspn: async () => { throw new Error('ESPN 503'); }, retryDelayMs: 0 };
+
+    // No live doc yet: every source fails.
+    await expect(finalizeGame(gameId, '22600079', { ...refuse, maxRetries: 1 }))
+      .rejects.toThrow(/NBA: NBA CDN 403; ESPN: ESPN 503; live doc: no final live doc/);
+
+    // A live doc whose box score disagrees with its final score is not used.
+    await saveLiveState(sql, gameId, { ...finalDoc, seq: 6, home_score: home.score + 1 });
+    await expect(finalizeGame(gameId, '22600079', { ...refuse, maxRetries: 1 })).rejects.toThrow(/live doc: no final live doc/);
+
+    // The live doc is only the last attempt's fallback.
+    await saveLiveState(sql, gameId, finalDoc);
+    let nbaCalls = 0;
+    await finalizeGame(gameId, '22600079', { ...refuse, fetchNba: async () => { nbaCalls++; throw new Error('NBA CDN 403'); }, maxRetries: 2 });
+    expect(nbaCalls).toBe(2);
+    const [state] = await sql<{ players: number; live_teams: number; status: string; home: number; away: number }[]>`
+      SELECT (SELECT COUNT(*)::int FROM game_player_box_scores WHERE game_id = ${gameId}::bigint) AS players,
+             (SELECT COUNT(*)::int FROM game_team_box_scores WHERE game_id = ${gameId}::bigint AND raw_payload->>'source' = 'live') AS live_teams,
+             status, home_score AS home, away_score AS away
+      FROM games WHERE game_id = ${gameId}::bigint`;
+    expect(state).toEqual({ players: 2, live_teams: 2, status: 'final', home: 35, away: 21 });
+    await sql`DELETE FROM live_state WHERE game_id = ${gameId}::bigint`;
+  }, TIMEOUT);
 });

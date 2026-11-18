@@ -14,11 +14,13 @@
 //
 // Sources: the NBA box score (cdn.nba.com, then stats.nba.com) is official.
 // When it isn't available (the NBA refuses GitHub Actions for hours after the
-// buzzer), each attempt falls back to ESPN's game summary. An ESPN box score
-// is provisional: its team rows carry raw_payload.source = 'espn', minutes are
-// whole numbers, and players ESPN names that we can't match are left out. The
-// nightly league sync (sync-league-games) re-ingests provisional games from
-// the NBA, which replaces every row.
+// buzzer), each attempt falls back to ESPN's game summary, and the last
+// attempt to the box score in the game's final live_state doc (what the live
+// page showed at the buzzer). Both are provisional: their team rows carry
+// raw_payload.source ('espn' or 'live'), minutes from ESPN are whole numbers,
+// and players we can't match to an NBA personId are left out. The nightly
+// league sync (sync-league-games) re-ingests provisional games from the NBA,
+// which replaces every row.
 //
 // Failure semantics: finalizeGame THROWS if it cannot write a complete box
 // score. All writes happen in one transaction, and the game is only marked
@@ -41,6 +43,7 @@ import {
   splitPersonName,
   type PlayerNameCandidate,
 } from './player-match.js';
+import type { LiveStateDoc } from '../../src/lib/types/live-state.js';
 import type {
   BoxscorePlayer,
   BoxscoreTeam,
@@ -70,11 +73,48 @@ export interface FinalizeOptions {
    * the game's ESPN summary. null turns the fallback off.
    */
   fetchEspn?: (() => Promise<NBABoxscoreResponse>) | null;
+  /**
+   * The last resort, on the final attempt: the box score in the game's final
+   * live_state doc (null when there is none). Default: read from live_state.
+   * null turns it off.
+   */
+  fetchLive?: (() => Promise<NBABoxscoreResponse | null>) | null;
 }
 
-/** Box scores built from ESPN's summary (espn-live-client toBoxResponse) are provisional. */
-export function isEspnBoxscore(box: NBABoxscoreResponse): boolean {
-  return box.meta?.request === 'espn';
+/** raw_payload.source values that mark a provisional box score (see the header). */
+export const PROVISIONAL_SOURCES = ['espn', 'live'] as const;
+export type ProvisionalSource = (typeof PROVISIONAL_SOURCES)[number];
+
+/**
+ * Where a provisional box score came from, or null for the NBA's own: ESPN's
+ * summary (espn-live-client toBoxResponse) or the final live doc (liveDocBoxscore).
+ */
+export function provisionalSource(box: NBABoxscoreResponse): ProvisionalSource | null {
+  const r = box.meta?.request;
+  return r === 'espn' || r === 'live' ? r : null;
+}
+
+/**
+ * The final live doc's box score, or null unless the doc is final, has both
+ * teams' box scores, and they agree with its final score.
+ */
+export function liveDocBoxscore(doc: LiveStateDoc | null | undefined, gid: string): NBABoxscoreResponse | null {
+  if (!doc || doc.status !== 'final' || !doc.home_box || !doc.away_box) return null;
+  if (doc.home_box.score !== doc.home_score || doc.away_box.score !== doc.away_score) return null;
+  return {
+    meta: { version: 1, code: 200, request: 'live', time: doc.fetched_at },
+    game: {
+      gameId: gid,
+      gameStatus: 3,
+      gameStatusText: doc.status_text || 'Final',
+      period: doc.period,
+      gameClock: '',
+      gameTimeUTC: '',
+      regulationPeriods: 4,
+      homeTeam: doc.home_box,
+      awayTeam: doc.away_box,
+    },
+  };
 }
 
 /**
@@ -139,9 +179,11 @@ export async function finalizeGame(
       maxRetries,
       retryDelayMs,
       opts.fetchNba ?? fetchBoxscore,
-      opts.fetchEspn === undefined ? defaultEspnFetch(db, gameDbId, gid) : opts.fetchEspn
+      opts.fetchEspn === undefined ? defaultEspnFetch(db, gameDbId, gid) : opts.fetchEspn,
+      opts.fetchLive === undefined ? defaultLiveFetch(db, gameDbId, gid) : opts.fetchLive
     ));
-  const provisional = isEspnBoxscore(boxscore);
+  const source = provisionalSource(boxscore);
+  const provisional = source !== null;
   if (boxscore.game.gameStatus !== 3) {
     throw new Error(`[finalize] ${gid}: box score is not final (gameStatus=${boxscore.game.gameStatus})`);
   }
@@ -152,11 +194,12 @@ export async function finalizeGame(
     const tx = txRaw as unknown as Db;
 
     const [existing] = await tx<{ rows: number; provisional: boolean | null }[]>`
-      SELECT COUNT(*)::int AS rows, bool_or(raw_payload->>'source' = 'espn') AS provisional
+      SELECT COUNT(*)::int AS rows,
+             bool_or(raw_payload->>'source' = ANY(${[...PROVISIONAL_SOURCES]}::text[])) AS provisional
       FROM game_team_box_scores WHERE game_id = ${gameDbId}::bigint
     `;
     if (provisional && existing.rows > 0 && !existing.provisional) {
-      console.log(`[finalize] ${gid}: already has the official NBA box score; not replacing it with ESPN's`);
+      console.log(`[finalize] ${gid}: already has the official NBA box score; not replacing it (${source})`);
       return null;
     }
     // A provisional box score is replaced whole: its player rows may include
@@ -171,9 +214,9 @@ export async function finalizeGame(
     // Write team box scores (use NBA-provided team aggregates directly)
     // raw_payload keeps the team statistics plus the per-period line score
     // (read by /api/history/games/[id] as game.periods).
-    // source: 'espn' marks a provisional box score (see the header).
+    // source marks a provisional box score (see the header).
     const teamPayload = (t: typeof homeTeam) =>
-      JSON.stringify({ ...t.statistics, periods: t.periods ?? [], ...(provisional ? { source: 'espn' } : {}) });
+      JSON.stringify({ ...t.statistics, periods: t.periods ?? [], ...(source ? { source } : {}) });
     await upsertTeamBoxScore(gameDbId, homeTeamDbId, true, homeTeam.statistics, teamPayload(homeTeam), tx);
     await upsertTeamBoxScore(gameDbId, awayTeamDbId, false, awayTeam.statistics, teamPayload(awayTeam), tx);
 
@@ -231,7 +274,7 @@ export async function finalizeGame(
   if (playerCount === null) return;
   console.log(
     `[finalize] Game ${gid}: team + ${playerCount} player box score rows written` +
-      `${provisional ? ' from ESPN (provisional until the nightly NBA sync)' : ''}; marked final`
+      `${source ? ` from ${source === 'espn' ? 'ESPN' : 'the final live doc'} (provisional until the nightly NBA sync)` : ''}; marked final`
   );
 }
 
@@ -264,16 +307,28 @@ function defaultEspnFetch(db: Db, gameDbId: string, gid: string): () => Promise<
   };
 }
 
+/** The box score in the game's final live_state doc, or null. */
+function defaultLiveFetch(db: Db, gameDbId: string, gid: string): () => Promise<NBABoxscoreResponse | null> {
+  return async () => {
+    const [row] = await db<{ state: LiveStateDoc }[]>`
+      SELECT state FROM live_state WHERE game_id = ${gameDbId}::bigint
+    `;
+    return liveDocBoxscore(row?.state, gid);
+  };
+}
+
 /**
  * Fetch the box score, retrying while it isn't final or has no player rows.
- * Each attempt asks the NBA first, then ESPN.
+ * Each attempt asks the NBA first, then ESPN; the last attempt then takes the
+ * final live doc's box score.
  */
 async function fetchFinalBoxscore(
   gid: string,
   maxRetries: number,
   retryDelayMs: number,
   fetchNba: (gid: string) => Promise<NBABoxscoreResponse>,
-  fetchEspn: (() => Promise<NBABoxscoreResponse>) | null
+  fetchEspn: (() => Promise<NBABoxscoreResponse>) | null,
+  fetchLive: (() => Promise<NBABoxscoreResponse | null>) | null
 ): Promise<NBABoxscoreResponse> {
   let lastReason = 'unknown';
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -287,6 +342,18 @@ async function fetchFinalBoxscore(
         return espn;
       }
       lastReason += `; ESPN: ${espn}`;
+    }
+    if (fetchLive && attempt === maxRetries) {
+      const live = await tryFetch(async () => {
+        const box = await fetchLive();
+        if (!box) throw new Error('no final live doc with both box scores');
+        return box;
+      });
+      if (typeof live !== 'string') {
+        console.log(`[finalize] ${gid}: ${lastReason}; using the final live doc's box score`);
+        return live;
+      }
+      lastReason += `; live doc: ${live}`;
     }
     console.warn(`[finalize] ${gid} attempt ${attempt}/${maxRetries}: ${lastReason}`);
     if (attempt < maxRetries) await sleep(retryDelayMs);
