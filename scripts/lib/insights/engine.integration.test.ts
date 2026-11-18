@@ -353,10 +353,10 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       const { lateJoiners } = await import('./engine/games');
       const ctx = await ctxAt(laToday());
       const before = await lateJoiners(ctx);
-      expect(before.has('1')).toBe(false);
-      expect(before.has(String(LATE_ID))).toBe(false);
+      // The fixture's one genuine late joiner: player 11, first LAC game 2026-01-29 (checked against the DB by hand).
+      expect(before).toEqual(new Set(['11']));
       await withLateJoiner(ctx, async () => {
-        expect(await lateJoiners(ctx)).toEqual(new Set([...before, String(LATE_ID)]));
+        expect(await lateJoiners(ctx)).toEqual(new Set(['11', '9001']));
       });
     }, TIMEOUT);
 

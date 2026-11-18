@@ -8,8 +8,7 @@ import { sql } from '../../db.js';
 import { currentSeasonId, seasonLabel } from '../../schedule-utils.js';
 import { REGULAR_SEASON } from '../../sql-fragments.js';
 import { assessLeagueCoverage, type TeamGames } from './coverage.js';
-import { laToday } from './dates.js';
-import { applyRosterSnapshot, type RosterSnapshot } from './roster.js';
+import { applyRosterSnapshot, parseRosterSnapshot, snapshotProblem, type RosterSnapshot } from './roster.js';
 import { parseRecordsStart } from './records.js';
 import { rosterSubquery } from './sql.js';
 import { loadPrior } from './store.js';
@@ -20,17 +19,10 @@ export const DEFAULT_POSTGAME_DAYS = 3;
 
 export interface LoadOptions { asOf: string; gameId?: string | null; withPrior: boolean; postgameDays?: number }
 
-/** app_kv 'roster:LAC' (scripts/sync-roster.ts) with its sync time as a Los Angeles date. */
+/** app_kv 'roster:LAC' (scripts/sync-roster.ts), parsed. */
 async function loadRosterSnapshot(): Promise<RosterSnapshot | null> {
-  const [kv] = await sql<{ value: { synced_at?: unknown; players?: unknown } | null }[]>`
-    SELECT value FROM app_kv WHERE key = 'roster:LAC'`;
-  const v = kv?.value;
-  if (!v || typeof v.synced_at !== 'string' || !Array.isArray(v.players)) return null;
-  const synced = new Date(v.synced_at);
-  if (Number.isNaN(synced.getTime())) return null;
-  const ids = (v.players as { player_id?: unknown }[]).map((p) => p?.player_id).filter((id): id is string => typeof id === 'string');
-  if (ids.length === 0) return null;
-  return { syncedDate: laToday(synced), playerIds: new Set(ids) };
+  const [kv] = await sql<{ value: unknown }[]>`SELECT value FROM app_kv WHERE key = 'roster:LAC'`;
+  return parseRosterSnapshot(kv?.value);
 }
 
 export async function loadEngineContext(opts: LoadOptions): Promise<EngineContext | null> {
@@ -109,7 +101,15 @@ export async function loadEngineContext(opts: LoadOptions): Promise<EngineContex
 
   const league = assessLeagueCoverage(coverage, lac.teamId, latest?.d ?? null);
   // League box scores are incomplete: a traded player still looks like a Clipper, so intersect with the synced roster.
-  const roster = league.complete ? boxRoster : applyRosterSnapshot(boxRoster, await loadRosterSnapshot(), asOf, league.complete);
+  let roster = boxRoster;
+  if (!league.complete) {
+    const snapshot = await loadRosterSnapshot();
+    const problem = snapshotProblem(snapshot, asOf);
+    if (problem) {
+      console.log(`::warning title=Roster snapshot unusable::roster:LAC is ${problem}; the box-score roster is used unguarded while league data is incomplete`);
+    }
+    roster = applyRosterSnapshot(boxRoster, snapshot, asOf, league.complete);
+  }
 
   const prior: Map<string, PriorState> = opts.withPrior ? await loadPrior() : new Map();
 
