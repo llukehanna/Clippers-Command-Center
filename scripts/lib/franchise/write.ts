@@ -2,218 +2,40 @@
 // Writes an assembled FranchiseDataset into Part 3's tables by stable natural keys (spec §1, §3.4).
 //
 // Ownership:
-//   - import mode (scripts/import-franchise-history.ts) is the source of truth for the seasons it covers. It
-//     overwrites what it writes and deletes its own stale rows: rows whose sources are ALL import-owned prefixes
-//     and that the dataset no longer contains, in covered seasons only. A table the dataset carries no rows for is
-//     never pruned (a partial run must not wipe it). People, picks, swaps and lottery rows are never deleted.
+//   - import mode (scripts/import-franchise-history.ts) is the source of truth for the seasons its cache covers
+//     (`mode.seasons`, required). It overwrites what it writes and deletes its own stale rows: transactions whose
+//     sources are ALL import-owned prefixes and that the dataset no longer contains, in covered seasons only; stale
+//     season-table rows in covered seasons; and picks and swaps the dataset no longer has that no remaining part
+//     references (with their lottery rows). A table the dataset carries no rows for is never pruned (a partial
+//     run must not wipe it). People are never deleted.
 //   - job mode (nightly moves, weekly contracts) only adds rows or fills nulls; it never deletes. An existing
-//     transaction is rewritten by a job only while it is incomplete.
+//     incomplete transaction is rewritten by a job only when the job's version is strictly better (never losing a
+//     linked part); otherwise the job only adds its source key.
 // A move matches an existing row by key, then by a shared source key, then by adoptExisting (same event already
 // stored under another key): the existing key and slug are kept, so URLs never change, and sources are unioned.
-// A person stored as `nba:<id>` is merged into the BBRef row once the dataset gives that id (mergePerson).
+// A person stored as `nba:<id>` is merged into the BBRef row once the dataset gives that id (write-people.ts).
 // Rows that can't be written (no person_xref row for their person) are returned in `skipped`, never dropped silently.
 // The whole write is one database transaction, after the storage guard. Unknown is null.
 import { databaseBytes, type Db } from '../history/write.js';
 import { describeMove, eraTeamName, seasonOfDate } from './describe.js';
 import { tradeSlug } from './keys.js';
-import type { PersonRow } from './people.js';
 import type { MergedMove } from './reconcile-moves.js';
-import type { FranchiseDataset, MoveKind, MovePart } from './types.js';
+import type { FranchiseDataset, MoveKind } from './types.js';
+import { bump, chunks, dedupe, upsert, type Row, type WriteMode, type WriteResult } from './write-common.js';
+import { resolvePerson, writePeople, type People } from './write-people.js';
 
-export type WriteMode = { kind: 'import'; importSources: string[] /* source prefixes this run owns */ } | { kind: 'job'; job: 'nightly' | 'weekly' };
+export type { SkippedRow, WriteMode, WriteResult } from './write-common.js';
+export { mergePerson } from './write-people.js';
 
 export interface WriteOptions {
   /** Storage cap in MB; the write stops above 85% of it (Part 1's rule). Default 512. */
   capMb?: number;
-  /** Seasons (start years) the import's cache covers; default: every season from the dataset's first to its last. */
-  seasons?: number[];
 }
 
-export interface SkippedRow { table: string; reason: string; row: unknown }
-
-export interface WriteResult {
-  inserted: Record<string, number>;
-  updated: Record<string, number>;
-  deleted: Record<string, number>;
-  /** People merged from an `nba:` key into their BBRef row. */
-  merged: number;
-  skipped: SkippedRow[];
-}
-
-type Value = string | number | boolean | null | string[] | ReturnType<Db['json']>;
-type Row = Record<string, Value>;
-
-const BATCH = 500;
-const chunks = <T>(xs: T[], n = BATCH): T[][] => {
-  const out: T[][] = [];
-  for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n));
-  return out;
-};
 const WINDOW_DAYS = 3;
 const GUARD_SHARE = 0.85;
 
-// ---- helpers -----------------------------------------------------------------
-
-function bump(c: Record<string, number>, table: string, n: number): void {
-  if (n) c[table] = (c[table] ?? 0) + n;
-}
-
-/** Last row wins per key, so one INSERT … ON CONFLICT never touches a row twice. */
-function dedupe(rows: Row[], key: string[]): Row[] {
-  const m = new Map<string, Row>();
-  for (const r of rows) m.set(JSON.stringify(key.map((k) => r[k])), r);
-  return [...m.values()];
-}
-
-/**
- * INSERT … ON CONFLICT (key) DO UPDATE, only where something differs (so a repeat write changes nothing).
- * 'overwrite' takes the new value (or keeps the old one for `keep` columns when the new one is null);
- * 'fill' only fills nulls.
- */
-async function upsert(
-  tx: Db, table: string, key: string[], rows: Row[], how: 'overwrite' | 'fill', keep: string[] = [],
-): Promise<{ ins: number; upd: number }> {
-  let ins = 0, upd = 0;
-  const all = dedupe(rows, key);
-  if (!all.length) return { ins, upd };
-  const cols = Object.keys(all[0]);
-  const rest = cols.filter((c) => !key.includes(c));
-  const expr = (c: string) =>
-    how === 'fill' ? `COALESCE(${table}.${c}, EXCLUDED.${c})` : keep.includes(c) ? `COALESCE(EXCLUDED.${c}, ${table}.${c})` : `EXCLUDED.${c}`;
-  const set = rest.map((c) => `${c} = ${expr(c)}`).join(', ');
-  const differs = `(${rest.map((c) => `${table}.${c}`).join(', ')}) IS DISTINCT FROM (${rest.map(expr).join(', ')})`;
-  for (const batch of chunks(all)) {
-    const res = await tx<{ ins: boolean }[]>`
-      INSERT INTO ${tx.unsafe(table)} ${tx(batch as never, cols)}
-      ON CONFLICT (${tx.unsafe(key.join(', '))}) DO UPDATE SET ${tx.unsafe(set)} WHERE ${tx.unsafe(differs)}
-      RETURNING (xmax = 0) AS ins`;
-    for (const r of res) if (r.ins) ins++; else upd++;
-  }
-  return { ins, upd };
-}
-
 const likePrefix = (p: string) => `${p.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-
-function coveredSeasons(data: FranchiseDataset, opts: WriteOptions): string[] {
-  if (opts.seasons) return opts.seasons.map(String);
-  const s = [
-    ...data.moves.filter((m) => m.date).map((m) => seasonOfDate(m.date)),
-    ...data.salaries.map((r) => r.seasonId), ...data.coachSeasons.map((r) => r.seasonId),
-    ...data.payrollSeasons.map((r) => r.seasonId),
-  ].filter(Number.isFinite);
-  if (!s.length) return [];
-  const out: string[] = [];
-  for (let y = Math.min(...s); y <= Math.max(...s); y++) out.push(String(y));
-  return out;
-}
-
-// ---- people ------------------------------------------------------------------
-
-const PERSON_REFS: Array<{ table: string; col: string; same?: string[] }> = [
-  { table: 'transaction_parts', col: 'person_key' },
-  { table: 'draft_picks', col: 'selected_person' },
-  { table: 'salaries', col: 'person_key', same: ['season_id'] },
-  { table: 'contracts', col: 'person_key', same: ['snapshot_id', 'season_id'] },
-  { table: 'coach_seasons', col: 'person_key', same: ['season_id', 'ordinal'] },
-  { table: 'executive_terms', col: 'person_key', same: ['title', 'start_date'] },
-  { table: 'honors', col: 'person_key', same: ['season_id', 'honor'] },
-];
-
-/**
- * Merges person `fromKey` into `toKey`. With no `toKey` row the key is renamed and every reference follows by
- * ON UPDATE CASCADE. Otherwise references are repointed (a `fromKey` row that would duplicate one of `toKey`'s is
- * deleted), `toKey` fills its null columns from `fromKey`, and the `fromKey` row is deleted.
- */
-export async function mergePerson(tx: Db, fromKey: string, toKey: string): Promise<void> {
-  if (fromKey === toKey) return;
-  const [target] = await tx`SELECT 1 FROM person_xref WHERE person_key = ${toKey}`;
-  if (!target) {
-    await tx`UPDATE person_xref SET person_key = ${toKey} WHERE person_key = ${fromKey}`;
-    return;
-  }
-  for (const r of PERSON_REFS) {
-    if (r.same) {
-      const same = r.same.map((c) => `a.${c} IS NOT DISTINCT FROM b.${c}`).join(' AND ');
-      await tx.unsafe(
-        `DELETE FROM ${r.table} a WHERE a.${r.col} = $1 AND EXISTS (SELECT 1 FROM ${r.table} b WHERE b.${r.col} = $2 AND ${same})`,
-        [fromKey, toKey]);
-    }
-    await tx.unsafe(`UPDATE ${r.table} SET ${r.col} = $2 WHERE ${r.col} = $1`, [fromKey, toKey]);
-  }
-  await tx`
-    UPDATE person_xref t SET birthdate = COALESCE(t.birthdate, f.birthdate),
-      nba_person_id = COALESCE(t.nba_person_id, f.nba_person_id), player_id = COALESCE(t.player_id, f.player_id)
-    FROM person_xref f WHERE t.person_key = ${toKey} AND f.person_key = ${fromKey}`;
-  await tx`DELETE FROM person_xref WHERE person_key = ${fromKey}`;
-}
-
-interface People { keys: Set<string>; byNba: Map<number, string>; name: Map<string, string> }
-
-async function writePeople(tx: Db, data: FranchiseDataset, mode: WriteMode, res: WriteResult): Promise<People> {
-  const people = new Map<string, PersonRow>(data.people.map((p) => [p.personKey, p]));
-  // Coaches and executives carry their BBRef id and name; they need a person row to be written at all.
-  const extra = (personKey: string, kind: PersonRow['kind'], displayName: string) => {
-    if (!people.has(personKey)) people.set(personKey, { personKey, kind, displayName, birthdate: null, nbaPersonId: null, playerId: null });
-  };
-  for (const c of data.coachSeasons) if (c.bbrefId) extra(c.bbrefId, 'coach', c.name);
-  for (const e of data.execTerms) if (e.personKey) extra(e.personKey, 'executive', e.name);
-
-  const nbaOnly = new Set((await tx<{ person_key: string }[]>`
-    SELECT person_key FROM person_xref WHERE person_key LIKE 'nba:%'`).map((r) => r.person_key));
-  for (const p of people.values()) {
-    const from = `nba:${p.nbaPersonId}`;
-    if (p.nbaPersonId == null || p.personKey.startsWith('nba:') || !nbaOnly.has(from)) continue;
-    await mergePerson(tx, from, p.personKey);
-    nbaOnly.delete(from);
-    res.merged++;
-  }
-
-  const rows: Row[] = [...people.values()].map((p) => ({
-    person_key: p.personKey, kind: p.kind, display_name: p.displayName, birthdate: p.birthdate,
-    nba_person_id: p.nbaPersonId, player_id: p.playerId,
-  }));
-  const r = await upsert(tx, 'person_xref', ['person_key'], rows, mode.kind === 'import' ? 'overwrite' : 'fill',
-    ['birthdate', 'nba_person_id', 'player_id']);
-  bump(res.inserted, 'person_xref', r.ins);
-  bump(res.updated, 'person_xref', r.upd);
-
-  // players: only fill a NULL nba_person_id, and never with an id another player (or another person here) holds.
-  const fills = [...people.values()].filter((p) => p.playerId != null && p.nbaPersonId != null);
-  const idCount = new Map<number, number>();
-  for (const p of fills) idCount.set(p.nbaPersonId!, (idCount.get(p.nbaPersonId!) ?? 0) + 1);
-  const unique = fills.filter((p) => idCount.get(p.nbaPersonId!) === 1);
-  for (const batch of chunks(unique)) {
-    const u = await tx`
-      UPDATE players p SET nba_person_id = v.nid, updated_at = now()
-      FROM unnest(${batch.map((x) => x.playerId!)}::bigint[], ${batch.map((x) => String(x.nbaPersonId))}::int[]) AS v(pid, nid)
-      WHERE p.player_id = v.pid AND p.nba_person_id IS NULL
-        AND NOT EXISTS (SELECT 1 FROM players q WHERE q.nba_person_id = v.nid)`;
-    bump(res.updated, 'players', u.count);
-  }
-
-  const all = await tx<{ person_key: string; display_name: string; nba_person_id: number | null }[]>`
-    SELECT person_key, display_name, nba_person_id FROM person_xref`;
-  const byNba = new Map<number, string>();
-  const ambiguous = new Set<number>();
-  for (const p of all) {
-    if (p.nba_person_id == null) continue;
-    if (byNba.has(p.nba_person_id) && byNba.get(p.nba_person_id) !== p.person_key) ambiguous.add(p.nba_person_id);
-    byNba.set(p.nba_person_id, p.person_key);
-  }
-  for (const id of ambiguous) byNba.delete(id);
-  return { keys: new Set(all.map((p) => p.person_key)), byNba, name: new Map(all.map((p) => [p.person_key, p.display_name])) };
-}
-
-function resolvePerson(p: MovePart, people: People): string | null {
-  if (p.personKey) return people.keys.has(p.personKey) ? p.personKey : null;
-  const ref = p.person;
-  if (!ref) return null;
-  if (ref.bbrefId && people.keys.has(ref.bbrefId)) return ref.bbrefId;
-  if (ref.nbaPersonId != null) {
-    return people.byNba.get(ref.nbaPersonId) ?? (people.keys.has(`nba:${ref.nbaPersonId}`) ? `nba:${ref.nbaPersonId}` : null);
-  }
-  return null;
-}
 
 // ---- picks, swaps, lottery ---------------------------------------------------
 
@@ -269,35 +91,76 @@ async function writePicks(tx: Db, data: FranchiseDataset, how: 'overwrite' | 'fi
   const r = await upsert(tx, 'draft_lottery', ['draft_year', 'pick_id'], lottery, how);
   bump(res.inserted, 'draft_lottery', r.ins);
   bump(res.updated, 'draft_lottery', r.upd);
-  return { pickIds, swapIds };
+  return { pickIds, swapIds, lottery };
+}
+
+/**
+ * Import pruning for picks (only when the dataset carries picks): picks and swaps the dataset no longer has and no
+ * remaining transaction part references (a job-sourced part keeps its pick), and lottery rows of covered drafts the
+ * dataset no longer has, plus those of picks being deleted. The draft of year Y belongs to season Y-1.
+ */
+async function prunePicks(tx: Db, data: FranchiseDataset, lottery: Row[], seasons: string[], res: WriteResult): Promise<void> {
+  const stale = (await tx<{ id: number }[]>`
+    SELECT d.pick_id AS id FROM draft_picks d
+    WHERE NOT (d.pick_key = ANY(${data.picks.map((p) => p.pickKey)}::text[]))
+      AND NOT EXISTS (SELECT 1 FROM transaction_parts p WHERE p.pick_id = d.pick_id)`).map((r) => String(r.id));
+  const dl = await tx`
+    DELETE FROM draft_lottery l
+    WHERE l.pick_id = ANY(${stale}::int[])
+       OR (l.draft_year = ANY(${seasons.map((y) => String(Number(y) + 1))}::smallint[])
+           AND NOT EXISTS (SELECT 1 FROM unnest(${lottery.map((r) => String(r.draft_year))}::smallint[], ${lottery.map((r) => String(r.pick_id))}::int[]) v(y, p)
+                           WHERE v.y = l.draft_year AND v.p = l.pick_id))`;
+  bump(res.deleted, 'draft_lottery', dl.count);
+  const dp = await tx`DELETE FROM draft_picks WHERE pick_id = ANY(${stale}::int[])`;
+  bump(res.deleted, 'draft_picks', dp.count);
+  const ds = await tx`
+    DELETE FROM pick_swaps s WHERE NOT (s.swap_key = ANY(${data.swaps.map((x) => x.swapKey)}::text[]))
+      AND NOT EXISTS (SELECT 1 FROM transaction_parts p WHERE p.swap_id = s.swap_id)`;
+  bump(res.deleted, 'pick_swaps', ds.count);
 }
 
 // ---- transactions ------------------------------------------------------------
 
 const kindsLike = (k: MoveKind): MoveKind[] => (k === 'signing' || k === 're_signing' ? ['signing', 're_signing'] : [k]);
 
+/** 'nba:', 'bbref:', … : the source a key comes from. */
+const family = (k: string) => k.slice(0, k.indexOf(':') + 1);
+
 /**
  * The transaction_key of an already stored row for the same event as `move` (Review Focus 3): same kind (signing
- * and re-signing alike), date within 3 days, and a shared person or pick. Nearest date first; keys in `exclude`
- * (already claimed by another move of this write) are passed over. Null when none.
+ * and re-signing alike), date within 3 days, and a shared person or pick moving between the same two teams. A row
+ * that carries a different key from a source the move also has (NBA.com `Trade N`, a BBRef line) is a different
+ * event and is never adopted. Nearest date first; keys in `exclude` (claimed by another move of this write) are
+ * passed over. Null when none.
  */
 export async function adoptExisting(tx: Db, move: MergedMove, exclude: ReadonlySet<string> = new Set()): Promise<string | null> {
   if (!move.date) return null;
-  const persons = [...new Set(move.parts.flatMap((p) => [
-    p.personKey, p.person?.bbrefId, p.person?.nbaPersonId != null ? `nba:${p.person.nbaPersonId}` : undefined,
-  ]).filter((k): k is string => !!k))];
-  const picks = [...new Set(move.parts.map((p) => p.pickKey).filter((k): k is string => !!k))];
-  if (!persons.length && !picks.length) return null;
-  const rows = await tx<{ transaction_key: string }[]>`
-    SELECT t.transaction_key FROM transactions t
+  const want: Array<{ k: string; pick: boolean; f: string; t: string }> = [];
+  for (const p of move.parts) {
+    // Teams travel as text ('' = none): postgres.js can't send a null inside an int array.
+    const ends = { f: p.from == null ? '' : String(p.from), t: p.to == null ? '' : String(p.to) };
+    const persons = [p.personKey, p.person?.bbrefId, p.person?.nbaPersonId != null ? `nba:${p.person.nbaPersonId}` : undefined];
+    for (const k of new Set(persons)) if (k) want.push({ k, pick: false, ...ends });
+    if (p.pickKey) want.push({ k: p.pickKey, pick: true, ...ends });
+  }
+  if (!want.length) return null;
+  const rows = await tx<{ transaction_key: string; sources: string[] }[]>`
+    SELECT t.transaction_key, t.sources FROM transactions t
     WHERE t.kind = ANY(${kindsLike(move.kind)}::text[])
       AND t.date BETWEEN ${move.date}::date - ${WINDOW_DAYS}::int AND ${move.date}::date + ${WINDOW_DAYS}::int
       AND EXISTS (
         SELECT 1 FROM transaction_parts p LEFT JOIN draft_picks d ON d.pick_id = p.pick_id
-        WHERE p.transaction_id = t.transaction_id
-          AND (p.person_key = ANY(${persons}::text[]) OR d.pick_key = ANY(${picks}::text[])))
+        JOIN unnest(${want.map((w) => w.k)}::text[], ${want.map((w) => String(w.pick))}::boolean[],
+                    ${want.map((w) => w.f)}::text[], ${want.map((w) => w.t)}::text[]) AS v(k, pick, f, t)
+          ON (CASE WHEN v.pick THEN d.pick_key = v.k ELSE p.person_key = v.k END)
+         AND p.from_franchise_id IS NOT DISTINCT FROM NULLIF(v.f, '')::int
+         AND p.to_franchise_id IS NOT DISTINCT FROM NULLIF(v.t, '')::int
+        WHERE p.transaction_id = t.transaction_id)
     ORDER BY abs(t.date - ${move.date}::date), t.transaction_id`;
-  return rows.map((r) => r.transaction_key).find((k) => !exclude.has(k)) ?? null;
+  const mine = new Set([...move.sources, move.transactionKey]);
+  const families = new Set([...mine].map(family));
+  const rival = (sources: string[]) => sources.some((s) => families.has(family(s)) && !mine.has(s));
+  return rows.find((r) => !exclude.has(r.transaction_key) && !rival(r.sources))?.transaction_key ?? null;
 }
 
 interface TxRow {
@@ -313,6 +176,15 @@ async function loadTx(tx: Db, where: ReturnType<Db>): Promise<TxRow[]> {
     SELECT transaction_id::text, transaction_key, slug, date::text, season_id, involves_clippers, kind, description,
            sources, is_complete
     FROM transactions WHERE ${where}`;
+}
+
+const gapsOf = (parts: PartTuple[]) => parts.filter((t) => t[7] != null).length;
+const linkedOf = (parts: PartTuple[]) => parts.filter((t) => t[3] != null || t[4] != null || t[5] != null).length;
+
+/** A job's version of an incomplete row replaces it only if no worse on gaps and links, and better on one of them. */
+function strictlyBetter(next: PartTuple[], old: PartTuple[], nextComplete: boolean): boolean {
+  const [g, og, l, ol] = [gapsOf(next), gapsOf(old), linkedOf(next), linkedOf(old)];
+  return g <= og && l >= ol && (g < og || l > ol || nextComplete);
 }
 
 async function writeMoves(
@@ -397,7 +269,8 @@ async function writeMoves(
       fresh.push({ b, row: { transaction_key: key, slug: tradeSlug(key, b.m.date), ...b.fields } });
       continue;
     }
-    const rewrite = mode.kind === 'import' || !old.is_complete;
+    const before = oldParts.get(old.transaction_id) ?? [];
+    const rewrite = mode.kind === 'import' || (!old.is_complete && strictlyBetter(b.parts, before, b.fields.is_complete));
     const union = [...old.sources, ...b.fields.sources.filter((s) => !old.sources.includes(s))];
     const next = rewrite ? { ...b.fields, sources: union } : { ...old, sources: union };
     if (TX_FIELDS.some((f) => JSON.stringify(next[f]) !== JSON.stringify(old[f]))) {
@@ -407,7 +280,6 @@ async function writeMoves(
         WHERE transaction_id = ${old.transaction_id}::bigint`;
       bump(res.updated, 'transactions', 1);
     }
-    const before = oldParts.get(old.transaction_id) ?? [];
     if (rewrite && JSON.stringify(before) !== JSON.stringify(b.parts)) {
       replaceParts.push(old.transaction_id);
       bump(res.deleted, 'transaction_parts', before.length);
@@ -566,7 +438,10 @@ export async function writeFranchise(db: Db, data: FranchiseDataset, mode: Write
   if (bytes > GUARD_SHARE * capMb * 1024 * 1024) {
     throw new Error(`Database is ${(bytes / 1024 / 1024).toFixed(1)} MB, above ${GUARD_SHARE * 100}% of the ${capMb} MB cap; nothing written`);
   }
-  const seasons = coveredSeasons(data, opts);
+  if (mode.kind === 'import' && !Array.isArray(mode.seasons)) {
+    throw new Error('writeFranchise: import mode needs the seasons its cache covers (mode.seasons)');
+  }
+  const seasons = mode.kind === 'import' ? mode.seasons.map(String) : [];
   const run = async (tx: Db): Promise<WriteResult> => {
     const res: WriteResult = { inserted: {}, updated: {}, deleted: {}, merged: 0, skipped: [] };
     const how = mode.kind === 'import' ? 'overwrite' : 'fill';
@@ -582,6 +457,7 @@ export async function writeFranchise(db: Db, data: FranchiseDataset, mode: Write
           AND NOT EXISTS (SELECT 1 FROM unnest(t.sources) s WHERE NOT (s LIKE ANY(${mode.importSources.map(likePrefix)}::text[])))`;
       bump(res.deleted, 'transactions', d.count);
     }
+    if (mode.kind === 'import' && data.picks.length) await prunePicks(tx, data, ids.lottery, seasons, res);
     return res;
   };
   const maybeTx = db as unknown as { savepoint?: unknown };
