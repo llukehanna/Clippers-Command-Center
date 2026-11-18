@@ -5,7 +5,8 @@
 //   FIXTURE_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55496/fixture npx vitest run scripts/lib/insights/engine.integration
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import type { InsightDraft } from './engine/types';
+import { laToday } from './engine/dates';
+import type { EngineContext, InsightDraft } from './engine/types';
 
 const url = process.env.FIXTURE_DATABASE_URL;
 const TIMEOUT = 300_000;
@@ -33,6 +34,13 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
   afterAll(async () => {
     await sql?.end();
   });
+
+  async function ctxAt(asOf: string): Promise<EngineContext> {
+    const { loadEngineContext } = await import('./engine/context');
+    const ctx = await loadEngineContext({ asOf, withPrior: false });
+    if (!ctx) throw new Error(`no engine context as of ${asOf}`);
+    return ctx;
+  }
 
   describe('storage', () => {
     const draft = (over: Partial<InsightDraft> = {}): InsightDraft => ({
@@ -109,5 +117,69 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         SELECT COUNT(DISTINCT entity_id)::int AS n FROM rb_streaks WHERE entity_type = 'player' AND team_id = 1`;
       expect(r.n).toBeGreaterThan(1);
     });
+  });
+
+  describe('context', () => {
+    it('in season: current, records start, complete league, roster without the traded player', async () => {
+      const ctx = await ctxAt('2026-02-25');
+      expect(ctx.season).toMatchObject({ id: 2025, label: '2025-26', isCurrent: true, phrase: 'this season' });
+      expect(ctx.recordsStart).toEqual({ season_id: 2024, label: '2024-25' });
+      expect(ctx.pbpRecordsStart).toBeNull();
+      expect(ctx.league).toEqual({ complete: true, reason: null });
+      expect(ctx.roster.has('1')).toBe(true);
+      expect(ctx.roster.has('2')).toBe(true);
+      expect(ctx.roster.has('3')).toBe(false);
+      expect(ctx.roster.get('1')!.mpg).toBeGreaterThan(20);
+      expect(ctx.minPlayerGames).toBe(30);
+      expect(ctx.prior.size).toBe(0);
+    }, TIMEOUT);
+
+    it('as of today: the completed season, worded in the past', async () => {
+      const ctx = await ctxAt(laToday());
+      expect(ctx.season).toMatchObject({ id: 2025, isCurrent: false, phrase: 'in 2025-26' });
+    }, TIMEOUT);
+
+    it('as of a date before any box score: nothing to say', async () => {
+      const { loadEngineContext } = await import('./engine/context');
+      expect(await loadEngineContext({ asOf: '2024-01-01', withPrior: false })).toBeNull();
+    }, TIMEOUT);
+
+    it('rates count prior games only', async () => {
+      const { playerHitRates, seasonTotalShare, playerValueRate } = await import('./engine/rates');
+      const ctx = await ctxAt('2026-02-25');
+      const { rates, pRef } = await playerHitRates(ctx, 'pb.points >= 30', [{ playerId: '1', date: '2026-02-13' }]);
+      const star = rates.get('1')!;
+      expect(star.n).toBeGreaterThan(100);
+      expect(star.k).toBeLessThan(star.n);
+      expect(pRef).toBeGreaterThan(0);
+      expect(pRef).toBeLessThan(0.2);
+      const share = await seasonTotalShare(ctx, 'SUM(pb.points)', 1000);
+      expect(share).toBeGreaterThan(0);
+      expect(share).toBeLessThan(1);
+      const [g] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM game_player_box_scores WHERE player_id = 1 AND points = 55`;
+      expect(await playerValueRate(ctx, 'points', '1', 55, g.game_id)).toMatchObject({ k: 0 });
+    }, TIMEOUT);
+
+    it('hit-rate n is exactly the player\'s games strictly before the date', async () => {
+      const { playerHitRates } = await import('./engine/rates');
+      const ctx = await ctxAt('2026-02-25');
+      const countBefore = async (date: string) => {
+        const [r] = await sql<{ n: number }[]>`
+          SELECT COUNT(*)::int AS n FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
+          WHERE pb.player_id = 1 AND g.season_id >= ${ctx.season.id - 1} AND g.game_date < ${date}::date
+            AND NOT g.is_playoffs AND g.nba_game_id NOT BETWEEN 50000000 AND 59999999`;
+        return r.n;
+      };
+      const [last] = await sql<{ d: string }[]>`
+        SELECT MAX(g.game_date)::text AS d FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
+        WHERE pb.player_id = 1 AND g.game_date <= ${ctx.asOf}::date AND NOT g.is_playoffs AND g.nba_game_id NOT BETWEEN 50000000 AND 59999999`;
+      const dayAfter = new Date(new Date(`${last.d}T12:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10);
+      const at = (await playerHitRates(ctx, 'pb.points >= 0', [{ playerId: '1', date: last.d }])).rates.get('1')!;
+      const after = (await playerHitRates(ctx, 'pb.points >= 0', [{ playerId: '1', date: dayAfter }])).rates.get('1')!;
+      expect(at.n).toBe(await countBefore(last.d));
+      expect(after.n).toBe(await countBefore(dayAfter));
+      // The game on the date itself is not counted at that date, only the day after.
+      expect(after.n).toBe(at.n + 1);
+    }, TIMEOUT);
   });
 });
