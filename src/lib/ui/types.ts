@@ -346,6 +346,10 @@ export interface MovesPayload {
   filters: { season: number | null; type: MoveTypeFilter | null; player: string | null }
   /** Seasons with at least one Clippers move, newest first. */
   seasons: number[]
+  /** Moves per season for the type and player filters (season filter ignored), newest first. */
+  season_counts: Array<{ season_id: number; count: number }>
+  /** The person named by the player filter; null without one or when unknown. */
+  player: FranchisePersonRef | null
   moves: MoveRow[]
 }
 

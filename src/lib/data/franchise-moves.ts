@@ -6,6 +6,9 @@
 //   season  season_id (start year), e.g. 2019
 //   type    kind group (R2): trade | signing | release | draft | other | all (absent = all)
 //   player  person_key (R3), exact
+//
+// season_counts (moves per season for the type and player filters, ignoring season) feeds the
+// era ribbon; player is the filtered person (null without a player filter or when unknown).
 
 import { type ApiResult } from './result';
 import { sql } from '@/src/lib/db';
@@ -66,7 +69,7 @@ export async function loadFranchiseMoves(url: URL): Promise<ApiResult> {
   const exclude = type === 'other' ? NAMED_KINDS : null;
 
   try {
-    const [txns, seasonRows] = await Promise.all([
+    const [txns, seasonRows, countRows, playerRows] = await Promise.all([
       sql<TxnRow[]>`
         SELECT t.transaction_id::text AS transaction_id, t.slug, t.date::text AS date, t.season_id,
                t.kind, t.description, t.is_complete
@@ -85,6 +88,25 @@ export async function loadFranchiseMoves(url: URL): Promise<ApiResult> {
         WHERE involves_clippers = true AND season_id IS NOT NULL
         ORDER BY season_id DESC
       `,
+      // Per-season counts for the same type and player filters, across every season (the Moves era ribbon).
+      sql<{ season_id: number; n: number | string }[]>`
+        SELECT s.season_id, count(*)::int AS n
+        FROM transactions s
+        WHERE s.involves_clippers = true AND s.season_id IS NOT NULL
+          AND (${include}::text[] IS NULL OR s.kind = ANY(${include}::text[]))
+          AND (${exclude}::text[] IS NULL OR NOT (s.kind = ANY(${exclude}::text[])))
+          AND (${playerParam}::text IS NULL OR EXISTS (
+                SELECT 1 FROM transaction_parts sp
+                WHERE sp.transaction_id = s.transaction_id AND sp.person_key = ${playerParam}::text))
+        GROUP BY s.season_id
+        ORDER BY s.season_id DESC
+      `,
+      playerParam == null
+        ? Promise.resolve([] as { display_name: string; player_id: string | null }[])
+        : sql<{ display_name: string; player_id: string | null }[]>`
+            SELECT px.display_name, px.player_id::text AS player_id
+            FROM person_xref px WHERE px.person_key = ${playerParam}::text
+          `,
     ]);
 
     const ids = txns.map((t) => t.transaction_id);
@@ -135,6 +157,8 @@ export async function loadFranchiseMoves(url: URL): Promise<ApiResult> {
     return ok({
       filters: { season, type, player: playerParam },
       seasons: seasonRows.map((r) => r.season_id),
+      season_counts: countRows.map((r) => ({ season_id: r.season_id, count: Number(r.n) })),
+      player: playerParam == null || !playerRows[0] ? null : personRef(playerParam, playerRows[0].display_name, playerRows[0].player_id),
       moves,
     }, TTL);
   } catch (err) {

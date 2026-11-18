@@ -120,6 +120,33 @@ describe('GET /api/franchise/moves', () => {
     expect((await GET(new Request('http://localhost/api/franchise/moves?type=bogus'))).status).toBe(400);
     expect((await GET(new Request('http://localhost/api/franchise/moves?season=19x'))).status).toBe(400);
   });
+
+  it('counts moves per season for the type and player filters, ignoring the season filter', async () => {
+    route((q) => {
+      if (q.includes('GROUP BY s.season_id')) return [{ season_id: 2019, n: 3 }, { season_id: 2016, n: '1' }];
+      return [];
+    });
+    const { GET } = await import('../../app/api/franchise/moves/route.js');
+    const body = await (await GET(new Request('http://localhost/api/franchise/moves?season=2019&type=trade&player=georgpa01'))).json();
+    expect(body.season_counts).toEqual([{ season_id: 2019, count: 3 }, { season_id: 2016, count: 1 }]);
+    const call = callFor('GROUP BY s.season_id')!;
+    const text = call[0].join('?');
+    expect(text).toContain('involves_clippers = true');
+    const values = call.slice(1);
+    expect(values).toContain('georgpa01');
+    expect(values).toContainEqual(['trade']);
+    expect(values).not.toContain(2019);
+  });
+
+  it('names the filtered player from person_xref, and is null without a player filter', async () => {
+    route((q) => (q.includes('FROM person_xref px') ? [{ display_name: 'Paul George', player_id: '4' }] : []));
+    const { GET } = await import('../../app/api/franchise/moves/route.js');
+    const withPlayer = await (await GET(new Request('http://localhost/api/franchise/moves?player=georgpa01'))).json();
+    expect(withPlayer.player).toEqual({ person_key: 'georgpa01', name: 'Paul George', player_id: '4', href: '/players/4' });
+    const without = await (await GET(new Request('http://localhost/api/franchise/moves'))).json();
+    expect(without.player).toBeNull();
+    expect(without.season_counts).toEqual([]);
+  });
 });
 
 // ─── Era names (R1) through the real resolution query ───────────────────────
