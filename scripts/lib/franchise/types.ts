@@ -163,6 +163,11 @@ export interface FranchiseDataset {
   // ---- side lists for the report (never written) ----
   /** Every parser's unparsed lines that no override settled. */
   unparsed: UnparsedLine[];
+  /**
+   * Ruling R17: unreadable trades on OTHER teams' Wikipedia season pages (counterparty pages, read only for trade trees).
+   * Reported, never a gate: a tree branch that needs one ends at "no further record" (spec §4.3). Overrides don't apply.
+   */
+  treeUnparsed?: UnparsedLine[];
   /** Unparsed lines an `ignore` override settled (filled by applyOverrides). */
   ignored: IgnoredLine[];
   /** Moves a `drop` override removed (from applyMoveOverrides). */

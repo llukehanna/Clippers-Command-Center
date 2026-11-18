@@ -39,4 +39,12 @@ describe('collectCounterparties', () => {
     expect(r.moves[0]).toMatchObject({ involvesClippers: false, date: '1980-01-05' });
     expect(r.moves[0].parts).toContainEqual({ from: BOS, to: SAC, kind: 'player', person: { name: 'Freeman Williams' } });
   });
+
+  it('returns an unreadable trade on a cached page as unparsed (the import lists it in treeUnparsed)', () => {
+    const bad = ['===Trades===', '{|', '|-', '| January 5, 1980', "| To '''[[Boston Celtics]]'''<hr>[[Freeman Williams]]", '|}'].join('\n');
+    const r = collectCounterparties([trade('1978-10-12', LAC, BOS, 'Freeman Williams')], (t) => (t === '1979–80 Boston Celtics season' ? bad : null));
+    expect(r.moves).toEqual([]);
+    expect(r.unparsed).toHaveLength(1);
+    expect(r.unparsed[0]).toMatchObject({ source: '1979–80 Boston Celtics season', date: '1980-01-05' });
+  });
 });

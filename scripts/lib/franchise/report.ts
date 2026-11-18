@@ -2,7 +2,8 @@
 // The review report and the write gates (spec §3.3). Pure: reads a dataset (after applyOverrides), returns data.
 //
 // Gates (gateFailures): exactly two, per the spec. Unparsed lines no `ignore` override settled (applyOverrides moves
-// those to `ignored`), and `future` picks whose protections aren't known. Everything else is listed for review only:
+// those to `ignored`), and `future` picks whose protections aren't known. Only Clippers sources gate: unreadable lines
+// on other teams' counterparty pages (trees only) are listed in `treeUnparsed` and never gate (Ruling R17). Everything else is listed for review only:
 // gaps on old trades are expected and are written as unlinked text.
 //
 // Moves are counted and their gaps listed for Clippers moves only (league rows exist only for trade trees).
@@ -42,8 +43,10 @@ export interface FranchiseReport {
   counts: Record<string, number>;
   /** Clippers moves per season (start year) and kind. */
   bySeasonKind: Record<string, Record<string, number>>;
-  /** Gate: unparsed lines no override settled. */
+  /** Gate: unparsed lines no override settled (Clippers sources only). */
   unparsed: UnparsedLine[];
+  /** Ruling R17: unreadable counterparty-page lines (trees only). Not a gate. */
+  treeUnparsed: UnparsedLine[];
   ignored: IgnoredLine[];
   /** Moves a `drop` override removed. */
   dropped: DroppedMove[];
@@ -183,6 +186,7 @@ export function buildReport(data: FranchiseDataset, staleOverrides: Override[] =
     execTerms: data.execTerms.length,
     honors: data.honors.length,
     unparsed: data.unparsed.length,
+    treeUnparsed: data.treeUnparsed?.length ?? 0,
     ignored: data.ignored.length,
     dropped: data.dropped.length,
     skipped: data.skipped.length,
@@ -206,7 +210,7 @@ export function buildReport(data: FranchiseDataset, staleOverrides: Override[] =
   };
 
   return {
-    counts, bySeasonKind, unparsed: data.unparsed, ignored: data.ignored, dropped: data.dropped, skippedByReason, unmatchedPeople, ambiguousPeople,
+    counts, bySeasonKind, unparsed: data.unparsed, treeUnparsed: data.treeUnparsed ?? [], ignored: data.ignored, dropped: data.dropped, skippedByReason, unmatchedPeople, ambiguousPeople,
     gaps, conflicts, chainBreaks: data.breaks, disputes: data.disputes, unkeyed: data.unkeyed, futureWithoutProtections,
     unsettledSwaps, partialPayrolls, staleOverrides, invalidOverrides, tieUnresolved, lotteryFlags, skippedCategories: data.skippedCategories,
     possibleDuplicates: dups,
@@ -234,7 +238,7 @@ export function summarizeReport(r: FranchiseReport): string[] {
   return [
     `moves: ${c.moves} (${c.clippersMoves} Clippers, ${c.clippersIncomplete} incomplete); picks: ${c.picks} (${c.futurePicks} future); swaps: ${c.swaps}; lottery: ${c.lottery}`,
     `people: ${c.people} (${c.unmatchedPeople} unmatched, ${c.ambiguousPeople} ambiguous); salaries: ${c.salaries}; contracts: ${c.contracts}; coach seasons: ${c.coachSeasons}; exec terms: ${c.execTerms}; honors: ${c.honors}`,
-    `unparsed: ${c.unparsed} (${c.ignored} ignored); dropped moves: ${c.dropped}`,
+    `unparsed: ${c.unparsed} (${c.ignored} ignored); dropped moves: ${c.dropped}; ${c.treeUnparsed} unreadable counterparty-page lines (trees only, not a gate)`,
     `skipped: ${byReason}`,
     `gaps: ${gaps}`,
     `conflicts: ${c.conflicts}; possible duplicates: ${c.possibleDuplicates}; chain breaks: ${c.chainBreaks}; chain disputes: ${c.disputes}; unkeyed draft rows: ${c.unkeyed}`,

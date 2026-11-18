@@ -12,7 +12,8 @@
 // step-2 pages, and so on until a run adds nothing new.
 //
 // The trades read from those pages come back as league rows (involvesClippers false). Trades on them that include the
-// Clippers are left out: the Clippers' own season page and BBRef already carry those.
+// Clippers are left out: the Clippers' own season page and BBRef already carry those. Trades that can't be read come
+// back in `unparsed`; the import reports them as `treeUnparsed`, never a gate (Ruling R17).
 import { NBA_TEAM_IDS } from '../nba-teams.js';
 import { normalizePersonName } from '../player-match.js';
 import { eraTeamName, seasonOfDate } from './describe.js';

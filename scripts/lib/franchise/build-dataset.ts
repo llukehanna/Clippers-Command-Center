@@ -199,7 +199,7 @@ function narrow(d: FranchiseDataset, only: OnlyValue | null | undefined, isDraft
     contracts: only === 'salaries' ? d.contracts : [],
     coachSeasons: only === 'people' ? d.coachSeasons : [], execTerms: only === 'people' ? d.execTerms : [],
     honors: only === 'honors' ? d.honors : [], skippedCategories: only === 'honors' ? d.skippedCategories : [],
-    unparsed: d.unparsed.filter(lines), ignored: d.ignored.filter(lines),
+    unparsed: d.unparsed.filter(lines), ignored: d.ignored.filter(lines), treeUnparsed: moves ? d.treeUnparsed : [],
     dropped: moves ? d.dropped : [], skipped: moves ? d.skipped : [],
   };
 }
@@ -282,8 +282,8 @@ export function buildDataset(dir: string, db: DbInput, opts: BuildOptions): Buil
   const index = buildIndex(matched.people, rosterBySeason);
 
   // Counterparty season pages (other teams, before 2015-16), already cached ones read as league rows.
+  // Ruling R17: their unreadable lines only cost a tree branch, so they're reported apart and never gate.
   const cp = collectCounterparties([...bbref, ...wiki], (title) => cache.wiki(title)?.wikitext ?? null);
-  unparsed.push(...cp.unparsed);
 
   const reconciled = reconcileMoves({ bbref, wiki: [...wiki, ...cp.moves], nba, index });
 
@@ -377,7 +377,7 @@ export function buildDataset(dir: string, db: DbInput, opts: BuildOptions): Buil
   const assembled: FranchiseDataset = {
     currentDraftYear, people, moves, picks: pr.picks, swaps: pr.swaps, lottery,
     salaries, payrollSeasons: payroll, contracts: contracts.contracts, coachSeasons, execTerms: execs.terms, honors,
-    unparsed: p1.unparsed, ignored: [], dropped: p1.dropped, skipped,
+    unparsed: p1.unparsed, treeUnparsed: cp.unparsed, ignored: [], dropped: p1.dropped, skipped,
     peopleUnmatched: matched.unmatched, peopleAmbiguous: matched.ambiguous,
     breaks: pr.breaks, disputes: pr.disputes, unkeyed: pr.unkeyed, skippedCategories: team?.skippedCategories ?? [],
   };

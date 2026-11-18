@@ -27,6 +27,20 @@ const row = (key: string, year: number, extra: Partial<PickRow> = {}): PickRow =
 });
 
 describe('buildReport and gateFailures', () => {
+  it('lists unreadable counterparty-page lines (trees only) in treeUnparsed without gating; Clippers lines still gate', () => {
+    const tree = { source: '1979–80 Boston Celtics season', index: 2, date: '1980-01-05', text: 'To Boston | To Kansas City' };
+    const r = buildReport(ds({ treeUnparsed: [tree] }));
+    expect(r.treeUnparsed).toEqual([tree]);
+    expect(r.counts.treeUnparsed).toBe(1);
+    expect(r.unparsed).toEqual([]);
+    expect(gateFailures(r)).toEqual([]);
+    expect(summarizeReport(r).join('\n')).toMatch(/1 unreadable counterparty-page lines \(trees only, not a gate\)/);
+
+    const clippers = { source: '1979–80 San Diego Clippers season', index: 4, date: '1980-01-05', text: 'To San Diego' };
+    const both = buildReport(ds({ treeUnparsed: [tree], unparsed: [clippers] }));
+    expect(gateFailures(both)).toEqual(['1 unparsed line not marked ignored']);
+  });
+
   it('drops an ignored unparsed line from gate failures', () => {
     const line = { source: 'LAC-1999_transactions', index: 3, date: '1999-01-01', text: 'Odd sentence.' };
     const data = ds({ unparsed: [line] });
