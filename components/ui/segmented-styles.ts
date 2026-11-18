@@ -6,7 +6,9 @@ export function segmentedClasses(size: 'sm' | 'md') {
     group: 'glass-track relative inline-flex max-w-full gap-0.5 overflow-x-auto rounded-full p-[3px] no-scrollbar',
     item: cn(
       'press relative z-10 whitespace-nowrap rounded-full transition-colors duration-300 ease-premium',
-      size === 'sm' ? 'px-3 py-1 text-[12.5px]' : 'px-3.5 py-1.5 text-[13.5px]',
+      size === 'sm'
+        ? 'px-3.5 py-2 text-[13px] md:px-3 md:py-1 md:text-[12.5px]'
+        : 'px-4 py-2 text-[14px] md:px-3.5 md:py-1.5 md:text-[13.5px]',
     ),
     active: 'text-white',
     idle: 'text-mute hover:text-text',

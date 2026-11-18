@@ -75,7 +75,7 @@ export function CommandPalette() {
   }
 
   const item =
-    'flex cursor-pointer items-center gap-3 rounded-[12px] px-3 py-2.5 text-[14px] text-mute outline-none data-[selected=true]:bg-white/[0.06] data-[selected=true]:text-text'
+    'flex cursor-pointer items-center gap-3 rounded-[12px] px-3 py-3 text-[15px] md:py-2.5 md:text-[14px] text-mute outline-none data-[selected=true]:bg-white/[0.06] data-[selected=true]:text-text'
   const group =
     '[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:text-[10.5px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.12em] [&_[cmdk-group-heading]]:text-dim'
 
@@ -85,7 +85,7 @@ export function CommandPalette() {
       onOpenChange={setOpen}
       label="Search"
       overlayClassName="fixed inset-0 z-50 bg-[rgba(3,6,12,0.45)] backdrop-blur-[6px] data-[state=open]:animate-in data-[state=open]:fade-in-0"
-      contentClassName="fixed left-1/2 top-[12vh] z-50 w-[min(640px,calc(100vw-28px))] -translate-x-1/2 overflow-hidden glass-bar rounded-[26px] shadow-[0_40px_120px_-20px_rgba(0,0,0,0.9)] data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.98]"
+      contentClassName="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+10px)] z-50 w-[min(640px,calc(100vw-20px))] md:top-[12vh] -translate-x-1/2 overflow-hidden glass-bar rounded-[26px] shadow-[0_40px_120px_-20px_rgba(0,0,0,0.9)] data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.98]"
     >
       <div className="flex items-center gap-3 border-b border-line px-4">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden className="text-dim">
@@ -95,11 +95,14 @@ export function CommandPalette() {
         <Command.Input
           autoFocus
           placeholder="Search players, games, pages…"
-          className="h-14 flex-1 bg-transparent text-[15px] text-text outline-none placeholder:text-dim"
+          className="h-14 min-w-0 flex-1 bg-transparent text-[16px] text-text md:text-[15px] outline-none placeholder:text-dim"
         />
-        <kbd className="rounded-md border border-line-2 bg-ink-2 px-1.5 py-0.5 font-mono text-[10.5px] text-dim">esc</kbd>
+        <kbd className="hidden rounded-md border border-line-2 bg-ink-2 px-1.5 py-0.5 font-mono text-[10.5px] text-dim md:inline">esc</kbd>
+        <button type="button" onClick={() => setOpen(false)} className="press -mr-1 h-10 px-2 text-[15px] text-pacific md:hidden">
+          Cancel
+        </button>
       </div>
-      <Command.List className="max-h-[min(60vh,480px)] overflow-y-auto p-2">
+      <Command.List className="max-h-[min(60dvh,480px)] overflow-y-auto overscroll-contain p-2">
         <Command.Empty className="px-3 py-8 text-center text-[14px] text-mute">No matches.</Command.Empty>
 
         <Command.Group heading="Pages" className={group}>
