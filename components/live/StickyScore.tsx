@@ -4,7 +4,7 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { TeamLogo } from '@/components/ui/team-mark'
 import { StatusDot } from '@/components/ui/status-dot'
-import { clockLabel, periodLabel } from '@/src/lib/ui/live'
+import { gameMomentLabel } from '@/src/lib/ui/live'
 import type { ScoreSide } from '@/components/game/Scoreboard'
 
 /**
@@ -67,7 +67,7 @@ export function StickyScore({
         </div>
         <span className="flex items-center gap-2 font-mono text-[12px] text-mute tabular-nums">
           <StatusDot tone={delayed ? 'warn' : 'live'} />
-          {periodLabel(period)} {clockLabel(clock)}
+          {gameMomentLabel(period, clock)}
         </span>
       </div>
     </div>

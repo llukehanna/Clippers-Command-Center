@@ -6,7 +6,7 @@ import { Panel } from '@/components/ui/panel'
 import { TeamLogo } from '@/components/ui/team-mark'
 import { Chip } from '@/components/ui/chip'
 import { StatusDot } from '@/components/ui/status-dot'
-import { clockLabel, periodLabel } from '@/src/lib/ui/live'
+import { breakLabel, clockLabel, periodLabel } from '@/src/lib/ui/live'
 import { teamName } from '@/src/lib/ui/teams'
 
 export interface ScoreSide {
@@ -112,10 +112,18 @@ export function Scoreboard({ lac, opp, lacHome, mode, period, clock, status, dat
                 </Chip>
                 {tag && <Chip tone="blue">{tag}</Chip>}
               </span>
-              <span className="text-[26px] font-semibold leading-none tracking-[-0.03em] tabular-nums sm:text-[34px]">
-                {clockLabel(clock) || '—'}
-              </span>
-              <span className="font-mono text-[12px] tracking-[0.14em] text-mute">{periodLabel(period)}</span>
+              {breakLabel(period, clock) ? (
+                <span className="text-[20px] font-semibold leading-none tracking-[-0.02em] sm:text-[26px]">
+                  {breakLabel(period, clock)}
+                </span>
+              ) : (
+                <>
+                  <span className="text-[26px] font-semibold leading-none tracking-[-0.03em] tabular-nums sm:text-[34px]">
+                    {clockLabel(clock) || '—'}
+                  </span>
+                  <span className="font-mono text-[12px] tracking-[0.14em] text-mute">{periodLabel(period)}</span>
+                </>
+              )}
             </>
           )}
         </div>

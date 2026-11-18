@@ -53,3 +53,31 @@ describe('resolveLiveState', () => {
     expect(resolveLiveState({ ...base, state: 'DATA_DELAYED', snapshot_captured_at: '2026-01-01T02:00:00Z' })).toBe('NO_ACTIVE_GAME')
   })
 })
+
+import { breakLabel, gameMomentLabel } from './live'
+
+describe('period breaks', () => {
+  it('names the break when a period ends', () => {
+    expect(breakLabel(2, '0:00')).toBe('Halftime')
+    expect(breakLabel(1, 'PT00M00.00S')).toBe('End of Q1')
+    expect(breakLabel(3, '0:00')).toBe('End of Q3')
+    expect(breakLabel(4, '0:00')).toBe('End of Q4')
+    expect(breakLabel(5, '0:00')).toBe('End of OT')
+  })
+
+  it('shows the clock while it runs, and nothing before tip', () => {
+    expect(breakLabel(2, '0:01')).toBeNull()
+    expect(breakLabel(2, 'PT00M00.40S')).toBeNull() // 0.4 s left, though it displays as 0:00
+    expect(breakLabel(2, '0.0')).toBe('Halftime')
+    expect(breakLabel(0, '0:00')).toBeNull()
+    expect(breakLabel(2, '')).toBeNull()
+    expect(gameMomentLabel(3, 'PT07M42.00S')).toBe('Q3 7:42')
+    expect(gameMomentLabel(2, '0:00')).toBe('Halftime')
+  })
+
+  it('puts the break in the tab title', () => {
+    expect(
+      liveTabTitle({ period: 2, clock: '0:00', home: { abbreviation: 'LAC', score: 62 }, away: { abbreviation: 'UTA', score: 58 } }),
+    ).toBe('LAC 62–58 UTA · Halftime')
+  })
+})
