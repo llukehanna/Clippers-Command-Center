@@ -101,6 +101,14 @@ describe('buildLottery', () => {
     expect(out[0].flags).toContain('wiki_unreadable');
   });
 
+  it('gives a derived 1997 row null odds (expansion teams were ineligible for #1)', () => {
+    const ids = [DAL, MIN, LAC, WAS, SAC, PHI, MIL, GSW, DEN, MIA, DET, ORL, BOS];
+    const teamSeasons = ids.map((id, i) => ts(1996, id, 20 + i, 62 - i, 0));
+    const out = buildLottery({ wiki: [], picks: [pick(1997, 4, LAC, LAC)], teamSeasons });
+    expect(out[0].preSlot).toBe(3);
+    expect(out[0].oddsFirst).toBeNull();
+  });
+
   it('leaves the slot null when the season has an unknown playoff result', () => {
     const teamSeasons = [ts(1989, LAC, 20, 62, null), ts(1989, DAL, 10, 72, 0)];
     const out = buildLottery({ wiki: [], picks: [pick(1990, 3, LAC, LAC)], teamSeasons });

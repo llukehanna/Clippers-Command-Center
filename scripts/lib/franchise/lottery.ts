@@ -29,7 +29,8 @@ const sixtySixths = (n: number): number[] => Array.from({ length: n }, (_, i) =>
 // Odds sources: Wikipedia "NBA draft lottery" (cached data/franchise-raw/wiki/NBA_draft_lottery.json) and the
 // cached Wikipedia draft pages' "Draft lottery" sections. Team counts: the article never states them; each is the
 // league's non-playoff count (16 playoff teams) for that draft: 23 teams (1985-88 drafts) -> 7, 25 (1989) -> 9,
-// 27 (1990-95) -> 11, 29 (1996-2004) -> 13, 30 (2005 on) -> 14. NOT article-confirmed; the team_count_mismatch flag
+// 27 (1990-95) -> 11, 29 (1996-2004) -> 13, 30 (2005 on) -> 14. Only 1985-88 (7) and 1989 (9) are article-confirmed
+// (the lottery-winners table notes); the rest are league-size derived. The team_count_mismatch flag
 // guards derived rows against a wrong count.
 export const LOTTERY_FORMATS: LotteryFormat[] = [
   // "1985-1989: Early lottery system": each non-playoff team had an equal chance at the first pick.
@@ -41,8 +42,11 @@ export const LOTTERY_FORMATS: LotteryFormat[] = [
   // Same section, October 1993 change: the worst team 25 percent, the best non-playoff team 0.5 percent. The
   // 1994 table there has tied records in slots 2-4 (averaged), so those stay null; slots 5-11 are untied.
   { firstYear: 1994, lastYear: 1995, teams: 11, oddsFirst: [0.25, null, null, null, 0.094, 0.066, 0.044, 0.027, 0.015, 0.008, 0.005] },
-  // 13 teams: only the first and last slots are stated by the article's text; the 2003 page's table has ties.
-  { firstYear: 1996, lastYear: 2004, teams: 13, oddsFirst: [0.25, ...Array<null>(11).fill(null), 0.005] },
+  // 1996-98: Toronto and Vancouver were ineligible for the #1 pick (lottery-winners table note; odds there are out of
+  // 593), so slot odds depend on which teams held which slots: all null rather than a guessed fixed table.
+  { firstYear: 1996, lastYear: 1998, teams: 13, oddsFirst: Array<null>(13).fill(null) },
+  // 1999-2004, 13 teams: only the first and last slots are stated by the article's text (25 percent, 0.5 percent).
+  { firstYear: 1999, lastYear: 2004, teams: 13, oddsFirst: [0.25, ...Array<null>(11).fill(null), 0.005] },
   // 14 teams. Not in the lottery article: confirmed against the untied "Draft lottery" table on the cached
   // "2015 NBA draft" page (250,199,156,119,88,63,43,28,17,11,8,7,6,5 of 1,000).
   { firstYear: 2005, lastYear: 2018, teams: 14, oddsFirst: [250, 199, 156, 119, 88, 63, 43, 28, 17, 11, 8, 7, 6, 5].map((c) => c / 1000) },
@@ -99,9 +103,9 @@ export function collectWikiLottery(wikitextByYear: Map<number, string>): { rows:
   return { rows, failedYears };
 }
 
-function wikiYearOk(rows: LotteryRow[]): boolean {
+function wikiYearOk(rows: LotteryRow[], year: number): boolean {
   const n = rows.length;
-  if (n !== 13 && n !== 14) return false;
+  if (n !== formatFor(year)?.teams) return false;
   const won = new Set(rows.map((r) => r.pickWon));
   return won.size === n && rows.every((r) => Number.isInteger(r.pickWon) && r.pickWon >= 1 && r.pickWon <= n);
 }
@@ -153,7 +157,7 @@ export function buildLottery(input: LotteryInput): LotteryOut[] {
     const flags: string[] = [];
     let useWiki = false;
     if (wikiRows) {
-      if (wikiYearOk(wikiRows)) useWiki = true;
+      if (wikiYearOk(wikiRows, p.year)) useWiki = true;
       else flags.push('wiki_not_permutation');
     }
     if (!wikiRows && failed.has(p.year)) flags.push('wiki_unreadable');
