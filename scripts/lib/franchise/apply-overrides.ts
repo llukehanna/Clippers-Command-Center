@@ -24,7 +24,7 @@
 // Phase 2, applyOverrides: on the assembled dataset, AFTER buildPicks.
 //   pick, by pickKey: protections. `protections` given (or `protectionsText` that parseProtections reads) marks them
 //                known; text it can't read with no `protections` is invalid: reported, nothing changes, the pick stays
-//                gated.
+//                gated. `status: 'forfeited'` marks the pick forfeited (no longer future, so no longer gated).
 //   person       parts, honors and executive terms matching `ref` get `personKey` (a part's `person_unmatched` gap is
 //                cleared). An id ref (BBRef id, `nba:<id>`) matches that id; a name ref matches, by normalized name,
 //                only people carrying no id (parts with no bbrefId / nbaPersonId / personKey, rows with a null
@@ -254,7 +254,11 @@ export function applyOverrides(input: FranchiseDataset, overrides: Override[]): 
   const applyProtections = (o: Extract<PickOv, { match: { pickKey: string } }>): boolean => {
     const row = data.picks.find((p) => p.pickKey === o.match.pickKey);
     if (!row) return false;
-    const { protections, protectionsText } = o.set;
+    const { protections, protectionsText, status } = o.set;
+    if (status === 'forfeited') {
+      row.status = 'forfeited';
+      if (protections === undefined && protectionsText == null) return true;
+    }
     const parsed = protectionsText != null ? parseProtections(protectionsText) : null;
     if (protections === undefined && !parsed) {
       invalid.add(o); // nothing structured to record: the pick stays unknown (and gated if future)
