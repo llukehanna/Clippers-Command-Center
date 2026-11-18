@@ -81,3 +81,22 @@ describe('period breaks', () => {
     ).toBe('LAC 62–58 UTA · Halftime')
   })
 })
+
+import { gameIsOn } from './live'
+
+describe('after the final', () => {
+  const game = (status: string) => ({ status, period: 4, clock: '0:00', home: { abbreviation: 'LAC', score: 107 }, away: { abbreviation: 'UTA', score: 132 } })
+
+  it('titles the tab "Final", not "End of Q4"', () => {
+    expect(liveTabTitle(game('final'))).toBe('LAC 107–132 UTA · Final')
+    expect(liveTabTitle(game('in_progress'))).toBe('LAC 107–132 UTA · End of Q4')
+  })
+
+  it('stops calling the game on once it is final', () => {
+    const at = '2026-11-18T05:49:00Z'
+    const payload = (status: string) => ({ state: 'LIVE', game: { status }, snapshot_captured_at: at, meta: { generated_at: at } })
+    expect(gameIsOn(payload('in_progress'))).toBe(true)
+    expect(gameIsOn(payload('final'))).toBe(false)
+    expect(gameIsOn({ state: 'NO_ACTIVE_GAME', game: null })).toBe(false)
+  })
+})

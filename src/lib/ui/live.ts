@@ -44,8 +44,9 @@ interface TitleSide {
   score: number | null
 }
 
-/** Browser tab title during a game, Clippers first: "LAC 84–78 DEN · Q3 7:42". */
+/** Browser tab title during a game, Clippers first: "LAC 84–78 DEN · Q3 7:42" (or "· Final"). */
 export function liveTabTitle(g: {
+  status?: string | null
   period: number | null
   clock: string | null
   home: TitleSide
@@ -54,7 +55,7 @@ export function liveTabTitle(g: {
   const lacHome = g.home.abbreviation === 'LAC'
   const lac = lacHome ? g.home : g.away
   const opp = lacHome ? g.away : g.home
-  const when = gameMomentLabel(g.period, g.clock)
+  const when = g.status === 'final' ? 'Final' : gameMomentLabel(g.period, g.clock)
   return `LAC ${lac.score ?? 0}–${opp.score ?? 0} ${opp.abbreviation ?? 'OPP'} · ${when}`
 }
 
@@ -99,4 +100,13 @@ export function resolveLiveState(
     if (captured && generated && generated.getTime() - captured.getTime() > STALE_SNAPSHOT_IDLE_MS) return 'NO_ACTIVE_GAME'
   }
   return state
+}
+
+/**
+ * A game is on: /api/live has one and it isn't over. /live keeps showing a
+ * game for half an hour after the buzzer (its state stays LIVE), but the
+ * header's "Live" chip and the nav's live dot stop at the final.
+ */
+export function gameIsOn(data: (NonNullable<Parameters<typeof resolveLiveState>[0]> & { game?: { status?: string } | null }) | undefined): boolean {
+  return resolveLiveState(data) !== 'NO_ACTIVE_GAME' && data?.game?.status !== 'final'
 }

@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import { useLens } from '@/hooks/useLens'
 import { useLiveData } from '@/hooks/useLiveData'
 import { NAV_LINKS, matchesTab, useNavTabs, type NavHref } from '@/hooks/useNavTabs'
-import { resolveLiveState } from '@/src/lib/ui/live'
+import { gameIsOn } from '@/src/lib/ui/live'
 
 const ICONS: Record<NavHref, LucideIcon> = {
   '/home': House,
@@ -26,8 +26,7 @@ const ICONS: Record<NavHref, LucideIcon> = {
 export function MobileTabBar() {
   const { pathname, current, onSelect } = useNavTabs()
   const { data } = useLiveData()
-  const state = resolveLiveState(data)
-  const isLive = state === 'LIVE' || state === 'DATA_DELAYED'
+  const isLive = gameIsOn(data)
   const ref = useRef<HTMLDivElement>(null)
   const lens = useLens(ref, current)
 
