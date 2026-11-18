@@ -110,3 +110,9 @@ export function resolveLiveState(
 export function gameIsOn(data: (NonNullable<Parameters<typeof resolveLiveState>[0]> & { game?: { status?: string } | null }) | undefined): boolean {
   return resolveLiveState(data) !== 'NO_ACTIVE_GAME' && data?.game?.status !== 'final'
 }
+
+/** A player's profile, by NBA person id (resolved by /players/nba/[id]); null for ids we can't link. */
+export function playerHref(personId: number | string | null | undefined): string | null {
+  const id = Number(personId)
+  return Number.isSafeInteger(id) && id > 0 ? `/players/nba/${id}` : null
+}

@@ -22,6 +22,8 @@ import { FeedSource } from './FeedSource'
 import { GameFlow } from './GameFlow'
 import { Clipboard } from './Clipboard'
 import { SpoilerControl } from './SpoilerControl'
+import { PlayByPlay } from './PlayByPlay'
+import { PlayersOut } from './PlayersOut'
 import { resolveLiveState } from '@/src/lib/ui/live'
 import { BACKUP_STALE_REASON } from '@/src/lib/live/espn-backup'
 import { RUNNER_NOT_STARTED_REASON } from '@/src/lib/live/payload'
@@ -143,6 +145,17 @@ export function LiveView({
           tag={game.is_preseason ? 'Preseason' : null}
         >
           <LineScore periods={game.periods ?? []} lacHome={lacHome} oppAbbr={oppAbbr} />
+          {!final && data.lineups && (data.lineups.timeouts.lac != null || data.lineups.timeouts.opp != null) && (
+            <div className="relative flex items-center justify-center gap-4 border-t border-line px-3 py-2.5 font-mono text-[11.5px] tabular-nums text-mute sm:justify-start sm:px-6">
+              <span className="uppercase tracking-[0.1em] text-dim">Timeouts left</span>
+              <span>
+                {lac.abbr} <span className="text-text">{data.lineups.timeouts.lac ?? '—'}</span>
+              </span>
+              <span>
+                {oppAbbr} <span className="text-text">{data.lineups.timeouts.opp ?? '—'}</span>
+              </span>
+            </div>
+          )}
           {odds && (
             <div className="relative border-t border-line px-3 py-3 sm:px-6">
               <OddsStrip
@@ -260,6 +273,21 @@ export function LiveView({
           )}
         </div>
       </section>
+
+      {((data.plays?.length ?? 0) > 0 || data.injuries) && (
+        <section className="enter grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 4 }}>
+          <div className="min-w-0">
+            <Eyebrow aside={pausedNote ?? 'newest first'}>Play-by-play</Eyebrow>
+            <PlayByPlay plays={data.plays ?? []} gameKey={game.game_id} lacAbbr={lac.abbr ?? 'LAC'} oppAbbr={oppAbbr} lacHome={lacHome} />
+          </div>
+          {data.injuries && (
+            <div className="min-w-0">
+              <Eyebrow>Players out</Eyebrow>
+              <PlayersOut injuries={data.injuries} lacAbbr={lac.abbr ?? 'LAC'} oppAbbr={oppAbbr} />
+            </div>
+          )}
+        </section>
+      )}
     </div>
   )
 }

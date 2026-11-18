@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { LiveView } from '@/components/live/LiveView'
 import { Chip } from '@/components/ui/chip'
+import { HomeLiveCard } from '@/components/home/HomeLive'
 import { liveFixture } from './fixture'
 
 export function DevLiveClient() {
@@ -20,10 +21,22 @@ export function DevLiveClient() {
           type="button"
           className="rounded-full border border-line px-3 py-1 text-[12.5px] text-mute hover:text-text"
           onClick={() =>
-            setData((d) => ({
-              ...d,
-              game: d.game && { ...d.game, home: { ...d.game.home, score: (d.game.home.score ?? 0) + 3 } },
-            }))
+            setData((d) => {
+              const home = (d.game?.home.score ?? 0) + 3
+              const newest = d.plays?.[0]
+              const play = newest && {
+                ...newest,
+                action_number: newest.action_number + 2,
+                team_tricode: 'LAC',
+                description: 'Kawhi Leonard makes 25-foot three point jumper',
+                score_home: home,
+              }
+              return {
+                ...d,
+                game: d.game && { ...d.game, home: { ...d.game.home, score: home } },
+                plays: play ? [play, ...(d.plays ?? [])].slice(0, 25) : d.plays,
+              }
+            })
           }
         >
           LAC +3
@@ -33,6 +46,10 @@ export function DevLiveClient() {
         </button>
       </div>
       <LiveView data={payload} />
+      <div className="page !pt-0">
+        <Chip tone="warn">Home page card</Chip>
+        <HomeLiveCard data={payload} />
+      </div>
     </>
   )
 }

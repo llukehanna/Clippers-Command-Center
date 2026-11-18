@@ -9,6 +9,7 @@ import { PlayerAvatar } from '@/components/ui/player-avatar'
 import { TeamLogo } from '@/components/ui/team-mark'
 import { TableScroll, Th, Td } from '@/components/ui/data-table'
 import { teamName } from '@/src/lib/ui/teams'
+import { playerHref } from '@/src/lib/ui/live'
 import type { BoxScorePlayer, BoxScoreTeam, BoxValue } from '@/src/lib/ui/types'
 
 const COLS = ['MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', 'FG', '3PT', 'FT', '+/-'] as const
@@ -16,7 +17,7 @@ const LEADER_COLS = new Set(['PTS', 'REB', 'AST'])
 
 interface BoxScoreProps {
   teams: BoxScoreTeam[]
-  /** Link LAC players to their pages (history ids are internal player ids). */
+  /** Link LAC players to their pages (by internal id, or by NBA id via /players/nba on live). */
   linkPlayers?: boolean
   /** Live box scores carry NBA person ids as player_id — enables headshots. */
   playerIdsAreNba?: boolean
@@ -117,8 +118,8 @@ export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, n
             return (
               <tr key={p.player_id} className="hover:[&>td]:bg-[#0f1829]">
                 <Td align="left" sticky className={cn(p.starter && 'shadow-[inset_2px_0_0_var(--pacific)]')}>
-                  {linkPlayers && isLac && !playerIdsAreNba ? (
-                    <Link href={`/players/${p.player_id}`} className="hover:underline">
+                  {linkPlayers && isLac && (playerIdsAreNba ? playerHref(p.player_id) : true) ? (
+                    <Link href={playerIdsAreNba ? playerHref(p.player_id)! : `/players/${p.player_id}`} className="hover:underline">
                       {name}
                     </Link>
                   ) : (
