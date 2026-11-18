@@ -4,12 +4,13 @@ import { notFound } from 'next/navigation'
 import { PlayerHero } from '@/components/players/PlayerHero'
 import { TrendChart } from '@/components/players/TrendChart'
 import { SplitsPanel } from '@/components/players/SplitsPanel'
+import { PlayerTransactions } from '@/components/players/PlayerTransactions'
 import { GameLog, type GameLogRow } from '@/components/players/GameLog'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { getJson } from '@/src/lib/ui/api'
 import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
 import type { HistoryGame } from '@/src/lib/ui/season'
-import type { PlayerDetailPayload, PlayersPayload } from '@/src/lib/ui/types'
+import type { MovesPayload, PlayerDetailPayload, PlayersPayload } from '@/src/lib/ui/types'
 
 // Live data on every request (loaders read the database directly).
 export const dynamic = 'force-dynamic'
@@ -24,11 +25,14 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 export default async function PlayerDetailPage({ params }: Params) {
   const { player_id } = await params
-  const [data, roster] = await Promise.all([
+  const [data, roster, moves] = await Promise.all([
     getJson<PlayerDetailPayload>(`/api/players/${encodeURIComponent(player_id)}`),
     getJson<PlayersPayload>('/api/players?include_traded=true'),
+    /^\d{1,15}$/.test(player_id) ? getJson<MovesPayload>(`/api/franchise/moves?player_id=${player_id}`) : null,
   ])
   if (!data) notFound()
+
+  const personKey = moves?.moves.flatMap((m) => m.people).find((p) => p.player_id === player_id)?.person_key ?? null
 
   const log = data.game_log ?? []
   const seasonId = log[0] ? seasonStartYear(new Date(`${log[0].game_date}T12:00:00Z`)) : null
@@ -72,6 +76,8 @@ export default async function PlayerDetailPage({ params }: Params) {
           <GameLog rows={rows} />
         </section>
       )}
+
+      <PlayerTransactions moves={moves?.moves ?? []} personKey={personKey} />
     </div>
   )
 }

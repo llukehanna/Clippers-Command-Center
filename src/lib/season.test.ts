@@ -10,7 +10,7 @@ vi.mock('@/src/lib/db', () => ({
   LAC_NBA_TEAM_ID: 13,
 }));
 
-import { calendarSeasonId, getDisplaySeasonId, parseSeasonIdParam } from './season';
+import { calendarSeasonId, getDisplaySeasonId, nextDraftYear, parseSeasonIdParam } from './season';
 
 describe('calendarSeasonId', () => {
   it('maps Jan–Jun to the season that started the previous year', () => {
@@ -23,6 +23,16 @@ describe('calendarSeasonId', () => {
     expect(calendarSeasonId(new Date('2026-07-01T12:00:00Z'))).toBe(2026);
     expect(calendarSeasonId(new Date('2026-09-23T12:00:00Z'))).toBe(2026);
     expect(calendarSeasonId(new Date('2026-12-01T12:00:00Z'))).toBe(2026);
+  });
+});
+
+describe('nextDraftYear', () => {
+  // Same rule as the pipeline's defaultDraftYear: the June draft belongs to this year until July 1.
+  it('is this year through June, next year from July 1', () => {
+    expect(nextDraftYear(new Date('2026-01-10T12:00:00Z'))).toBe(2026);
+    expect(nextDraftYear(new Date('2026-06-30T12:00:00Z'))).toBe(2026);
+    expect(nextDraftYear(new Date('2026-07-01T12:00:00Z'))).toBe(2027);
+    expect(nextDraftYear(new Date('2026-11-18T12:00:00Z'))).toBe(2027);
   });
 });
 

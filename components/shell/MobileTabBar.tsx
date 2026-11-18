@@ -2,7 +2,7 @@
 
 import { useRef } from 'react'
 import Link from 'next/link'
-import { CalendarDays, History, House, Newspaper, Radio, Users, type LucideIcon } from 'lucide-react'
+import { CalendarDays, History, House, Landmark, Newspaper, Radio, Users, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLens } from '@/hooks/useLens'
 import { useLiveData } from '@/hooks/useLiveData'
@@ -15,6 +15,7 @@ const ICONS: Record<NavHref, LucideIcon> = {
   '/players': Users,
   '/schedule': CalendarDays,
   '/history': History,
+  '/franchise': Landmark,
   '/news': Newspaper,
 }
 
@@ -36,7 +37,7 @@ export function MobileTabBar() {
       data-tabbar
       className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+8px)] md:hidden"
     >
-      <div ref={ref} className="glass-bar relative mx-auto grid max-w-[520px] grid-cols-6 rounded-[26px] p-[5px]">
+      <div ref={ref} className="glass-bar relative mx-auto grid max-w-[560px] grid-cols-7 rounded-[26px] p-[5px]">
         <span aria-hidden className="lens pointer-events-none absolute left-0 top-0 rounded-[21px]" style={lens} />
         {NAV_LINKS.map(({ href, label }) => {
           const Icon = ICONS[href]

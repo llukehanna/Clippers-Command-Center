@@ -8,17 +8,22 @@ import { TeamLogo } from '@/components/ui/team-mark'
 import { PlayerAvatar } from '@/components/ui/player-avatar'
 import { playedGames, type HistoryGame } from '@/src/lib/ui/season'
 import { formatDayShort } from '@/src/lib/ui/time'
-import type { PlayersPayload } from '@/src/lib/ui/types'
+import { moveDate } from '@/src/lib/franchise/display'
+import type { MovesPayload, PlayersPayload } from '@/src/lib/ui/types'
 
 export const OPEN_PALETTE_EVENT = 'ccc:open-palette'
+
+/** Trades listed before anything is typed; typing searches every trade. */
+const RECENT_TRADES = 5
 
 const PAGES = [
   { href: '/home', label: 'Home', hint: 'Next game, form, trends' },
   { href: '/live', label: 'Live', hint: 'Scoreboard and box score' },
   { href: '/players', label: 'Players', hint: 'Roster' },
   { href: '/schedule', label: 'Schedule', hint: 'Upcoming games' },
-  { href: '/news', label: 'News', hint: 'Articles and social' },
   { href: '/history', label: 'History', hint: 'Past seasons' },
+  { href: '/franchise', label: 'Franchise', hint: 'Draft, trades, contracts' },
+  { href: '/news', label: 'News', hint: 'Articles and social' },
 ]
 
 const json = (url: string) =>
@@ -44,19 +49,24 @@ async function loadRecentGames(): Promise<SeasonGames[]> {
   return lists
 }
 
-/** ⌘K / Ctrl+K palette: jump to any page, player, or recent game. */
+/** ⌘K / Ctrl+K palette: jump to any page, player, trade (by player name), or recent game. */
 export function CommandPalette() {
   const [open, setOpen] = React.useState(false)
+  const [search, setSearch] = React.useState('')
   const router = useRouter()
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
+        setSearch('') // each open starts with an empty search
         setOpen((o) => !o)
       }
     }
-    const onOpen = () => setOpen(true)
+    const onOpen = () => {
+      setSearch('')
+      setOpen(true)
+    }
     window.addEventListener('keydown', onKey)
     window.addEventListener(OPEN_PALETTE_EVENT, onOpen)
     return () => {
@@ -68,6 +78,9 @@ export function CommandPalette() {
   // Load lazily on first open; SWR keeps it cached afterwards.
   const { data: roster } = useSWR<PlayersPayload>(open ? '/api/players' : null, json, { revalidateOnFocus: false })
   const { data: seasons } = useSWR<SeasonGames[]>(open ? 'palette:games' : null, loadRecentGames, { revalidateOnFocus: false })
+  const { data: trades } = useSWR<MovesPayload>(open ? '/api/franchise/moves?type=trade' : null, json, { revalidateOnFocus: false })
+
+  const typed = search.trim() !== ''
 
   const go = (href: string) => {
     setOpen(false)
@@ -94,7 +107,9 @@ export function CommandPalette() {
         </svg>
         <Command.Input
           autoFocus
-          placeholder="Search players, games, pages…"
+          value={search}
+          onValueChange={setSearch}
+          placeholder="Search players, games, trades…"
           className="h-14 min-w-0 flex-1 bg-transparent text-[16px] text-text md:text-[15px] outline-none placeholder:text-dim"
         />
         <kbd className="hidden rounded-md border border-line-2 bg-ink-2 px-1.5 py-0.5 font-mono text-[10.5px] text-dim md:inline">esc</kbd>
@@ -129,6 +144,37 @@ export function CommandPalette() {
                 <span className="ml-auto font-mono text-[11px] text-dim">{p.position}</span>
               </Command.Item>
             ))}
+          </Command.Group>
+        )}
+
+        {trades && (trades.moves.length > 0 || typed) && (
+          <Command.Group heading="Trades" className={group}>
+            {trades.moves.length === 0 ? (
+              // The archive is empty until the import runs; say so once someone searches.
+              <Command.Item forceMount value="no trades recorded yet" onSelect={() => go('/franchise')} className={item}>
+                <span className="text-text">No trades recorded yet</span>
+                <span className="ml-auto text-[12.5px] text-dim">The franchise history import hasn&apos;t run</span>
+              </Command.Item>
+            ) : (
+              // Empty query: the most recent few. Typing searches them all, by player name or team.
+              (typed ? trades.moves : trades.moves.slice(0, RECENT_TRADES)).map((m) => {
+                const other = m.teams.find((t) => !t.is_clippers)
+                const names = m.people.map((p) => p.name)
+                return (
+                  <Command.Item
+                    key={m.slug}
+                    value={`${names.join(' ')} ${m.date ?? ''} ${m.slug}`}
+                    keywords={[other?.city ?? '', other?.name ?? '', other?.abbreviation ?? '']}
+                    onSelect={() => go(m.href ?? '/franchise')}
+                    className={item}
+                  >
+                    <TeamLogo abbr={other?.abbreviation} size="xs" />
+                    <span className="min-w-0 truncate text-text">{names.slice(0, 3).join(', ') || m.description}</span>
+                    <span className="ml-auto shrink-0 font-mono text-[11.5px] text-dim">{moveDate(m.date)}</span>
+                  </Command.Item>
+                )
+              })
+            )}
           </Command.Group>
         )}
 

@@ -3,12 +3,14 @@ import { PageHeader } from '@/components/shell/PageHeader'
 import { SeasonSelect } from '@/components/history/SeasonSelect'
 import { SeasonStrip } from '@/components/history/SeasonStrip'
 import { GameList } from '@/components/history/GameList'
+import { SeasonMoves } from '@/components/history/SeasonMoves'
 import { SegmentedLinks } from '@/components/ui/segmented-links'
 import { Panel } from '@/components/ui/panel'
 import { Stat } from '@/components/ui/stat'
 import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
 import { getJson } from '@/src/lib/ui/api'
+import type { MovesPayload } from '@/src/lib/ui/types'
 import { formatSigned } from '@/src/lib/ui/odds'
 import { playedGames, regularSeason, seasonSummary, streaks, upcomingGames, type HistoryGame } from '@/src/lib/ui/season'
 
@@ -24,7 +26,10 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
   const seasonsRes = await getJson<{ seasons: Array<{ season_id: number; label: string; team_name: string }> }>('/api/history/seasons')
   const seasons = seasonsRes?.seasons ?? []
   const seasonId = params.season_id ?? String(seasons.at(-1)?.season_id ?? '')
-  const gamesRes = seasonId ? await getJson<{ games: HistoryGame[] }>(`/api/history/games?season_id=${seasonId}&limit=200`) : null
+  const [gamesRes, movesRes] = await Promise.all([
+    seasonId ? getJson<{ games: HistoryGame[] }>(`/api/history/games?season_id=${seasonId}&limit=200`) : null,
+    /^\d{4}$/.test(seasonId) ? getJson<MovesPayload>(`/api/franchise/moves?season=${seasonId}&limit=5&sort=significance`) : null,
+  ])
   const all = gamesRes?.games ?? []
 
   const homeAway = params.home_away === 'home' || params.home_away === 'away' ? params.home_away : 'all'
@@ -94,6 +99,8 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
           <SeasonStrip games={played} streaks={streaks(played)} />
         </section>
       )}
+
+      <SeasonMoves moves={movesRes?.moves ?? []} seasonId={Number(seasonId)} label={label} />
 
       {all.length > 0 && all.length < 30 && (
         <p className="m-0 flex items-center gap-2 text-[13px] text-mute">

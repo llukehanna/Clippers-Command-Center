@@ -18,6 +18,14 @@ import { loadMedia } from '@/src/lib/data/media'
 import { loadHistorySeasons } from '@/src/lib/data/history-seasons'
 import { loadHistoryGames } from '@/src/lib/data/history-games'
 import { loadHistoryGame } from '@/src/lib/data/history-game'
+import { loadFranchiseMoves } from '@/src/lib/data/franchise-moves'
+import { loadFranchisePeople } from '@/src/lib/data/franchise-people'
+import { loadFranchiseDraft } from '@/src/lib/data/franchise-draft'
+import { loadFranchiseContracts } from '@/src/lib/data/franchise-contracts'
+import { loadFranchisePicks } from '@/src/lib/data/franchise-picks'
+import { loadFranchiseFrontOffice } from '@/src/lib/data/franchise-front-office'
+import { loadFranchiseHonors } from '@/src/lib/data/franchise-honors'
+import { loadFranchiseTrade } from '@/src/lib/data/franchise-trade'
 import { loadGameStory } from '@/src/lib/data/game-story'
 import { unstable_cache } from 'next/cache'
 import { type ApiResult } from '@/src/lib/data/result'
@@ -36,6 +44,14 @@ const ROUTES: Array<[RegExp, Loader]> = [
   [/^\/api\/history\/games$/, (_, url) => loadHistoryGames(url)],
   [/^\/api\/history\/games\/([^/]+)\/story$/, (m) => loadGameStory(decodeURIComponent(m[1]))],
   [/^\/api\/history\/games\/([^/]+)$/, (m) => loadHistoryGame(decodeURIComponent(m[1]))],
+  [/^\/api\/franchise\/moves$/, (_, url) => loadFranchiseMoves(url)],
+  [/^\/api\/franchise\/people$/, () => loadFranchisePeople()],
+  [/^\/api\/franchise\/draft$/, () => loadFranchiseDraft()],
+  [/^\/api\/franchise\/contracts$/, () => loadFranchiseContracts()],
+  [/^\/api\/franchise\/picks$/, () => loadFranchisePicks()],
+  [/^\/api\/franchise\/front-office$/, () => loadFranchiseFrontOffice()],
+  [/^\/api\/franchise\/honors$/, () => loadFranchiseHonors()],
+  [/^\/api\/franchise\/trades\/([^/]+)$/, (m) => loadFranchiseTrade(decodeURIComponent(m[1]))],
 ]
 
 const DATA_TTL_SECONDS = 60

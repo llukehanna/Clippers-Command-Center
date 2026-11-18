@@ -32,7 +32,7 @@ export function TopBar() {
             type="button"
             onClick={() => window.dispatchEvent(new Event(OPEN_PALETTE_EVENT))}
             className="glass-track press flex h-10 w-10 items-center justify-center gap-2 rounded-full text-[13px] text-mute transition-colors duration-300 hover:text-text md:h-auto md:w-auto md:justify-start md:py-1.5 md:pl-3 md:pr-1.5"
-            aria-label="Search players and games"
+            aria-label="Search players, games and trades"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" className="md:h-3.5 md:w-3.5" fill="none" aria-hidden>
               <circle cx="7" cy="7" r="4.75" stroke="currentColor" strokeWidth="1.5" />

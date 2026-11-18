@@ -1,0 +1,164 @@
+'use client'
+
+import * as React from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import useSWR from 'swr'
+import { PlayerAvatar } from '@/components/ui/player-avatar'
+import { movesHref, type MovesFilters } from '@/src/lib/franchise/display'
+import type { FranchisePersonRef, PeoplePayload } from '@/src/lib/ui/types'
+
+const json = (url: string) =>
+  fetch(url).then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  })
+
+const POPOVER_WIDTH = 320
+const GUTTER = 14
+
+const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+
+/**
+ * Player filter for Moves. With a player set it's a removable chip; otherwise a button that
+ * opens a search over everyone in Clippers moves (/api/franchise/people, loaded on first open).
+ * Picking a player opens their whole Clippers history: all types, all seasons (bounded).
+ */
+export function PlayerFilter({ filters, player }: { filters: MovesFilters; player: FranchisePersonRef | null }) {
+  const router = useRouter()
+  const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState('')
+  const root = React.useRef<HTMLDivElement>(null)
+  // Anchored to the button's left edge, shifted left when that would run past the viewport (no page scroll).
+  const [shift, setShift] = React.useState(0)
+  const input = React.useRef<HTMLInputElement>(null)
+  const { data, error } = useSWR<PeoplePayload>(open ? '/api/franchise/people' : null, json, { revalidateOnFocus: false })
+
+  React.useLayoutEffect(() => {
+    if (!open || !root.current) return
+    // clientWidth leaves out the scrollbar, which can appear once the list opens; the observer re-places then.
+    const place = () => {
+      if (!root.current) return
+      const vw = document.documentElement.clientWidth
+      const left = root.current.getBoundingClientRect().left
+      const width = Math.min(POPOVER_WIDTH, vw - 2 * GUTTER)
+      setShift(Math.max(GUTTER - left, Math.min(0, vw - GUTTER - width - left)))
+    }
+    place()
+    // Focus without scrolling: autoFocus would scroll the page to the unplaced popover.
+    input.current?.focus({ preventScroll: true })
+    const observer = new ResizeObserver(place)
+    observer.observe(document.documentElement)
+    return () => observer.disconnect()
+  }, [open])
+
+  React.useEffect(() => {
+    if (!open) return
+    const onDown = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  if (filters.player) {
+    return (
+      <span className="glass-track inline-flex items-center gap-2 rounded-full py-[3px] pl-[3px] pr-1 text-[13px] text-text md:text-[12.5px]">
+        {player ? (
+          <PlayerAvatar name={player.name} nbaPlayerId={player.nba_person_id} size={24} />
+        ) : (
+          // A key with no person record: a neutral label, never the raw key.
+          <span aria-hidden className="grid h-6 w-6 place-items-center rounded-full border border-dashed border-line-2 font-mono text-[10px] text-dim">
+            ?
+          </span>
+        )}
+        {player?.name ?? 'Unknown player'}
+        <Link
+          href={movesHref({ ...filters, player: null })}
+          scroll={false}
+          aria-label="Remove player filter"
+          className="press grid h-7 w-7 place-items-center rounded-full text-mute transition-colors hover:bg-white/[0.08] hover:text-text md:h-[22px] md:w-[22px]"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
+            <path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        </Link>
+      </span>
+    )
+  }
+
+  const all = data?.people ?? []
+  const q = fold(query.trim())
+  // Typing: matches in name order (as served). Empty: the people with the most moves.
+  const results = (q ? all.filter((p) => fold(p.name).includes(q)) : [...all].sort((a, b) => b.move_count - a.move_count || a.name.localeCompare(b.name))).slice(0, 8)
+  const hrefFor = (key: string) => movesHref({ season: 'all', type: 'all', player: key })
+
+  return (
+    <div ref={root} className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen((o) => !o)}
+        className="glass-track press inline-flex items-center gap-2 rounded-full py-2 pl-3.5 pr-4 text-[14px] text-mute transition-colors hover:text-text md:py-1.5 md:pl-3 md:pr-3.5 md:text-[13px]"
+      >
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden>
+          <circle cx="7" cy="7" r="4.75" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M10.5 10.5 14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        Player
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Filter moves by player"
+          style={{ left: shift }}
+          className="glass-bar absolute top-full z-30 mt-2 w-[min(320px,calc(100vw-28px))] origin-top-left overflow-hidden rounded-[20px] bg-[rgba(10,17,31,0.94)] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)] animate-in fade-in-0 zoom-in-[0.98]"
+        >
+          <input
+            ref={input}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && results[0]) {
+                setOpen(false)
+                router.push(hrefFor(results[0].person_key), { scroll: false })
+              }
+            }}
+            placeholder="Search players…"
+            aria-label="Player name"
+            className="h-12 w-full border-b border-line bg-transparent px-4 text-[16px] text-text outline-none placeholder:text-dim md:h-11 md:text-[14px]"
+          />
+          <ul className="m-0 max-h-[320px] list-none overflow-y-auto overscroll-contain p-1.5">
+            {error && <li className="px-3 py-4 text-[13px] text-mute">Players couldn&apos;t load. Try again in a moment.</li>}
+            {!data && !error && <li className="px-3 py-4 font-mono text-[11.5px] text-dim">Loading players…</li>}
+            {data && results.length === 0 && (
+              <li className="px-3 py-4 text-[13px] text-mute">{all.length ? 'No player by that name in Clippers moves.' : 'No players in Clippers moves yet.'}</li>
+            )}
+            {results.map((person) => (
+              <li key={person.person_key}>
+                <Link
+                  href={hrefFor(person.person_key)}
+                  scroll={false}
+                  onClick={() => setOpen(false)}
+                  className="row-hover flex items-center gap-3 rounded-[12px] px-2.5 py-2 text-[14px] text-text outline-none focus-visible:bg-white/[0.06]"
+                >
+                  <PlayerAvatar name={person.name} nbaPlayerId={person.nba_person_id} size={26} />
+                  <span className="min-w-0 flex-1 truncate">{person.name}</span>
+                  <span className="font-mono text-[11px] text-dim">
+                    {person.move_count} move{person.move_count === 1 ? '' : 's'}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}

@@ -30,6 +30,17 @@ export function SegmentedLinks({ value, options, ariaLabel, size = 'md', classNa
     setPending(null)
   }, [value])
 
+  // On narrow screens the row scrolls: keep the selected option in view (centred only when it was cut off).
+  React.useEffect(() => {
+    const nav = ref.current
+    const active = nav?.querySelector<HTMLElement>('[aria-current="true"]')
+    if (!nav || !active) return
+    const left = active.offsetLeft
+    const right = left + active.offsetWidth
+    if (left >= nav.scrollLeft && right <= nav.scrollLeft + nav.clientWidth) return
+    nav.scrollTo({ left: Math.max(0, left - (nav.clientWidth - active.offsetWidth) / 2) })
+  }, [value])
+
   const current = pending ?? value
   const lensStyle = useLens(ref, current)
   return (
