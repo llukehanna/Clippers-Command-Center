@@ -10,7 +10,7 @@ vi.mock('@/src/lib/db', () => ({
   LAC_NBA_TEAM_ID: 13,
 }));
 
-import { calendarSeasonId, getDisplaySeasonId, nextDraftYear, parseSeasonIdParam } from './season';
+import { calendarSeasonId, getDisplaySeasonId, nextDraftYear, parseSeasonIdParam, resetDisplaySeasonMemo } from './season';
 
 describe('calendarSeasonId', () => {
   it('maps Jan–Jun to the season that started the previous year', () => {
@@ -47,7 +47,17 @@ describe('parseSeasonIdParam', () => {
 });
 
 describe('getDisplaySeasonId', () => {
-  beforeEach(() => mockSql.mockReset());
+  beforeEach(() => {
+    mockSql.mockReset();
+    resetDisplaySeasonMemo();
+  });
+
+  it('keeps the resolved season for a few minutes instead of re-querying', async () => {
+    mockSql.mockResolvedValue([{ display_season_id: 2026 }]);
+    await getDisplaySeasonId();
+    await getDisplaySeasonId();
+    expect(mockSql).toHaveBeenCalledTimes(1);
+  });
 
   it('returns the DB-derived season when available', async () => {
     mockSql.mockResolvedValueOnce([{ display_season_id: 2025 }]);
