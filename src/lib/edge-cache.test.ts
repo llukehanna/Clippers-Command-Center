@@ -191,3 +191,34 @@ describe('serveWithEdgeCache', () => {
     expect(render).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('streamed redirects', () => {
+  it('does not store a 200 whose body is a meta-refresh redirect', async () => {
+    const { store, entries } = memoryStore()
+    const { ctx, settle } = ctxCollector()
+    const body = '<html><head><meta id="__next-page-redirect" http-equiv="refresh" content="1;url=/schedule/1"/></head></html>'
+    const res = await serveWithEdgeCache(get('/history/1'), async () => page(body), { store, ctx })
+    await settle()
+    expect(await res.text()).toBe(body)
+    expect(entries.size).toBe(0)
+  })
+
+  it('does not store an RSC payload carrying NEXT_REDIRECT', async () => {
+    const { store, entries } = memoryStore()
+    const { ctx, settle } = ctxCollector()
+    const body = '1:E{"digest":"NEXT_REDIRECT;replace;/x;307;"}'
+    const res = await serveWithEdgeCache(get('/history/1?_rsc=a', { RSC: '1' }), async () => page(body), { store, ctx })
+    await settle()
+    expect(await res.text()).toBe(body)
+    expect(entries.size).toBe(0)
+  })
+
+  it('still stores a normal 200', async () => {
+    const { store, entries } = memoryStore()
+    const { ctx, settle } = ctxCollector()
+    const res = await serveWithEdgeCache(get('/history/2'), async () => page('<html>ok</html>'), { store, ctx })
+    await settle()
+    expect(await res.text()).toBe('<html>ok</html>')
+    expect(entries.size).toBe(1)
+  })
+})

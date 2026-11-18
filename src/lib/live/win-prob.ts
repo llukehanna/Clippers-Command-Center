@@ -6,6 +6,8 @@
 // σ is fitted by scripts/calibrate-wp.ts. Pure: shared by the runner, the
 // calibration script and the UI.
 
+import type { WpCalibration } from '../types/live-state';
+
 export const PERIOD_SECS = 720;
 export const OT_SECS = 300;
 export const REGULATION_SECS = 4 * PERIOD_SECS;
@@ -83,4 +85,26 @@ export function expectedLacMargin(
 ): { expected: number; source: 'spread' | 'home_court' } {
   if (lacSpread != null && Number.isFinite(lacSpread)) return { expected: 0 - lacSpread, source: 'spread' };
   return { expected: lacIsHome ? HOME_COURT_MARGIN : -HOME_COURT_MARGIN, source: 'home_court' };
+}
+
+const validSigma = (s: number | undefined): s is number => typeof s === 'number' && Number.isFinite(s) && s > 0;
+
+/**
+ * The σ for a game: the fit for its source of E (spread or home court), else
+ * the overall fit, else the default. A spread game never borrows the overall
+ * fit from a per-source calibration: that fit is mostly home-court games, whose
+ * σ absorbs the team-strength gap the spread already accounts for (2019–26
+ * Clippers games fit ≈ 22), and would flatten its odds.
+ */
+export function modelSigma(calibration: WpCalibration | null, source: 'spread' | 'home_court'): number {
+  const bySource = calibration?.sigma_by_source?.[source]?.sigma;
+  if (validSigma(bySource)) return bySource;
+  if (source === 'spread' && calibration?.sigma_by_source) return DEFAULT_SIGMA;
+  if (validSigma(calibration?.sigma)) return calibration.sigma;
+  return DEFAULT_SIGMA;
+}
+
+/** The Clippers' win probability before the tip. */
+export function pregameLacWinProb(expected: number, sigma: number): number {
+  return normalCdf(expected / sigma);
 }

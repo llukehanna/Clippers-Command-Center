@@ -45,7 +45,10 @@ export function IdleState() {
       </div>
 
       <div className="enter grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 1 }}>
-        {isLoading ? <Skeleton className="h-[320px] rounded-[22px]" /> : <NextGamePanel game={home?.next_game ?? null} />}
+        {isLoading ? <Skeleton className="h-[320px] rounded-[22px]" /> : <NextGamePanel
+            game={home?.next_game ?? null}
+            href={home?.next_game ? `/schedule/${home.next_game.game_id}` : undefined}
+          />}
         {last && (
           <Panel as={Link} href={`/history/${last.game_id}`} className="flex flex-col gap-5 p-5 transition-colors duration-300 hover:border-line-2 sm:p-6">
             <Eyebrow as="p">Last game</Eyebrow>

@@ -4,6 +4,7 @@ import { ScheduleChips } from '@/components/game/ScheduleChips'
 import { ScheduleMonth } from '@/components/schedule/ScheduleList'
 import { PageHeader } from '@/components/shell/PageHeader'
 import { EmptyState } from '@/components/ui/empty-state'
+import { SITE_URL } from '@/src/lib/ics'
 import { getJson } from '@/src/lib/ui/api'
 import { annotateSchedule, groupByMonth } from '@/src/lib/ui/schedule'
 import type { SchedulePayload } from '@/src/lib/ui/types'
@@ -39,11 +40,20 @@ export default async function SchedulePage() {
             ? `Next ${games.length} games · ${homeCount} home, ${games.length - homeCount} away${b2bCount ? ` · ${b2bCount} back-to-back${b2bCount === 1 ? '' : 's'}` : ''} · times PT`
             : 'Upcoming Clippers games'
         }
+        actions={
+          <a
+            href={`${SITE_URL.replace('https://', 'webcal://')}/schedule.ics`}
+            className="inline-flex font-mono text-[12px] text-mute transition-colors hover:text-text"
+          >
+            Subscribe to calendar ↗
+          </a>
+        }
       />
 
       <div className="enter" style={{ ['--i' as string]: 0 }}>
         <NextGamePanel
           game={next ?? null}
+          href={next ? `/schedule/${next.game_id}` : undefined}
           context={
             next ? (
               <span className="flex flex-wrap justify-end gap-1.5">
