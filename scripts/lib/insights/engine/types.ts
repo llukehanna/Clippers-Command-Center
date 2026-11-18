@@ -15,9 +15,12 @@ export type Runner = (q: ProofQuery) => Promise<Row[]>;
 /** First season of complete records (app_kv insights.records_start / insights.pbp_records_start). */
 export interface RecordsStart { season_id: number; label: string }
 
-export type FactKind =
-  | 'streak' | 'milestone' | 'league_rank' | 'standings' | 'recent_form' | 'yoy_change'
-  | 'opp_rank' | 'h2h' | 'last_meeting' | 'league_night';
+/** Every fact kind. The template and question registries must cover each one (tests enforce it). */
+export const FACT_KINDS = [
+  'streak', 'milestone', 'league_rank', 'standings', 'recent_form', 'yoy_change',
+  'opp_rank', 'h2h', 'last_meeting', 'league_night',
+] as const;
+export type FactKind = (typeof FACT_KINDS)[number];
 
 /**
  * How rare a fact is (spec §2.4):
@@ -149,6 +152,8 @@ export interface EngineContext {
   league: LeagueCoverage;
   /** --game: postgame detectors cover only this game. */
   gameId: string | null;
+  /** --days: postgame covers regular-season finals dated (asOf − postgameDays, asOf]. */
+  postgameDays: number;
   /** Stored state by key (novelty); empty for dry runs. */
   prior: Map<string, PriorState>;
 }

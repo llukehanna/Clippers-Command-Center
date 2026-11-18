@@ -66,6 +66,15 @@ WHERE g.season_id = $1::int AND ${REGULAR_SEASON} AND g.game_date <= $2::date AN
   };
 }
 
+/**
+ * The as-of for a fact's reference sets. Postgame claims freeze after their
+ * window, so they are measured at the time of the game: a later, higher game
+ * must not falsify "most points since ...". Everything else reads as of the run.
+ */
+export function refAsOf(fact: Fact, ctx: EngineContext): string {
+  return fact.surface === 'postgame' && fact.context.date < ctx.asOf ? fact.context.date : ctx.asOf;
+}
+
 function playerStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
   const stat = PLAYER_GAME_STATS[fact.stat as keyof typeof PLAYER_GAME_STATS];
   if (!stat) return null;
@@ -73,7 +82,9 @@ function playerStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
   return {
     group: ctx.recordsStart ? clippersPlayerRef(expr, ctx.lac.teamId, ctx.recordsStart, ctx.asOf) : null,
     subject: playerCareerRef(expr, fact.subject.id, ctx.asOf),
-    league: ctx.league.complete ? leagueSeasonPlayerRef(expr, fact.seasonId ?? ctx.season.id, ctx.asOf) : null,
+    // League coverage is only assessed for the stats season: a fact in another season gets no league frames.
+    league: ctx.league.complete && (fact.seasonId ?? ctx.season.id) === ctx.season.id
+      ? leagueSeasonPlayerRef(expr, ctx.season.id, ctx.asOf) : null,
     start: ctx.recordsStart,
     betterIsHigher: true,
     ordinal: true,

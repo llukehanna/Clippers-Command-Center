@@ -14,8 +14,9 @@ import { loadPrior } from './store.js';
 import type { EngineContext, PriorState, RosterPlayer, TeamInfo } from './types.js';
 
 export const MIN_SEASON_GAMES = 10;
+export const DEFAULT_POSTGAME_DAYS = 3;
 
-export interface LoadOptions { asOf: string; gameId?: string | null; withPrior: boolean }
+export interface LoadOptions { asOf: string; gameId?: string | null; withPrior: boolean; postgameDays?: number }
 
 export async function loadEngineContext(opts: LoadOptions): Promise<EngineContext | null> {
   const { asOf } = opts;
@@ -104,6 +105,7 @@ export async function loadEngineContext(opts: LoadOptions): Promise<EngineContex
     roster,
     league: assessLeagueCoverage(coverage, lac.teamId, latest?.d ?? null),
     gameId: opts.gameId ?? null,
+    postgameDays: opts.postgameDays ?? DEFAULT_POSTGAME_DAYS,
     prior,
   };
 }

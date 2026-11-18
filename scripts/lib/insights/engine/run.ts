@@ -14,9 +14,10 @@ import { factKey } from './keys.js';
 import { combineProof, selectProofRows, type ProofPart } from './proof.js';
 import { runQuery } from './query.js';
 import { questionsFor } from './questions.js';
+import { renderSeason } from './records.js';
 import { renderInsight } from './render.js';
 import { isTrivial, probability, salienceClass, scoreInsight, unchangedSince } from './score.js';
-import { deactivateLegacy, deactivateStale, upsertInsight } from './store.js';
+import { deactivateLegacy, deactivateRetired, deactivateStale, upsertInsight } from './store.js';
 import type { Detector, DetectorOutput, EngineContext, Fact, FactKind, InsightDraft, Runner } from './types.js';
 
 export interface RunOptions {
@@ -24,6 +25,8 @@ export interface RunOptions {
   asOf: string;
   write: boolean;
   gameId?: string | null;
+  /** Postgame window in days (default 3). */
+  postgameDays?: number;
   log?: (msg: string) => void;
   /** Override the registry (tests). */
   detectors?: readonly Detector[];
@@ -39,6 +42,7 @@ export interface EngineResult {
   upserted: number;
   deactivated: number;
   legacyDeactivated: number;
+  retiredDeactivated: number;
 }
 
 /** Days from the fact to the reference date; a completed season is measured from its last game. */
@@ -57,7 +61,12 @@ export async function buildDraft(
   const framed = await frameFact(fact, ctx, run, questionsFor(fact));
   if (isTrivial(probability(fact.sample), framed.frame.type, fact.kind)) return { reason: 'trivial' };
 
-  const rendered = renderInsight(fact, framed.frame, { surface: fact.surface, season: ctx.season, teams: ctx.teams }, key);
+  // Postgame claims freeze after their window, so they name their season rather than say "this season".
+  const factSeason = renderSeason(fact.seasonId, ctx.season, ctx.asOf, fact.context.date);
+  const season = fact.surface === 'postgame'
+    ? { ...factSeason, isCurrent: false, phrase: `in ${factSeason.label}` }
+    : factSeason;
+  const rendered = renderInsight(fact, framed.frame, { surface: fact.surface, season, teams: ctx.teams }, key);
   if (!rendered) return { reason: 'too_long' };
   const frame = { ...framed.frame, text: rendered.context };
 
@@ -85,8 +94,13 @@ export async function buildDraft(
 
 export async function runEngine(opts: RunOptions): Promise<EngineResult> {
   const log = opts.log ?? (() => {});
-  const ctx = await loadEngineContext({ asOf: opts.asOf, gameId: opts.gameId ?? null, withPrior: opts.write });
-  if (!ctx) return { context: null, drafts: [], dropped: [], upserted: 0, deactivated: 0, legacyDeactivated: 0 };
+  if (opts.gameId && opts.surfaces.some((s) => s !== 'postgame')) {
+    throw new Error('gameId runs cover the postgame surface only');
+  }
+  const ctx = await loadEngineContext({
+    asOf: opts.asOf, gameId: opts.gameId ?? null, withPrior: opts.write, postgameDays: opts.postgameDays,
+  });
+  if (!ctx) return { context: null, drafts: [], dropped: [], upserted: 0, deactivated: 0, legacyDeactivated: 0, retiredDeactivated: 0 };
   if (!ctx.league.complete) {
     log(`::warning title=League data incomplete::${ctx.league.reason} — league-wide detectors and frames are skipped`);
   }
@@ -98,6 +112,14 @@ export async function runEngine(opts: RunOptions): Promise<EngineResult> {
     // A null gameIds means "the whole surface", which for postgame would deactivate every game's rows.
     if (detector.surface === 'postgame' && out.gameIds === null) {
       throw new Error(`postgame detector ${detector.name} returned gameIds null; postgame detectors must name the games they covered`);
+    }
+    for (const f of out.facts) {
+      if (f.surface !== detector.surface || !detector.categories.includes(f.kind)) {
+        throw new Error(`${detector.name} emitted ${f.surface}/${f.kind}, outside its scope ${detector.surface}/${detector.categories.join(',')}`);
+      }
+      if (detector.surface === 'postgame' && (f.gameId === null || !out.gameIds!.includes(f.gameId))) {
+        throw new Error(`${detector.name} emitted a fact for game ${f.gameId}, which it did not cover`);
+      }
     }
     outputs.push({ detector, out });
   }
@@ -118,7 +140,7 @@ export async function runEngine(opts: RunOptions): Promise<EngineResult> {
     }
   }
 
-  if (!opts.write) return { context: ctx, drafts, dropped, upserted: 0, deactivated: 0, legacyDeactivated: 0 };
+  if (!opts.write) return { context: ctx, drafts, dropped, upserted: 0, deactivated: 0, legacyDeactivated: 0, retiredDeactivated: 0 };
 
   for (const d of drafts) await upsertInsight(d);
   let deactivated = 0;
@@ -127,5 +149,6 @@ export async function runEngine(opts: RunOptions): Promise<EngineResult> {
     deactivated += await deactivateStale({ surface: detector.surface, categories: detector.categories, gameIds: out.gameIds }, kept);
   }
   const legacyDeactivated = await deactivateLegacy();
-  return { context: ctx, drafts, dropped, upserted: drafts.length, deactivated, legacyDeactivated };
+  const retiredDeactivated = await deactivateRetired();
+  return { context: ctx, drafts, dropped, upserted: drafts.length, deactivated, legacyDeactivated, retiredDeactivated };
 }

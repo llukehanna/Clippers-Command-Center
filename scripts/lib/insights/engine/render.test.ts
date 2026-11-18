@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Frame } from '../../../../src/lib/insights/types';
 import { MAX_HEADLINE, phrasingsFor, renderInsight } from './render';
 import { TEMPLATES } from './templates/index';
+import { FACT_KINDS } from './types';
 import type { RenderContext } from './templates/shared';
 import { COMPLETED_SEASON, CURRENT_SEASON, makeCtx, makeFact } from './__fixtures__/facts';
 import type { Fact } from './types';
@@ -108,8 +109,7 @@ describe('every template renders clean and fits', () => {
     }
   });
   it('covers every fact kind', () => {
-    expect(Object.keys(TEMPLATES).sort()).toEqual(
-      ['h2h', 'last_meeting', 'league_night', 'league_rank', 'milestone', 'opp_rank', 'recent_form', 'standings', 'streak', 'yoy_change']);
+    expect(Object.keys(TEMPLATES).sort()).toEqual([...FACT_KINDS].sort());
   });
 });
 

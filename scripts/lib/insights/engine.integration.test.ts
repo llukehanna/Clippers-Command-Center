@@ -421,6 +421,24 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     });
   });
 
+  describe('postgame window', () => {
+    it('covers the last N days of regular-season finals, or one game', async () => {
+      const { loadEngineContext } = await import('./engine/context');
+      const { postgameGames } = await import('./engine/games');
+      const at = async (postgameDays: number, gameId: string | null = null) =>
+        postgameGames((await loadEngineContext({ asOf: '2026-02-17', withPrior: false, postgameDays, gameId }))!);
+      const three = await at(3);
+      expect(three.map((g) => g.date)).toEqual(['2026-02-16']);
+      expect(three[0].seasonId).toBe(2025);
+      expect(['W', 'L']).toContain(three[0].result);
+      expect(three[0].lacScore).toBeGreaterThan(0);
+      expect((await at(5)).map((g) => g.date)).toEqual(['2026-02-14', '2026-02-16']);
+      const [first] = await sql<{ game_id: string }[]>`
+        SELECT game_id::text FROM games WHERE season_id = 2025 AND 1 IN (home_team_id, away_team_id) ORDER BY game_date LIMIT 1`;
+      expect((await at(3, first.game_id)).map((g) => g.gameId)).toEqual([first.game_id]);
+    }, TIMEOUT);
+  });
+
   describe('generate-insights', () => {
     it('writes every batch surface, cuts legacy rows, keeps live rows, and verifies', async () => {
       await sql`
@@ -499,5 +517,58 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         .rejects.toThrow(/postgame\.rogue/);
       expect((await sql<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM insights WHERE is_active`)[0].n).toBe(before);
     }, TIMEOUT);
+
+    describe('detector output is checked before anything is written', () => {
+      const activeRows = async () =>
+        (await sql<{ n: number; h: string }[]>`
+          SELECT COUNT(*)::int AS n, COALESCE(MD5(STRING_AGG(proof_hash, ',' ORDER BY proof_hash)), '') AS h
+          FROM insights WHERE is_active`)[0];
+      const stat = (over: object = {}) => ({
+        kind: 'league_night' as const, surface: 'postgame' as const,
+        subject: { type: 'player' as const, id: '1', name: 'Star Clipper' }, stat: 'pts', value: 30,
+        window: { type: 'game' as const, game_id: '1', season_id: 2025 }, context: { date: '2026-02-16' },
+        polarity: 'positive' as const, proof: { sql: 'SELECT 1 AS one', params: [], match: { one: 1 } },
+        asOf: '2026-02-17', sample: { kind: 'context' as const }, data: {}, gameId: '1', seasonId: 2025, ...over,
+      });
+      const rogue = (over: object, gameIds: string[] | null = ['1'], surface: 'postgame' | 'season' = 'postgame') => ({
+        name: 'rogue', surface, categories: ['league_night' as const], run: async () => ({ facts: [stat(over)], gameIds }),
+      });
+
+      it('a fact of a kind outside the detector categories', async () => {
+        const { runEngine } = await import('./engine/run');
+        const before = await activeRows();
+        await expect(runEngine({ surfaces: ['postgame'], asOf: '2026-02-17', write: true, detectors: [rogue({ kind: 'streak' })] }))
+          .rejects.toThrow(/rogue emitted postgame\/streak/);
+        expect(await activeRows()).toEqual(before);
+      }, TIMEOUT);
+
+      it('a fact of another surface', async () => {
+        const { runEngine } = await import('./engine/run');
+        const before = await activeRows();
+        await expect(runEngine({ surfaces: ['postgame'], asOf: '2026-02-17', write: true, detectors: [rogue({ surface: 'season' })] }))
+          .rejects.toThrow(/rogue emitted season\/league_night/);
+        expect(await activeRows()).toEqual(before);
+      }, TIMEOUT);
+
+      it('a postgame fact for a game the detector did not cover', async () => {
+        const { runEngine } = await import('./engine/run');
+        const before = await activeRows();
+        await expect(runEngine({ surfaces: ['postgame'], asOf: '2026-02-17', write: true, detectors: [rogue({ gameId: '2' })] }))
+          .rejects.toThrow(/did not cover/);
+        await expect(runEngine({ surfaces: ['postgame'], asOf: '2026-02-17', write: true, detectors: [rogue({ gameId: null })] }))
+          .rejects.toThrow(/did not cover/);
+        expect(await activeRows()).toEqual(before);
+      }, TIMEOUT);
+
+      it('a gameId run with a surface other than postgame', async () => {
+        const { runEngine } = await import('./engine/run');
+        const before = await activeRows();
+        await expect(runEngine({ surfaces: ['season'], asOf: '2026-02-17', write: true, gameId: '1', detectors: [rogue({}, null, 'season')] }))
+          .rejects.toThrow(/gameId runs cover the postgame surface only/);
+        await expect(runEngine({ surfaces: ['postgame', 'season'], asOf: '2026-02-17', write: true, gameId: '1' }))
+          .rejects.toThrow(/gameId runs cover the postgame surface only/);
+        expect(await activeRows()).toEqual(before);
+      }, TIMEOUT);
+    });
   });
 });

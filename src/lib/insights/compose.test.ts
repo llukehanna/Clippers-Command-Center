@@ -20,6 +20,15 @@ describe('composeFeed (spec §2.7)', () => {
     expect(ids(feed)).toEqual(['a', 'b', 'd', 'f']);
   });
 
+  it('does not cap a player page per player, but still caps categories and size (R3)', () => {
+    const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((id, i) =>
+      item(id, { surface: 'player', player_id: '1', category: `cat${Math.floor(i / 2)}`, importance: 90 - i }));
+    expect(ids(composeFeed(many, 'player_page'))).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+    const sameCategory = ['x', 'y', 'z'].map((id, i) => item(id, { surface: 'player', player_id: '1', category: 'streak', importance: 80 - i }));
+    expect(ids(composeFeed(sameCategory, 'player_page'))).toEqual(['x', 'y']);
+    expect(ids(composeFeed(many.map((m) => ({ ...m, surface: 'season' as const })), 'season_feed'))).toEqual(['a', 'b']);
+  });
+
   it('keeps one team item above importance 40 in feeds of three or more', () => {
     const players = [
       item('p1', { surface: 'pregame', player_id: '1', category: 'a', importance: 90 }),

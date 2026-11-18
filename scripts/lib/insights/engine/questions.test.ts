@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { refsFor } from './references';
+import { refAsOf, refsFor } from './references';
+import { FACT_KINDS } from './types';
 import {
   careerHigh, clippersRank, groupCompany, groupFirstSince, groupSeasonHigh, leagueRank, milestoneFirstSince,
-  nthTime, questionsFor, subjectFirstSince, streakLongestSince, streakSeasonHigh, subjectSeasonHigh, yoyPlayerBest, yoyRecordBest,
+  nthTime, QUESTIONS_BY_KIND, questionsFor, subjectFirstSince, streakLongestSince, streakSeasonHigh, subjectSeasonHigh, yoyPlayerBest, yoyRecordBest,
 } from './questions';
 import { makeCtx, makeFact } from './__fixtures__/facts';
 
@@ -162,5 +163,27 @@ describe('kind questions', () => {
     expect(questionsFor(night)).toContain(groupFirstSince);
     expect(questionsFor(streak)).toEqual([streakLongestSince, streakSeasonHigh]);
     expect(questionsFor(makeFact({ kind: 'h2h', data: {} }))).toEqual([]);
+  });
+});
+
+describe('registry', () => {
+  it('has questions (possibly none) for every fact kind', () => {
+    expect(Object.keys(QUESTIONS_BY_KIND).sort()).toEqual([...FACT_KINDS].sort());
+  });
+});
+
+describe('refAsOf (R2: postgame references are bounded by the game date)', () => {
+  it('uses the fact date for a postgame fact older than the as-of, the as-of otherwise', () => {
+    expect(refAsOf(night, ctx)).toBe('2025-11-28');
+    expect(refAsOf({ ...night, context: { ...night.context, date: '2026-02-25' } }, ctx)).toBe('2026-02-25');
+    expect(refAsOf({ ...night, surface: 'season' }, ctx)).toBe('2026-02-25');
+  });
+});
+
+describe('league refs only for the checked season (R6)', () => {
+  it('suppresses league refs for a fact outside the stats season', () => {
+    expect(refsFor(night, ctx)!.league).not.toBeNull();
+    expect(refsFor({ ...night, seasonId: 2026 }, ctx)!.league).toBeNull();
+    expect(refsFor({ ...night, seasonId: null }, ctx)!.league).not.toBeNull();
   });
 });

@@ -56,6 +56,7 @@ export function makeCtx(over: Partial<EngineContext> = {}): EngineContext {
     ]),
     league: { complete: true, reason: null },
     gameId: null,
+    postgameDays: 3,
     prior: new Map(),
     ...over,
   };

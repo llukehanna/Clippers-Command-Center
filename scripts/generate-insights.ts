@@ -5,8 +5,9 @@
 // per detector (and per game for postgame); v1 rows (no surface) are
 // deactivated on the first run; live rows are never touched.
 //
-// Run via: npm run generate-insights [-- --surface=season,pregame,postgame]
-//          [--game=<id> (postgame only)] [--as-of=YYYY-MM-DD] [--dry] [--verbose]
+// Run via: npm run generate-insights [-- --surface=season,pregame,postgame,player]
+//          [--game=<id> (postgame only)] [--days=N (postgame window, default 3)]
+//          [--as-of=YYYY-MM-DD] [--dry] [--verbose]
 import { sql } from './lib/db.js';
 import { parseEngineArgs } from './lib/insights/engine/cli.js';
 import { laToday } from './lib/insights/engine/dates.js';
@@ -23,7 +24,7 @@ async function main(): Promise<void> {
   console.log(`\n=== Insight Engine v2 — as of ${args.asOf}; ${args.surfaces.join(', ')}` +
     `${args.gameId ? `; game ${args.gameId}` : ''}${args.write ? '' : ' (dry run)'} ===\n`);
   const result = await runEngine({
-    surfaces: args.surfaces, gameId: args.gameId, asOf: args.asOf, write: args.write, log: (m) => console.log(m),
+    surfaces: args.surfaces, gameId: args.gameId, asOf: args.asOf, write: args.write, postgameDays: args.days, log: (m) => console.log(m),
   });
   const ctx = result.context;
   if (!ctx) {
@@ -35,7 +36,7 @@ async function main(): Promise<void> {
     `league data ${ctx.league.complete ? 'complete' : 'incomplete'}`);
   console.log(`Insights: ${countBy(result.drafts, (d) => `${d.surface}/${d.category}`)}`);
   console.log(`Dropped: ${countBy(result.dropped, (d) => d.reason)}`);
-  console.log(`${result.upserted} upserted, ${result.deactivated} stale deactivated, ${result.legacyDeactivated} legacy deactivated`);
+  console.log(`${result.upserted} upserted, ${result.deactivated} stale deactivated, ${result.legacyDeactivated} legacy deactivated, ${result.retiredDeactivated} retired deactivated`);
   if (args.verbose) {
     for (const d of [...result.drafts].sort((a, b) => b.importance - a.importance)) {
       console.log(`  [${d.importance}] ${d.surface} ${d.headline} — ${d.detail}`);

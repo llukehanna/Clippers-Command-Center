@@ -73,3 +73,15 @@ export async function deactivateLegacy(): Promise<number> {
   `;
   return result.count;
 }
+
+/** Categories whose detector was retired: their rows are deactivated on every write run. */
+export const RETIRED_CATEGORIES: string[] = [];
+
+export async function deactivateRetired(): Promise<number> {
+  if (RETIRED_CATEGORIES.length === 0) return 0;
+  const result = await sql`
+    UPDATE insights SET is_active = FALSE, updated_at = now()
+    WHERE category = ANY(${RETIRED_CATEGORIES}::text[]) AND is_active
+  `;
+  return result.count;
+}

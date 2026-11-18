@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { addDays, daysBetween, fmtDate, isIsoDate, laToday, monthYear, yearsBetween } from './dates';
-import { parseRecordsStart, recordsSeasons, seasonStartDate } from './records';
+import { parseRecordsStart, recordsSeasons, renderSeason, seasonStartDate } from './records';
 import { factKey, phrasingIndex } from './keys';
 import { combineProof, selectProofRows, shiftPlaceholders, withRef } from './proof';
-import { makeFact } from './__fixtures__/facts';
+import { COMPLETED_SEASON, makeFact } from './__fixtures__/facts';
 
 describe('dates', () => {
   it('validates ISO dates', () => {
@@ -96,5 +96,16 @@ describe('proof SQL', () => {
     expect(selectProofRows(rows, { player_id: '1' })).toEqual([rows[0], rows[2]]);
     expect(selectProofRows(rows, {})).toEqual(rows);
     expect(selectProofRows(rows, { player_id: '9' })).toBeNull();
+  });
+});
+
+describe('renderSeason', () => {
+  it('words a fact by its own season, not the stats season', () => {
+    expect(renderSeason(2026, COMPLETED_SEASON, '2026-11-05', '2026-11-04'))
+      .toEqual({ id: 2026, label: '2026-27', isCurrent: true, phrase: 'this season', lastGameDate: '2026-11-04' });
+    expect(renderSeason(2025, COMPLETED_SEASON, '2026-11-05', '2026-02-01')).toBe(COMPLETED_SEASON);
+    expect(renderSeason(null, COMPLETED_SEASON, '2026-11-05', '2026-02-01')).toBe(COMPLETED_SEASON);
+    expect(renderSeason(2024, COMPLETED_SEASON, '2026-11-05', '2025-03-01'))
+      .toMatchObject({ id: 2024, isCurrent: false, phrase: 'in 2024-25' });
   });
 });
