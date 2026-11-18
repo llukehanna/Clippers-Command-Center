@@ -21,7 +21,7 @@ export function Countdown({ tipoff }: { tipoff: string | null }) {
           <div className="text-[22px] font-semibold leading-none tracking-[-0.02em]">
             {value == null ? <span className="text-dim">··</span> : String(value).padStart(2, '0')}
           </div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-dim">{label}</div>
+          <div className="mt-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-dim">{label}</div>
         </div>
       ))}
     </div>

@@ -44,16 +44,24 @@ export function NextGamePanel({ game, context, eyebrow = 'Next game', className 
           {game.is_preseason ? <Chip tone="blue">Preseason</Chip> : context}
         </div>
 
-        <div className="my-6 grid grid-cols-1 items-center gap-4 sm:my-7 sm:grid-cols-[1fr_auto_1fr] sm:gap-5">
-          <TeamMark abbr="LAC" size="xl" name="Clippers" meta={home ? 'Home' : 'Away'} priority />
-          <span className="hidden font-mono text-[12px] tracking-[0.1em] text-dim sm:block">{home ? 'VS' : '@'}</span>
+        {/* Side by side at every width; on phones each team stacks logo over name. */}
+        <div className="my-6 grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:my-7 sm:gap-5">
+          <TeamMark
+            abbr="LAC"
+            size="xl"
+            name="Clippers"
+            meta={home ? 'Home' : 'Away'}
+            className="max-sm:flex-col max-sm:gap-2.5 max-sm:text-center"
+            priority
+          />
+          <span className="font-mono text-[12px] tracking-[0.1em] text-dim">{home ? 'VS' : '@'}</span>
           <TeamMark
             abbr={game.opponent_abbr}
             size="xl"
             name={teamName(game.opponent_abbr)}
             meta={home ? 'Away' : `Home · ${teamCity(game.opponent_abbr)}`}
             align="right"
-            className="sm:justify-self-end [@media(max-width:639px)]:flex-row [@media(max-width:639px)]:text-left"
+            className="sm:justify-self-end max-sm:flex-col max-sm:gap-2.5 max-sm:text-center"
             priority
           />
         </div>
