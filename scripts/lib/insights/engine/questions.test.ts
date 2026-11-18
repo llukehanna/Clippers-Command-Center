@@ -38,9 +38,13 @@ describe('game questions', () => {
     expect(q.sql.startsWith('WITH ref AS (')).toBe(true);
     expect(q.sql).toContain('value >= $4::float8');
     expect(q.sql).toContain('game_date < $5::text');
-    expect(q.params.slice(3)).toEqual([55, '2025-11-28']);
+    expect(q.sql).toContain('game_id = $6::text');
+    expect(q.sql).toContain('NOT (game_id = $7::text AND subject_id = $8::text)');
+    expect(q.params.slice(3)).toEqual([55, '2025-11-28', '500', '500', night.subject.id]);
     expect(groupFirstSince.interpret([{ game_date: '2021-03-01', subject_name: 'Paul George', value: 56 }], night, ctx))
       .toMatchObject({ type: 'first_since', strength: 0.65, who: 'group', since_date: '2021-03-01', records_label: '2020-21' });
+    // a same-game teammate (game_date = fact date) who matched or beat it vetoes the frame
+    expect(groupFirstSince.interpret([{ game_date: '2025-11-28', subject_name: 'Teammate', value: 60 }], night, ctx)).toBeNull();
     expect(groupFirstSince.interpret([], night, ctx))
       .toMatchObject({ type: 'records_best', strength: 0.9, records_seasons: 6 });
   });
@@ -48,6 +52,31 @@ describe('game questions', () => {
     const old = { ...night, seasonId: 2019, window: { ...night.window, season_id: 2019 } };
     expect(groupFirstSince.build(old, ctx)).toBeNull();
     expect(groupCompany.build(old, ctx)).toBeNull();
+    expect(subjectFirstSince.build(old, ctx)).toBeNull();
+    expect(subjectSeasonHigh.build(old, ctx)).toBeNull();
+    expect(nthTime.build(old, ctx)).toBeNull();
+    expect(groupSeasonHigh.build(old, ctx)).toBeNull();
+    const oldStreak = makeFact({ seasonId: 2019 });
+    expect(streakSeasonHigh.build(oldStreak, ctx)).toBeNull();
+  });
+  it('group comparisons exclude only the subject\'s own row, so same-game teammates still count', () => {
+    for (const q of [groupSeasonHigh, clippersRank, groupCompany]) {
+      const built = q.build(night, ctx)!;
+      expect(built.sql).toMatch(/NOT \(game_id = \$\d+::text AND subject_id = \$\d+::text\)/);
+      expect(built.sql).not.toContain('game_id <>');
+      expect(built.params).toContain(night.subject.id);
+    }
+    // a teammate's 45 in the same game beats this 40: not a season high
+    const forty = { ...night, value: 40 };
+    expect(groupSeasonHigh.interpret([{ best: 45, games: 60 }], forty, ctx)).toBeNull();
+  });
+  it('career_high and group_company only count games strictly before the fact', () => {
+    const ch = careerHigh.build(night, ctx)!;
+    expect(ch.sql).toContain('FILTER (WHERE game_date < $3::text)');
+    expect(ch.sql).not.toContain('game_id <>');
+    expect(ch.params).toEqual(['1', '2026-02-25', '2025-11-28']);
+    const gc = groupCompany.build(night, ctx)!;
+    expect(gc.sql).toContain('game_date < $5::text OR game_id = $6::text');
   });
   it('only_one is for non-ordinal facts; joins_company names the others', () => {
     expect(groupCompany.interpret([], night, ctx)).toBeNull();
@@ -86,18 +115,20 @@ describe('game questions', () => {
     expect(q.params).toEqual(['1', '2026-02-25', 55, '2025-11-28', 2020]);
     expect(subjectFirstSince.interpret([{ game_date: '2021-03-01', value: 56 }], night, ctx))
       .toMatchObject({ type: 'first_since', strength: 0.65, who: 'subject', since_date: '2021-03-01' });
-    expect(subjectFirstSince.interpret([{ game_date: '2015-03-01', value: 56 }], night, ctx))
-      .toMatchObject({ type: 'first_since', strength: 0.9, who: 'subject' });
+    expect(subjectFirstSince.interpret([{ game_date: '2021-03-01', value: 56 }], night, ctx)!.years).toBeCloseTo(4.7, 1);
+    expect(subjectFirstSince.interpret([{ game_date: '2020-10-01', value: 56 }], night, ctx))
+      .toMatchObject({ type: 'first_since', strength: 0.8 });
     expect(subjectFirstSince.interpret([], night, ctx)).toBeNull();
-    const old = { ...night, seasonId: 2019, window: { ...night.window, season_id: 2019 } };
-    expect(subjectFirstSince.build(old, ctx)).toBeNull();
   });
 });
 
 describe('kind questions', () => {
   const streak = makeFact();
   it('longest_since reads rb_streaks inside the records', () => {
-    expect(streakLongestSince.build(streak, ctx)!.params).toEqual(['player', 'scoring_30', '1', 5, '2026-02-13', '2020-08-01']);
+    expect(streakLongestSince.build(streak, ctx)!.params).toEqual(['player', 'scoring_30', '1', 5, '2026-02-13', '2020-08-01', '2026-02-25', streak.subject.id]);
+    expect(streakLongestSince.build(streak, ctx)!.sql).toContain('s.end_date <= $7::date');
+    // overlapping longer-or-equal streak by another Clipper ends after this one started: no frame
+    expect(streakLongestSince.interpret([{ end_date: '2026-02-20' }], streak, ctx)).toBeNull();
     expect(streakLongestSince.interpret([{ end_date: '2021-01-10' }], streak, ctx))
       .toMatchObject({ type: 'longest_since', strength: 0.8, since_date: '2021-01-10' });
     expect(streakLongestSince.interpret([], streak, ctx)).toMatchObject({ type: 'records_best', records_seasons: 6 });

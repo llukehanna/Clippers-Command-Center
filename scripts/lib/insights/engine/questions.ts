@@ -36,6 +36,9 @@ function seasonOk(fact: Fact, refs: RefSpec): boolean {
 }
 
 const gameOf = (fact: Fact) => fact.window.game_id ?? null;
+/** The subject's own row in this game (other rows from the same game, e.g. teammates, stay in). */
+const notOwn = (b: (v: string, type: string) => string, game: string, fact: Fact) =>
+  `NOT (game_id = ${b(game, 'text')} AND subject_id = ${b(fact.subject.id, 'text')})`;
 const recordsExtra = (fact: Fact, refs: RefSpec) => ({
   records_label: refs.start!.label,
   records_seasons: recordsSeasons(refs.start!, fact.seasonId ?? refs.start!.season_id),
@@ -51,10 +54,10 @@ export const careerHigh: Question = {
     if (!refs?.subject || !refs.start || !refs.ordinal || fact.subject.type !== 'player' || !game) return null;
     const c = cmp(refs);
     return withRef(refs.subject, (b) => {
-      const g = b(game, 'text');
-      return `SELECT ${c.agg}(value) FILTER (WHERE game_id <> ${g})::float8 AS prev_best,
+      const d = b(fact.context.date, 'text');
+      return `SELECT ${c.agg}(value) FILTER (WHERE game_date < ${d})::float8 AS prev_best,
        MIN(season_id)::int AS first_season,
-       (COUNT(*) FILTER (WHERE game_id <> ${g}))::int AS games
+       (COUNT(*) FILTER (WHERE game_date < ${d}))::int AS games
 FROM ref`;
     });
   },
@@ -81,7 +84,9 @@ export const groupCompany: Question = {
     const value = refs.ordinal ? fact.value : 1;
     return withRef(refs.group, (b) => `SELECT subject_id, subject_name, value, game_id, game_date
 FROM ref
-WHERE value ${c.ge} ${b(value, 'float8')} AND game_id <> ${b(game, 'text')}
+WHERE value ${c.ge} ${b(value, 'float8')}
+  AND (game_date < ${b(fact.context.date, 'text')} OR game_id = ${b(game, 'text')})
+  AND ${notOwn(b, game, fact)}
 ORDER BY value ${c.order}, game_date, game_id
 LIMIT 4`);
   },
@@ -103,12 +108,16 @@ export const groupFirstSince: Question = {
   name: 'group_first_since',
   build(fact, ctx) {
     const refs = refsFor(fact, ctx);
-    if (!refs?.group || !seasonOk(fact, refs)) return null;
+    const game = gameOf(fact);
+    if (!refs?.group || !seasonOk(fact, refs) || !game) return null;
     const c = cmp(refs);
     const value = refs.ordinal ? fact.value : 1;
+    // Earlier games, plus same-game teammates (they sort first and veto the frame).
     return withRef(refs.group, (b) => `SELECT subject_id, subject_name, value, game_id, game_date
 FROM ref
-WHERE value ${c.ge} ${b(value, 'float8')} AND game_date < ${b(fact.context.date, 'text')}
+WHERE value ${c.ge} ${b(value, 'float8')}
+  AND (game_date < ${b(fact.context.date, 'text')} OR game_id = ${b(game, 'text')})
+  AND ${notOwn(b, game, fact)}
 ORDER BY game_date DESC, game_id DESC
 LIMIT 1`);
   },
@@ -116,6 +125,8 @@ LIMIT 1`);
     const refs = refsFor(fact, ctx);
     if (!refs?.start) return null;
     const r = rows[0];
+    // A same-game teammate matched or beat it: neither "best" nor "first since" holds.
+    if (r && String(r.game_date) >= fact.context.date) return null;
     if (!r) return frame('records_best', FIXED_STRENGTH.records_best, 'group', recordsExtra(fact, refs));
     const since = String(r.game_date);
     const years = yearsBetween(since, fact.context.date);
@@ -156,7 +167,7 @@ export const clippersRank: Question = {
     return withRef(refs.group, (b) => `SELECT (COUNT(*) FILTER (WHERE value ${c.gt} ${b(fact.value, 'float8')}) + 1)::int AS rank,
        COUNT(*)::int AS total
 FROM ref
-WHERE game_id <> ${b(game, 'text')}`);
+WHERE ${notOwn(b, game, fact)}`);
   },
   interpret(rows, fact, ctx) {
     const refs = refsFor(fact, ctx);
@@ -175,11 +186,11 @@ function seasonHigh(who: 'group' | 'subject'): Question {
       const refs = refsFor(fact, ctx);
       const ref = who === 'group' ? refs?.group : refs?.subject;
       const game = gameOf(fact);
-      if (!refs || !ref || !refs.ordinal || fact.seasonId === null || !game) return null;
+      if (!refs || !ref || !refs.ordinal || !seasonOk(fact, refs) || !game) return null;
       const c = cmp(refs);
       return withRef(ref, (b) => `SELECT ${c.agg}(value)::float8 AS best, COUNT(*)::int AS games
 FROM ref
-WHERE season_id = ${b(fact.seasonId!, 'int')} AND game_id <> ${b(game, 'text')}`);
+WHERE season_id = ${b(fact.seasonId!, 'int')} AND ${notOwn(b, game, fact)}`);
     },
     interpret(rows, fact, ctx) {
       const refs = refsFor(fact, ctx);
@@ -216,7 +227,7 @@ export const nthTime: Question = {
   name: 'nth_time',
   build(fact, ctx) {
     const refs = refsFor(fact, ctx);
-    if (!refs?.subject || fact.seasonId === null) return null;
+    if (!refs?.subject || !seasonOk(fact, refs)) return null;
     const c = cmp(refs);
     const value = refs.ordinal ? fact.value : 1;
     return withRef(refs.subject, (b) => `SELECT COUNT(*)::int AS n
@@ -250,10 +261,11 @@ export const streakLongestSince: Question = {
 FROM rb_streaks s
 LEFT JOIN players p ON s.entity_type = 'player' AND p.player_id = s.entity_id
 WHERE s.entity_type = $1::text AND s.streak_key = $2::text AND s.team_id = $3::bigint
-  AND s.length >= $4::int AND s.end_date < $5::date AND s.start_date >= $6::date
+  AND s.length >= $4::int AND s.end_date <= $7::date AND s.start_date >= $6::date
+  AND NOT (s.entity_id::text = $8::text AND s.start_date = $5::date)
 ORDER BY s.end_date DESC, s.start_date DESC
 LIMIT 1`,
-      params: [fact.subject.type, fact.stat, ctx.lac.teamId, fact.value, fact.data.start_date!, seasonStartDate(ctx.recordsStart!.season_id)],
+      params: [fact.subject.type, fact.stat, ctx.lac.teamId, fact.value, fact.data.start_date!, seasonStartDate(ctx.recordsStart!.season_id), ctx.asOf, fact.subject.id],
     };
   },
   interpret(rows, fact, ctx) {
@@ -264,6 +276,8 @@ LIMIT 1`,
       records_label: start.label, records_seasons: recordsSeasons(start, fact.seasonId ?? start.season_id),
     });
     const since = String(r.end_date);
+    // A longer-or-equal streak by another Clipper overlapping this one: not the longest.
+    if (fact.data.start_date && since >= fact.data.start_date) return null;
     const years = yearsBetween(since, fact.data.start_date ?? fact.context.date);
     return frame('longest_since', sinceStrength(years), 'group', { since_date: since, years: round1(years), records_label: start.label });
   },
@@ -272,13 +286,15 @@ LIMIT 1`,
 export const streakSeasonHigh: Question = {
   name: 'streak_season_high',
   build(fact, ctx) {
-    if (fact.kind !== 'streak' || fact.seasonId === null || !fact.data.start_date) return null;
+    const start = ctx.recordsStart;
+    if (fact.kind !== 'streak' || !start || fact.seasonId === null || fact.seasonId < start.season_id || !fact.data.start_date) return null;
     return {
       sql: `SELECT COALESCE(MAX(s.length), 0)::int AS best, COUNT(*)::int AS streaks
 FROM rb_streaks s
 WHERE s.entity_type = $1::text AND s.streak_key = $2::text AND s.team_id = $3::bigint
-  AND s.start_date >= $4::date AND s.end_date < $5::date`,
-      params: [fact.subject.type, fact.stat, ctx.lac.teamId, seasonStartDate(fact.seasonId), fact.data.start_date],
+  AND s.start_date >= $4::date AND s.end_date <= $5::date
+  AND NOT (s.entity_id::text = $6::text AND s.start_date = $7::date)`,
+      params: [fact.subject.type, fact.stat, ctx.lac.teamId, seasonStartDate(fact.seasonId), ctx.asOf, fact.subject.id, fact.data.start_date],
     };
   },
   interpret(rows, fact) {
@@ -332,7 +348,7 @@ export const yoyPlayerBest: Question = {
     return {
       sql: `SELECT g.season_id::int AS season_id, COUNT(*)::int AS games, ROUND((${expr})::numeric, 6)::float8 AS value,
        (SELECT MIN(g2.season_id) FROM game_player_box_scores pb2 JOIN games g2 ON g2.game_id = pb2.game_id
-        WHERE pb2.player_id = $1::bigint)::int AS first_season
+        WHERE pb2.player_id = $1::bigint AND ${REGULAR_SEASON.replace(/\bg\./g, 'g2.')})::int AS first_season
 FROM game_player_box_scores pb
 JOIN games g ON g.game_id = pb.game_id
 WHERE pb.player_id = $1::bigint AND ${REGULAR_SEASON} AND g.season_id < $2::int
