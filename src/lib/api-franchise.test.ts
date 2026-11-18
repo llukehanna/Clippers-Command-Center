@@ -115,6 +115,36 @@ describe('GET /api/franchise/moves', () => {
     expect(lists.some((l) => l.includes('trade') && l.includes('waiver') && l.includes('draft'))).toBe(true);
   });
 
+  it('season strip returns trades first, at most 5', async () => {
+    const { GET } = await import('../../app/api/franchise/moves/route.js');
+    const res = await GET(new Request('http://localhost/api/franchise/moves?season=2019&limit=5&sort=significance'));
+    expect(res.status).toBe(200);
+    const call = callFor('FROM transactions t')!;
+    const q = (call[0] as string[]).join('?');
+    // Trades first, then by number of parts, then newest; capped by the limit parameter.
+    expect(q).toMatch(/ORDER BY[\s\S]*t\.kind = 'trade'[\s\S]*count\(\*\)[\s\S]*t\.date DESC/);
+    expect(q).toContain('LIMIT');
+    expect(call.slice(1)).toContain(5);
+    expect(call.slice(1)).toContain(2019);
+    for (const bad of ['0', '51', 'x', '2.5']) {
+      expect((await GET(new Request(`http://localhost/api/franchise/moves?limit=${bad}`))).status).toBe(400);
+    }
+    expect((await GET(new Request('http://localhost/api/franchise/moves?sort=newest'))).status).toBe(400);
+  });
+
+  it("player filter returns only that person's moves", async () => {
+    const { GET } = await import('../../app/api/franchise/moves/route.js');
+    const res = await GET(new Request('http://localhost/api/franchise/moves?player_id=1'));
+    expect(res.status).toBe(200);
+    const call = callFor('FROM transactions t')!;
+    const q = (call[0] as string[]).join('?');
+    expect(q).toContain('person_xref');
+    expect(q).toContain('involves_clippers = true');
+    expect(call.slice(1)).toContain('1');
+    expect((await GET(new Request('http://localhost/api/franchise/moves?player_id=abc'))).status).toBe(400);
+    expect((await GET(new Request("http://localhost/api/franchise/moves?player_id=1'%20OR%201=1"))).status).toBe(400);
+  });
+
   it('rejects an unknown type or a malformed season with 400', async () => {
     const { GET } = await import('../../app/api/franchise/moves/route.js');
     expect((await GET(new Request('http://localhost/api/franchise/moves?type=bogus'))).status).toBe(400);

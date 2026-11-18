@@ -7,6 +7,9 @@
 //           type and player (echoed back as that season in filters.season; null when there is none)
 //   type    kind group (R2): trade | signing | release | draft | other | all (absent = all)
 //   player  person_key (R3), exact
+//   player_id  players.player_id (via person_xref.player_id): the player page's moves
+//   limit   1-50 rows (absent = all)
+//   sort    `significance` = trades first, then by number of parts, then newest (absent = newest first)
 //
 // season_counts (moves per season for the type and player filters, ignoring season) feeds the
 // era ribbon; player is the filtered person (null without a player filter or when unknown).
@@ -66,6 +69,9 @@ export async function loadFranchiseMoves(url: URL): Promise<ApiResult> {
   const seasonParam = url.searchParams.get('season');
   const typeParam = url.searchParams.get('type');
   const playerParam = url.searchParams.get('player')?.trim() || null;
+  const playerIdParam = url.searchParams.get('player_id');
+  const limitParam = url.searchParams.get('limit');
+  const sortParam = url.searchParams.get('sort');
 
   if (seasonParam != null && seasonParam !== 'latest' && !/^\d{4}$/.test(seasonParam)) {
     return badRequest('season must be a four-digit season start year or latest');
@@ -73,6 +79,14 @@ export async function loadFranchiseMoves(url: URL): Promise<ApiResult> {
   if (typeParam != null && !TYPES.includes(typeParam as MoveTypeFilter)) {
     return badRequest(`type must be one of ${TYPES.join(', ')}`);
   }
+  if (playerIdParam != null && !/^\d{1,15}$/.test(playerIdParam)) return badRequest('player_id must be a numeric player id');
+  if (limitParam != null && !(/^\d{1,2}$/.test(limitParam) && Number(limitParam) >= 1 && Number(limitParam) <= 50)) {
+    return badRequest('limit must be an integer from 1 to 50');
+  }
+  if (sortParam != null && sortParam !== 'significance') return badRequest('sort must be significance');
+  const playerId = playerIdParam;
+  const limit = limitParam == null ? null : Number(limitParam);
+  const bySignificance = sortParam === 'significance';
   const type = (typeParam as MoveTypeFilter | null) ?? null;
   const include = type && type !== 'all' && type !== 'other' ? KIND_GROUPS[type] : null;
   const exclude = type === 'other' ? NAMED_KINDS : null;
@@ -123,7 +137,17 @@ export async function loadFranchiseMoves(url: URL): Promise<ApiResult> {
         AND (${playerParam}::text IS NULL OR EXISTS (
               SELECT 1 FROM transaction_parts pp
               WHERE pp.transaction_id = t.transaction_id AND pp.person_key = ${playerParam}::text))
-      ORDER BY t.date DESC NULLS LAST, t.transaction_id DESC
+        AND (${playerId}::bigint IS NULL OR EXISTS (
+              SELECT 1 FROM transaction_parts ip
+              JOIN person_xref ix ON ix.person_key = ip.person_key
+              WHERE ip.transaction_id = t.transaction_id AND ix.player_id = ${playerId}::bigint))
+      ORDER BY
+        (${bySignificance}::boolean AND t.kind = 'trade') DESC,
+        (CASE WHEN ${bySignificance}::boolean
+              THEN (SELECT count(*) FROM transaction_parts sp WHERE sp.transaction_id = t.transaction_id)
+              ELSE 0 END) DESC,
+        t.date DESC NULLS LAST, t.transaction_id DESC
+      LIMIT ${limit}::int
     `;
 
     const ids = txns.map((t) => t.transaction_id);
