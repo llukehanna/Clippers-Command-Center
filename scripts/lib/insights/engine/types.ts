@@ -20,7 +20,7 @@ export const FACT_KINDS = [
   'streak', 'milestone', 'milestone_crossed', 'league_rank', 'standings', 'recent_form', 'yoy_change',
   'opp_rank', 'h2h', 'last_meeting', 'player_game_stat', 'player_combo',
   'team_game_stat', 'game_flow', 'player_period_stat', 'team_period_stat', 'clutch',
-  'opp_form', 'opp_hot_player', 'rest', 'line',
+  'opp_form', 'opp_hot_player', 'rest', 'line', 'vs_opponent',
 ] as const;
 export type FactKind = (typeof FACT_KINDS)[number];
 

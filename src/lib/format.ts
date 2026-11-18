@@ -26,6 +26,7 @@ const INSIGHT_CATEGORY_LABELS: Record<string, string> = {
   opp_hot_player: 'Scouting Report',
   rest: 'Rest',
   line: 'The Line',
+  vs_opponent: 'Matchup',
   h2h: 'Head to Head',
   last_meeting: 'Last Meeting',
   league_night: 'Big Night',

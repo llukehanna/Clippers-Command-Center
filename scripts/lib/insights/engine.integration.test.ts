@@ -757,6 +757,86 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       const built = await Promise.all(hot.map((f) => buildDraft(f, factKey(f), 'pregame.matchup', ctx)));
       expect(built.filter((d) => !('reason' in d)).length, 'at least one hot opponent survives scoring').toBeGreaterThan(0);
     }, TIMEOUT);
+
+    describe('vs opponent', () => {
+      // Which opponent and min-games clear the floors depends on the fixture's schedule: scan the 2025-26 Clippers
+      // games (the day before each) for the first preview whose opponent has a qualifying player at 3 games.
+      async function findPreview() {
+        const { vsOpponentDetector } = await import('./engine/detectors/pregame-vs-opponent');
+        const dates = await sql<{ d: string }[]>`
+          SELECT (g.game_date - 1)::text AS d FROM games g
+          WHERE g.season_id = 2025 AND ${sql.unsafe(REGULAR_SEASON)} AND 1 IN (g.home_team_id, g.away_team_id) AND g.game_date > '2025-12-15'
+          ORDER BY g.game_date DESC`;
+        for (const { d } of dates) {
+          const ctx = await ctxAt(d);
+          const { facts } = await vsOpponentDetector(3).run(ctx);
+          if (facts.length > 0) return { ctx, asOf: d, minGames: 3, facts };
+        }
+        throw new Error('no fixture preview has a vs-opponent fact at 3 games');
+      }
+
+      it('only gaps of 3+ PPG over enough games, inside the records, proven, on the next game\'s season', async () => {
+        const { vsOpponentDetector, VS_OPPONENT_SQL } = await import('./engine/detectors/pregame-vs-opponent');
+        const { ctx, asOf, minGames } = await findPreview();
+        const next = await nextAt(asOf);
+        let total = 0;
+        for (const floor of [5, minGames]) {
+          const { facts, gameIds } = await vsOpponentDetector(floor).run(ctx);
+          expect(gameIds).toBeNull();
+          for (const f of facts) {
+            total += 1;
+            expect(f).toMatchObject({
+              kind: 'vs_opponent', surface: 'pregame', gameId: next.gameId, seasonId: next.seasonId,
+              context: { opponent_id: next.opponentId }, window: { type: 'career', season_id: next.seasonId },
+            });
+            expect(f.data.games!).toBeGreaterThanOrEqual(floor);
+            expect(Math.abs(f.data.cur_value! - f.data.prev_value!)).toBeGreaterThanOrEqual(3);
+            expect(f.data.label).toBe('2024-25');
+            expect(f.data.career).toBe(false); // first season is the records start: not a complete career
+            expect(f.proof.sql).toBe(VS_OPPONENT_SQL);
+            expect(f.proof.params).toContain(ctx.recordsStart!.season_id);
+            expect(ctx.roster.has(f.subject.id)).toBe(true);
+            const rows = await proofRows(f);
+            expect(rows.length).toBe(1);
+            expect(Number(rows[0].ppg)).toBeCloseTo(f.data.cur_value!, 6);
+            expect(Number(rows[0].games)).toBe(f.data.games);
+          }
+        }
+        expect(total, 'at least one vs-opponent fact').toBeGreaterThan(0);
+      }, TIMEOUT);
+
+      it('"career" only when the whole career is in the data; no records start, no facts', async () => {
+        const { vsOpponentDetector } = await import('./engine/detectors/pregame-vs-opponent');
+        const { ctx, minGames } = await findPreview();
+        // a records start one season earlier: the fixture's players first appear after it
+        const earlier = { ...ctx, recordsStart: { season_id: ctx.recordsStart!.season_id - 1, label: '2023-24' } };
+        const { facts } = await vsOpponentDetector(minGames).run(earlier);
+        expect(facts.length).toBeGreaterThan(0);
+        for (const f of facts) expect(f.data).toMatchObject({ career: true, label: '2023-24' });
+        expect((await vsOpponentDetector(minGames).run({ ...ctx, recordsStart: null })).facts).toEqual([]);
+      }, TIMEOUT);
+
+      it('buildDraft words every fact; none breaks the headline limit', async () => {
+        const { vsOpponentDetector } = await import('./engine/detectors/pregame-vs-opponent');
+        const { buildDraft } = await import('./engine/run');
+        const { factKey } = await import('./engine/keys');
+        const { ctx, minGames } = await findPreview();
+        const { facts } = await vsOpponentDetector(minGames).run(ctx);
+        expect(facts.length).toBeGreaterThan(0);
+        let built = 0;
+        for (const f of facts) {
+          const draft = await buildDraft(f, factKey(f), 'pregame.vs_opponent', ctx);
+          if ('reason' in draft) expect(['trivial'], `${f.subject.name}`).toContain(draft.reason);
+          else {
+            built += 1;
+            expect(draft.headline.length).toBeLessThanOrEqual(90);
+            expect(draft.category).toBe('vs_opponent');
+            expect(draft.detail).toMatch(/regular-season games since 2024-25; [\d.]+ PPG overall/);
+          }
+        }
+        expect(built, 'at least one vs-opponent fact survives scoring').toBeGreaterThan(0);
+      }, TIMEOUT);
+    });
   });
 
   describe('season detectors: ranks and year over year', () => {

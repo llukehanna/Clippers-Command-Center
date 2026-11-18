@@ -8,6 +8,7 @@ import { playerLinesDetector } from './postgame-player-lines.js';
 import { teamLinesDetector } from './postgame-team-lines.js';
 import { matchupDetector } from './pregame-matchup.js';
 import { opponentDetector } from './pregame-opponent.js';
+import { vsOpponentDetector } from './pregame-vs-opponent.js';
 import { milestonesCrossedDetector } from './postgame-milestones.js';
 import { milestoneDetector } from './season-milestones.js';
 import { leagueRankDetector, recentFormDetector, standingsDetector } from './season-ranks.js';
@@ -23,6 +24,7 @@ export const DETECTORS: readonly Detector[] = [
   yoyDetector('season'),
   opponentDetector(),
   matchupDetector(),
+  vsOpponentDetector(),
   playerLinesDetector(),
   teamLinesDetector(),
   flowDetector(),

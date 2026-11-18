@@ -445,6 +445,7 @@ export const QUESTIONS_BY_KIND: Record<FactKind, readonly Question[]> = {
   team_period_stat: PERIOD_QUESTIONS,
   clutch: PERIOD_QUESTIONS,
   opp_form: [],
+  vs_opponent: [],
   opp_hot_player: [],
   rest: [],
   line: [],

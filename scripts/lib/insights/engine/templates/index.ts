@@ -14,6 +14,7 @@ import { recentFormTemplates } from './recent-form.js';
 import type { TemplateModule } from './shared.js';
 import { standingsTemplates } from './standings.js';
 import { teamLineTemplates } from './team-line.js';
+import { vsOpponentTemplates } from './vs-opponent.js';
 import { streakTemplates } from './streak.js';
 import { yoyTemplates } from './yoy.js';
 
@@ -39,4 +40,5 @@ export const TEMPLATES: Record<FactKind, TemplateModule> = {
   opp_hot_player: oppHotPlayerTemplates,
   rest: restTemplates,
   line: lineTemplates,
+  vs_opponent: vsOpponentTemplates,
 };

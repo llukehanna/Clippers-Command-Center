@@ -48,6 +48,10 @@ export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
       return d.rank !== undefined && d.total !== undefined
         ? { type: 'rank_track', rank: d.rank, total: d.total, betterIsHigher: true, label: `the ${d.conference ?? 'conference'}` }
         : null;
+    case 'vs_opponent':
+      return d.prev_value !== undefined && d.cur_value !== undefined
+        ? { type: 'delta', before: { value: d.prev_value, label: 'overall' }, after: { value: d.cur_value, label: 'vs this opponent' }, betterIsHigher: true }
+        : null;
     case 'yoy_change':
       if (d.prev_value === undefined || d.cur_value === undefined || f.seasonId === null) return null;
       return {
