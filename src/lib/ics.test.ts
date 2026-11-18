@@ -6,6 +6,7 @@ const NOW = new Date('2026-11-17T12:00:00Z');
 describe('escapeText', () => {
   it('escapes backslash, semicolon, comma and newlines', () => {
     expect(escapeText('a,b;c\\d\ne')).toBe('a\\,b\\;c\\\\d\\ne');
+    expect(escapeText('a\rb\r\nc')).toBe('a\\nb\\nc');
   });
 });
 

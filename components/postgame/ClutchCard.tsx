@@ -15,7 +15,7 @@ export function ClutchCard({ clutch, oppAbbr }: { clutch: NonNullable<GameStoryP
         </div>
         <div>
           <dt className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-dim">{oppAbbr}</dt>
-          <dd className="m-0 mt-1 text-[15px] font-semibold tabular-nums">{clutch.opp ? line(clutch.opp) : '0 pts'}</dd>
+          <dd className="m-0 mt-1 text-[15px] font-semibold tabular-nums">{clutch.opp ? line(clutch.opp) : '0 pts · 0-0 FG'}</dd>
         </div>
       </dl>
       {clutch.players.length > 0 && (

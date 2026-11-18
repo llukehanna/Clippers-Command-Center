@@ -165,9 +165,11 @@ export async function loadGameStory(gameIdParam: string): Promise<ApiResult> {
     const clutchRows = settled(clutchR, 'clutch') ?? [];
     const lacClutch = clutchRows.find((r) => r.player_id === null && r.team_id === lacId);
     const oppClutch = clutchRows.find((r) => r.player_id === null && r.team_id !== lacId);
-    const clutch: GameStoryPayload['clutch'] = lacClutch
+    // A team row means that team had clutch time; the side without one scored nothing in it.
+    const ZERO_CLUTCH: StoryClutchLine = { pts: 0, fgm: 0, fga: 0, fg3m: 0, ftm: 0, fta: 0, tov: 0 };
+    const clutch: GameStoryPayload['clutch'] = lacClutch || oppClutch
       ? {
-          lac: clutchLine(lacClutch),
+          lac: lacClutch ? clutchLine(lacClutch) : ZERO_CLUTCH,
           opp: oppClutch ? clutchLine(oppClutch) : null,
           players: clutchRows
             .filter((r) => r.player_id !== null && r.team_id === lacId && (r.pts > 0 || r.fga > 0))

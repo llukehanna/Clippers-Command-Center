@@ -11,21 +11,24 @@ export function QuarterTable({ quarters, oppAbbr }: { quarters: NonNullable<Game
       <td className="py-2 text-right font-semibold">{l.pts}</td>
       <td className="py-2 text-right text-mute">{frac(l.fgm, l.fga)}</td>
       <td className="py-2 text-right text-mute">{frac(l.fg3m, l.fg3a)}</td>
+      <td className="py-2 text-right text-mute">{frac(l.ftm, l.fta)}</td>
     </>
   )
   return (
     <Panel className="h-full overflow-x-auto p-5">
       <Eyebrow>Quarter by quarter</Eyebrow>
-      <table className="w-full min-w-[520px] border-collapse text-[13px] tabular-nums">
+      <table className="w-full min-w-[640px] border-collapse text-[13px] tabular-nums">
         <thead>
           <tr className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-dim">
             <th className="pb-2 text-left font-normal" />
             <th className="pb-2 text-right font-normal">LAC</th>
             <th className="pb-2 text-right font-normal">FG</th>
             <th className="pb-2 text-right font-normal">3PT</th>
+            <th className="pb-2 text-right font-normal">FT</th>
             <th className="pb-2 text-right font-normal">{oppAbbr}</th>
             <th className="pb-2 text-right font-normal">FG</th>
             <th className="pb-2 text-right font-normal">3PT</th>
+            <th className="pb-2 text-right font-normal">FT</th>
             <th className="pb-2 pl-4 text-left font-normal">Top Clipper</th>
           </tr>
         </thead>

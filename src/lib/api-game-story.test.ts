@@ -115,6 +115,18 @@ describe('loadGameStory', () => {
     expect([body.flow, body.quarters, body.clutch, body.shots, body.records]).toEqual([null, null, null, null, null]);
   });
 
+  it('shows clutch when only the opponent has a team row, with a zero Clippers line', async () => {
+    respond({
+      'FROM clutch_stats': () => [
+        { team_id: '2', player_id: null, name: null, pts: 4, fgm: 2, fga: 6, fg3m: 0, ftm: 0, fta: 0, tov: 1 },
+      ],
+    });
+    const { body } = await load();
+    expect(body.clutch.lac).toEqual({ pts: 0, fgm: 0, fga: 0, fg3m: 0, ftm: 0, fta: 0, tov: 0 });
+    expect(body.clutch.opp.pts).toBe(4);
+    expect(body.clutch.players).toEqual([]);
+  });
+
   it('nulls a section whose query throws', async () => {
     respond({ 'FROM clutch_stats': () => { throw new Error('boom'); } });
     const { status, body } = await load();

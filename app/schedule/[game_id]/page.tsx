@@ -53,7 +53,7 @@ export default async function GamePreviewPage({ params }: Params) {
       )}
 
       <div className="enter" style={{ ['--i' as string]: 0 }}>
-        <NextGamePanel game={game} eyebrow="Game preview" />
+        <NextGamePanel game={game} eyebrow="Game preview" arena={game.arena} />
       </div>
 
       <section className="enter grid items-stretch gap-3 lg:grid-cols-2" style={{ ['--i' as string]: 1 }}>

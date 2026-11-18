@@ -18,6 +18,7 @@ const ROWS: Array<[string, (f: PreviewTeamForm) => string]> = [
   ['Net rtg, last 10', (f) => (f.last10?.net_rating == null ? '—' : formatSigned(f.last10.net_rating, 1))],
   ['Offense', (f) => rank(f.ranks?.off)],
   ['Defense', (f) => rank(f.ranks?.def)],
+  ['Net rtg', (f) => rank(f.ranks?.net)],
   ['Rest', (f) => rest(f.days_since_last)],
 ]
 

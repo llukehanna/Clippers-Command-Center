@@ -15,11 +15,13 @@ interface NextGamePanelProps {
   context?: React.ReactNode
   eyebrow?: string
   href?: string
+  /** Venue for away games (home games always read Intuit Dome). */
+  arena?: string | null
   className?: string
 }
 
 /** The hero card for the next Clippers game: matchup, tip-off, countdown, line. */
-export function NextGamePanel({ game, context, eyebrow = 'Next game', href, className }: NextGamePanelProps) {
+export function NextGamePanel({ game, context, eyebrow = 'Next game', href, arena, className }: NextGamePanelProps) {
   if (!game) {
     return (
       <Panel variant="hero" className={className}>
@@ -75,6 +77,7 @@ export function NextGamePanel({ game, context, eyebrow = 'Next game', href, clas
               {formatTip(game.start_time_utc)}
               {/* Preseason "home" games are often at neutral sites. */}
               {home && !game.is_preseason ? ' · Intuit Dome' : ''}
+              {!home && arena ? ` · ${arena}` : ''}
             </div>
           </div>
           <Countdown tipoff={game.start_time_utc} />
