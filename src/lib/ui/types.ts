@@ -278,6 +278,12 @@ export interface PlayerDetailPayload {
   >
   splits: Record<'home' | 'away' | 'wins' | 'losses', { pts_avg: number | null; ts_pct: number | null }> | null
   game_log: PlayerGameLogRow[]
+  /** Player-surface cards for the display season (empty for other seasons). */
+  insights: InsightCardData[]
+  /** Milestone watch: milestone_progress rows only (display season). */
+  milestones: { insight_id: string; headline: string; current: number; target: number; label: string }[]
+  /** The season's best regular-season games (earliest wins a tie). */
+  season_highs: { stat: 'pts' | 'reb' | 'ast' | 'fg3m'; label: 'Points' | 'Rebounds' | 'Assists' | 'Threes'; value: number; game_id: string; game_date: string; opp: string; home: boolean }[]
 }
 
 export interface HistoryGameDetailPayload {
@@ -687,6 +693,8 @@ export interface GamePreviewPayload {
     opp: PreviewTeamForm
   }
   insights: Insight[]
+  /** Part B: scouting cards for Up next and matchup notes (at most 4). */
+  insight_feeds: { scouting: InsightCardData[]; notes: MatchupNote[] }
 }
 
 // ─── Game story (/history/[game_id]) ─────────────────────────────────────────

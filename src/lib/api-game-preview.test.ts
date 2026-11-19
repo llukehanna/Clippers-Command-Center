@@ -113,6 +113,22 @@ describe('loadGamePreview', () => {
     expect(body.insights.map((i: { insight_id: string }) => i.insight_id)).toEqual(['rank', 'form', 'h2h']);
   });
 
+  it('insight_feeds: scouting holds opp_rank (not h2h); notes hold opp_form and h2h', async () => {
+    const base = { scope: 'between_games', surface: 'pregame', player_id: null, game_id: '101', season_id: 2026, game_date: '2026-11-20', evidence: null, proof_result: {}, detail: 'd', headline: 'h', entities: null, score_parts: null, updated_at: '2026-11-19T00:00:00Z', nba_person_id: null, player_name: null, opp_abbr: 'SAS', lac_home: false, lac_score: null, opp_score: null };
+    const none = { type: 'none', strength: 0, who: 'group', text: '', proof_rows: [] };
+    respond({
+      'i.is_active = true': () => [
+        { ...base, insight_id: 'form', category: 'opp_form', importance: 60, frame: none },
+        { ...base, insight_id: 'h2h', category: 'h2h', importance: 50, frame: none },
+        { ...base, insight_id: 'rank', category: 'opp_rank', importance: 70, frame: { ...none, type: 'league_rank', strength: 0.6 } },
+      ],
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const feeds = ((await load()).body as any).insight_feeds;
+    expect(feeds.scouting.map((c: { insight_id: string }) => c.insight_id)).toEqual(['rank']);
+    expect(feeds.notes.map((n: { insight_id: string }) => n.insight_id)).toEqual(['form', 'h2h']);
+  });
+
   it('hides a section whose query fails and keeps the page', async () => {
     respond({ 'FROM odds_snapshots': () => { throw new Error('boom'); } });
     const res = await load();

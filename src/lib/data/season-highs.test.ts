@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { seasonHighTags, rareTags, mergeTags, type BoxCol } from './season-highs';
+import { seasonHighTags, rareTags, mergeTags, playerSeasonHighs, type BoxCol } from './season-highs';
 import type { InsightCardData } from '@/src/lib/insights/card';
 
 const line = (o: Partial<Record<'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'fg3m', number | null>> = {}) =>
@@ -49,4 +49,28 @@ describe('mergeTags', () => {
     const blue = { '7': { PTS: { tone: 'rare' as const, label: 'Career high' } } };
     expect(mergeTags(grey, blue)).toEqual({ '7': { PTS: blue['7'].PTS, REB: grey['7'].REB } });
   });
+});
+
+describe('playerSeasonHighs', () => {
+  const g = (o: Record<string, unknown>) => ({
+    game_id: '1', game_date: '2026-11-01', opp_abbreviation: 'SAS', home: true,
+    points: null, rebounds: null, assists: null, fg3_made: null, ...o,
+  });
+  it('the earliest game wins a tie', () => {
+    const out = playerSeasonHighs([
+      g({ game_id: '3', game_date: '2026-11-17', points: 26 }),
+      g({ game_id: '2', game_date: '2026-11-13', points: 26, home: false, opp_abbreviation: 'DEN' }),
+    ]);
+    expect(out).toEqual([{ stat: 'pts', label: 'Points', value: 26, game_id: '2', game_date: '2026-11-13', opp: 'DEN', home: false }]);
+  });
+  it('leaves out a stat with no values', () => {
+    const out = playerSeasonHighs([g({ points: 10, rebounds: 4, assists: 2 })]);
+    expect(out.map((h) => h.stat)).toEqual(['pts', 'reb', 'ast']);
+  });
+  it('orders pts, reb, ast, fg3m', () => {
+    const out = playerSeasonHighs([g({ points: 10, rebounds: 4, assists: 2, fg3_made: 3 })]);
+    expect(out.map((h) => h.stat)).toEqual(['pts', 'reb', 'ast', 'fg3m']);
+    expect(out.map((h) => h.label)).toEqual(['Points', 'Rebounds', 'Assists', 'Threes']);
+  });
+  it('is empty with no rows', () => { expect(playerSeasonHighs([])).toEqual([]); });
 });

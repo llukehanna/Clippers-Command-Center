@@ -5,6 +5,7 @@
 // box value exactly. Blue wins when both apply.
 import type { InsightCardData } from '@/src/lib/insights/card';
 import { boxTagLabel } from '@/src/lib/insights/why';
+import type { PlayerDetailPayload } from '@/src/lib/ui/types';
 
 export type BoxCol = 'PTS' | 'REB' | 'AST' | 'STL' | 'BLK' | '3PT';
 export interface BoxTag { tone: 'rare' | 'season_high'; label: string }
@@ -62,5 +63,34 @@ export function mergeTags(grey: BoxTags, blue: BoxTags): BoxTags {
   const out: BoxTags = {};
   for (const [id, cols] of Object.entries(grey)) out[id] = { ...cols };
   for (const [id, cols] of Object.entries(blue)) out[id] = { ...(out[id] ?? {}), ...cols };
+  return out;
+}
+
+export interface PlayerSeasonHighRow {
+  game_id: string; game_date: string; opp_abbreviation: string; home: boolean;
+  points: number | null; rebounds: number | null; assists: number | null; fg3_made: number | null;
+}
+
+const PLAYER_HIGH_STATS = [
+  { stat: 'pts', label: 'Points', col: 'points' },
+  { stat: 'reb', label: 'Rebounds', col: 'rebounds' },
+  { stat: 'ast', label: 'Assists', col: 'assists' },
+  { stat: 'fg3m', label: 'Threes', col: 'fg3_made' },
+] as const;
+
+/** A player's best game per stat; on a tie the earliest game wins; a stat with no values is left out. */
+export function playerSeasonHighs(rows: PlayerSeasonHighRow[]): PlayerDetailPayload['season_highs'] {
+  const out: PlayerDetailPayload['season_highs'] = [];
+  for (const { stat, label, col } of PLAYER_HIGH_STATS) {
+    let best: PlayerSeasonHighRow | null = null;
+    for (const r of rows) {
+      const v = r[col];
+      if (v == null) continue;
+      const b = best === null ? null : (best[col] as number);
+      if (best === null || b === null || v > b
+          || (v === b && (r.game_date < best.game_date || (r.game_date === best.game_date && r.game_id < best.game_id)))) best = r;
+    }
+    if (best) out.push({ stat, label, value: best[col] as number, game_id: best.game_id, game_date: best.game_date, opp: best.opp_abbreviation, home: best.home });
+  }
   return out;
 }

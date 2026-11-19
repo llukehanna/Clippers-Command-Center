@@ -14,6 +14,8 @@ import { expectedLacMargin, modelSigma, pregameLacWinProb } from '@/src/lib/live
 import { daysSince, lacSpreadSeries, latestLacLine, type OddsRow } from '@/src/lib/game-preview-utils';
 import type { WpCalibration } from '@/src/lib/types/live-state';
 import { INSIGHT_ROW_COLUMNS, INSIGHT_ROW_FROM, barFilter, type InsightDbRow } from './insight-quality';
+import { composeFeed } from '../insights/compose';
+import { toCardData, toMatchupNote } from '../insights/card';
 import type { GamePreviewPayload, Insight, PreviewTeamForm } from '@/src/lib/ui/types';
 
 interface GameRow {
@@ -214,6 +216,15 @@ export async function loadGamePreview(gameIdParam: string): Promise<ApiResult> {
       insight_id: r.insight_id, scope: r.scope, category: r.category, headline: r.headline, detail: r.detail, importance: r.importance,
     }));
 
+    // Part B feeds: scouting cards composed for Up next; matchup notes (Ruling 6) by importance, at most 4.
+    const byImportance = (a: { importance: number; insight_id: string }, b: { importance: number; insight_id: string }) =>
+      b.importance - a.importance || a.insight_id.localeCompare(b.insight_id);
+    const plain = barred.cards.filter((r): r is typeof r & { surface: NonNullable<typeof r.surface> } => r.surface !== null);
+    const insight_feeds: GamePreviewPayload['insight_feeds'] = {
+      scouting: composeFeed(plain, 'up_next').map(toCardData),
+      notes: barred.notes.slice().sort(byImportance).slice(0, 4).map(toMatchupNote),
+    };
+
     const body: GamePreviewPayload = {
       meta: buildMeta('mixed', 300),
       game: {
@@ -237,6 +248,7 @@ export async function loadGamePreview(gameIdParam: string): Promise<ApiResult> {
       line,
       matchup,
       insights,
+      insight_feeds,
     };
     return json(body);
   } catch (err) {
