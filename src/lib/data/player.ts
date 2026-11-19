@@ -8,7 +8,7 @@
 // season; game_log is the most recent GAME_LOG_LIMIT of those games.
 
 import { json, type ApiResult } from './result';
-import { sql } from '@/src/lib/db';
+import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { formatClock } from '@/src/lib/format';
 import { getDisplaySeasonId, parseSeasonIdParam } from '@/src/lib/season';
@@ -141,6 +141,12 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
     // Default: the latest season the player has a completed game in (capped
     // at the app's display season), so a player who hasn't played yet this
     // season still shows last season instead of an empty page.
+    // lac_only=true: Clippers games only (the profile page shows a player's
+    // Clippers years, so a season split by a trade shows only the LAC part).
+    const lacOnly = url.searchParams.get('lac_only') === 'true';
+    const lacFilter = lacOnly
+      ? sql`AND gpbs.team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})`
+      : sql``;
     const displaySeasonId = await getDisplaySeasonId();
     let seasonId = seasonParam ?? displaySeasonId;
     // The player and their latest season are independent lookups: run them together.
@@ -153,6 +159,7 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
             WHERE gpbs.player_id = ${player_id}::bigint
               AND g.season_id <= ${displaySeasonId}
               AND lower(g.status) = 'final'
+              ${lacFilter}
           `
         : Promise.resolve([] as { season_id: number | null }[]),
       // 1. Fetch the player
@@ -252,6 +259,7 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
         WHERE gpbs.player_id = ${player_id}::bigint
           AND g.season_id = ${seasonId}
           AND lower(g.status) = 'final'
+          ${lacFilter}
         ORDER BY g.game_date DESC, g.game_id DESC
       `,
     ]);

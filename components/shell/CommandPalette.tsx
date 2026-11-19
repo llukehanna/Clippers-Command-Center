@@ -4,6 +4,7 @@ import * as React from 'react'
 import { Command } from 'cmdk'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
+import type { AllTimePayload } from '@/src/lib/data/players-all-time'
 import { TeamLogo } from '@/components/ui/team-mark'
 import { PlayerAvatar } from '@/components/ui/player-avatar'
 import { playedGames, type HistoryGame } from '@/src/lib/ui/season'
@@ -79,8 +80,12 @@ export function CommandPalette() {
   const { data: roster } = useSWR<PlayersPayload>(open ? '/api/players' : null, json, { revalidateOnFocus: false })
   const { data: seasons } = useSWR<SeasonGames[]>(open ? 'palette:games' : null, loadRecentGames, { revalidateOnFocus: false })
   const { data: trades } = useSWR<MovesPayload>(open ? '/api/franchise/moves?type=trade' : null, json, { revalidateOnFocus: false })
+  const { data: allTime } = useSWR<AllTimePayload>(open ? '/api/players/all-time' : null, json, { revalidateOnFocus: false })
 
   const typed = search.trim() !== ''
+  // Former players join the search once something is typed (the roster shows on open).
+  const rosterIds = new Set((roster?.players ?? []).map((p) => String(p.player_id)))
+  const formerPlayers = typed ? (allTime?.players ?? []).filter((p) => !rosterIds.has(p.player_id)) : []
 
   const go = (href: string) => {
     setOpen(false)
@@ -142,6 +147,25 @@ export function CommandPalette() {
                 <PlayerAvatar name={p.display_name} nbaPlayerId={p.nba_person_id} size={26} />
                 <span className="text-text">{p.display_name}</span>
                 <span className="ml-auto font-mono text-[11px] text-dim">{p.position}</span>
+              </Command.Item>
+            ))}
+          </Command.Group>
+        )}
+
+        {formerPlayers.length > 0 && (
+          <Command.Group heading="Former players" className={group}>
+            {formerPlayers.map((p) => (
+              <Command.Item
+                key={p.player_id}
+                value={`former ${p.display_name} ${p.player_id}`}
+                onSelect={() => go(`/players/${p.player_id}`)}
+                className={item}
+              >
+                <PlayerAvatar name={p.display_name} nbaPlayerId={p.nba_person_id} clippersSeason={p.last_season} size={26} />
+                <span className="text-text">{p.display_name}</span>
+                <span className="ml-auto font-mono text-[11px] text-dim">
+                  {p.first_season}–{String(p.last_season + 1).slice(2)}
+                </span>
               </Command.Item>
             ))}
           </Command.Group>
