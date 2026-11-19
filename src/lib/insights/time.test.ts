@@ -11,6 +11,10 @@ describe('time helpers', () => {
     expect(spanLabel(a, b)).toBe(out);
   });
 
+  it('spanLabel never reads 12 months', () => {
+    expect(spanLabel('2025-11-20', '2026-11-15')).toBe('1 year');
+  });
+
   it('yearsBetween is days / 365.25', () => {
     expect(yearsBetween('2025-01-01', '2026-01-01')).toBeCloseTo(365 / 365.25, 6);
   });

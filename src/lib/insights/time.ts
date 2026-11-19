@@ -19,7 +19,8 @@ export function spanLabel(a: string, b: string): string {
     const whole = Math.floor(half);
     return half % 1 ? `${whole}½ years` : `${whole} year${whole === 1 ? '' : 's'}`;
   }
-  return `${Math.round(y * 12)} months`;
+  const mo = Math.round(y * 12);
+  return mo >= 12 ? '1 year' : `${mo} months`;
 }
 
 export function fmtDate(iso: string): string {

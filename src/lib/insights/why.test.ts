@@ -85,6 +85,18 @@ describe('whyChip', () => {
       .toEqual({ label: 'Up 78%', tone: 'career' });
   });
 
+  it('yoy rise under 1% gives no chip', () => {
+    const evidence: Evidence = {
+      type: 'delta', before: { value: 10, label: 'a' }, after: { value: 10.04, label: 'b' }, betterIsHigher: true,
+    };
+    expect(chip({ type: 'none' }, { category: 'yoy_change', evidence })).toBeNull();
+  });
+
+  it('bottom-5 phrasing needs a field of 10 or more', () => {
+    expect(chip({ type: 'league_rank', rank: 4, total: 5 })).toEqual({ label: '4th in NBA', tone: 'ctx' });
+    expect(chip({ type: 'league_rank', rank: 26, total: 30 })).toEqual({ label: '26th of 30', tone: 'low' });
+  });
+
   it('other none frames, null frames and nth_time give no chip', () => {
     expect(chip({ type: 'none' })).toBeNull();
     expect(chip({ type: 'none' }, { category: 'h2h', surface: 'pregame', player_id: null })).toBeNull();

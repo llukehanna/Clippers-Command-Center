@@ -45,9 +45,12 @@ const shortYear = (s: string | undefined): string | null => {
 
 interface RankIn { rank: number; total: number | null; tied: number; where: string }
 
+/** Bottom-5 phrasing only makes sense in a field of at least 10. */
+const isBottom5 = (r: RankIn): boolean => r.total !== null && r.total >= 10 && r.rank > r.total - 5;
+
 function rankLabel(r: RankIn, bottomOf: boolean): string {
   if (r.tied > 0) return `Tied for ${ordinal(r.rank)}`;
-  if (bottomOf && r.total && r.rank > r.total - 5) return `${ordinal(r.rank)} of ${r.total}`;
+  if (bottomOf && isBottom5(r)) return `${ordinal(r.rank)} of ${r.total}`;
   return `${ordinal(r.rank)} in ${r.where}`;
 }
 
@@ -63,7 +66,8 @@ function yoyUp(e: Evidence | null): string | null {
   const b = e.before.value;
   const a = e.after.value;
   if (!(b > 0) || !(a > b)) return null;
-  return `Up ${Math.round(((a - b) / b) * 100)}%`;
+  const pct = Math.round(((a - b) / b) * 100);
+  return pct < 1 ? null : `Up ${pct}%`;
 }
 
 export function whyChip(input: WhyInput): WhyChip | null {
@@ -118,7 +122,7 @@ export function whyChip(input: WhyInput): WhyChip | null {
     case 'league_rank': {
       const r = frameRank(frame);
       if (!r) return null;
-      const tone = r.tied > 0 ? 'ctx' : r.total && r.rank > r.total - 5 ? 'low' : r.rank <= 5 ? 'rare' : 'ctx';
+      const tone = r.tied > 0 ? 'ctx' : isBottom5(r) ? 'low' : r.rank <= 5 && (r.total === null || r.total >= 10) ? 'rare' : 'ctx';
       return { label: rankLabel(r, true), tone };
     }
     case 'milestone':
