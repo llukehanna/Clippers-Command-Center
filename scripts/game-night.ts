@@ -14,8 +14,9 @@
 // 3. When the scoreboard says Final, finalizes the game (box scores, stints,
 //    advanced stats; from ESPN's summary or, last, the final live doc,
 //    provisionally, while the NBA refuses its box score — the nightly league
-//    sync swaps in the NBA's), ingests the play-by-play and writes postgame
-//    insights for the game (scripts/lib/insights/engine/hooks.ts), asks the workflow to start the post-game pipeline
+//    sync swaps in the NBA's), ingests the play-by-play, writes postgame
+//    insights for the game and refreshes pregame insights for the next one
+//    (scripts/lib/insights/engine/hooks.ts), asks the workflow to start the post-game pipeline
 //    (league sync, stats, insights — postgame=true in $GITHUB_OUTPUT; its
 //    nightly cron runs hours late) and exits. Preseason games (all_games.is_preseason)
 //    are polled the same way but never finalized: they don't count anywhere.
@@ -53,7 +54,7 @@ import {
   shouldRunPregame,
 } from './lib/game-night-logic.js';
 import { ingestGamePbp } from './lib/pbp/ingest.js';
-import { postgameAtFinal, pregameAtStart } from './lib/insights/engine/hooks.js';
+import { insightsAtFinal, pregameAtStart } from './lib/insights/engine/hooks.js';
 
 const LEAD_MINUTES = Number(process.env.GAME_NIGHT_LEAD_MINUTES ?? 300);
 const PRE_TIP_MS = 10 * 60_000;
@@ -274,13 +275,18 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
         } catch (err) {
           console.error(`[game-night] Play-by-play ingest failed: ${(err as Error).message}`);
         }
-        // Postgame insights minutes after the buzzer (spec §5.1). Never throws
-        // or hangs (5 min cap); the post-game workflow re-runs every surface
-        // once the league syncs.
-        const insights = await postgameAtFinal(candidate.game_id, (m) => console.log(runnerLogLine(m)));
-        const failed = insightsFailureAnnotation('Postgame insights failed', insights);
-        if (failed) console.log(failed);
-        else console.log(`[game-night] Postgame insights: ${insights.message}`);
+        // Postgame insights minutes after the buzzer (spec §5.1), then a pregame
+        // pass so Up Next moves to the next game now. Neither throws or hangs
+        // (5 min cap each); the post-game workflow re-runs every surface once
+        // the league syncs.
+        const insights = await insightsAtFinal(
+          candidate.game_id, { isPreseason: candidate.is_preseason }, (m) => console.log(runnerLogLine(m))
+        );
+        for (const [title, r] of [['Postgame', insights.postgame], ['Pregame', insights.pregame]] as const) {
+          const failed = insightsFailureAnnotation(`${title} insights failed`, r);
+          if (failed) console.log(failed);
+          else console.log(`[game-night] ${title} insights: ${r.message}`);
+        }
       }
       return;
     }

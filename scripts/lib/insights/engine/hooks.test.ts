@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const runEngine = vi.fn();
 vi.mock('./run.js', () => ({ runEngine: (...args: unknown[]) => runEngine(...args) }));
 
-import { HOOK_TIMEOUT_MS, postgameAtFinal, pregameAtStart } from './hooks';
+import { HOOK_TIMEOUT_MS, insightsAtFinal, postgameAtFinal, pregameAtStart } from './hooks';
 
 describe('runner hooks', () => {
   // Braces: mockReset() returns the mock, which vitest would run as a cleanup hook.
@@ -68,6 +68,31 @@ describe('runner hooks', () => {
     expect(post).toEqual({ status: 'failed', upserted: 0, message: 'postgame insights failed: timed out after 5 min' });
     expect(pre).toEqual({ status: 'failed', upserted: 0, message: 'pregame insights failed: timed out after 5 min' });
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('at the final buzzer: postgame for the game, then a pregame pass for the next one (FW-11)', async () => {
+    runEngine.mockResolvedValueOnce({ context: {}, upserted: 9 }).mockResolvedValueOnce({ context: {}, upserted: 3 });
+    expect(await insightsAtFinal('640', { isPreseason: false })).toEqual({
+      postgame: { status: 'ok', upserted: 9, message: '9 postgame insights for game 640' },
+      pregame: { status: 'ok', upserted: 3, message: '3 pregame insights' },
+    });
+    expect(runEngine.mock.calls.map((c) => [c[0].surfaces, c[0].gameId])).toEqual([[['postgame'], '640'], [['pregame'], undefined]]);
+  });
+
+  it('at the final buzzer: a failed postgame pass still refreshes pregame, and neither throws', async () => {
+    runEngine.mockRejectedValueOnce(new Error('connection reset')).mockRejectedValueOnce(new Error('still down'));
+    expect(await insightsAtFinal('640', { isPreseason: false })).toEqual({
+      postgame: { status: 'failed', upserted: 0, message: 'postgame insights failed: connection reset' },
+      pregame: { status: 'failed', upserted: 0, message: 'pregame insights failed: still down' },
+    });
+    expect(runEngine).toHaveBeenCalledTimes(2);
+  });
+
+  it('at the final buzzer of a preseason game: no pregame pass', async () => {
+    runEngine.mockResolvedValue({ context: {}, upserted: 0 });
+    const r = await insightsAtFinal('640', { isPreseason: true });
+    expect(r.pregame).toMatchObject({ status: 'skipped' });
+    expect(runEngine).toHaveBeenCalledTimes(1);
   });
 
   it('clears the timeout timer when the engine finishes', async () => {

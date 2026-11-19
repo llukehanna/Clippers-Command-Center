@@ -47,3 +47,19 @@ export function pregameAtStart(log: (m: string) => void = () => {}): Promise<Hoo
     return { status: 'ok', upserted: r.upserted, message: `${r.upserted} pregame insights` };
   });
 }
+
+export interface FinalHooks { postgame: HookResult; pregame: HookResult }
+
+/**
+ * Everything the runner does for insights at the final buzzer: the game's postgame insights, then a pregame pass
+ * so Home and the preview move on to the next game now instead of at the nightly run (FW-11). Each hook keeps its
+ * own timeout and never throws; the pregame pass runs even when the postgame one failed. Never for a preseason
+ * game, like every runner pregame pass.
+ */
+export async function insightsAtFinal(gameId: string, opts: { isPreseason: boolean }, log: (m: string) => void = () => {}): Promise<FinalHooks> {
+  const postgame = await postgameAtFinal(gameId, log);
+  const pregame = opts.isPreseason
+    ? { status: 'skipped' as const, upserted: 0, message: 'preseason game' }
+    : await pregameAtStart(log);
+  return { postgame, pregame };
+}
