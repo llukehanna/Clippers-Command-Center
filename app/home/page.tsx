@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { cn } from '@/lib/utils'
 import { NextGamePanel } from '@/components/game/NextGamePanel'
 import { UpNextList } from '@/components/game/UpNextList'
 import { SeasonPanel } from '@/components/home/SeasonPanel'
@@ -113,8 +114,18 @@ export default async function HomePage() {
       {(hero || recent.length > 0) && (
         <section className="enter" style={{ ['--i' as string]: 2 }}>
           <Eyebrow aside="ranked by how rare · all verified">Insights</Eyebrow>
-          <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:gap-[18px]">
-            <div className="min-w-0">{hero && <InsightTile card={hero} size="hero" />}</div>
+          {/* Two columns only when both sides have something; otherwise one, with no blank column. */}
+          <div
+            className={cn(
+              'grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:gap-[18px]',
+              hero && recent.length > 0 && 'lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]',
+            )}
+          >
+            {hero && (
+              <div className="min-w-0">
+                <InsightTile card={hero} size="hero" />
+              </div>
+            )}
             {recent.length > 0 && (
               <div className="min-w-0">
                 <Eyebrow as="h3" aside="last 10">From recent games</Eyebrow>

@@ -48,6 +48,10 @@ export default async function PlayerDetailPage({ params, searchParams }: Params)
   const personKey = moves?.moves.flatMap((m) => m.people).find((p) => p.player_id === player_id)?.person_key ?? null
 
   const log = data.game_log ?? []
+  // Payloads cached before these fields shipped lack them: treat a missing list as empty.
+  const insights = data.insights ?? []
+  const seasonHighs = data.season_highs ?? []
+  const milestones = data.milestones ?? []
   const seasonId = log[0] ? seasonStartYear(new Date(`${log[0].game_date}T12:00:00Z`)) : null
   const history = seasonId ? await getJson<{ games: HistoryGame[] }>(`/api/history/games?season_id=${seasonId}&limit=200`) : null
   const byId = new Map((history?.games ?? []).map((g) => [String(g.game_id), g]))
@@ -96,36 +100,42 @@ export default async function PlayerDetailPage({ params, searchParams }: Params)
         )}
       </div>
 
-      {!former && data.insights.length > 0 && (
+      {!former && insights.length > 0 && (
         <section className="enter" style={{ ['--i' as string]: 1 }} aria-label="Insights">
-          <Eyebrow aside={`${data.insights.length} verified`}>Insights</Eyebrow>
+          <Eyebrow aside={`${insights.length} verified`}>Insights</Eyebrow>
           <div className="grid grid-cols-[minmax(0,1fr)] gap-3 min-[900px]:grid-cols-2">
-            {data.insights.map((card) => (
-              <InsightTile key={card.insight_id} card={card} size="standard" showSubject={false} />
+            {insights.map((card) => (
+              <InsightTile
+                key={card.insight_id}
+                card={card}
+                size="standard"
+                showSubject={false}
+                page={{ kind: 'player', player_id }}
+              />
             ))}
           </div>
         </section>
       )}
 
-      {!former && (data.season_highs.length > 0 || data.milestones.length > 0) && (
+      {!former && (seasonHighs.length > 0 || milestones.length > 0) && (
         <section
           className={`enter grid grid-cols-1 items-start gap-4 lg:gap-[18px] ${
-            data.season_highs.length > 0 && data.milestones.length > 0 ? 'lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]' : ''
+            seasonHighs.length > 0 && milestones.length > 0 ? 'lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]' : ''
           }`}
           style={{ ['--i' as string]: 1 }}
         >
-          {data.season_highs.length > 0 && (
+          {seasonHighs.length > 0 && (
             <div>
               <Eyebrow as="h3" aside={seasonLabel}>
                 Season highs
               </Eyebrow>
-              <SeasonHighs highs={data.season_highs} seasonLabel={seasonLabel} />
+              <SeasonHighs highs={seasonHighs} seasonLabel={seasonLabel} />
             </div>
           )}
-          {data.milestones.length > 0 && (
+          {milestones.length > 0 && (
             <div>
               <Eyebrow as="h3">Milestone watch</Eyebrow>
-              <MilestoneWatch items={data.milestones} />
+              <MilestoneWatch items={milestones} />
             </div>
           )}
         </section>
