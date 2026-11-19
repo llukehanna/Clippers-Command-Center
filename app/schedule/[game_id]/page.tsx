@@ -2,9 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { NextGamePanel } from '@/components/game/NextGamePanel'
-import { InsightCard } from '@/components/insights/InsightCard'
 import { Chip } from '@/components/ui/chip'
-import { Eyebrow } from '@/components/ui/eyebrow'
 import { WhereToWatch } from '@/components/preview/WhereToWatch'
 import { LineCard } from '@/components/preview/LineCard'
 import { Availability } from '@/components/preview/Availability'
@@ -53,7 +51,7 @@ export default async function GamePreviewPage({ params }: Params) {
       )}
 
       <div className="enter" style={{ ['--i' as string]: 0 }}>
-        <NextGamePanel game={game} eyebrow="Game preview" arena={game.arena} />
+        <NextGamePanel game={game} eyebrow="Game preview" arena={game.arena} insights={data.insight_feeds} />
       </div>
 
       <section className="enter grid items-stretch gap-3 lg:grid-cols-2" style={{ ['--i' as string]: 1 }}>
@@ -70,17 +68,6 @@ export default async function GamePreviewPage({ params }: Params) {
       <div className="enter" style={{ ['--i' as string]: 3 }}>
         <Matchup matchup={data.matchup} oppAbbr={oppAbbr} />
       </div>
-
-      {data.insights.length > 0 && (
-        <section className="enter" style={{ ['--i' as string]: 4 }} aria-label="Insights">
-          <Eyebrow aside={`${data.insights.length} verified`}>Insights</Eyebrow>
-          <div className="grid gap-2.5 md:grid-cols-2">
-            {data.insights.map((ins) => (
-              <InsightCard key={ins.insight_id} insight={ins} />
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   )
 }

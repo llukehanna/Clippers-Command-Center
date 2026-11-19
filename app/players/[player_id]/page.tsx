@@ -6,6 +6,9 @@ import { TrendChart } from '@/components/players/TrendChart'
 import { SplitsPanel } from '@/components/players/SplitsPanel'
 import { PlayerTransactions } from '@/components/players/PlayerTransactions'
 import { GameLog, type GameLogRow } from '@/components/players/GameLog'
+import { InsightTile } from '@/components/insights/kit/InsightTile'
+import { SeasonHighs } from '@/components/players/SeasonHighs'
+import { MilestoneWatch } from '@/components/players/MilestoneWatch'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { CareerHero, CareerHighs, CareerNumbers, CareerSeasons } from '@/components/players/ClippersCareer'
 import type { PlayerCareerPayload } from '@/src/lib/data/player-career'
@@ -92,6 +95,41 @@ export default async function PlayerDetailPage({ params, searchParams }: Params)
           />
         )}
       </div>
+
+      {!former && data.insights.length > 0 && (
+        <section className="enter" style={{ ['--i' as string]: 1 }} aria-label="Insights">
+          <Eyebrow aside={`${data.insights.length} verified`}>Insights</Eyebrow>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3 min-[900px]:grid-cols-2">
+            {data.insights.map((card) => (
+              <InsightTile key={card.insight_id} card={card} size="standard" showSubject={false} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!former && (data.season_highs.length > 0 || data.milestones.length > 0) && (
+        <section
+          className={`enter grid grid-cols-1 items-start gap-4 lg:gap-[18px] ${
+            data.season_highs.length > 0 && data.milestones.length > 0 ? 'lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]' : ''
+          }`}
+          style={{ ['--i' as string]: 1 }}
+        >
+          {data.season_highs.length > 0 && (
+            <div>
+              <Eyebrow as="h3" aside={seasonLabel}>
+                Season highs
+              </Eyebrow>
+              <SeasonHighs highs={data.season_highs} seasonLabel={seasonLabel} />
+            </div>
+          )}
+          {data.milestones.length > 0 && (
+            <div>
+              <Eyebrow as="h3">Milestone watch</Eyebrow>
+              <MilestoneWatch items={data.milestones} />
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Former players lead with their whole Clippers career; current ones with this season. */}
       {former && careerPanels}
