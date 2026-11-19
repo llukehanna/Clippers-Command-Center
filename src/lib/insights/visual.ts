@@ -4,19 +4,36 @@
 // never parsed. DB-free, relative imports only.
 import { evidenceAria } from './evidence-aria';
 import type { InsightCardData } from './card';
-import { fmtDate, spanLabel, yearsBetween } from './time';
+import { fmtDate, yearsBetween } from './time';
 import type { TeamYoyRow } from './team-yoy';
 import type { Evidence } from './types';
 
 export type CardVisual =
   | { kind: 'gap'; from: string; to: string; span: string; ticks: number[]; then: string; now: string; aria: string }
-  | { kind: 'best'; prev: number; now: number; aria: string }
+  | { kind: 'best'; prev: number; value: number; aria: string }
   | { kind: 'company'; members: { name: string; date: string; me: boolean }[]; aria: string }
   | { kind: 'team_yoy'; rows: TeamYoyRow[]; aria: string }
   | { kind: 'evidence'; evidence: Evidence; aria: string };
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v);
+
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+/** Gap length as a count and a singular unit; weeks or days under a month, never zero months. */
+function shortSpan(from: string, to: string): { n: number; unit: string; half: boolean } {
+  const y = yearsBetween(from, to);
+  if (y >= 1) {
+    const half = Math.round(y * 2) / 2;
+    return { n: Math.floor(half), unit: 'year', half: half % 1 !== 0 };
+  }
+  const mo = Math.round(y * 12);
+  if (mo >= 12) return { n: 1, unit: 'year', half: false };
+  if (mo >= 1) return { n: mo, unit: 'month', half: false };
+  const days = Math.max(1, Math.round((Date.parse(to.slice(0, 10)) - Date.parse(from.slice(0, 10))) / 864e5));
+  if (days >= 14) return { n: Math.round(days / 7), unit: 'week', half: false };
+  return { n: days, unit: 'day', half: false };
+}
 
 function gapVisual(card: InsightCardData): CardVisual | null {
   const f = card.frame;
@@ -31,7 +48,8 @@ function gapVisual(card: InsightCardData): CardVisual | null {
     const t = yearsBetween(from, `${y}-01-01`) / total;
     if (t > 0 && t < 1) ticks.push(t);
   }
-  const span = spanLabel(from, to);
+  const sp = shortSpan(from, to);
+  const span = sp.half ? `${sp.n}½ years` : plural(sp.n, sp.unit);
   return {
     kind: 'gap', from, to, span, ticks, then: fmtDate(from), now: fmtDate(to),
     aria: `Last time ${fmtDate(from)}; this time ${fmtDate(to)}: ${span} apart`,
@@ -40,11 +58,11 @@ function gapVisual(card: InsightCardData): CardVisual | null {
 
 function bestVisual(card: InsightCardData): CardVisual | null {
   const f = card.frame;
-  if (!f || f.type !== 'career_high' || card.category === 'yoy_change') return null;
+  if (!f || f.type !== 'career_high' || card.subject.kind !== 'player' || !card.game_id) return null;
   if (!finite(f.prior_value) || !finite(f.value) || f.value <= f.prior_value) return null;
   return {
-    kind: 'best', prev: f.prior_value, now: f.value,
-    aria: `Previous best ${f.prior_value}, now ${f.value}`,
+    kind: 'best', prev: f.prior_value, value: f.value,
+    aria: `Previous best ${f.prior_value}; this game ${f.value}`,
   };
 }
 
@@ -91,13 +109,7 @@ export function pickVisual(card: InsightCardData): CardVisual | null {
 
 export function bigFigure(v: CardVisual): { n: string; unit: string } | null {
   if (v.kind !== 'gap') return null;
-  const y = yearsBetween(v.from, v.to);
-  if (y >= 1) {
-    const half = Math.round(y * 2) / 2;
-    const whole = Math.floor(half);
-    return { n: half % 1 ? `${whole}½` : String(whole), unit: whole === 1 && half % 1 === 0 ? 'year since the last one' : 'years since the last one' };
-  }
-  const mo = Math.round(y * 12);
-  if (mo >= 12) return { n: '1', unit: 'year since the last one' };
-  return { n: String(mo), unit: 'months since the last one' };
+  const sp = shortSpan(v.from, v.to);
+  if (sp.half) return { n: `${sp.n}½`, unit: 'years since the last one' };
+  return { n: String(sp.n), unit: `${sp.unit}${sp.n === 1 ? '' : 's'} since the last one` };
 }

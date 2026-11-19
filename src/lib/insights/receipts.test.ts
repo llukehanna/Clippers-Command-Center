@@ -53,6 +53,19 @@ describe('receiptTable', () => {
     expect(receiptTable(card({ proof: many }))!.rows).toHaveLength(8);
   });
 
+  it('keeps the fact row when capping', () => {
+    const frames = Array.from({ length: 9 }, () => ({ part: 'frame' as const, data: { rank: 2 } }));
+    const t = receiptTable(card({ proof: [...frames, { part: 'fact', data: { rank: 1 } }] }))!;
+    expect(t.rows).toHaveLength(8);
+    expect(t.rows[0]).toEqual({ cells: ['1'], me: true });
+  });
+
+  it('tolerates null part data', () => {
+    const bad = [{ part: 'fact', data: null }, { part: 'frame', data: { rank: 2 } }] as unknown as InsightCardData['proof'];
+    expect(() => receiptTable(card({ proof: bad }))).not.toThrow();
+    expect(receiptTable(card({ proof: bad }))!.rows[0].cells).toEqual(['—']);
+  });
+
   it('non-array proof (empty parts) is null', () => {
     expect(receiptTable(card({ proof: [] }))).toBeNull();
   });

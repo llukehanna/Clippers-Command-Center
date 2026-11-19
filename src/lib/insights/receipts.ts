@@ -57,7 +57,10 @@ export function formatVerified(iso: string): string {
 export function receiptTable(card: InsightCardData): ReceiptTable | null {
   if (card.proof.length === 0) return null;
   const stat = typeof card.frame?.stat === 'string' ? card.frame.stat : undefined;
-  const parts = card.proof.slice(0, MAX_ROWS);
+  // Cap the table but always keep the fact row (it is the "me" row), first.
+  const safe = card.proof.map((p) => ({ part: p.part, data: (p.data && typeof p.data === 'object' ? p.data : {}) as Record<string, unknown> }));
+  const fact = safe.find((p) => p.part === 'fact');
+  const parts = (fact ? [fact, ...safe.filter((p) => p !== fact)] : safe).slice(0, MAX_ROWS);
   const used = COLS.filter((c) => parts.some((p) => present(p.data[c.key])));
   if (used.length === 0) return null;
   const verified = formatVerified(card.updated_at);
@@ -72,6 +75,7 @@ export function receiptTable(card: InsightCardData): ReceiptTable | null {
 }
 
 export function sampleLabel(card: InsightCardData): string | null {
+  // Precedence: the records label wins over the rank sample, which wins over yoy games.
   const label = card.frame?.records_label;
   if (label) return `Box scores since ${dash(label)}`;
   if (card.evidence?.type === 'rank_track') return `${card.evidence.total} ranked`;
