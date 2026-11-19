@@ -1,0 +1,2432 @@
+[
+  {
+    "insight_id": "a0",
+    "surface": "player",
+    "category": "season_best",
+    "game_id": null,
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 82,
+    "headline": "Brook Lopez set his season high with 8 assists",
+    "detail": "His first 8-assist game since Mar 26, 2018",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 8-assist game since Mar 26, 2018",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 717,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a1",
+    "surface": "player",
+    "category": "yoy_change",
+    "game_id": null,
+    "player_id": "rui-hachimura",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 80,
+    "headline": "Rui Hachimura: 3.3 RPG last season, 5.9 RPG this season",
+    "detail": "A career-best season",
+    "frame": {
+      "strength": 0.5,
+      "text": "A career-best season",
+      "proof_rows": [],
+      "type": "career_high",
+      "who": "subject",
+      "prior_value": 5.88
+    },
+    "evidence": {
+      "type": "delta",
+      "before": {
+        "value": 3.32,
+        "label": "3.32"
+      },
+      "after": {
+        "value": 5.91,
+        "label": "5.91"
+      },
+      "betterIsHigher": true
+    },
+    "proof_result": [
+      {
+        "part": "fact",
+        "data": {
+          "games": 11
+        }
+      }
+    ],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a2",
+    "surface": "player",
+    "category": "yoy_change",
+    "game_id": null,
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 71,
+    "headline": "Brook Lopez: 8.5 PPG last season, 14.8 PPG this season",
+    "detail": "His best scoring since 2022-23",
+    "frame": {
+      "strength": 0.5,
+      "text": "His best scoring since 2022-23",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_label": "2022-23",
+      "years": 4
+    },
+    "evidence": {
+      "type": "delta",
+      "before": {
+        "value": 8.5,
+        "label": "8.5"
+      },
+      "after": {
+        "value": 14.8,
+        "label": "14.8"
+      },
+      "betterIsHigher": true
+    },
+    "proof_result": [
+      {
+        "part": "fact",
+        "data": {
+          "games": 13
+        }
+      }
+    ],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a3",
+    "surface": "player",
+    "category": "season_best",
+    "game_id": null,
+    "player_id": "rui-hachimura",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 64,
+    "headline": "Rui Hachimura set his season high with 11 rebounds",
+    "detail": "His first 11-rebound game since Feb 20, 2025",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 11-rebound game since Feb 20, 2025",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 130,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a4",
+    "surface": "player",
+    "category": "season_best",
+    "game_id": null,
+    "player_id": "kobe-sanders",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 61,
+    "headline": "Kobe Sanders's season high: 26 points vs the Raptors",
+    "detail": "A career high (previous best 20)",
+    "frame": {
+      "strength": 0.5,
+      "text": "A career high (previous best 20)",
+      "proof_rows": [],
+      "type": "career_high",
+      "who": "subject",
+      "prior_value": 20
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a5",
+    "surface": "player",
+    "category": "season_best",
+    "game_id": null,
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 54,
+    "headline": "Brook Lopez's season high: 26 points vs the Thunder",
+    "detail": "His first 26-point game since Mar 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 26-point game since Mar 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 34,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a6",
+    "surface": "player",
+    "category": "streak",
+    "game_id": null,
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 51,
+    "headline": "Darius Garland has 3 straight games with 20+ points",
+    "detail": "The longest streak of 20+ points by a Clipper since Apr 10, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "The longest streak of 20+ points by a Clipper since Apr 10, 2026",
+      "proof_rows": [],
+      "type": "longest_since",
+      "who": "group",
+      "since_date": "2026-04-10",
+      "games_since": 100
+    },
+    "evidence": null,
+    "proof_result": [
+      {
+        "part": "fact",
+        "data": {
+          "streak": 3
+        }
+      }
+    ],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a7",
+    "surface": "player",
+    "category": "season_best",
+    "game_id": null,
+    "player_id": "rui-hachimura",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 41,
+    "headline": "Rui Hachimura's season high: 24 points vs the Warriors",
+    "detail": "His first 24-point game since Nov 2025",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 24-point game since Nov 2025",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 90,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a8",
+    "surface": "player",
+    "category": "season_best",
+    "game_id": null,
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 32,
+    "headline": "Brook Lopez's season high: 11 rebounds vs the Kings",
+    "detail": "His first 11-rebound game since Apr 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 11-rebound game since Apr 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 17,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a9",
+    "surface": "player",
+    "category": "season_best",
+    "game_id": null,
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 32,
+    "headline": "Darius Garland's season high: 11 assists vs the Thunder",
+    "detail": "The most assists in a game by a Clipper this season",
+    "frame": {
+      "strength": 0.5,
+      "text": "The most assists in a game by a Clipper this season",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 13
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a10",
+    "surface": "player",
+    "category": "season_best",
+    "game_id": null,
+    "player_id": "keaton-wagler",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 31,
+    "headline": "Keaton Wagler set his season high with 21 points",
+    "detail": "The first 21-point game by a Clipper since Oct 23, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "The first 21-point game by a Clipper since Oct 23, 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "group",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 11,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a11",
+    "surface": "player",
+    "category": "season_best",
+    "game_id": null,
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 29,
+    "headline": "Darius Garland set his season high with 30 points",
+    "detail": "Most points in a game by a Clipper this season",
+    "frame": {
+      "strength": 0.5,
+      "text": "Most points in a game by a Clipper this season",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 13
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a12",
+    "surface": "postgame",
+    "category": "player_period_stat",
+    "game_id": "4532",
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": "2026-11-17",
+    "importance": 68,
+    "headline": "Brook Lopez: 15 points in the 3rd quarter vs the Jazz",
+    "detail": "The first 15-point quarter by a Clipper since Oct 21, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "The first 15-point quarter by a Clipper since Oct 21, 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "group",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 11,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a13",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4531",
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": "2026-11-15",
+    "importance": 50,
+    "headline": "Brook Lopez: 8 assists vs the Hornets",
+    "detail": "His first 8-assist game since Mar 26, 2018",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 8-assist game since Mar 26, 2018",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 715,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a14",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4532",
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": "2026-11-17",
+    "importance": 48,
+    "headline": "Brook Lopez: 23 points vs the Jazz",
+    "detail": "His first 23-point game since Nov 13, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 23-point game since Nov 13, 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 1,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a15",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4532",
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": "2026-11-17",
+    "importance": 47,
+    "headline": "Brook Lopez made 4 threes in a loss to the Jazz",
+    "detail": "His season high so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "His season high so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "subject"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "tag"
+  },
+  {
+    "insight_id": "a16",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4532",
+    "player_id": "rui-hachimura",
+    "season_id": 2026,
+    "game_date": "2026-11-17",
+    "importance": 44,
+    "headline": "Rui Hachimura: 4 threes vs the Jazz",
+    "detail": "His first 4-three game since Nov 1, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 4-three game since Nov 1, 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 6,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a17",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4532",
+    "player_id": "rui-hachimura",
+    "season_id": 2026,
+    "game_date": "2026-11-17",
+    "importance": 41,
+    "headline": "Rui Hachimura: 20 points vs the Jazz",
+    "detail": "His first 20-point game since Nov 4, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 20-point game since Nov 4, 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 4,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a18",
+    "surface": "postgame",
+    "category": "team_game_stat",
+    "game_id": "4532",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-11-17",
+    "importance": 36,
+    "headline": "Clippers lost to the Jazz by 25",
+    "detail": "First 25-point loss since Oct 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "First 25-point loss since Oct 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "group",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 7,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a19",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4530",
+    "player_id": "derrick-jones-jr.",
+    "season_id": 2026,
+    "game_date": "2026-11-13",
+    "importance": 35,
+    "headline": "Derrick Jones Jr. blocked 4 shots in a win over the Thunder",
+    "detail": "His first 4-block game since Dec 2021",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 4-block game since Dec 2021",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 417,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a20",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4530",
+    "player_id": "max-strus",
+    "season_id": 2026,
+    "game_date": "2026-11-13",
+    "importance": 32,
+    "headline": "Max Strus: 4 steals vs the Thunder",
+    "detail": "His first 4-steal game since Dec 29, 2023",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 4-steal game since Dec 29, 2023",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 239,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a21",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4530",
+    "player_id": "rui-hachimura",
+    "season_id": 2026,
+    "game_date": "2026-11-13",
+    "importance": 31,
+    "headline": "Rui Hachimura grabbed 11 rebounds in a win over the Thunder",
+    "detail": "His season high so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "His season high so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "subject"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "tag"
+  },
+  {
+    "insight_id": "a22",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4531",
+    "player_id": "max-strus",
+    "season_id": 2026,
+    "game_date": "2026-11-15",
+    "importance": 31,
+    "headline": "Max Strus made 4 threes in a win over the Hornets",
+    "detail": "His season high so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "His season high so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "subject"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "tag"
+  },
+  {
+    "insight_id": "a23",
+    "surface": "postgame",
+    "category": "team_game_stat",
+    "game_id": "4531",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-11-15",
+    "importance": 31,
+    "headline": "Clippers shot 55.4% from the field vs the Hornets",
+    "detail": "The best shooting game by the Clippers so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "The best shooting game by the Clippers so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 12
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a24",
+    "surface": "postgame",
+    "category": "game_flow",
+    "game_id": "4531",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-11-15",
+    "importance": 31,
+    "headline": "Clippers erased a 13-point deficit to beat the Hornets",
+    "detail": "The largest comeback win by the Clippers so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "The largest comeback win by the Clippers so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 12
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a25",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4531",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-11-15",
+    "importance": 30,
+    "headline": "Darius Garland scored 27 in a win over the Hornets",
+    "detail": "His first 27-point game since Oct 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 27-point game since Oct 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 10,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a26",
+    "surface": "postgame",
+    "category": "player_period_stat",
+    "game_id": "4532",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-11-17",
+    "importance": 30,
+    "headline": "Darius Garland: 13 points in the 1st quarter vs the Jazz",
+    "detail": "Nov 17, 2026 vs the Utah Jazz",
+    "frame": {
+      "strength": 0.5,
+      "text": "Nov 17, 2026 vs the Utah Jazz",
+      "proof_rows": [],
+      "type": "none",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a27",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4530",
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": "2026-11-13",
+    "importance": 28,
+    "headline": "Brook Lopez scored 26 in a win over the Thunder",
+    "detail": "His season high so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "His season high so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "subject"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "tag"
+  },
+  {
+    "insight_id": "a28",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4530",
+    "player_id": "derrick-jones-jr.",
+    "season_id": 2026,
+    "game_date": "2026-11-13",
+    "importance": 27,
+    "headline": "Derrick Jones Jr. made 4 threes in a win over the Thunder",
+    "detail": "His season high so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "His season high so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "subject"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "tag"
+  },
+  {
+    "insight_id": "a29",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4530",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-11-13",
+    "importance": 20,
+    "headline": "Darius Garland: 24 points vs the Thunder",
+    "detail": "His first 24-point game since Nov 8, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 24-point game since Nov 8, 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 1,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a30",
+    "surface": "postgame",
+    "category": "team_game_stat",
+    "game_id": "4528",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-11-08",
+    "importance": 16,
+    "headline": "Clippers scored 139 in a win over the Pelicans",
+    "detail": "The most points in a game by the Clippers so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "The most points in a game by the Clippers so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 9
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a31",
+    "surface": "postgame",
+    "category": "player_period_stat",
+    "game_id": "4529",
+    "player_id": "baba-miller",
+    "season_id": 2026,
+    "game_date": "2026-11-10",
+    "importance": 16,
+    "headline": "Baba Miller: 13 points in the 4th quarter vs the Suns",
+    "detail": "The first 13-point quarter by a Clipper since Oct 23, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "The first 13-point quarter by a Clipper since Oct 23, 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "group",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 7,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a32",
+    "surface": "postgame",
+    "category": "team_game_stat",
+    "game_id": "4529",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-11-10",
+    "importance": 15,
+    "headline": "Clippers lost to the Suns by 23",
+    "detail": "First 23-point loss since Oct 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "First 23-point loss since Oct 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "group",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 4,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a33",
+    "surface": "postgame",
+    "category": "team_period_stat",
+    "game_id": "4529",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-11-10",
+    "importance": 15,
+    "headline": "A 38-point 4th quarter for the Clippers vs the Suns",
+    "detail": "The first 38-point quarter by the Clippers since Nov 8, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "The first 38-point quarter by the Clippers since Nov 8, 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "group",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 0,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a34",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4528",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-11-08",
+    "importance": 14,
+    "headline": "Darius Garland had 10 assists in a win over the Pelicans",
+    "detail": "His first 10-assist game since Oct 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 10-assist game since Oct 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 5,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a35",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4528",
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": "2026-11-08",
+    "importance": 14,
+    "headline": "Brook Lopez scored 20 in a win over the Pelicans",
+    "detail": "His first 20-point game since Nov 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 20-point game since Nov 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 0,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a36",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4528",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-11-08",
+    "importance": 13,
+    "headline": "Darius Garland scored 24 in a win over the Pelicans",
+    "detail": "His first 24-point game since Nov 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 24-point game since Nov 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 0,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a37",
+    "surface": "postgame",
+    "category": "team_period_stat",
+    "game_id": "4528",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-11-08",
+    "importance": 13,
+    "headline": "Clippers scored 39 in the 2nd quarter vs the Pelicans",
+    "detail": "First 39-point quarter by the Clippers since Nov 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "First 39-point quarter by the Clippers since Nov 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "group",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 0,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a38",
+    "surface": "postgame",
+    "category": "clutch",
+    "game_id": "4527",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-11-04",
+    "importance": 13,
+    "headline": "Darius Garland: 14 clutch points vs the Heat",
+    "detail": "Joined James Harden and Kawhi Leonard as the only Clippers with a 14-point clutch performance since 2020-21 at the time",
+    "frame": {
+      "strength": 0.5,
+      "text": "Joined James Harden and Kawhi Leonard as the only Clippers with a 14-point clutch performance since 2020-21 at the time",
+      "proof_rows": [],
+      "type": "joins_company",
+      "who": "group",
+      "names": [
+        "James Harden",
+        "Kawhi Leonard"
+      ]
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a39",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4525",
+    "player_id": "kobe-sanders",
+    "season_id": 2026,
+    "game_date": "2026-11-01",
+    "importance": 12,
+    "headline": "Kobe Sanders: 4 threes vs the Warriors",
+    "detail": "A career high at the time (previous best 3)",
+    "frame": {
+      "strength": 0.5,
+      "text": "A career high at the time (previous best 3)",
+      "proof_rows": [],
+      "type": "career_high",
+      "who": "subject",
+      "prior_value": 3
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a40",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4525",
+    "player_id": "kris-dunn",
+    "season_id": 2026,
+    "game_date": "2026-11-01",
+    "importance": 12,
+    "headline": "Kris Dunn had 7 steals in a loss to the Warriors",
+    "detail": "A new career high (previous best 6)",
+    "frame": {
+      "strength": 0.5,
+      "text": "A new career high (previous best 6)",
+      "proof_rows": [],
+      "type": "career_high",
+      "who": "subject",
+      "prior_value": 6
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a41",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4526",
+    "player_id": "kobe-sanders",
+    "season_id": 2026,
+    "game_date": "2026-11-02",
+    "importance": 12,
+    "headline": "Kobe Sanders scored 26 in a loss to the Raptors",
+    "detail": "A new career high (previous best 20)",
+    "frame": {
+      "strength": 0.5,
+      "text": "A new career high (previous best 20)",
+      "proof_rows": [],
+      "type": "career_high",
+      "who": "subject",
+      "prior_value": 20
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a42",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4526",
+    "player_id": "kobe-sanders",
+    "season_id": 2026,
+    "game_date": "2026-11-02",
+    "importance": 12,
+    "headline": "Kobe Sanders: 5 threes vs the Raptors",
+    "detail": "A career high at the time (previous best 4)",
+    "frame": {
+      "strength": 0.5,
+      "text": "A career high at the time (previous best 4)",
+      "proof_rows": [],
+      "type": "career_high",
+      "who": "subject",
+      "prior_value": 4
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a43",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4527",
+    "player_id": "rui-hachimura",
+    "season_id": 2026,
+    "game_date": "2026-11-04",
+    "importance": 12,
+    "headline": "Rui Hachimura scored 21 in a loss to the Heat",
+    "detail": "His first 21-point game since Nov 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 21-point game since Nov 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 1,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a44",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4527",
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": "2026-11-04",
+    "importance": 12,
+    "headline": "Brook Lopez scored 20 in a loss to the Heat",
+    "detail": "His first 20-point game since Oct 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 20-point game since Oct 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 5,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a45",
+    "surface": "postgame",
+    "category": "game_flow",
+    "game_id": "4527",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-11-04",
+    "importance": 12,
+    "headline": "Clippers lost to the Heat after leading by 20",
+    "detail": "The largest blown lead by the Clippers so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "The largest blown lead by the Clippers so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 8
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a46",
+    "surface": "postgame",
+    "category": "game_flow",
+    "game_id": "4527",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-11-04",
+    "importance": 12,
+    "headline": "Clippers went on a 16-0 run vs the Heat",
+    "detail": "The longest scoring run by the Clippers so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "The longest scoring run by the Clippers so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 8
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a47",
+    "surface": "postgame",
+    "category": "player_period_stat",
+    "game_id": "4527",
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": "2026-11-04",
+    "importance": 12,
+    "headline": "Brook Lopez scored 12 in the 2nd quarter vs the Heat",
+    "detail": "First 12-point quarter by a Clipper since Oct 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "First 12-point quarter by a Clipper since Oct 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "group",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 5,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a48",
+    "surface": "postgame",
+    "category": "team_period_stat",
+    "game_id": "4527",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-11-04",
+    "importance": 12,
+    "headline": "Clippers scored 43 in the 2nd quarter vs the Heat",
+    "detail": "The most points in a quarter by the Clippers so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "The most points in a quarter by the Clippers so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 8
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a49",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4524",
+    "player_id": "isaiah-jackson",
+    "season_id": 2026,
+    "game_date": "2026-10-30",
+    "importance": 11,
+    "headline": "Isaiah Jackson: 4 blocks vs the Timberwolves",
+    "detail": "His most blocks in a game so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "His most blocks in a game so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "subject"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "tag"
+  },
+  {
+    "insight_id": "a50",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4525",
+    "player_id": "rui-hachimura",
+    "season_id": 2026,
+    "game_date": "2026-11-01",
+    "importance": 11,
+    "headline": "Rui Hachimura scored 24 in a loss to the Warriors",
+    "detail": "His season high so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "His season high so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "subject"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "tag"
+  },
+  {
+    "insight_id": "a51",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4525",
+    "player_id": "rui-hachimura",
+    "season_id": 2026,
+    "game_date": "2026-11-01",
+    "importance": 11,
+    "headline": "Rui Hachimura made 4 threes in a loss to the Warriors",
+    "detail": "His season high so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "His season high so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "subject"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "tag"
+  },
+  {
+    "insight_id": "a52",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4527",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-11-04",
+    "importance": 11,
+    "headline": "Darius Garland: 26 points vs the Heat",
+    "detail": "His first 26-point game since Oct 23, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 26-point game since Oct 23, 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 5,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a53",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4527",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-11-04",
+    "importance": 11,
+    "headline": "Darius Garland: 4 threes vs the Heat",
+    "detail": "His first 4-three game since Oct 30, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 4-three game since Oct 30, 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 2,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a54",
+    "surface": "postgame",
+    "category": "game_flow",
+    "game_id": "4526",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-11-02",
+    "importance": 11,
+    "headline": "Clippers blew a 16-point lead vs the Raptors",
+    "detail": "Largest blown lead by the Clippers so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "Largest blown lead by the Clippers so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 7
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a55",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4520",
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": "2026-10-21",
+    "importance": 10,
+    "headline": "Brook Lopez: 11 rebounds vs the Kings",
+    "detail": "Most rebounds in a game by a Clipper so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "Most rebounds in a game by a Clipper so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 1
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a56",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4520",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-10-21",
+    "importance": 10,
+    "headline": "Darius Garland: 30 points vs the Kings",
+    "detail": "Most points in a game by a Clipper so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "Most points in a game by a Clipper so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 1
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a57",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4521",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-10-23",
+    "importance": 10,
+    "headline": "Darius Garland scored 26 in a loss to the Lakers",
+    "detail": "His first 26-point game since Oct 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 26-point game since Oct 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 0,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a58",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4521",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-10-23",
+    "importance": 10,
+    "headline": "Darius Garland: 4 threes vs the Lakers",
+    "detail": "Most threes in a game by a Clipper so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "Most threes in a game by a Clipper so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 2
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a59",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4521",
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": "2026-10-23",
+    "importance": 10,
+    "headline": "Brook Lopez scored 22 in a loss to the Lakers",
+    "detail": "His first 22-point game since Mar 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 22-point game since Mar 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 22,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a60",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4522",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-10-25",
+    "importance": 10,
+    "headline": "Darius Garland: 11 assists vs the Thunder",
+    "detail": "Most assists in a game by a Clipper so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "Most assists in a game by a Clipper so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 3
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a61",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4522",
+    "player_id": "kris-dunn",
+    "season_id": 2026,
+    "game_date": "2026-10-25",
+    "importance": 10,
+    "headline": "Kris Dunn: 5 steals vs the Thunder",
+    "detail": "Most steals in a game by a Clipper so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "Most steals in a game by a Clipper so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 3
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a62",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4523",
+    "player_id": "keaton-wagler",
+    "season_id": 2026,
+    "game_date": "2026-10-28",
+    "importance": 10,
+    "headline": "Keaton Wagler: 21 points vs the Lakers",
+    "detail": "His most points in a game so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "His most points in a game so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "subject"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "tag"
+  },
+  {
+    "insight_id": "a63",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4523",
+    "player_id": "derrick-jones-jr.",
+    "season_id": 2026,
+    "game_date": "2026-10-28",
+    "importance": 10,
+    "headline": "Derrick Jones Jr.: 4 steals vs the Lakers",
+    "detail": "His most steals in a game so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "His most steals in a game so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "subject"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "tag"
+  },
+  {
+    "insight_id": "a64",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4524",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-10-30",
+    "importance": 10,
+    "headline": "Darius Garland: 24 points vs the Timberwolves",
+    "detail": "His first 24-point game since Oct 23, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 24-point game since Oct 23, 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 2,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a65",
+    "surface": "postgame",
+    "category": "player_game_stat",
+    "game_id": "4524",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-10-30",
+    "importance": 10,
+    "headline": "Darius Garland: 4 threes vs the Timberwolves",
+    "detail": "His first 4-three game since Oct 23, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "His first 4-three game since Oct 23, 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 2,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a66",
+    "surface": "postgame",
+    "category": "team_game_stat",
+    "game_id": "4520",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-10-21",
+    "importance": 10,
+    "headline": "Clippers put up 121 points vs the Kings",
+    "detail": "First 121-point game since Apr 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "First 121-point game since Apr 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "group",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 5,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a67",
+    "surface": "postgame",
+    "category": "team_game_stat",
+    "game_id": "4520",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-10-21",
+    "importance": 10,
+    "headline": "Clippers won by 25 vs the Kings",
+    "detail": "First 25-point win since Apr 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "First 25-point win since Apr 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "group",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 5,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a68",
+    "surface": "postgame",
+    "category": "team_game_stat",
+    "game_id": "4524",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-10-30",
+    "importance": 10,
+    "headline": "The Timberwolves beat the Clippers by 26",
+    "detail": "Worst loss by the Clippers so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "Worst loss by the Clippers so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 5
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a69",
+    "surface": "postgame",
+    "category": "game_flow",
+    "game_id": "4520",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-10-21",
+    "importance": 10,
+    "headline": "Clippers led the Kings by as many as 28",
+    "detail": "First 28-point lead in a win by the Clippers since Apr 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "First 28-point lead in a win by the Clippers since Apr 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "group",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 5,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a70",
+    "surface": "postgame",
+    "category": "player_period_stat",
+    "game_id": "4520",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-10-21",
+    "importance": 10,
+    "headline": "Darius Garland scored 16 in the 1st quarter vs the Kings",
+    "detail": "The most points in a quarter by a Clipper so far in 2026-27",
+    "frame": {
+      "strength": 0.5,
+      "text": "The most points in a quarter by a Clipper so far in 2026-27",
+      "proof_rows": [],
+      "type": "season_high",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": 1
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a71",
+    "surface": "postgame",
+    "category": "team_period_stat",
+    "game_id": "4520",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": "2026-10-21",
+    "importance": 10,
+    "headline": "A 41-point 1st quarter for the Clippers vs the Kings",
+    "detail": "The first 41-point quarter by the Clippers since Apr 5, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "The first 41-point quarter by the Clippers since Apr 5, 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "group",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 5,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a72",
+    "surface": "postgame",
+    "category": "player_period_stat",
+    "game_id": "4521",
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": "2026-10-23",
+    "importance": 10,
+    "headline": "Darius Garland scored 13 in the 4th quarter vs the Lakers",
+    "detail": "First 13-point quarter by a Clipper since Oct 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "First 13-point quarter by a Clipper since Oct 2026",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "group",
+      "since_date": "2000-01-01"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": 0,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a73",
+    "surface": "postgame",
+    "category": "milestone_crossed",
+    "game_id": "4524",
+    "player_id": "rui-hachimura",
+    "season_id": 2026,
+    "game_date": "2026-10-30",
+    "importance": 10,
+    "headline": "Rui Hachimura reached 500 threes in his career",
+    "detail": "Oct 30, 2026 vs the Minnesota Timberwolves",
+    "frame": {
+      "strength": 0.5,
+      "text": "Oct 30, 2026 vs the Minnesota Timberwolves",
+      "proof_rows": [],
+      "type": "milestone",
+      "who": "subject"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a74",
+    "surface": "pregame",
+    "category": "opp_rank",
+    "game_id": "4533",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 53,
+    "headline": "Up next: the San Antonio Spurs have the 3rd-ranked defense this season",
+    "detail": "Defensive rating 106.2 — 3rd of 30 (lower is better)",
+    "frame": {
+      "strength": 0.5,
+      "text": "Defensive rating 106.2 — 3rd of 30 (lower is better)",
+      "proof_rows": [],
+      "type": "league_rank",
+      "who": "league"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a75",
+    "surface": "pregame",
+    "category": "opp_rank",
+    "game_id": "4533",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 49,
+    "headline": "Next opponent: the San Antonio Spurs have the 5th-ranked offense",
+    "detail": "Offensive rating 115.8 — 5th of 30",
+    "frame": {
+      "strength": 0.5,
+      "text": "Offensive rating 115.8 — 5th of 30",
+      "proof_rows": [],
+      "type": "league_rank",
+      "who": "league"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a76",
+    "surface": "pregame",
+    "category": "vs_opponent",
+    "game_id": "4533",
+    "player_id": "max-strus",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 40,
+    "headline": "Max Strus vs the Spurs: 7.1 PPG",
+    "detail": "8 career regular-season games vs the Spurs; 10.4 PPG overall",
+    "frame": {
+      "strength": 0.5,
+      "text": "8 career regular-season games vs the Spurs; 10.4 PPG overall",
+      "proof_rows": [],
+      "type": "none",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "note"
+  },
+  {
+    "insight_id": "a77",
+    "surface": "pregame",
+    "category": "opp_form",
+    "game_id": "4533",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 39,
+    "headline": "The San Antonio Spurs have gone 9-1 over their last 10",
+    "detail": "Current streak: L1",
+    "frame": {
+      "strength": 0.5,
+      "text": "Current streak: L1",
+      "proof_rows": [],
+      "type": "none",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "note"
+  },
+  {
+    "insight_id": "a78",
+    "surface": "pregame",
+    "category": "last_meeting",
+    "game_id": "4533",
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 17,
+    "headline": "Last meeting: Clippers lost 118-99 vs the San Antonio Spurs",
+    "detail": "Home, Apr 2, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "Home, Apr 2, 2026",
+      "proof_rows": [],
+      "type": "none",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "note"
+  },
+  {
+    "insight_id": "a79",
+    "surface": "season",
+    "category": "yoy_change",
+    "game_id": null,
+    "player_id": "rui-hachimura",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 79,
+    "headline": "Rui Hachimura's rebounding rose from 3.3 RPG last season to 5.9 RPG this season",
+    "detail": "A career-best season",
+    "frame": {
+      "strength": 0.5,
+      "text": "A career-best season",
+      "proof_rows": [],
+      "type": "career_high",
+      "who": "subject",
+      "prior_value": 5.88
+    },
+    "evidence": {
+      "type": "delta",
+      "before": {
+        "value": 3.32,
+        "label": "3.32"
+      },
+      "after": {
+        "value": 5.91,
+        "label": "5.91"
+      },
+      "betterIsHigher": true
+    },
+    "proof_result": [
+      {
+        "part": "fact",
+        "data": {
+          "games": 11
+        }
+      }
+    ],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a80",
+    "surface": "season",
+    "category": "yoy_change",
+    "game_id": null,
+    "player_id": "brook-lopez",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 70,
+    "headline": "Brook Lopez: 8.5 PPG last season, 14.8 PPG this season",
+    "detail": "His best scoring since 2022-23",
+    "frame": {
+      "strength": 0.5,
+      "text": "His best scoring since 2022-23",
+      "proof_rows": [],
+      "type": "first_since",
+      "who": "subject",
+      "since_label": "2022-23",
+      "years": 4
+    },
+    "evidence": {
+      "type": "delta",
+      "before": {
+        "value": 8.5,
+        "label": "8.5"
+      },
+      "after": {
+        "value": 14.8,
+        "label": "14.8"
+      },
+      "betterIsHigher": true
+    },
+    "proof_result": [
+      {
+        "part": "fact",
+        "data": {
+          "games": 13
+        }
+      }
+    ],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a81",
+    "surface": "season",
+    "category": "streak",
+    "game_id": null,
+    "player_id": "darius-garland",
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 51,
+    "headline": "Darius Garland has 3 straight games with 20+ points",
+    "detail": "The longest streak of 20+ points by a Clipper since Apr 10, 2026",
+    "frame": {
+      "strength": 0.5,
+      "text": "The longest streak of 20+ points by a Clipper since Apr 10, 2026",
+      "proof_rows": [],
+      "type": "longest_since",
+      "who": "group",
+      "since_date": "2026-04-10",
+      "games_since": 100
+    },
+    "evidence": null,
+    "proof_result": [
+      {
+        "part": "fact",
+        "data": {
+          "streak": 3
+        }
+      }
+    ],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "cut"
+  },
+  {
+    "insight_id": "a82",
+    "surface": "season",
+    "category": "league_rank",
+    "game_id": null,
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 45,
+    "headline": "Clippers are 29th in the NBA in turnover rate",
+    "detail": "14.9% — 29th of 30 teams (lower is better)",
+    "frame": {
+      "strength": 0.5,
+      "text": "14.9% — 29th of 30 teams (lower is better)",
+      "proof_rows": [],
+      "type": "league_rank",
+      "who": "league"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a83",
+    "surface": "season",
+    "category": "league_rank",
+    "game_id": null,
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 41,
+    "headline": "Clippers rank 27th in the NBA in rebounding rate this season",
+    "detail": "47.2% — 27th of 30 teams",
+    "frame": {
+      "strength": 0.5,
+      "text": "47.2% — 27th of 30 teams",
+      "proof_rows": [],
+      "type": "league_rank",
+      "who": "league"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a84",
+    "surface": "season",
+    "category": "standings",
+    "game_id": null,
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 39,
+    "headline": "At 4-9, the Clippers are 13th in the West",
+    "detail": "23rd of 30 teams league-wide by win percentage",
+    "frame": {
+      "strength": 0.5,
+      "text": "23rd of 30 teams league-wide by win percentage",
+      "proof_rows": [],
+      "type": "league_rank",
+      "who": "league"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "card"
+  },
+  {
+    "insight_id": "a85",
+    "surface": "season",
+    "category": "yoy_change",
+    "game_id": null,
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 32,
+    "headline": "Clippers' offensive rating: 10th last season, 22nd this season",
+    "detail": "115.5 → 110.0",
+    "frame": {
+      "strength": 0.5,
+      "text": "115.5 → 110.0",
+      "proof_rows": [],
+      "type": "none",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "merge"
+  },
+  {
+    "insight_id": "a86",
+    "surface": "season",
+    "category": "yoy_change",
+    "game_id": null,
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 27,
+    "headline": "Clippers' defensive rating slipped from 18th last season to 25th this season",
+    "detail": "113.7 → 115.5 (lower is better)",
+    "frame": {
+      "strength": 0.5,
+      "text": "113.7 → 115.5 (lower is better)",
+      "proof_rows": [],
+      "type": "none",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "merge"
+  },
+  {
+    "insight_id": "a87",
+    "surface": "season",
+    "category": "yoy_change",
+    "game_id": null,
+    "player_id": null,
+    "season_id": 2026,
+    "game_date": null,
+    "importance": 27,
+    "headline": "Clippers' net rating slipped from 15th last season to 22nd this season",
+    "detail": "+1.8 → -5.5",
+    "frame": {
+      "strength": 0.5,
+      "text": "+1.8 → -5.5",
+      "proof_rows": [],
+      "type": "none",
+      "who": "group"
+    },
+    "evidence": null,
+    "proof_result": [],
+    "context": {
+      "games_since": null,
+      "team_game_number": null
+    },
+    "expected": "merge"
+  }
+]
