@@ -7,7 +7,7 @@ import { SplitsPanel } from '@/components/players/SplitsPanel'
 import { PlayerTransactions } from '@/components/players/PlayerTransactions'
 import { GameLog, type GameLogRow } from '@/components/players/GameLog'
 import { Eyebrow } from '@/components/ui/eyebrow'
-import { CareerHero, CareerHighs, CareerSeasons } from '@/components/players/ClippersCareer'
+import { CareerHero, CareerHighs, CareerNumbers, CareerSeasons } from '@/components/players/ClippersCareer'
 import type { PlayerCareerPayload } from '@/src/lib/data/player-career'
 import { getJson } from '@/src/lib/ui/api'
 import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
@@ -63,13 +63,10 @@ export default async function PlayerDetailPage({ params, searchParams }: Params)
   const former = clippersSeasons > 0 && (!rosterEntry || !!rosterEntry.is_traded)
   const seasonLabel = seasonId ? formatSeasonLabel(seasonId).replace('-', '–') : 'Season'
   const careerPanels = career && clippersSeasons > 0 && (
-    <section
-      className="enter grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:gap-[18px]"
-      style={{ ['--i' as string]: 1 }}
-      aria-label="Clippers career"
-    >
+    <section className="enter grid grid-cols-1 gap-4 lg:gap-[18px]" style={{ ['--i' as string]: 1 }} aria-label="Clippers career">
       <CareerSeasons playerId={player_id} career={career} selected={seasonId} />
-      <div className="grid gap-4">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:gap-[18px]">
+        <CareerNumbers career={career} />
         <CareerHighs highs={career.highs} />
       </div>
     </section>

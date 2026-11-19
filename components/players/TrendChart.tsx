@@ -7,7 +7,7 @@ import { Segmented } from '@/components/ui/segmented'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { ChartTooltip, axisTick, gridProps } from '@/components/charts/chart-theme'
 import { mergeChartSeries } from '@/src/lib/player-utils'
-import { formatDayShort } from '@/src/lib/ui/time'
+import { formatDayShort, formatDayTick } from '@/src/lib/ui/time'
 import type { ChartPoint, PlayerDetailPayload } from '@/src/lib/ui/types'
 
 type Metric = 'pts' | 'reb' | 'ast' | 'ts'
@@ -82,7 +82,7 @@ export function TrendChart({ charts }: { charts: PlayerDetailPayload['charts'] }
                 tickLine={false}
                 axisLine={false}
                 minTickGap={40}
-                tickFormatter={(d: string) => formatDayShort(d)}
+                tickFormatter={(d: string) => formatDayTick(d)}
               />
               <YAxis tick={axisTick} tickLine={false} axisLine={false} width={48} domain={['auto', 'auto']} tickFormatter={(v: number) => v.toFixed(0)} />
               <Tooltip
