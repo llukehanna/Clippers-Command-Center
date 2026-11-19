@@ -129,6 +129,13 @@ describe('GET /api/home', () => {
     expect(Array.isArray(body.insights)).toBe(true);
   });
 
+  it('the between-games insights query leaves player-surface rows to the player pages', async () => {
+    await getHome();
+    const call = findCall(/scope = 'between_games'/);
+    expect(call).toBeDefined();
+    expect(queryText(call!)).toMatch(/surface IS NULL OR surface <> 'player'/);
+  });
+
   // ── Season scoping ──────────────────────────────────────────────────────────
 
   it('returns the DB-derived season and scopes record, last_10 and ratings to it', async () => {

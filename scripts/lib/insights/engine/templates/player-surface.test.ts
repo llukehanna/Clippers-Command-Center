@@ -49,6 +49,16 @@ describe('player surface', () => {
     expect(say(best, fr('none'), lagging, 1).headline).toBe('Star Clipper set his 2025-26 high with 41 points');
     expect(say(best, fr('none'), rcFor('player'), 1).headline).toBe('Star Clipper set his season high with 41 points');
   });
+  it('uses the singular unit when one is left', () => {
+    const one = (stat: string, unit: string, label: string) => ({ ...progress, stat, data: { ...progress.data, remaining: 1, unit, threshold: 20, label } });
+    const rc = rcFor('player');
+    expect(say(one('double_doubles', 'double-doubles', '20 double-doubles'), fr('milestone'), rc).headline).toBe('Star Clipper is 1 double-double from 20 this season');
+    expect(say(one('season_points', 'points', '1,500 points'), fr('milestone'), rc, 1).headline).toBe('Star Clipper needs 1 more point for 20');
+    expect(say(one('season_threes', 'made threes', '20 made threes'), fr('milestone'), rc).headline).toBe('Star Clipper is 1 made three from 20 this season');
+    expect(say(one('career_rebounds', 'rebounds', '5,000 rebounds'), fr('milestone'), rc).headline).toMatch(/is 1 rebound from/);
+    expect(say(one('career_assists', 'assists', '5,000 assists'), fr('milestone'), rc).headline).toMatch(/is 1 assist from/);
+    expect(say(progress, fr('milestone'), rc).headline).toMatch(/18 points/);
+  });
   it('renders clean for every frame', () => {
     expectCleanPhrasings(best);
     expectCleanPhrasings(progress);

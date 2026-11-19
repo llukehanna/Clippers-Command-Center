@@ -15,12 +15,19 @@ export const seasonBestTemplates: TemplateModule = {
   default: phrasings([bestHeadline(0), bestHeadline(1)], (f, _fr, rc) => `${fmtDate(f.context.date)} vs the ${oppFull(f, rc)}`),
 };
 
+const SINGULAR: Record<string, string> = {
+  points: 'point', rebounds: 'rebound', assists: 'assist', threes: 'three', 'made threes': 'made three', 'double-doubles': 'double-double',
+};
+/** "1 point", "18 points": the unit agrees with the count. */
+export const unitFor = (n: number, unit: string) => (n === 1 ? (SINGULAR[unit] ?? unit) : unit);
+
 const progressHeadline = (i: number): Headline => (f) => {
   const d = f.data;
+  const unit = unitFor(d.remaining ?? 0, d.unit ?? '');
   const target = fmtNum(d.threshold ?? f.value);
   return i === 0
-    ? `${f.subject.name} is ${d.remaining} ${d.unit} from ${target}${d.career ? ' for his career' : ' this season'}`
-    : `${f.subject.name} needs ${d.remaining} more ${d.unit} for ${target}${d.career ? ' career' : ''}`;
+    ? `${f.subject.name} is ${d.remaining} ${unit} from ${target}${d.career ? ' for his career' : ' this season'}`
+    : `${f.subject.name} needs ${d.remaining} more ${unit} for ${target}${d.career ? ' career' : ''}`;
 };
 
 export const milestoneProgressTemplates: TemplateModule = {

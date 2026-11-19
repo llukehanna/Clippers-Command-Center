@@ -59,6 +59,7 @@ export interface FactData {
   end_date?: string;
   streak_games?: StreakGame[];
   hit_threshold?: number;
+  for_lac?: boolean;         // season best: the game was for the Clippers (false: a previous team, so no Clippers references)
   closed?: boolean;          // a player streak the Clippers' playoffs have closed: past tense while the season is current
   // Milestones / season totals
   career?: boolean;          // career (not season) milestone; for vs_opponent, the whole career is in the data

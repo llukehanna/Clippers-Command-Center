@@ -364,8 +364,12 @@ function pbpStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
 export function refsFor(fact: Fact, ctx: EngineContext): RefSpec | null {
   switch (fact.kind) {
     case 'player_game_stat':
-    case 'season_best':
       return playerStatRefs(fact, ctx);
+    case 'season_best': {
+      // Clippers references hold Clippers games only: a high set for a previous team has no Clippers comparison.
+      const refs = playerStatRefs(fact, ctx);
+      return refs && fact.data.for_lac === false ? { ...refs, group: null } : refs;
+    }
     case 'player_combo':
       return comboRefs(fact, ctx);
     case 'team_game_stat':

@@ -80,6 +80,7 @@ export async function loadInsights(url: URL): Promise<ApiResult> {
       FROM insights
       WHERE is_active = true
         AND scope = ${scope}
+        AND (surface IS NULL OR surface <> 'player')
         ${gameId ? sql`AND game_id = ${gameId}::bigint` : sql``}
         ${playerId ? sql`AND player_id = ${playerId}::bigint` : sql``}
       ORDER BY importance DESC, created_at DESC

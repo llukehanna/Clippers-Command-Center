@@ -943,6 +943,17 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         const f = await starPts();
         expect(f).toMatchObject({ value: 60, window: { game_id: gameId }, context: { date: '2025-12-02', opponent_id: '6', home: true, result: 'W' } });
         expect(await proofRows(f)).toHaveLength(1);
+        expect(f.data.for_lac).toBe(false);
+        // a game for a previous team is compared with no Clippers references: no group frame, and no "Clipper" in the text
+        const { buildDraft } = await import('./engine/run');
+        const { factKey } = await import('./engine/keys');
+        const draft = await buildDraft(f, factKey(f), 'player.season_bests', ctx);
+        expect('reason' in draft, JSON.stringify(draft).slice(0, 80)).toBe(false);
+        if (!('reason' in draft)) {
+          expect(['records_best', 'first_since', 'joins_company', 'clippers_rank', 'only_one']).not.toContain(draft.frame.type);
+          expect(draft.frame.who).not.toBe('group');
+          expect(draft.detail).not.toMatch(/Clipper/);
+        }
         // the same game from the other side: team 5 away, a loss
         await sql`UPDATE all_games SET home_team_id = 6, away_team_id = 5 WHERE game_id = ${gameId}::bigint`;
         expect((await starPts()).context).toMatchObject({ opponent_id: '6', home: false, result: 'L' });
@@ -950,6 +961,92 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         if (gameId) await sql`DELETE FROM all_games WHERE game_id = ${gameId}::bigint`;
       }
       expect((await starPts()).value).toBe(55);
+    }, TIMEOUT);
+
+    it('a tied season high belongs to the earliest game that reached it, and a later tie changes nothing', async () => {
+      const { seasonBestDetector } = await import('./engine/detectors/player-surface');
+      const ctx = await ctxAt('2026-02-25');
+      const starPts = async () => (await seasonBestDetector().run(ctx)).facts.find((f) => f.subject.id === '1' && f.stat === 'pts')!;
+      const original = await starPts();
+      expect(original.value).toBe(55);
+      const ids: string[] = [];
+      const tie = async (nba: number, date: string) => {
+        const [g] = await sql<{ game_id: string }[]>`
+          INSERT INTO all_games (nba_game_id, season_id, game_date, status, home_team_id, away_team_id, home_score, away_score, is_playoffs)
+          VALUES (${nba}, 2025, ${date}::date, 'final', 5, 6, 120, 100, false) RETURNING game_id::text AS game_id`;
+        ids.push(g.game_id);
+        await sql`
+          INSERT INTO game_player_box_scores (game_id, team_id, player_id, minutes, points, rebounds, fg3_made, fg_made, fg_attempted)
+          VALUES (${g.game_id}::bigint, 5, 1, '30:00', 55, 5, 2, 22, 30)`;
+        return g.game_id;
+      };
+      try {
+        const [orig] = await sql<{ d: string }[]>`SELECT g.game_date::text AS d FROM games g WHERE g.game_id = ${original.window.game_id!}::bigint`;
+        expect(orig.d > '2025-10-30' && orig.d < '2026-02-10').toBe(true);
+        await tie(43700011, '2026-02-12'); // a later tie: no change
+        expect((await starPts()).window.game_id).toBe(original.window.game_id);
+        const early = await tie(43700012, '2025-10-30'); // an earlier tie takes over: that game set the mark
+        expect((await starPts()).window.game_id).toBe(early);
+      } finally {
+        if (ids.length) await sql`DELETE FROM all_games WHERE game_id = ANY(${ids}::bigint[])`;
+      }
+      expect((await starPts()).window.game_id).toBe(original.window.game_id);
+    }, TIMEOUT);
+
+    it('season highs: a late joiner is skipped while league data is incomplete', async () => {
+      const { seasonBestDetector } = await import('./engine/detectors/player-surface');
+      const ctx = await ctxAt('2026-02-25');
+      const [last] = await sql<{ game_id: string }[]>`
+        SELECT g.game_id::text AS game_id FROM games g
+        WHERE ${ctx.lac.teamId}::bigint IN (g.home_team_id, g.away_team_id) AND g.season_id = ${ctx.season.id}
+          AND ${sql.unsafe(REGULAR_SEASON)} AND g.game_date <= ${ctx.asOf}::date
+          AND EXISTS (SELECT 1 FROM game_player_box_scores b WHERE b.game_id = g.game_id AND b.team_id = ${ctx.lac.teamId}::bigint)
+        ORDER BY g.game_date DESC, g.game_id DESC LIMIT 1`;
+      try {
+        await sql`
+          INSERT INTO players (player_id, nba_player_id, nba_person_id, first_name, last_name, display_name)
+          VALUES (9111, 9111, 1009111, 'Late', 'Star', 'Late Star')`;
+        await sql`
+          INSERT INTO game_player_box_scores (game_id, team_id, player_id, minutes, points, rebounds, fg3_made, fg_made, fg_attempted)
+          VALUES (${last.game_id}::bigint, ${ctx.lac.teamId}::bigint, 9111, '30:00', 40, 5, 2, 15, 25)`;
+        const full = (await seasonBestDetector().run(ctx)).facts;
+        expect(full.some((f) => f.subject.id === '9111' && f.value === 40)).toBe(true);
+        const guarded = (await seasonBestDetector().run(incomplete(ctx))).facts;
+        expect(guarded.some((f) => f.subject.id === '9111')).toBe(false);
+        expect(guarded.some((f) => f.subject.id === '1' && f.stat === 'pts')).toBe(true);
+      } finally {
+        await sql`DELETE FROM game_player_box_scores WHERE player_id = 9111`;
+        await sql`DELETE FROM players WHERE player_id = 9111`;
+      }
+    }, TIMEOUT);
+
+    it('milestone watch ends with the Clippers\' last regular-season game', async () => {
+      const { milestoneProgressDetector } = await import('./engine/detectors/player-surface');
+      const dates = await sql<{ d: string }[]>`
+        SELECT DISTINCT g.game_date::text AS d FROM games g
+        WHERE 1 IN (g.home_team_id, g.away_team_id) AND g.season_id = 2025 AND ${sql.unsafe(REGULAR_SEASON)} ORDER BY 1 DESC LIMIT 2`;
+      const [lastDay, dayBefore] = [dates[0].d, dates[1].d];
+      const ctx = await ctxAt(dayBefore);
+      const first5 = await sql<{ game_id: string }[]>`
+        SELECT g.game_id::text AS game_id FROM games g
+        WHERE 1 IN (g.home_team_id, g.away_team_id) AND g.season_id = 2025 AND ${sql.unsafe(REGULAR_SEASON)} ORDER BY g.game_date, g.game_id LIMIT 5`;
+      try {
+        await sql`
+          INSERT INTO players (player_id, nba_player_id, nba_person_id, first_name, last_name, display_name)
+          VALUES (9121, 9121, 1009121, 'Watch', 'Man', 'Watch Man')`;
+        for (const g of first5) {
+          await sql`
+            INSERT INTO game_player_box_scores (game_id, team_id, player_id, minutes, points, rebounds, fg3_made, fg_made, fg_attempted)
+            VALUES (${g.game_id}::bigint, 1, 9121, '30:00', 2400, 5, 2, 900, 1600)`;
+        }
+        const during = (await milestoneProgressDetector().run(ctx)).facts;
+        expect(during.some((f) => f.subject.id === '9121' && f.stat === 'career_points'), 'a game is still to come').toBe(true);
+        expect((await milestoneProgressDetector().run(await ctxAt(lastDay))).facts, 'no regular-season game left').toEqual([]);
+        expect((await milestoneProgressDetector().run(await ctxAt('2026-02-25'))).facts).toEqual([]);
+      } finally {
+        await sql`DELETE FROM game_player_box_scores WHERE player_id = 9121`;
+        await sql`DELETE FROM players WHERE player_id = 9121`;
+      }
     }, TIMEOUT);
 
     it('milestone progress: career thresholds only for complete careers; a late joiner is skipped while league data is incomplete', async () => {
@@ -1034,7 +1131,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
             const draft = await buildDraft(f, factKey(f), `${surface}.streaks`, ctx);
             if ('reason' in draft) continue;
             built++;
-            expect(draft.headline).toMatch(/ (closed|ended) 2025-26 /);
+            expect(draft.headline).toMatch(/ (closed|ended) the regular season /);
             expect(draft.headline).not.toMatch(/\b(has|have|is|are)\b/);
           }
           expect(built, `${surface} streaks built`).toBeGreaterThan(0);
