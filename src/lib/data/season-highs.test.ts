@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { seasonHighTags, rareTags, mergeTags, playerSeasonHighs, type BoxCol } from './season-highs';
+import { seasonHighTags, rareTags, mergeTags, playerSeasonHighs, tagTonesPresent, type BoxCol } from './season-highs';
+import { meetsSeasonHighFloor, SEASON_HIGH_FLOORS } from '@/src/lib/insights/season-highs';
 import type { InsightCardData } from '@/src/lib/insights/card';
 
 const line = (o: Partial<Record<'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'fg3m', number | null>> = {}) =>
@@ -73,4 +74,32 @@ describe('playerSeasonHighs', () => {
     expect(out.map((h) => h.label)).toEqual(['Points', 'Rebounds', 'Assists', 'Threes']);
   });
   it('is empty with no rows', () => { expect(playerSeasonHighs([])).toEqual([]); });
+});
+
+describe('tagTonesPresent', () => {
+  const tags = {
+    '7': { PTS: { tone: 'rare' as const, label: 'Career high' } },
+    '8': { REB: { tone: 'season_high' as const, label: 'Season high' } },
+  };
+  it('reports only the tones on the given players', () => {
+    expect(tagTonesPresent(tags, ['7'])).toEqual({ rare: true, season_high: false });
+    expect(tagTonesPresent(tags, ['8', '9'])).toEqual({ rare: false, season_high: true });
+    expect(tagTonesPresent(tags, ['7', '8'])).toEqual({ rare: true, season_high: true });
+    expect(tagTonesPresent(tags, ['9'])).toEqual({ rare: false, season_high: false });
+    expect(tagTonesPresent(undefined, ['7'])).toEqual({ rare: false, season_high: false });
+  });
+});
+
+describe('season-high floors (shared)', () => {
+  it('the box score re-exports the shared floors', async () => {
+    const data = await import('./season-highs');
+    expect(data.SEASON_HIGH_FLOORS).toBe(SEASON_HIGH_FLOORS);
+  });
+  it('meetsSeasonHighFloor', () => {
+    expect(meetsSeasonHighFloor('blk', 1)).toBe(false);
+    expect(meetsSeasonHighFloor('blk', 3)).toBe(true);
+    expect(meetsSeasonHighFloor('pts', 14)).toBe(false);
+    expect(meetsSeasonHighFloor('fgm', 1)).toBe(true);
+    expect(meetsSeasonHighFloor('constructor', 0)).toBe(true);
+  });
 });

@@ -2,7 +2,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { Panel } from '@/components/ui/panel'
 import type { InsightCardData } from '@/src/lib/insights/card'
-import { compactMeta, tileParts } from '@/src/lib/insights/tile'
+import { compactMeta, shownDetail, tileParts } from '@/src/lib/insights/tile'
 import { SubjectMark } from './SubjectMark'
 import { WhyChip } from './WhyChip'
 
@@ -28,12 +28,13 @@ export function CompactInsightList({ cards }: { cards: InsightCardData[] }) {
 
 function Row({ card }: { card: InsightCardData }) {
   const { chip } = tileParts(card)
+  const detail = shownDetail(card)
   const body: React.ReactNode = (
     <>
       <SubjectMark subject={card.subject} size={32} />
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="text-[13.5px] font-medium leading-[1.35] tracking-[-0.01em] text-text">{card.headline}</span>
-        {card.detail && <span className="text-[12.5px] leading-[1.35] text-mute">{card.detail}</span>}
+        {detail && <span className="text-[12.5px] leading-[1.35] text-mute">{detail}</span>}
         <span className="font-mono text-[10.5px] text-dim">{compactMeta(card)}</span>
       </span>
       {chip && (

@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 import { Panel } from '@/components/ui/panel'
 import type { InsightCardData } from '@/src/lib/insights/card'
 import type { ReceiptTable } from '@/src/lib/insights/receipts'
-import { headerLines, tileParts } from '@/src/lib/insights/tile'
+import { cardHref, headerLines, shownDetail, tileParts, type CardPage } from '@/src/lib/insights/tile'
 import { CardVisualView } from './CardVisualView'
 import { Receipts } from './Receipts'
 import { SubjectMark } from './SubjectMark'
@@ -14,6 +14,8 @@ interface InsightTileProps {
   size: 'hero' | 'standard'
   /** False on the player page: the header leads with the game, no avatar. */
   showSubject?: boolean
+  /** The page the card sits on (game or player page): the card never links back to it. */
+  page?: CardPage
 }
 
 // insights.css:37-38 (.ic) and :70-74 (.ic.hero), including the hero's own glow.
@@ -23,7 +25,7 @@ interface InsightTileProps {
 // grid with implicit (auto) columns instead of sizing to its nowrap header.
 const BASE = 'flex min-w-0 flex-col'
 // The hover lift only on a card that links somewhere (the stretched link
-// supplies the pointer cursor and focus ring).
+// supplies the pointer cursor and focus ring). An unlinked card has neither.
 const LINKED = 'transition-transform duration-[350ms] ease-premium hover:-translate-y-px'
 const STANDARD = 'gap-2.5 px-[18px] pb-3 pt-4'
 const HERO =
@@ -31,12 +33,14 @@ const HERO =
 
 /**
  * One insight as a card (hero or standard). The whole card links to its game
- * or player through a stretched link; the footer (and the Receipts button in
+ * or player through a stretched link (none when that is the page it is on); the footer (and the Receipts button in
  * it) sits above that link, so nothing interactive is nested inside it.
  * Legacy and live cards render plain: no chip, visual or Receipts.
  */
-export function InsightTile({ card, size, showSubject = true }: InsightTileProps) {
+export function InsightTile({ card, size, showSubject = true, page }: InsightTileProps) {
   const hero = size === 'hero'
+  const href = cardHref(card, page)
+  const detail = shownDetail(card)
   // tileParts keeps only visuals the kit can draw, so a hero without one falls
   // back to a single column (headline + frame line) with no big figure.
   const parts = tileParts(card)
@@ -48,9 +52,9 @@ export function InsightTile({ card, size, showSubject = true }: InsightTileProps
   ) : null
 
   return (
-    <Panel as="article" variant={hero ? 'hero' : 'default'} className={cn(BASE, card.href && LINKED, hero ? HERO : STANDARD)}>
-      {card.href && (
-        <Link href={card.href} aria-label={card.headline} className="absolute inset-0 z-[2] rounded-[inherit]" />
+    <Panel as="article" variant={hero ? 'hero' : 'default'} className={cn(BASE, href && LINKED, hero ? HERO : STANDARD)}>
+      {href && (
+        <Link href={href} aria-label={card.headline} className="absolute inset-0 z-[2] rounded-[inherit]" />
       )}
 
       <header className="flex min-w-0 items-center gap-2.5">
@@ -71,7 +75,7 @@ export function InsightTile({ card, size, showSubject = true }: InsightTileProps
         >
           <div>
             <Headline hero text={card.headline} />
-            {card.detail && <Detail hero text={card.detail} />}
+            {detail && <Detail hero text={detail} />}
           </div>
           {visual && (
             <div>
@@ -90,7 +94,7 @@ export function InsightTile({ card, size, showSubject = true }: InsightTileProps
       ) : (
         <>
           <Headline text={card.headline} />
-          {card.detail && <Detail text={card.detail} />}
+          {detail && <Detail text={detail} />}
           {visual}
         </>
       )}

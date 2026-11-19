@@ -10,7 +10,7 @@ import { TeamLogo } from '@/components/ui/team-mark'
 import { TableScroll, Th, Td } from '@/components/ui/data-table'
 import { teamName } from '@/src/lib/ui/teams'
 import { playerHref } from '@/src/lib/ui/live'
-import type { BoxTags } from '@/src/lib/data/season-highs'
+import { tagTonesPresent, type BoxTags } from '@/src/lib/data/season-highs'
 import type { BoxScorePlayer, BoxScoreTeam, BoxValue } from '@/src/lib/ui/types'
 
 const COLS = ['MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', 'FG', '3PT', 'FT', '+/-'] as const
@@ -96,7 +96,8 @@ export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, n
   )
   const isLac = isLacTeam(team)
   const tagFor = (p: BoxScorePlayer, c: string) => (TAG_COLS.has(c) ? tags?.[String(p.player_id)]?.[c as keyof BoxTags[string]] : undefined)
-  const hasTags = players.some((p) => [...TAG_COLS].some((c) => tagFor(p, c)))
+  // Legend keys only for tones shown in this team's table.
+  const tones = tagTonesPresent(tags, players.map((p) => String(p.player_id)))
 
   return (
     <Panel className={cn('overflow-hidden', className)}>
@@ -122,16 +123,20 @@ export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, n
           </span>
         )}
       </div>
-      {hasTags && (
+      {(tones.rare || tones.season_high) && (
         <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-3 pt-3 font-mono text-[10.5px] text-dim sm:px-4">
-          <span className="inline-flex items-center gap-1.5">
-            <i aria-hidden className="inline-block size-2.5 rounded-[3px] bg-[rgba(65,143,222,0.45)]" />
-            Rare: has an insight above
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <i aria-hidden className="inline-block size-2.5 rounded-[3px] bg-white/[0.14]" />
-            His season high
-          </span>
+          {tones.rare && (
+            <span className="inline-flex items-center gap-1.5">
+              <i aria-hidden className="inline-block size-2.5 rounded-[3px] bg-[rgba(65,143,222,0.45)]" />
+              Rare: has an insight above
+            </span>
+          )}
+          {tones.season_high && (
+            <span className="inline-flex items-center gap-1.5">
+              <i aria-hidden className="inline-block size-2.5 rounded-[3px] bg-white/[0.14]" />
+              New season high
+            </span>
+          )}
         </div>
       )}
       <TableScroll minWidth={720} className="mt-1">

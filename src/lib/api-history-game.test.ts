@@ -150,6 +150,46 @@ describe('game story and box score tags (B6)', () => {
   });
 });
 
+describe('blue tags only from cards Game story shows (fix wave B #3)', () => {
+  const PRIOR = { player_id: '7', games: 12, pts: 30, reb: 12, ast: 9, stl: 4, blk: 5, fg3m: 6 };
+  const ch = (stat: string, value: number, strength = 0.5) =>
+    ({ type: 'career_high', strength, who: 'subject', text: 't', proof_rows: [], stat, value }) as InsightRow['frame'];
+  beforeEach(() => {
+    const base = mockSql.getMockImplementation()!;
+    mockSql.mockImplementation(async (...args: SqlArgs) => {
+      const q = args[0].join('?');
+      if (q.includes('GROUP BY pb.player_id')) return [PRIOR];
+      if (q.includes('FROM game_player_box_scores pbs')) {
+        return [{ player_id: '7', display_name: 'A Clipper', team_id: '1', minutes: '30:00', points: 20, blocks: 4, rebounds: 5 }];
+      }
+      return base(...args);
+    });
+  });
+  type Body = { game_story: { insight_id: string; merged_ids: string[] }[]; box_score: { tags: Record<string, Record<string, { tone: string }>> } };
+
+  it('a card merged into a shown card still tags its stat', async () => {
+    insightRows = [
+      row('lead', { player_id: '7', importance: 90, category: 'a', frame: ch('blk', 4, 0.9) }),
+      row('follow', { player_id: '7', importance: 80, category: 'b', frame: ch('pts', 20, 0.5) }),
+    ];
+    const body = (await loadHistoryGame('640')).body as Body;
+    expect(body.game_story.map((c) => c.insight_id)).toEqual(['lead']);
+    expect(body.game_story[0].merged_ids).toEqual(['follow']);
+    expect(Object.keys(body.box_score.tags['7']).sort()).toEqual(['BLK', 'PTS']);
+  });
+
+  it('a bar-passing card the composer leaves out gets no blue tag', async () => {
+    insightRows = [
+      // eight stronger cards about other players fill Game story
+      ...Array.from({ length: 8 }, (_, i) => row(`o${i}`, { player_id: String(100 + i), importance: 90 - i, category: `c${i}`, frame: ch('pts', 30) })),
+      row('left-out', { player_id: '7', importance: 5, category: 'z', frame: ch('reb', 5) }),
+    ];
+    const body = (await loadHistoryGame('640')).body as Body;
+    expect(body.game_story.some((c) => c.insight_id === 'left-out')).toBe(false);
+    expect(body.box_score.tags['7']).toBeUndefined();
+  });
+});
+
 describe('game page cache lifetime (FW-8)', () => {
   const at = (iso: string) => new Date(iso);
   it('caches a day only once the nightly run after the game has landed (game date before LA yesterday)', () => {

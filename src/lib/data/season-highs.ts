@@ -4,6 +4,7 @@
 // same season; blue tags come from kept postgame cards whose frame.stat and frame.value match the
 // box value exactly. Blue wins when both apply.
 import type { InsightCardData } from '@/src/lib/insights/card';
+import { SEASON_HIGH_FLOORS } from '@/src/lib/insights/season-highs';
 import { boxTagLabel } from '@/src/lib/insights/why';
 import type { PlayerDetailPayload } from '@/src/lib/ui/types';
 
@@ -19,7 +20,7 @@ const STAT_KEYS = Object.keys(STAT_COL) as StatKey[];
 const MIN_PRIOR_GAMES = 3;
 
 /** Season highs below these floors are noise (1 block over a prior max of 0), so they get no grey tag. */
-export const SEASON_HIGH_FLOORS: Record<StatKey, number> = { pts: 15, reb: 8, ast: 5, stl: 3, blk: 3, fg3m: 3 };
+export { SEASON_HIGH_FLOORS };
 
 type StatLine = Record<StatKey, number | null>;
 export interface SeasonHighPlayer extends StatLine { player_id: string; team_is_lac: boolean }
@@ -63,6 +64,15 @@ export function mergeTags(grey: BoxTags, blue: BoxTags): BoxTags {
   const out: BoxTags = {};
   for (const [id, cols] of Object.entries(grey)) out[id] = { ...cols };
   for (const [id, cols] of Object.entries(blue)) out[id] = { ...(out[id] ?? {}), ...cols };
+  return out;
+}
+
+/** Which tag tones appear among these players: the legend shows a key only when a tag of that tone is on screen. */
+export function tagTonesPresent(tags: BoxTags | undefined, playerIds: string[]): { rare: boolean; season_high: boolean } {
+  const out = { rare: false, season_high: false };
+  for (const id of playerIds) {
+    for (const t of Object.values(tags?.[id] ?? {})) if (t) out[t.tone] = true;
+  }
   return out;
 }
 

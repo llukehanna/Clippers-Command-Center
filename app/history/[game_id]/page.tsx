@@ -111,14 +111,14 @@ export default async function HistoryGamePage({ params }: Params) {
           <Eyebrow aside={`${gameStory.length} verified`}>Game story</Eyebrow>
           <div className="grid gap-3.5 min-[900px]:grid-cols-2">
             {gameStory.map((card) => (
-              <InsightTile key={card.insight_id} card={card} size="standard" />
+              <InsightTile key={card.insight_id} card={card} size="standard" page={{ kind: 'game', game_id: String(game.game_id) }} />
             ))}
           </div>
         </section>
       )}
 
       {story?.flow && (
-        <section className="enter" style={{ ['--i' as string]: 1 }} aria-label="Game flow">
+        <section className="enter" style={{ ['--i' as string]: 2 }} aria-label="Game flow">
           <Panel className="p-5">
             <Eyebrow aside={story.flow.expected_source === 'spread' ? 'win probability from the closing spread' : 'win probability from home court'}>
               Game flow
@@ -130,20 +130,20 @@ export default async function HistoryGamePage({ params }: Params) {
       )}
 
       {(story?.quarters || story?.clutch) && (
-        <section className={`enter grid items-stretch gap-3 ${story?.quarters && story?.clutch ? 'lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]' : ''}`} style={{ ['--i' as string]: 2 }}>
+        <section className={`enter grid items-stretch gap-3 ${story?.quarters && story?.clutch ? 'lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]' : ''}`} style={{ ['--i' as string]: 3 }}>
           {story?.quarters && <QuarterTable quarters={story.quarters} oppAbbr={oppAbbr} />}
           {story?.clutch && <ClutchCard clutch={story.clutch} oppAbbr={oppAbbr} />}
         </section>
       )}
 
       {(story?.shots || story?.records) && (
-        <section className={`enter grid items-stretch gap-3 ${story?.shots && story?.records ? 'lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]' : ''}`} style={{ ['--i' as string]: 3 }}>
+        <section className={`enter grid items-stretch gap-3 ${story?.shots && story?.records ? 'lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]' : ''}`} style={{ ['--i' as string]: 4 }}>
           {story?.shots && <ShotChart shots={story.shots.shots} located={story.shots.located} total={story.shots.total} />}
           {story?.records && <RecordMoments notes={story.records} />}
         </section>
       )}
 
-      <section className="enter" style={{ ['--i' as string]: 4 }}>
+      <section className="enter" style={{ ['--i' as string]: 5 }}>
         <Eyebrow>Box score</Eyebrow>
         {game.season_id < 1983 && (
           <p className="m-0 mb-3 text-[13px] text-mute">Box score from historical records; some stats weren&apos;t tracked in this era.</p>
