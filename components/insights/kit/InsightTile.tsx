@@ -21,7 +21,10 @@ interface InsightTileProps {
 // right edge, and a hidden-overflow box can still be scrolled sideways when
 // focus moves to its Receipts button. min-w-0 lets the card shrink inside a
 // grid with implicit (auto) columns instead of sizing to its nowrap header.
-const BASE = 'flex min-w-0 flex-col transition-transform duration-[350ms] ease-premium hover:-translate-y-px'
+const BASE = 'flex min-w-0 flex-col'
+// The hover lift only on a card that links somewhere (the stretched link
+// supplies the pointer cursor and focus ring).
+const LINKED = 'transition-transform duration-[350ms] ease-premium hover:-translate-y-px'
 const STANDARD = 'gap-2.5 px-[18px] pb-3 pt-4'
 const HERO =
   'overflow-clip gap-3 px-6 pb-3.5 pt-[22px] max-sm:px-4 max-sm:pb-3 max-sm:pt-[18px] [&>.hero-glow]:[inset:-55%_-20%_auto_auto] [&>.hero-glow]:size-[520px] [&>.hero-glow]:bg-[radial-gradient(closest-side,rgba(65,143,222,0.24),transparent)]'
@@ -34,6 +37,8 @@ const HERO =
  */
 export function InsightTile({ card, size, showSubject = true }: InsightTileProps) {
   const hero = size === 'hero'
+  // tileParts keeps only visuals the kit can draw, so a hero without one falls
+  // back to a single column (headline + frame line) with no big figure.
   const parts = tileParts(card)
   const { name, sub } = headerLines(card, showSubject)
   const visual = parts.visual ? (
@@ -43,7 +48,7 @@ export function InsightTile({ card, size, showSubject = true }: InsightTileProps
   ) : null
 
   return (
-    <Panel as="article" variant={hero ? 'hero' : 'default'} className={cn(BASE, hero ? HERO : STANDARD)}>
+    <Panel as="article" variant={hero ? 'hero' : 'default'} className={cn(BASE, card.href && LINKED, hero ? HERO : STANDARD)}>
       {card.href && (
         <Link href={card.href} aria-label={card.headline} className="absolute inset-0 z-[2] rounded-[inherit]" />
       )}

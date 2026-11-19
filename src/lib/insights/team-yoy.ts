@@ -3,6 +3,7 @@
 // Pure, DB-free. Reads the stored proof rows (one fact row per season).
 import { toCardData, type CardSourceRow, type InsightCardData } from './card';
 import { proofParts } from './quality';
+import type { WhyChip } from './why';
 
 export interface TeamYoyRow {
   label: 'Offense' | 'Defense' | 'Net' | 'Record';
@@ -48,6 +49,28 @@ export function teamYoyRow(row: CardSourceRow): TeamYoyRow | null {
   const total = finite(last.total_teams) ? last.total_teams : finite(first.total_teams) ? first.total_teams : null;
   if (total === null) return null;
   return { label, from: first.rank as number, to: last.rank as number, total };
+}
+
+/**
+ * The merged card's chip. Rows are league ranks, where a lower number is
+ * better for every rating (the defensive rank is already ordered best-first),
+ * so a rank that grew is a rating that worsened.
+ */
+export function teamYoyChip(rows: TeamYoyRow[]): WhyChip | null {
+  const valid = rows.filter((r) => finite(r.from) && finite(r.to));
+  const n = valid.length;
+  if (n === 0) return null;
+  const worse = valid.filter((r) => r.to > r.from).length;
+  const better = valid.filter((r) => r.to < r.from).length;
+  if (n === 1) {
+    if (worse) return { label: `${valid[0].label} down`, tone: 'low' };
+    if (better) return { label: `${valid[0].label} up`, tone: 'career' };
+    return null;
+  }
+  if (worse === n) return { label: `Down in all ${n}`, tone: 'low' };
+  if (better === n) return { label: `Up in all ${n}`, tone: 'career' };
+  if (worse > 0) return { label: `Down in ${worse} of ${n}`, tone: 'low' };
+  return null;
 }
 
 const PHRASE: Record<string, string> = { Offense: 'offense', Defense: 'defense', Net: 'net rating' };

@@ -24,7 +24,7 @@ export function GapLine({ visual, size }: { visual: Gap; size: 'hero' | 'standar
         />
         <span
           className={cn(
-            'absolute right-0 -ml-1.5 size-3 rounded-full bg-pacific shadow-[0_0_0_4px_rgba(65,143,222,0.18),0_0_16px_rgba(65,143,222,0.8)]',
+            'absolute right-[6px] size-3 translate-x-1/2 rounded-full bg-pacific shadow-[0_0_0_4px_rgba(65,143,222,0.18),0_0_16px_rgba(65,143,222,0.8)]',
             hero ? 'top-[17px]' : 'top-[11px]',
           )}
         />

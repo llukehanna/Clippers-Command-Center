@@ -45,13 +45,25 @@ describe('tileParts', () => {
     expect(p).toMatchObject({ plain: false, chip: null, visual: null, receipts: null, big: null });
   });
 
-  it('a merged team-yoy card (frame null) keeps its mini-delta visual', () => {
-    const c = card({ subject: { kind: 'team', abbr: 'LAC', name: 'Clippers' }, team_yoy: [{ label: 'Offense', from: 10, to: 22, total: 30 }] });
+  it('a merged team-yoy card (frame null) keeps its mini-delta visual and gets the ratings chip', () => {
+    const c = card({
+      subject: { kind: 'team', abbr: 'LAC', name: 'Clippers' },
+      team_yoy: [{ label: 'Offense', from: 10, to: 22, total: 30 }, { label: 'Defense', from: 18, to: 25, total: 30 }, { label: 'Net', from: 15, to: 22, total: 30 }],
+    });
     expect(isPlainCard(c)).toBe(false);
     const p = tileParts(c);
     expect(p.visual?.kind).toBe('team_yoy');
     expect(p.receipts).toBeNull();
-    expect(p.chip).toBeNull();
+    expect(p.chip).toEqual({ label: 'Down in all 3', tone: 'low' });
+  });
+
+  it('a visual the kit cannot draw is dropped, and so is the big figure', () => {
+    const p = tileParts(card({
+      frame: frame({ type: 'league_rank', rank: 1, total: 1 }),
+      evidence: { type: 'rank_track', rank: 1, total: 1, betterIsHigher: true, label: 'x' },
+    }));
+    expect(p.visual).toBeNull();
+    expect(p.big).toBeNull();
   });
 });
 

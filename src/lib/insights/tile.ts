@@ -6,6 +6,8 @@
 import { insightCategoryLabel } from '../format';
 import type { InsightCardData } from './card';
 import { receiptTable, sampleLabel, type ReceiptTable } from './receipts';
+import { visualDrawable } from './kit-geometry';
+import { teamYoyChip } from './team-yoy';
 import { fmtShort } from './time';
 import { bigFigure, pickVisual, type CardVisual } from './visual';
 import { whyChip, type WhyChip } from './why';
@@ -48,10 +50,14 @@ export function compactMeta(card: InsightCardData): string {
 
 export function tileParts(card: InsightCardData): TileParts {
   if (isPlainCard(card)) return PLAIN;
-  const visual = pickVisual(card);
+  // Only a visual the kit can actually draw counts: the hero's two-column
+  // layout and big figure hang off it.
+  const picked = pickVisual(card);
+  const visual = picked && visualDrawable(picked) ? picked : null;
+  const yoy = Array.isArray(card.team_yoy) && card.team_yoy.length > 0 ? card.team_yoy : null;
   return {
     plain: false,
-    chip: whyChip(card),
+    chip: yoy ? teamYoyChip(yoy) : whyChip(card),
     visual,
     receipts: receiptTable(card),
     sample: sampleLabel(card),

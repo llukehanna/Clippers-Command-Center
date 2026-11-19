@@ -1,6 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import type { CardSourceRow } from './card';
-import { mergeTeamYoy, teamYoyRow } from './team-yoy';
+import { mergeTeamYoy, teamYoyChip, teamYoyRow, type TeamYoyRow } from './team-yoy';
+
+describe('teamYoyChip', () => {
+  const r = (label: TeamYoyRow['label'], from: number, to: number): TeamYoyRow => ({ label, from, to, total: 30 });
+
+  it('every rank worse: "Down in all N", red', () => {
+    expect(teamYoyChip([r('Offense', 10, 22), r('Defense', 18, 25), r('Net', 15, 22)]))
+      .toEqual({ label: 'Down in all 3', tone: 'low' });
+  });
+
+  it('every rank better: "Up in all N", green', () => {
+    expect(teamYoyChip([r('Offense', 22, 10), r('Defense', 25, 18)])).toEqual({ label: 'Up in all 2', tone: 'career' });
+  });
+
+  it('mixed with some worse: "Down in X of N", red', () => {
+    expect(teamYoyChip([r('Offense', 10, 22), r('Defense', 25, 18), r('Net', 15, 15)]))
+      .toEqual({ label: 'Down in 1 of 3', tone: 'low' });
+  });
+
+  it('none worse and not all better: no chip', () => {
+    expect(teamYoyChip([r('Offense', 22, 10), r('Net', 15, 15)])).toBeNull();
+    expect(teamYoyChip([])).toBeNull();
+  });
+
+  it('a single row names the rating', () => {
+    expect(teamYoyChip([r('Defense', 18, 25)])).toEqual({ label: 'Defense down', tone: 'low' });
+    expect(teamYoyChip([r('Defense', 25, 18)])).toEqual({ label: 'Defense up', tone: 'career' });
+    expect(teamYoyChip([r('Defense', 18, 18)])).toBeNull();
+  });
+});
 
 function yoy(id: string, stat: string, importance: number, prev: number, cur: number, over: Partial<CardSourceRow> = {}): CardSourceRow {
   return {

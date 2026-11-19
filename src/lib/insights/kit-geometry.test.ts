@@ -1,8 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import {
   bestBars, deltaView, fmtNum, milestoneBar, miniDeltas, rankTicks, RANK_BUCKETS, SPARK_H, SPARK_W, sparkGeometry,
-  streakBars, surname,
+  streakBars, surname, visualDrawable,
 } from './kit-geometry';
+import type { CardVisual } from './visual';
+
+describe('visualDrawable', () => {
+  const ev = (evidence: Extract<CardVisual, { kind: 'evidence' }>['evidence']): CardVisual => ({ kind: 'evidence', evidence, aria: '' });
+
+  it('drawable inputs are drawable', () => {
+    expect(visualDrawable({ kind: 'gap', from: '2021-12-04', to: '2026-11-13', span: '', ticks: [], then: '', now: '', aria: '' })).toBe(true);
+    expect(visualDrawable({ kind: 'best', prev: 20, value: 26, aria: '' })).toBe(true);
+    expect(visualDrawable(ev({ type: 'rank_track', rank: 3, total: 30, betterIsHigher: true, label: 'x' }))).toBe(true);
+    expect(visualDrawable({ kind: 'team_yoy', rows: [{ label: 'Net', from: 3, to: 5, total: 30 }], aria: '' })).toBe(true);
+  });
+
+  it('inputs the kit cannot draw are not', () => {
+    expect(visualDrawable({ kind: 'best', prev: 0, value: 0, aria: '' })).toBe(false);
+    expect(visualDrawable({ kind: 'company', members: [], aria: '' })).toBe(false);
+    expect(visualDrawable({ kind: 'team_yoy', rows: [{ label: 'Net', from: 0, to: 5, total: 30 }], aria: '' })).toBe(false);
+    expect(visualDrawable(ev({ type: 'rank_track', rank: 3, total: 1, betterIsHigher: true, label: 'x' }))).toBe(false);
+    expect(visualDrawable(ev({ type: 'streak_strip', games: [], threshold: 20 }))).toBe(false);
+    expect(visualDrawable(ev({ type: 'milestone_progress', current: 5, target: 0, label: 'x' }))).toBe(false);
+    expect(visualDrawable(ev({ type: 'margin_spark', series: [[0, 0]] }))).toBe(false);
+    expect(visualDrawable(ev({ type: 'history_ladder', current: { value: 1, label: 'x' }, others: [] }))).toBe(false);
+  });
+});
 
 describe('fmtNum', () => {
   it('formats integers with separators and decimals to one place', () => {

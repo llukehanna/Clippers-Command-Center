@@ -6,6 +6,7 @@
 // DB-free, relative imports only.
 import { ordinal } from '../record-notes';
 import type { TeamYoyRow } from './team-yoy';
+import type { CardVisual } from './visual';
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
@@ -153,6 +154,41 @@ export function miniDeltas(rows: TeamYoyRow[]): { rows: MiniDeltaRow[]; axisEnd:
   if (out.length === 0) return null;
   const total = rows.find((r) => finite(r.total) && r.total >= 2)?.total ?? 0;
   return { rows: out, axisEnd: ordinal(total) };
+}
+
+// ── drawability ─────────────────────────────────────────────────────────────
+
+/** True when the kit can actually draw this visual (its geometry is non-null). */
+export function visualDrawable(v: CardVisual): boolean {
+  switch (v.kind) {
+    case 'gap':
+      return true; // pickVisual already validated both dates
+    case 'best':
+      return bestBars(v.prev, v.value) !== null;
+    case 'company':
+      return v.members.length > 0;
+    case 'team_yoy':
+      return miniDeltas(v.rows) !== null;
+    case 'evidence': {
+      const e = v.evidence;
+      switch (e.type) {
+        case 'rank_track':
+          return rankTicks(e.rank, e.total, e.tied ?? 0) !== null;
+        case 'streak_strip':
+          return streakBars(e.games, e.threshold) !== null;
+        case 'delta':
+          return deltaView(e.before?.value, e.after?.value, e.betterIsHigher) !== null;
+        case 'milestone_progress':
+          return milestoneBar(e.current, e.target) !== null;
+        case 'margin_spark':
+          return sparkGeometry(e.series, e.highlight) !== null;
+        default:
+          return false;
+      }
+    }
+    default:
+      return false;
+  }
 }
 
 // ── company pills ───────────────────────────────────────────────────────────
