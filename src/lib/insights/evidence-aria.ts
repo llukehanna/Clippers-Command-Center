@@ -13,7 +13,7 @@ export function evidenceAria(e: Evidence): string {
       return `${hits} of ${e.games.length} games at ${num(e.threshold)} or better`;
     }
     case 'rank_track':
-      return `Ranked ${ordinal(e.rank)} of ${e.total} in ${e.label}`;
+      return `Ranked ${e.tied ? 'tied for ' : ''}${ordinal(e.rank)} of ${e.total} in ${e.label}`;
     case 'history_ladder': {
       const head = `${e.current.label}: ${num(e.current.value)}`;
       const next = e.others[0];

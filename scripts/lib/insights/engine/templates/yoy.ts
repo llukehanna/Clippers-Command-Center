@@ -1,7 +1,7 @@
 // Year-over-year phrasings: team rank moves, record, player rises.
 import { ordinal } from '../../proof-utils.js';
 import type { Fact } from '../types.js';
-import { overrides, pron, prevPhrase, prevSeasonLabel, sinceText, type ContextLine, type Headline, type TemplateModule } from './shared.js';
+import { overrides, pron, prevPhrase, prevSeasonLabel, rankText, sinceText, type ContextLine, type Headline, type TemplateModule } from './shared.js';
 
 const pctWhole = (v: number | undefined) => `${Math.round((v ?? 0) * 100)}%`;
 
@@ -22,15 +22,15 @@ const headline = (i: number): Headline => (f, rc) => {
   if (d.yoy === 'team_rank') {
     const prev = d.prev_rank ?? 0;
     const cur = d.rank ?? 0;
+    const prevText = rankText(prev, d.prev_tied);
+    const curText = rankText(cur, d.tied);
+    const both = `Clippers' ${d.label}: ${prevText} ${prevPhrase(rc)}, ${curText} ${rc.season.phrase}`;
     if (prev === cur) {
-      return i === 0
-        ? `Clippers' ${d.label} held at ${ordinal(cur)} ${rc.season.phrase}`
-        : `Clippers' ${d.label}: ${ordinal(prev)} ${prevPhrase(rc)}, ${ordinal(cur)} ${rc.season.phrase}`;
+      // "held at tied for 3rd" reads badly: a tie in either season takes the two-season form.
+      return i === 0 && !d.tied && !d.prev_tied ? `Clippers' ${d.label} held at ${ordinal(cur)} ${rc.season.phrase}` : both;
     }
     const verb = prev > cur ? 'improved' : 'slipped';
-    return i === 0
-      ? `Clippers' ${d.label} ${verb} from ${ordinal(prev)} ${prevPhrase(rc)} to ${ordinal(cur)} ${rc.season.phrase}`
-      : `Clippers' ${d.label}: ${ordinal(prev)} ${prevPhrase(rc)}, ${ordinal(cur)} ${rc.season.phrase}`;
+    return i === 0 ? `Clippers' ${d.label} ${verb} from ${prevText} ${prevPhrase(rc)} to ${curText} ${rc.season.phrase}` : both;
   }
   if (d.yoy === 'record') {
     const up = f.polarity === 'positive' ? 'up' : 'down';

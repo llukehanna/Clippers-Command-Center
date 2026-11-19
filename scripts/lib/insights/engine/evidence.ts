@@ -26,6 +26,9 @@ export function gameStatEvidence(f: Fact, fr: Frame, seasonText: string): Eviden
   return { type: 'rank_track', rank, total, betterIsHigher: true, label: `NBA ${f.kind === 'team_game_stat' ? 'team' : 'player'} games ${seasonWording(f, seasonText)}` };
 }
 
+/** A shared rank's tie count, only when there is one (untied evidence is unchanged). */
+const tiedPart = (tied: number | undefined) => (tied !== undefined && tied > 0 ? { tied } : {});
+
 export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
   const d = f.data;
   const season = f.seasonId !== null ? seasonLabel(f.seasonId) : '';
@@ -43,11 +46,11 @@ export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
     case 'recent_form':
     case 'opp_rank':
       return d.rank !== undefined && d.total !== undefined
-        ? { type: 'rank_track', rank: d.rank, total: d.total, betterIsHigher: d.higherIsBetter ?? true, label: d.label ?? '' }
+        ? { type: 'rank_track', rank: d.rank, total: d.total, ...tiedPart(d.tied), betterIsHigher: d.higherIsBetter ?? true, label: d.label ?? '' }
         : null;
     case 'standings':
       return d.rank !== undefined && d.total !== undefined
-        ? { type: 'rank_track', rank: d.rank, total: d.total, betterIsHigher: true, label: `the ${d.conference ?? 'conference'}` }
+        ? { type: 'rank_track', rank: d.rank, total: d.total, ...tiedPart(d.tied), betterIsHigher: true, label: `the ${d.conference ?? 'conference'}` }
         : null;
     case 'vs_opponent':
       return d.prev_value !== undefined && d.cur_value !== undefined

@@ -31,6 +31,7 @@ WITH team_values AS (
 ), ranked AS (
   SELECT season_id, team_id, value,
          RANK() OVER (PARTITION BY season_id ORDER BY value ${m.higherIsBetter ? 'DESC' : 'ASC'})::int AS rank,
+         (COUNT(*) OVER (PARTITION BY season_id, value) - 1)::int AS tied,
          COUNT(*) OVER (PARTITION BY season_id)::int AS total_teams
   FROM team_values
   WHERE value IS NOT NULL
@@ -42,7 +43,7 @@ WITH team_values AS (
 ), lac AS (
   SELECT moved FROM moves WHERE team_id = $4::bigint
 )
-SELECT r.season_id::int AS season_id, r.value, r.rank, r.total_teams,
+SELECT r.season_id::int AS season_id, r.value, r.rank, r.tied, r.total_teams,
        (SELECT moved FROM lac) AS moved,
        (SELECT COUNT(*) FROM moves m, lac WHERE SIGN(m.moved) = SIGN(lac.moved) AND ABS(m.moved) >= ABS(lac.moved))::int AS as_big,
        (SELECT COUNT(*) FROM moves)::int AS teams
@@ -153,7 +154,7 @@ export function yoyDetector(surface: 'season' | 'player'): Detector {
             polarity: moved > 0 ? 'positive' : 'negative', proof: { ...q, match: {} },
             sample: { kind: 'share', p: teams > 0 ? Number(c.as_big) / teams : 1 },
             data: {
-              yoy: 'team_rank', rank, total, prev_rank: prevRank, bottom: moved < 0 && rank > total - 5,
+              yoy: 'team_rank', rank, total, tied: Number(c.tied), prev_rank: prevRank, prev_tied: Number(p.tied), bottom: moved < 0 && rank > total - 5,
               label: m.label, formatted: m.format(Number(c.value)), prev_formatted: m.format(Number(p.value)),
               prev_value: Number(p.value), cur_value: Number(c.value), higherIsBetter: m.higherIsBetter,
             },

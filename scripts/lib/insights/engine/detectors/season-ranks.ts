@@ -34,11 +34,12 @@ WITH team_values AS (
 ), ranked AS (
   SELECT team_id, value, games,
          RANK() OVER (ORDER BY value ${m.higherIsBetter ? 'DESC' : 'ASC'})::int AS rank,
+         (COUNT(*) OVER (PARTITION BY value) - 1)::int AS tied,
          COUNT(*) OVER ()::int AS total_teams
   FROM team_values
   WHERE value IS NOT NULL
 )
-SELECT team_id::text AS team_id, value, games, rank, total_teams
+SELECT team_id::text AS team_id, value, games, rank, tied, total_teams
 FROM ranked
 WHERE team_id = $3::bigint`.trim();
 }
@@ -56,11 +57,12 @@ WITH per_player AS (
 ), ranked AS (
   SELECT player_id, games, value,
          RANK() OVER (ORDER BY value DESC)::int AS rank,
+         (COUNT(*) OVER (PARTITION BY value) - 1)::int AS tied,
          COUNT(*) OVER ()::int AS total_players
   FROM per_player
   WHERE value IS NOT NULL
 )
-SELECT r.player_id::text AS player_id, p.display_name, r.games, r.value, r.rank, r.total_players
+SELECT r.player_id::text AS player_id, p.display_name, r.games, r.value, r.rank, r.tied, r.total_players
 FROM ranked r
 JOIN players p ON p.player_id = r.player_id
 WHERE r.rank <= $3::int
@@ -90,12 +92,14 @@ WITH results AS (
 ), ranked AS (
   SELECT team_id, conference, wins, losses,
          RANK() OVER (PARTITION BY conference ORDER BY wins::float8 / (wins + losses) DESC)::int AS conf_rank,
+         (COUNT(*) OVER (PARTITION BY conference, wins::float8 / (wins + losses)) - 1)::int AS tied,
          COUNT(*) OVER (PARTITION BY conference)::int AS conf_teams,
          RANK() OVER (ORDER BY wins::float8 / (wins + losses) DESC)::int AS league_rank,
+         (COUNT(*) OVER (PARTITION BY wins::float8 / (wins + losses)) - 1)::int AS league_tied,
          COUNT(*) OVER ()::int AS league_teams
   FROM records
 )
-SELECT team_id::text AS team_id, conference, wins, losses, conf_rank, conf_teams, league_rank, league_teams
+SELECT team_id::text AS team_id, conference, wins, losses, conf_rank, tied, conf_teams, league_rank, league_tied, league_teams
 FROM ranked
 WHERE team_id = $2::bigint`.trim();
 
@@ -129,6 +133,7 @@ WITH latest AS (
   ORDER BY team_id, as_of_game_date DESC
 )
 SELECT (SELECT COUNT(*) + 1 FROM latest l WHERE l.value > lac.value)::int AS rank,
+       (SELECT COUNT(*) FROM latest l WHERE l.value = lac.value AND l.team_id <> lac.team_id)::int AS tied,
        (SELECT COUNT(*) FROM latest)::int AS total_teams,
        lac.value,
        lac.as_of_game_date::text AS as_of_game_date
@@ -159,7 +164,7 @@ export function leagueRankDetector(surface: 'season' | 'player', opts: { teams: 
             stat: `team_${m.key}`, value: rank, polarity: top ? 'positive' : 'negative',
             proof: { ...q, match: {} },
             sample: { kind: 'share', p: (top ? rank : total - rank + 1) / total },
-            data: { rank, total, bottom: !top, label: m.label, formatted: m.format(Number(r.value)), higherIsBetter: m.higherIsBetter },
+            data: { rank, total, tied: Number(r.tied), bottom: !top, label: m.label, formatted: m.format(Number(r.value)), higherIsBetter: m.higherIsBetter },
           });
         }
       }
@@ -178,7 +183,7 @@ export function leagueRankDetector(surface: 'season' | 'player', opts: { teams: 
             stat: `player_${m.key}`, value: rank, polarity: 'positive',
             proof: { ...q, match: { player_id: playerId } },
             sample: { kind: 'share', p: rank / total },
-            data: { rank, total, label: m.label, formatted: m.format(Number(r.value)), higherIsBetter: true, min_games: ctx.minPlayerGames },
+            data: { rank, total, tied: Number(r.tied), label: m.label, formatted: m.format(Number(r.value)), higherIsBetter: true, min_games: ctx.minPlayerGames },
           });
         }
       }
@@ -211,8 +216,8 @@ export function standingsDetector(): Detector {
           polarity: top ? 'positive' : 'negative', proof: { ...q, match: {} },
           sample: { kind: 'share', p: (top ? confRank : confTeams - confRank + 1) / confTeams },
           data: {
-            rank: confRank, total: confTeams, bottom: !top, wins, losses, conference: (r.conference as string | null) ?? null,
-            league_rank: Number(r.league_rank), league_teams: Number(r.league_teams),
+            rank: confRank, total: confTeams, tied: Number(r.tied), bottom: !top, wins, losses, conference: (r.conference as string | null) ?? null,
+            league_rank: Number(r.league_rank), league_tied: Number(r.league_tied), league_teams: Number(r.league_teams),
           },
         }],
       };
@@ -244,7 +249,7 @@ export function recentFormDetector(): Detector {
           stat: `last10_${metric}`, value: rank, context: { date: String(r.as_of_game_date) },
           polarity: 'positive', proof: { ...q, match: {} }, sample: { kind: 'share', p: rank / total },
           data: {
-            rank, total, label: metric === 'off_rating' ? 'offensive rating' : 'net rating',
+            rank, total, tied: Number(r.tied), label: metric === 'off_rating' ? 'offensive rating' : 'net rating',
             formatted: metric === 'net_rating' && value > 0 ? `+${fmt(value)}` : fmt(value), higherIsBetter: true,
           },
         });

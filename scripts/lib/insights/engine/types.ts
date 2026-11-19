@@ -51,6 +51,7 @@ export interface FactData {
   // Ranks
   rank?: number;
   total?: number;
+  tied?: number;             // how many others share `rank` (SQL RANK() ties): > 0 reads "tied for"
   bottom?: boolean;          // ranked from the bottom (bottom-5 facts)
   min_games?: number;
   // Streaks
@@ -73,6 +74,7 @@ export interface FactData {
   // Comparisons
   yoy?: 'team_rank' | 'record' | 'player';
   prev_rank?: number;
+  prev_tied?: number;        // how many others shared `prev_rank`
   prev_value?: number;
   cur_value?: number;
   prev_formatted?: string;
@@ -83,6 +85,7 @@ export interface FactData {
   prev_losses?: number;
   conference?: string | null;
   league_rank?: number;
+  league_tied?: number;      // how many others share `league_rank`
   league_teams?: number;
   // Matchups
   side?: 'offense' | 'defense';

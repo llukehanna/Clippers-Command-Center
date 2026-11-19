@@ -1280,6 +1280,82 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect((await recentFormDetector().run(incomplete)).facts).toEqual([]);
     }, TIMEOUT);
 
+    it('tied ranks (FF-1): data.tied counts the other teams/players on the same value, and the headline says "tied for" exactly then', async () => {
+      const { leagueRankDetector, standingsDetector } = await import('./engine/detectors/season-ranks');
+      const { buildDraft } = await import('./engine/run');
+      const { factKey } = await import('./engine/keys');
+      // The standings context line states the league-wide rank, so it follows league_tied.
+      const wordsTie = async (f: import('./engine/types').Fact, ctx: EngineContext, detailTied = f.data.tied!) => {
+        const d = await buildDraft(f, factKey(f), 'test', ctx);
+        expect('reason' in d, f.stat).toBe(false);
+        const draft = d as InsightDraft;
+        expect(/tied for/.test(draft.headline), draft.headline).toBe(f.data.tied! > 0);
+        expect(/tied for/i.test(draft.detail), draft.detail).toBe(detailTied > 0);
+        return draft;
+      };
+
+      // Standings on 2025-11-08: the Clippers are 8-2 and share 1st in the West.
+      const early = await ctxAt('2025-11-08');
+      const [st] = (await standingsDetector().run(early)).facts;
+      const [direct] = await sql<{ conf_tied: number; league_tied: number }[]>`
+        WITH results AS (
+          SELECT home_team_id AS team_id, (home_score > away_score) AS won FROM games g
+          WHERE season_id = 2025 AND ${sql.unsafe(REGULAR_SEASON)} AND game_date <= '2025-11-08' AND status = 'final'
+          UNION ALL
+          SELECT away_team_id, (away_score > home_score) FROM games g
+          WHERE season_id = 2025 AND ${sql.unsafe(REGULAR_SEASON)} AND game_date <= '2025-11-08' AND status = 'final'
+        ), rec AS (
+          SELECT r.team_id, t.conference, COUNT(*) FILTER (WHERE won) AS w, COUNT(*) AS n
+          FROM results r JOIN teams t ON t.team_id = r.team_id GROUP BY r.team_id, t.conference
+        ), lac AS (SELECT * FROM rec WHERE team_id = 1)
+        SELECT (SELECT COUNT(*) FROM rec WHERE rec.team_id <> 1 AND rec.conference = lac.conference AND rec.w * lac.n = lac.w * rec.n)::int AS conf_tied,
+               (SELECT COUNT(*) FROM rec WHERE rec.team_id <> 1 AND rec.w * lac.n = lac.w * rec.n)::int AS league_tied
+        FROM lac`;
+      expect(st.data).toMatchObject({ rank: 1, wins: 8, losses: 2 });
+      expect(direct.conf_tied).toBeGreaterThan(0);
+      expect(st.data.tied).toBe(direct.conf_tied);
+      expect(st.data.league_tied).toBe(direct.league_tied);
+      const sd = await wordsTie(st, early, st.data.league_tied!);
+      expect(sd.headline).toMatch(/tied for 1st in the West$/);
+      expect(sd.evidence).toMatchObject({ type: 'rank_track', rank: 1, tied: direct.conf_tied });
+
+      // League ranks: every rank carries its own exact tie count.
+      const ctx = await ctxAt(laToday());
+      const facts = (await leagueRankDetector('season', { teams: true }).run(ctx)).facts;
+      expect(facts.length).toBeGreaterThan(0);
+      for (const f of facts) {
+        const metric = f.stat.replace(/^(team|player)_/, '');
+        const m = f.subject.type === 'team'
+          ? (await import('./engine/detectors/metrics')).TEAM_METRICS.find((x) => x.key === metric)!
+          : (await import('./engine/detectors/metrics')).PLAYER_METRICS.find((x) => x.key === metric)!;
+        const rows = f.subject.type === 'team'
+          ? await sql.unsafe(`
+              WITH v AS (
+                SELECT a.team_id, ROUND((${(m as { aggregate: string }).aggregate})::numeric, 6)::float8 AS value
+                FROM advanced_team_game_stats a JOIN games g ON g.game_id = a.game_id
+                WHERE g.season_id = $1::int AND ${REGULAR_SEASON} AND g.game_date <= $2::date
+                GROUP BY a.team_id HAVING COUNT(*) >= 5)
+              SELECT (COUNT(*) FILTER (WHERE value = (SELECT value FROM v WHERE team_id = $3::bigint)) - 1)::int AS tied FROM v`,
+            [ctx.season.id, ctx.asOf, ctx.lac.teamId] as never[])
+          : await sql.unsafe(`
+              WITH v AS (
+                SELECT pb.player_id, ROUND((${(m as { expr: string }).expr})::numeric, 6)::float8 AS value
+                FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
+                WHERE g.season_id = $1::int AND ${REGULAR_SEASON} AND g.game_date <= $2::date
+                GROUP BY pb.player_id HAVING COUNT(*) >= $3::int)
+              SELECT (COUNT(*) FILTER (WHERE value = (SELECT value FROM v WHERE player_id = $4::bigint)) - 1)::int AS tied FROM v`,
+            [ctx.season.id, ctx.asOf, ctx.minPlayerGames, f.subject.id] as never[]);
+        expect(f.data.tied, `${f.subject.name} ${f.stat}`).toBe(Number(rows[0].tied));
+        await wordsTie(f, ctx);
+      }
+      // The fixture's tied case: LAC Player 10 shares 8th in steals + blocks (the completed season reads in the past).
+      const shared = facts.find((f) => f.subject.name === 'LAC Player 10' && f.stat === 'player_stocks');
+      expect(shared?.data).toMatchObject({ rank: 8 });
+      expect(shared!.data.tied).toBeGreaterThan(0);
+      expect((await wordsTie(shared!, ctx)).headline).toMatch(/^LAC Player 10 (was|finished) tied for 8th in the NBA in steals \+ blocks/);
+      expect(facts.some((f) => f.data.tied === 0)).toBe(true);
+    }, TIMEOUT);
+
     it('recent form is suppressed once the Clippers play a postseason game, and rolling rows stop at the regular season', async () => {
       const { recentFormDetector, rollingRankSql, LAC_POSTSEASON_SQL } = await import('./engine/detectors/season-ranks');
       // The fixture already has one LAC play-in game (2026-02-21): before it, LAC has no postseason game.
