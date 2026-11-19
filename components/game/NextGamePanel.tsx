@@ -3,6 +3,10 @@ import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { Panel } from '@/components/ui/panel'
 import { Chip } from '@/components/ui/chip'
+import { Eyebrow } from '@/components/ui/eyebrow'
+import { ScoutCard } from '@/components/insights/kit/ScoutCard'
+import { MatchupNotes } from '@/components/insights/kit/MatchupNotes'
+import type { InsightCardData, MatchupNote } from '@/src/lib/insights/card'
 import { TeamMark } from '@/components/ui/team-mark'
 import { Countdown } from './Countdown'
 import { OddsStrip } from './OddsStrip'
@@ -18,11 +22,13 @@ interface NextGamePanelProps {
   href?: string
   /** Venue for away games (home games always read Intuit Dome). */
   arena?: string | null
+  /** Pregame insight feeds (Home): scouting cards and matchup notes. Empty blocks are hidden. */
+  insights?: { scouting: InsightCardData[]; notes: MatchupNote[] }
   className?: string
 }
 
 /** The hero card for the next Clippers game: matchup, tip-off, countdown, line. */
-export function NextGamePanel({ game, context, eyebrow = 'Next game', href, arena, className }: NextGamePanelProps) {
+export function NextGamePanel({ game, context, eyebrow = 'Next game', href, arena, insights, className }: NextGamePanelProps) {
   if (!game) {
     return (
       <Panel variant="hero" className={className}>
@@ -91,6 +97,26 @@ export function NextGamePanel({ game, context, eyebrow = 'Next game', href, aren
             { label: 'Total', value: odds.over_under == null ? '—' : String(odds.over_under) },
           ]}
         />
+      )}
+
+      {insights && insights.scouting.length > 0 && (
+        <div className="mt-6 border-t border-line pt-5">
+          <Eyebrow as="h3" aside={`${insights.scouting.length} verified`}>
+            Scouting the {teamName(game.opponent_abbr)}
+          </Eyebrow>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
+            {insights.scouting.map((card) => (
+              <ScoutCard key={card.insight_id} card={card} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {insights && insights.notes.length > 0 && (
+        <div className="mt-5">
+          <Eyebrow as="h3">Matchup notes</Eyebrow>
+          <MatchupNotes notes={insights.notes} />
+        </div>
       )}
 
       {href && (
