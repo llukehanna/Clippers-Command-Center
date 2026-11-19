@@ -1248,9 +1248,9 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     }, TIMEOUT);
   });
 
-  it('first_since (FF-3): every game-level first_since the engine writes is at least 60 days after the previous one', async () => {
+  it('first_since (Q1): every dated first_since counts exactly the games strictly between, and at least MIN_FIRST_SINCE_GAMES', async () => {
     const { runEngine } = await import('./engine/run');
-    const { daysBetween } = await import('./engine/dates');
+    const { MIN_FIRST_SINCE_GAMES } = await import('../../../src/lib/insights/quality');
     const r = await runEngine({ surfaces: ['postgame'], asOf: '2025-02-17', write: false, postgameDays: 120 });
     const firsts = r.drafts.filter((d) => d.frame.type === 'first_since' && d.frame.since_date);
     expect(firsts.length).toBeGreaterThan(0);
@@ -1258,8 +1258,22 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       SELECT game_id::text, game_date::text AS d FROM games WHERE game_id = ANY(${firsts.map((d) => d.game_id!)}::bigint[])`).map((g) => [g.game_id, g.d]));
     for (const d of firsts) {
       const date = dates.get(d.game_id!);
-      expect(date, d.headline).toBeDefined();
-      expect(daysBetween(d.frame.since_date!, date!), `${d.headline} | ${d.detail}`).toBeGreaterThanOrEqual(60);
+      const label = `${d.headline} | ${d.detail}`;
+      expect(date, label).toBeDefined();
+      // An independent recount (Q1 ruling 1): his regular-season games for a subject frame, Clippers regular-season games for a group frame.
+      const [{ n }] = d.frame.who === 'subject'
+        ? await sql<{ n: number }[]>`
+            SELECT COUNT(DISTINCT g.game_id)::int AS n FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
+            WHERE pb.player_id = ${d.player_id!}::bigint AND ${sql.unsafe(REGULAR_SEASON)}
+              AND g.game_date > ${d.frame.since_date!}::date AND g.game_date < ${date!}::date`
+        : await sql<{ n: number }[]>`
+            SELECT COUNT(*)::int AS n FROM games g
+            WHERE ${d.team_id}::bigint IN (g.home_team_id, g.away_team_id) AND ${sql.unsafe(REGULAR_SEASON)} AND g.status = 'final'
+              AND g.game_date > ${d.frame.since_date!}::date AND g.game_date < ${date!}::date`;
+      expect(d.frame.games_since, label).toBe(n);
+      const frameRow = (d.proof_result as { part: string; data: Record<string, unknown> }[]).find((p) => p.part === 'frame');
+      expect(Number(frameRow?.data.games_since), label).toBe(n);
+      expect(n, label).toBeGreaterThanOrEqual(MIN_FIRST_SINCE_GAMES);
     }
   }, TIMEOUT);
 
