@@ -106,6 +106,50 @@ describe('game page insights (FW-7, FW-8)', () => {
   });
 });
 
+describe('game story and box score tags (B6)', () => {
+  const PRIOR = { player_id: '7', games: 12, pts: 18, reb: 5, ast: 3, stl: 1, blk: 1, fg3m: 2 };
+  beforeEach(() => {
+    const base = mockSql.getMockImplementation()!;
+    mockSql.mockImplementation(async (...args: SqlArgs) => {
+      const q = args[0].join('?');
+      if (q.includes('GROUP BY pb.player_id')) return [PRIOR];
+      if (q.includes('FROM game_player_box_scores pbs')) {
+        return [{ player_id: '7', display_name: 'A Clipper', team_id: '1', minutes: '30:00', points: 20, blocks: 4, rebounds: 5 }];
+      }
+      return base(...args);
+    });
+  });
+
+  it('season-high query is bounded by this game date and grouped per player, one extra query', async () => {
+    await loadHistoryGame('640');
+    const qs = mockSql.mock.calls.map((c) => c[0].join('?')).filter((t) => t.includes('GROUP BY pb.player_id'));
+    expect(qs).toHaveLength(1);
+    expect(qs[0]).toContain('g.game_date < (SELECT game_date FROM games WHERE game_id =');
+  });
+
+  it('game_story holds bar-passing postgame cards, composed, plus live and legacy rows', async () => {
+    const fr = (type: string, extra: Record<string, unknown> = {}) => ({ type, strength: 0.5, who: 'subject', text: 't', proof_rows: [], ...extra }) as InsightRow['frame'];
+    insightRows = [
+      row('tag', { player_id: '1', importance: 90, frame: fr('season_high') }),
+      row('keep', { player_id: '3', importance: 70, category: 'career_x', frame: fr('career_high') }),
+      row('live', { surface: 'live', scope: 'live', importance: 60 }),
+      row('legacy', { surface: null, frame: null, proof_result: null, importance: 10 }),
+    ];
+    const body = (await loadHistoryGame('640')).body as { game_story: { insight_id: string }[] };
+    expect(body.game_story.map((c) => c.insight_id)).toEqual(['keep', 'live', 'legacy']);
+  });
+
+  it('tags: grey season high, blue where frame.value matches the box, none where it disagrees', async () => {
+    const fr = (stat: string, value: number) => ({ type: 'career_high', strength: 0.5, who: 'subject', text: 't', proof_rows: [], stat, value }) as InsightRow['frame'];
+    insightRows = [row('blue', { player_id: '7', frame: fr('blk', 4) }), row('stale', { player_id: '7', category: 'other', frame: fr('reb', 9) })];
+    const body = (await loadHistoryGame('640')).body as { box_score: { tags: Record<string, Record<string, { tone: string; label: string }>> } };
+    expect(body.box_score.tags['7']).toEqual({
+      PTS: { tone: 'season_high', label: 'Season high' },
+      BLK: { tone: 'rare', label: 'Career high' },
+    });
+  });
+});
+
 describe('game page cache lifetime (FW-8)', () => {
   const at = (iso: string) => new Date(iso);
   it('caches a day only once the nightly run after the game has landed (game date before LA yesterday)', () => {
