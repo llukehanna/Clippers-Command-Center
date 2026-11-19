@@ -10,6 +10,7 @@ import { TeamLogo } from '@/components/ui/team-mark'
 import { TableScroll, Th, Td } from '@/components/ui/data-table'
 import { teamName } from '@/src/lib/ui/teams'
 import { playerHref } from '@/src/lib/ui/live'
+import type { BoxTags } from '@/src/lib/data/season-highs'
 import type { BoxScorePlayer, BoxScoreTeam, BoxValue } from '@/src/lib/ui/types'
 
 const COLS = ['MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', 'FG', '3PT', 'FT', '+/-'] as const
@@ -23,11 +24,37 @@ interface BoxScoreProps {
   playerIdsAreNba?: boolean
   /** Era display names by team_abbr (history); falls back to the current-franchise lookup. */
   names?: Record<string, string>
+  /** Season-high and rare marks by player_id → column (history). Absent elsewhere. */
+  tags?: BoxTags
   className?: string
 }
 
 /** The Clippers side: by identity when the payload says so (history), else the 'LAC' tricode (live). */
 const isLacTeam = (t: BoxScoreTeam) => t.is_lac ?? t.team_abbr === 'LAC'
+
+const TAG_COLS = new Set(['PTS', 'REB', 'AST', 'STL', 'BLK', '3PT'])
+
+/** Number pill over a small mono label: blue for rare, grey for a season high. */
+function TagPill({ tag, children }: { tag: { tone: 'rare' | 'season_high'; label: string }; children: React.ReactNode }) {
+  const rare = tag.tone === 'rare'
+  return (
+    <span className="inline-flex flex-col items-end gap-[3px]">
+      <span
+        className={cn(
+          'inline-block min-w-[26px] rounded-md px-1.5 py-px text-center',
+          rare
+            ? 'bg-[rgba(65,143,222,0.2)] text-white shadow-[inset_0_0_0_1px_rgba(65,143,222,0.45)]'
+            : 'bg-white/[0.07] text-text shadow-[inset_0_0_0_1px_var(--line-2)]',
+        )}
+      >
+        {children}
+      </span>
+      <span className={cn('whitespace-nowrap font-mono text-[9px] font-normal tracking-[0.04em]', rare ? 'text-[#9cc7f2]' : 'text-dim')}>
+        {tag.label}
+      </span>
+    </span>
+  )
+}
 
 const num = (v: BoxValue | boolean | undefined) => (typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v)) ? Number(v) : null)
 
@@ -51,7 +78,7 @@ function shortName(name: string) {
 }
 
 /** Box score with team tabs; starters first, column leaders in bold, totals row. */
-export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, names, className }: BoxScoreProps) {
+export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, names, tags, className }: BoxScoreProps) {
   const ordered = React.useMemo(
     () => [...teams].sort((a, b) => (isLacTeam(a) ? -1 : isLacTeam(b) ? 1 : 0)),
     [teams],
@@ -68,6 +95,8 @@ export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, n
     [...LEADER_COLS].map((c) => [c, Math.max(...players.map((p) => num(p[c]) ?? -Infinity))]),
   )
   const isLac = isLacTeam(team)
+  const tagFor = (p: BoxScorePlayer, c: string) => (TAG_COLS.has(c) ? tags?.[String(p.player_id)]?.[c as keyof BoxTags[string]] : undefined)
+  const hasTags = players.some((p) => [...TAG_COLS].some((c) => tagFor(p, c)))
 
   return (
     <Panel className={cn('overflow-hidden', className)}>
@@ -93,6 +122,18 @@ export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, n
           </span>
         )}
       </div>
+      {hasTags && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-3 pt-3 font-mono text-[10.5px] text-dim sm:px-4">
+          <span className="inline-flex items-center gap-1.5">
+            <i aria-hidden className="inline-block size-2.5 rounded-[3px] bg-[rgba(65,143,222,0.45)]" />
+            Rare: has an insight above
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <i aria-hidden className="inline-block size-2.5 rounded-[3px] bg-white/[0.14]" />
+            His season high
+          </span>
+        </div>
+      )}
       <TableScroll minWidth={720} className="mt-1">
         <thead>
           <tr>
@@ -126,19 +167,20 @@ export function BoxScore({ teams, linkPlayers = true, playerIdsAreNba = false, n
                     name
                   )}
                 </Td>
-                {COLS.map((c) =>
-                  c === '+/-' ? (
-                    <Td key={c}>{plusMinus(p[c])}</Td>
-                  ) : (
+                {COLS.map((c) => {
+                  if (c === '+/-') return <Td key={c}>{plusMinus(p[c])}</Td>
+                  const tag = tagFor(p, c)
+                  return (
                     <Td
                       key={c}
                       strong={LEADER_COLS.has(c) && num(p[c]) === leaders[c] && leaders[c] > 0}
                       muted={c === 'MIN'}
+                      className={tag ? 'align-top' : undefined}
                     >
-                      {cell(p[c])}
+                      {tag ? <TagPill tag={tag}>{cell(p[c])}</TagPill> : cell(p[c])}
                     </Td>
-                  ),
-                )}
+                  )
+                })}
               </tr>
             )
           })}

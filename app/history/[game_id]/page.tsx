@@ -5,7 +5,7 @@ import { Scoreboard } from '@/components/game/Scoreboard'
 import { BoxScore } from '@/components/game/BoxScore'
 import { LineScore } from '@/components/game/LineScore'
 import { gameTypeLabel } from '@/src/lib/ui/season'
-import { InsightCard } from '@/components/insights/InsightCard'
+import { InsightTile } from '@/components/insights/kit/InsightTile'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { Panel } from '@/components/ui/panel'
 import { GameFlow } from '@/components/live/GameFlow'
@@ -20,7 +20,7 @@ import { getJson } from '@/src/lib/ui/api'
 import { playedGames, type HistoryGame } from '@/src/lib/ui/season'
 import { formatDayLong, formatDayShort } from '@/src/lib/ui/time'
 import { teamName } from '@/src/lib/ui/teams'
-import type { GameStoryPayload, HistoryGameDetailPayload, Insight } from '@/src/lib/ui/types'
+import type { GameStoryPayload, HistoryGameDetailPayload } from '@/src/lib/ui/types'
 
 // Live data on every request (loaders read the database directly).
 export const dynamic = 'force-dynamic'
@@ -56,7 +56,7 @@ export default async function HistoryGamePage({ params }: Params) {
   const lac = { abbr: lacTeam.abbreviation, name: teamName(lacTeam.abbreviation, lacTeam.name), score: lacHome ? game.home_score : game.away_score }
   const oppAbbr = oppTeam.abbreviation
   const opp = { abbr: oppAbbr, score: lacHome ? game.away_score : game.home_score }
-  const insights: Insight[] = (data.insights ?? []).map((i) => ({ ...i, category: i.category ?? i.proof?.summary ?? '' }))
+  const gameStory = data.game_story ?? []
 
   const season = await getJson<{ games: HistoryGame[] }>(`/api/history/games?season_id=${game.season_id}&limit=200`)
   const played = playedGames(season?.games ?? [])
@@ -104,8 +104,18 @@ export default async function HistoryGamePage({ params }: Params) {
         >
           <LineScore periods={game.periods ?? []} lacHome={lacHome} oppAbbr={oppAbbr} lacAbbr={lac.abbr} />
         </Scoreboard>
-
       </section>
+
+      {gameStory.length > 0 && (
+        <section className="enter" style={{ ['--i' as string]: 1 }} aria-label="Game story">
+          <Eyebrow aside={`${gameStory.length} verified`}>Game story</Eyebrow>
+          <div className="grid gap-3.5 min-[900px]:grid-cols-2">
+            {gameStory.map((card) => (
+              <InsightTile key={card.insight_id} card={card} size="standard" />
+            ))}
+          </div>
+        </section>
+      )}
 
       {story?.flow && (
         <section className="enter" style={{ ['--i' as string]: 1 }} aria-label="Game flow">
@@ -133,33 +143,19 @@ export default async function HistoryGamePage({ params }: Params) {
         </section>
       )}
 
-      <section
-        className={`enter grid grid-cols-1 items-start gap-6 lg:gap-[18px] ${insights.length ? 'lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]' : ''}`}
-        style={{ ['--i' as string]: 4 }}
-      >
-        <div className="min-w-0">
-          <Eyebrow>Box score</Eyebrow>
-          {game.season_id < 1983 && (
-            <p className="m-0 mb-3 text-[13px] text-mute">Box score from historical records; some stats weren&apos;t tracked in this era.</p>
-          )}
-          {box_score.available && box_score.teams.length ? (
-            <BoxScore
-              teams={box_score.teams}
-              names={{ [lacTeam.abbreviation]: lac.name, [oppTeam.abbreviation]: teamName(oppTeam.abbreviation, oppTeam.name) }}
-            />
-          ) : (
-            <EmptyState title="No box score for this game" body="Player stats weren't captured for this game." />
-          )}
-        </div>
-        {insights.length > 0 && (
-          <div className="min-w-0">
-            <Eyebrow aside={`${insights.length} verified`}>Insights</Eyebrow>
-            <div className="grid gap-2.5">
-              {insights.map((ins) => (
-                <InsightCard key={ins.insight_id} insight={ins} />
-              ))}
-            </div>
-          </div>
+      <section className="enter" style={{ ['--i' as string]: 4 }}>
+        <Eyebrow>Box score</Eyebrow>
+        {game.season_id < 1983 && (
+          <p className="m-0 mb-3 text-[13px] text-mute">Box score from historical records; some stats weren&apos;t tracked in this era.</p>
+        )}
+        {box_score.available && box_score.teams.length ? (
+          <BoxScore
+            teams={box_score.teams}
+            tags={box_score.tags}
+            names={{ [lacTeam.abbreviation]: lac.name, [oppTeam.abbreviation]: teamName(oppTeam.abbreviation, oppTeam.name) }}
+          />
+        ) : (
+          <EmptyState title="No box score for this game" body="Player stats weren't captured for this game." />
         )}
       </section>
     </div>
