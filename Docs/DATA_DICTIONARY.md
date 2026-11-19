@@ -295,13 +295,14 @@ The “provable” fact system used for rotating wow-facts and contextual alerts
 
 **Key fields**
 - `scope`: `"live" | "between_games" | "historical"`
-- `category`: the fact kind (`streak`, `milestone`, `league_rank`, `standings`, `recent_form`, `yoy_change`, `opp_rank`, `h2h`, `last_meeting`, `league_night`, …)
+- `category`: the fact kind (`FACT_KINDS` in `scripts/lib/insights/engine/types.ts`) — season/player: `streak`, `milestone`, `league_rank`, `standings`, `recent_form`, `yoy_change`, `season_best`, `milestone_progress`; pregame: `opp_rank`, `h2h`, `last_meeting`, `opp_form`, `opp_hot_player`, `rest`, `line`, `vs_opponent`; postgame: `player_game_stat`, `player_combo`, `team_game_stat`, `game_flow`, `player_period_stat`, `team_period_stat`, `clutch`, `milestone_crossed`. `league_night` is retired: its batch rows are deactivated on every write run (`RETIRED_CATEGORIES`)
 - `headline`: short display text
 - `detail`: the context line (the frame, in words)
 - `importance`: 0–100 ranking used by selection algorithm
 - `valid_from`, `valid_to`: optional lifecycle for live insights
 - `is_active`
 - `surface`: `"live" | "pregame" | "postgame" | "season" | "player"` (v2 engine; NULL = a v1 row, deactivated by the first v2 run)
+- postgame insights are written by the game-night runner at the final buzzer and by the nightly run (finals in the last 3 days); pregame at runner start, ~75 min before tip and nightly. `verify-insights` retires (deactivates, with a warning) a frozen postgame row whose proof no longer holds — its game is in a past season or older than the 3-day window — instead of failing the pipeline
 - `frame`: `{ type, strength, who, text, proof_rows, since_date?, records_label?, … }` — the reference frame (`career_high`, `records_best`, `first_since`, …); frames only search seasons since `insights.records_start`
 - `evidence`: evidence spec for the card visual (`streak_strip`, `rank_track`, `history_ladder`, `delta`, `milestone_progress`, `margin_spark`)
 - `entities`: `[{ type: player|team|game, id, name }]`

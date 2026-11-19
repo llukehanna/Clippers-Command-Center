@@ -1751,6 +1751,37 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       await sql`DELETE FROM insights WHERE proof_hash LIKE 'retired-%'`;
     }, TIMEOUT);
 
+    it('verify retires a frozen postgame row with a broken proof, but still fails any other broken row', async () => {
+      const [g] = await sql<{ game_id: string }[]>`
+        SELECT game_id::text FROM games WHERE status = 'final' AND 1 IN (home_team_id, away_team_id) AND season_id = 2025
+        ORDER BY game_date LIMIT 1`;
+      // The stored proof says one = 2; the live proof_sql returns one = 1, so the proof no longer holds.
+      const insert = (key: string, surface: string, scope: string, gameId: string | null) => sql`
+        INSERT INTO insights (scope, surface, category, headline, importance, proof_sql, proof_params, proof_result, proof_hash, game_id, first_emitted_at)
+        VALUES (${scope}, ${surface}, 'player_game_stat', 'Broken proof claim', 10, 'SELECT 1 AS one', '{}'::jsonb,
+                '[{"part":"fact","data":{"one":2}}]'::jsonb, ${key}, ${gameId}::bigint, now())`;
+      try {
+        await insert('verify-frozen', 'postgame', 'historical', g.game_id);
+        const out = run('scripts/verify-insights.ts');
+        expect(out).toMatch(/\b0 failed, 1 retired\b/);
+        expect(out).toMatch(/^::warning title=Insight proof retired::[0-9a-f-]{36} Broken proof claim$/m);
+        const [row] = await sql<{ is_active: boolean }[]>`SELECT is_active FROM insights WHERE proof_hash = 'verify-frozen'`;
+        expect(row.is_active).toBe(false);
+
+        await insert('verify-season', 'season', 'between_games', null);
+        type Failed = { status?: number; stdout?: string; stderr?: string };
+        const failed = (() => { try { run('scripts/verify-insights.ts'); return null; } catch (e) { return e as Failed; } })();
+        expect(failed).not.toBeNull();
+        expect(failed!.status).toBe(1);
+        expect(failed!.stdout).toMatch(/\b1 failed\b/);
+        expect(failed!.stderr).toMatch(/Broken proof claim/);
+        const [kept] = await sql<{ is_active: boolean }[]>`SELECT is_active FROM insights WHERE proof_hash = 'verify-season'`;
+        expect(kept.is_active).toBe(true);
+      } finally {
+        await sql`DELETE FROM insights WHERE proof_hash IN ('verify-frozen', 'verify-season')`;
+      }
+    }, TIMEOUT);
+
     it('a single-game postgame run leaves other games alone', async () => {
       const [g1, g2] = (await sql<{ game_id: string }[]>`
         SELECT game_id::text FROM games WHERE status = 'final' AND 1 IN (home_team_id, away_team_id) AND season_id = 2025
