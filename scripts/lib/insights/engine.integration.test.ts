@@ -1248,6 +1248,49 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     }, TIMEOUT);
   });
 
+  describe('buzzer pregame pass (FF-2)', () => {
+    const REASON = 'buzzer: league sync pending';
+    const AS_OF = '2026-02-10';
+    const LEAGUE = ['opp_rank', 'opp_form', 'opp_hot_player'];
+    const leagueFree = (r: import('./engine/run').EngineResult) =>
+      r.drafts.filter((d) => ['h2h', 'last_meeting', 'vs_opponent', 'line'].includes(d.category)).map((d) => d.headline).sort();
+
+    it('the flag forces league data incomplete; league-dependent pregame detectors emit nothing, the rest still run', async () => {
+      const { loadEngineContext } = await import('./engine/context');
+      const { runEngine } = await import('./engine/run');
+      expect((await ctxAt(AS_OF)).league.complete).toBe(true);
+      expect((await loadEngineContext({ asOf: AS_OF, withPrior: false, leagueIncomplete: REASON }))!.league).toEqual({ complete: false, reason: REASON });
+
+      const full = await runEngine({ surfaces: ['pregame'], asOf: AS_OF, write: false });
+      expect(full.drafts.some((d) => LEAGUE.includes(d.category))).toBe(true);
+      const buzzer = await runEngine({ surfaces: ['pregame'], asOf: AS_OF, write: false, leagueIncomplete: REASON });
+      expect(buzzer.context!.league).toEqual({ complete: false, reason: REASON });
+      expect(buzzer.drafts.filter((d) => LEAGUE.includes(d.category)).map((d) => d.headline)).toEqual([]);
+      expect(leagueFree(full).length).toBeGreaterThan(0);
+      expect(leagueFree(buzzer)).toEqual(leagueFree(full));
+    }, TIMEOUT);
+
+    it('a buzzer write deactivates the stale league-dependent rows through the scoped sweep and keeps the rest', async () => {
+      const { runEngine } = await import('./engine/run');
+      const before = await sql<{ proof_hash: string; is_active: boolean }[]>`SELECT proof_hash, is_active FROM insights`;
+      const active = async () => (await sql<{ category: string }[]>`
+        SELECT category FROM insights WHERE is_active AND surface = 'pregame'`).map((r) => r.category);
+      try {
+        await runEngine({ surfaces: ['pregame'], asOf: AS_OF, write: true });
+        expect((await active()).some((c) => LEAGUE.includes(c))).toBe(true);
+        const r = await runEngine({ surfaces: ['pregame'], asOf: AS_OF, write: true, leagueIncomplete: REASON });
+        expect(r.deactivated).toBeGreaterThan(0);
+        const after = await active();
+        expect(after.filter((c) => LEAGUE.includes(c))).toEqual([]);
+        expect(after).toEqual(expect.arrayContaining(['h2h', 'last_meeting']));
+      } finally {
+        const had = before.map((x) => x.proof_hash);
+        await sql`DELETE FROM insights WHERE proof_hash <> ALL(${had}::text[])`;
+        await sql`UPDATE insights SET is_active = (proof_hash = ANY(${before.filter((x) => x.is_active).map((x) => x.proof_hash)}::text[])) WHERE proof_hash IS NOT NULL`;
+      }
+    }, TIMEOUT);
+  });
+
   describe('season detectors: ranks and year over year', () => {
     it('ranks the Clippers and their players league-wide, only with complete league data', async () => {
       const { leagueRankDetector } = await import('./engine/detectors/season-ranks');

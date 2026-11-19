@@ -30,6 +30,11 @@ export interface RunOptions {
   /** Postgame window in days (default 3). */
   postgameDays?: number;
   log?: (msg: string) => void;
+  /**
+   * Treat league data as incomplete with this reason (FF-2). Only the buzzer pregame pass sets it: tonight's other
+   * league box scores are not synced yet, so league-dependent claims would be stale; their rows are swept.
+   */
+  leagueIncomplete?: string;
   /** Override the registry (tests). */
   detectors?: readonly Detector[];
 }
@@ -112,6 +117,7 @@ export async function runEngine(opts: RunOptions): Promise<EngineResult> {
   }
   const ctx = await loadEngineContext({
     asOf: opts.asOf, gameId: opts.gameId ?? null, withPrior: opts.write, postgameDays: opts.postgameDays,
+    leagueIncomplete: opts.leagueIncomplete,
   });
   if (!ctx) return { context: null, drafts: [], dropped: [], upserted: 0, deactivated: 0, legacyDeactivated: 0, retiredDeactivated: 0 };
   if (!ctx.league.complete) {

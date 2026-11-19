@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const runEngine = vi.fn();
 vi.mock('./run.js', () => ({ runEngine: (...args: unknown[]) => runEngine(...args) }));
 
-import { HOOK_TIMEOUT_MS, insightsAtFinal, postgameAtFinal, pregameAtStart } from './hooks';
+import { BUZZER_LEAGUE_REASON, HOOK_TIMEOUT_MS, insightsAtFinal, postgameAtFinal, pregameAtStart } from './hooks';
 
 describe('runner hooks', () => {
   // Braces: mockReset() returns the mock, which vitest would run as a cleanup hook.
@@ -77,6 +77,22 @@ describe('runner hooks', () => {
       pregame: { status: 'ok', upserted: 3, message: '3 pregame insights' },
     });
     expect(runEngine.mock.calls.map((c) => [c[0].surfaces, c[0].gameId])).toEqual([[['postgame'], '640'], [['pregame'], undefined]]);
+  });
+
+  it('at the final buzzer the pregame pass treats league data as incomplete; start and tip-75 passes do not (FF-2)', async () => {
+    expect(BUZZER_LEAGUE_REASON).toBe('buzzer: league sync pending');
+    runEngine.mockResolvedValue({ context: {}, upserted: 1 });
+    await insightsAtFinal('640', { isPreseason: false });
+    const [post, pre] = runEngine.mock.calls.map((c) => c[0]);
+    expect(pre).toMatchObject({ surfaces: ['pregame'], leagueIncomplete: 'buzzer: league sync pending' });
+    expect(post.leagueIncomplete).toBeUndefined();
+    // The runner-start and tip-75 passes (game-night.ts runPregame) both call pregameAtStart.
+    runEngine.mockClear();
+    await pregameAtStart();
+    expect(runEngine.mock.calls[0][0].leagueIncomplete).toBeUndefined();
+    runEngine.mockClear();
+    await postgameAtFinal('640');
+    expect(runEngine.mock.calls[0][0].leagueIncomplete).toBeUndefined();
   });
 
   it('at the final buzzer: a failed postgame pass still refreshes pregame, and neither throws', async () => {
