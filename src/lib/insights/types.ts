@@ -41,6 +41,12 @@ export interface Frame {
   records_seasons?: number;  // seasons of records searched
   step?: number;             // milestone threshold index (0-based)
   prior_value?: number;      // career_high: the previous best
+  /** The Q1 count: regular-season games strictly between the previous occurrence and this one. Set by the first_since and longest_since questions. */
+  games_since?: number;
+  /** The fact's stat key. Set on every new row. */
+  stat?: string;
+  /** The fact's value. Set on every new row. */
+  value?: number;
   proof_rows: unknown[];
 }
 
