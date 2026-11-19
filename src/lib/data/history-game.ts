@@ -9,7 +9,8 @@ import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { formatClock } from '@/src/lib/format';
 import { composeFeed, type ComposableInsight } from '@/src/lib/insights/compose';
-import type { Frame, SalienceClass, Surface } from '@/src/lib/insights/types';
+import { applyBar, type QualityContext } from '@/src/lib/insights/quality';
+import { INSIGHT_ROW_COLUMNS, INSIGHT_ROW_FROM, loadQualityContext, type InsightDbRow } from './insight-quality';
 
 // Box score stat columns as defined by API_SPEC.md
 const BOX_SCORE_COLUMNS = ['MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', 'FG', '3PT', 'FT', '+/-'];
@@ -53,28 +54,14 @@ interface PlayerBoxRow {
   ft_attempted: number | null;
 }
 
-export interface InsightRow {
-  insight_id: string;
-  scope: string;
-  surface: Surface | null;
-  category: string;
-  headline: string;
-  detail: string | null;
-  importance: number;
-  proof_result: unknown;
-  game_id: string | null;
-  player_id: string | null;
-  frame: Pick<Frame, 'type' | 'strength' | 'text'> | null;
-  score_parts: { salience_class?: SalienceClass } | null;
-}
-
 /**
  * The game page's insights (spec §2.7): postgame rows through the composer (at most 8, two per player and per
  * category, same-player rows merged), live and pre-v2 rows as they are. Pregame rows never reach this page: they
  * carry the next game's id, and the game they describe has been played (FW-7, FW-8).
  */
-export function gamePageInsights(rows: InsightRow[]): InsightRow[] {
-  const postgame = rows.filter((r) => r.surface === 'postgame');
+export function gamePageInsights(rows: InsightDbRow[], context: ReadonlyMap<string, QualityContext>): InsightDbRow[] {
+  // Quality bar first (cards only: tags, merges and cuts are hidden), then the composer.
+  const postgame = applyBar(rows.filter((r) => r.surface === 'postgame'), context).cards;
   const others = rows.filter((r) => r.surface !== 'postgame' && r.surface !== 'pregame');
   const items: ComposableInsight[] = postgame.map((r) => ({
     insight_id: r.insight_id, surface: 'postgame', category: r.category, importance: r.importance, headline: r.headline,
@@ -277,25 +264,13 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
     `,
     // Pregame rows carry the NEXT game's id: on a played game's page they would make present-tense
     // claims the game itself has settled.
-    sql<InsightRow[]>`
-      SELECT
-        insight_id::text  AS insight_id,
-        scope,
-        surface,
-        category,
-        headline,
-        detail,
-        importance,
-        proof_result,
-        game_id::text     AS game_id,
-        player_id::text   AS player_id,
-        frame,
-        score_parts
-      FROM insights
-      WHERE game_id = ${gameIdParam}::bigint
-        AND is_active = true
-        AND (surface IS NULL OR surface <> 'pregame')
-      ORDER BY importance DESC
+    sql<InsightDbRow[]>`
+      SELECT ${sql.unsafe(INSIGHT_ROW_COLUMNS)}
+      FROM ${sql.unsafe(INSIGHT_ROW_FROM)}
+      WHERE i.game_id = ${gameIdParam}::bigint
+        AND i.is_active = true
+        AND (i.surface IS NULL OR i.surface <> 'pregame')
+      ORDER BY i.importance DESC
     `,
     ]);
 
@@ -369,7 +344,9 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
     // Query insights from `insights` table (NOT `generated_insights`)
     // insightRows: fetched with the game above.
 
-    const insights = gamePageInsights(insightRows).map((r) => ({
+    // The page's one quality-context query (fails closed: a failure logs and the dependent rows are cut).
+    const insightContext = await loadQualityContext(insightRows);
+    const insights = gamePageInsights(insightRows, insightContext).map((r) => ({
       insight_id: r.insight_id,
       headline: r.headline,
       detail: r.detail,

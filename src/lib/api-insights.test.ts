@@ -50,7 +50,8 @@ const mockSqlImpl = (...args: unknown[]) => {
   return Promise.resolve(mockRows);
 };
 
-const mockSqlTag = vi.fn(mockSqlImpl);
+// sql.unsafe(fragment) carries the shared select/from fragments; the tests only read the template text.
+const mockSqlTag = Object.assign(vi.fn(mockSqlImpl), { unsafe: (s: string) => s });
 
 vi.mock('@/src/lib/db', () => ({
   sql: mockSqlTag,
@@ -99,6 +100,7 @@ describe('GET /api/insights', () => {
         detail: 'They are on fire',
         importance: 80,
         proof_result: { wins: 5, losses: 0 },
+        surface: null, frame: null,
       },
     ];
     const { GET } = await import('@/app/api/insights/route');
@@ -121,6 +123,7 @@ describe('GET /api/insights', () => {
         detail: 'Detail text',
         importance: 90,
         proof_result: { value: 42 },
+        surface: null, frame: null,
       },
     ];
     const { GET } = await import('@/app/api/insights/route');
@@ -135,8 +138,8 @@ describe('GET /api/insights', () => {
     mockSqlTag.mockClear();
     const { GET } = await import('@/app/api/insights/route');
     await GET(new Request('http://localhost/api/insights?scope=between_games'));
-    const main = mockSqlTag.mock.calls.map((c) => (c[0] as string[]).join('?')).find((t) => t.includes('FROM insights'));
-    expect(main).toMatch(/surface IS NULL OR surface <> 'player'/);
+    const main = mockSqlTag.mock.calls.map((c) => (c[0] as string[]).join('?')).find((t) => t.includes('i.is_active = true'));
+    expect(main).toMatch(/i\.surface IS NULL OR i\.surface <> 'player'/);
   });
 
   it('each insight has proof with summary=category and result=proof_result', async () => {
@@ -149,6 +152,7 @@ describe('GET /api/insights', () => {
         detail: 'Rare event detail',
         importance: 75,
         proof_result: { games: 3, triple_doubles: 2 },
+        surface: null, frame: null,
       },
     ];
     const { GET } = await import('@/app/api/insights/route');
@@ -243,10 +247,23 @@ describe('GET /api/insights', () => {
     };
 
     await GET(new Request('http://localhost/api/insights?scope=live&limit=-5'));
-    expect(lastQueryLimit()).toBe(1);
+    expect(lastQueryLimit()).toBe(3);
 
     await GET(new Request('http://localhost/api/insights?scope=live&limit=9999'));
-    expect(lastQueryLimit()).toBe(50);
+    expect(lastQueryLimit()).toBe(150);
+  });
+
+  it('drops rows the bar cuts', async () => {
+    const base = { scope: 'historical', surface: 'postgame', player_id: '9', game_id: '1', season_id: 2026, game_date: '2026-11-17', evidence: null, proof_result: {}, headline: 'h', detail: 'd', importance: 50 };
+    const f = (over: Record<string, unknown>) => ({ type: 'first_since', strength: 0.5, who: 'subject', text: 't', since_date: '2026-11-13', proof_rows: [], ...over });
+    mockRows = [
+      { ...base, insight_id: 'cut-1', category: 'player_game_stat', frame: f({ games_since: 3 }) },
+      { ...base, insight_id: 'cut-2', category: 'player_game_stat', frame: f({ type: 'none' }) },
+      { ...base, insight_id: 'card', category: 'player_game_stat', frame: f({ type: 'league_rank', games_since: undefined, since_date: undefined }) },
+    ];
+    const { GET } = await import('@/app/api/insights/route');
+    const body = await (await GET(new Request('http://localhost/api/insights?scope=historical'))).json();
+    expect(body.insights.map((i: { insight_id: string }) => i.insight_id)).toEqual(['card']);
   });
 
   it('scope param "historical" is accepted as valid', async () => {

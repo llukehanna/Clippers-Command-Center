@@ -2,7 +2,7 @@
 // The game page's insights and cache lifetime (src/lib/data/history-game.ts). The sql tag is mocked and
 // dispatches on query text, so the tests run offline.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { InsightRow } from './data/history-game';
+import type { InsightDbRow as InsightRow } from './data/insight-quality';
 
 type SqlArgs = [readonly string[], ...unknown[]];
 const mockSql = vi.fn<(...args: SqlArgs) => Promise<unknown[]>>();
@@ -16,7 +16,9 @@ const { gamePageInsights, historyGameTtl, loadHistoryGame } = await import('./da
 const row = (id: string, over: Partial<InsightRow> = {}): InsightRow => ({
   insight_id: id, scope: 'historical', surface: 'postgame', category: 'player_game_stat', headline: `Headline ${id}`,
   detail: `Detail ${id}`, importance: 50, proof_result: [{ part: 'fact' }], game_id: '640', player_id: null,
-  frame: { type: 'first_since', strength: 0.5, text: `Detail ${id}` }, score_parts: { salience_class: 'roster' }, ...over,
+  season_id: 2026, game_date: '2026-11-17', evidence: null, entities: null, updated_at: '2026-11-17T00:00:00Z',
+  frame: { type: 'first_since', strength: 0.5, who: 'subject', text: `Detail ${id}`, proof_rows: [] },
+  score_parts: { salience_class: 'roster' }, ...over,
 });
 
 const GAME = {
@@ -38,7 +40,7 @@ beforeEach(() => {
     if (q.includes('FROM game_player_box_scores pbs')) {
       return [{ player_id: '7', display_name: 'A Clipper', team_id: '1', minutes: '30:00', points: 20 }];
     }
-    if (q.includes('FROM insights')) return insightRows;
+    if (q.includes('i.is_active = true')) return insightRows;
     return [];
   });
 });
@@ -46,22 +48,21 @@ beforeEach(() => {
 describe('game page insights (FW-7, FW-8)', () => {
   it('never selects pregame rows: they carry the next game\'s id and describe a game already played', async () => {
     await loadHistoryGame('640');
-    const q = mockSql.mock.calls.map((c) => c[0].join('?')).find((t) => t.includes('FROM insights'))!;
-    expect(q).toContain("AND (surface IS NULL OR surface <> 'pregame')");
-    for (const col of ['surface', 'frame', 'score_parts', 'player_id']) expect(q).toContain(col);
+    const q = mockSql.mock.calls.map((c) => c[0].join('?')).find((t) => t.includes('i.is_active = true'))!;
+    expect(q).toContain("AND (i.surface IS NULL OR i.surface <> 'pregame')");
   });
 
   it('composes postgame rows: at most 8, two per player and per category, same-player rows merged', () => {
     const rows = [
       // one player's two lines merge into one item; his third is over the per-player cap
-      row('a', { player_id: '7', importance: 90, category: 'player_game_stat', frame: { type: 'records_best', strength: 0.9, text: 'A' } }),
+      row('a', { player_id: '7', importance: 90, category: 'player_game_stat', frame: { type: 'records_best', strength: 0.9, who: 'subject', text: 'A', proof_rows: [] } }),
       row('b', { player_id: '7', importance: 85, category: 'player_combo' }),
       ...Array.from({ length: 20 }, (_, i) => row(`p${String(i).padStart(2, '0')}`, {
         player_id: String(100 + i), importance: 80 - i, category: ['player_game_stat', 'player_period_stat', 'clutch', 'player_combo', 'milestone_crossed'][i % 5],
       })),
       ...Array.from({ length: 4 }, (_, i) => row(`t${i}`, { importance: 30 - i, category: ['team_game_stat', 'game_flow', 'team_period_stat', 'team_game_stat'][i] })),
     ];
-    const out = gamePageInsights(rows);
+    const out = gamePageInsights(rows, new Map());
     expect(out.length).toBeLessThanOrEqual(8);
     expect(out.find((r) => r.insight_id === 'a')!.detail).toBe('Detail a · Detail b');
     expect(out.some((r) => r.insight_id === 'b')).toBe(false);
@@ -76,8 +77,19 @@ describe('game page insights (FW-7, FW-8)', () => {
     const out = gamePageInsights([
       row('post'), row('live', { surface: 'live', scope: 'live', importance: 70 }), row('legacy', { surface: null, importance: 10 }),
       row('pre', { surface: 'pregame', importance: 99 }),
-    ]);
+    ], new Map());
     expect(out.map((r) => r.insight_id)).toEqual(['live', 'post', 'legacy']);
+  });
+
+  it('gamePageInsights keeps postgame cards only', () => {
+    const fr = (type: string, extra: Record<string, unknown> = {}) => ({ type, strength: 0.5, who: 'subject', text: 't', proof_rows: [], ...extra }) as InsightRow['frame'];
+    const out = gamePageInsights([
+      row('tag', { player_id: '1', importance: 90, category: 'player_game_stat', frame: fr('season_high') }),
+      row('cut', { player_id: '2', importance: 80, category: 'streak_x', frame: fr('first_since', { since_date: '2026-11-10', games_since: 2 }) }),
+      row('career', { player_id: '3', importance: 70, category: 'career_x', frame: fr('career_high') }),
+      row('live', { surface: 'live', scope: 'live', importance: 60 }),
+    ], new Map());
+    expect(out.map((r) => r.insight_id)).toEqual(['career', 'live']);
   });
 
   it('serves the composed page from the loader', async () => {

@@ -13,6 +13,7 @@ import { getLatestOdds } from '@/src/lib/odds';
 import { getDisplaySeasonId } from '@/src/lib/season';
 import { REGULAR_SEASON_SQL } from '@/src/lib/game-type';
 import { MINUTES_SECONDS_SQL } from '@/src/lib/minutes';
+import { INSIGHT_ROW_COLUMNS, INSIGHT_ROW_FROM, barFilter, type InsightDbRow } from './insight-quality';
 
 // ─── Minutes parsing helper ───────────────────────────────────────────────────
 // game_player_box_scores.minutes is stored as TEXT, e.g. "34:12" or "PT34M12.00S".
@@ -86,15 +87,6 @@ interface PlayerTrendRow {
   reb_avg: number | null;
   ast_avg: number | null;
   ts_pct: number | null;
-}
-
-interface InsightRow {
-  insight_id: string;
-  category: string;
-  headline: string;
-  detail: string | null;
-  importance: number;
-  proof_result: unknown;
 }
 
 /** Sort key for "which game is next": tip time, else the game date. */
@@ -289,20 +281,14 @@ export async function loadHome(): Promise<ApiResult> {
 
       // F: Between-games insights
       sql`
-        SELECT
-          insight_id::text AS insight_id,
-          category,
-          headline,
-          detail,
-          importance,
-          proof_result
-        FROM insights
-        WHERE scope = 'between_games'
-          AND (surface IS NULL OR surface <> 'player')
-          AND is_active = true
-        ORDER BY importance DESC
-        LIMIT 10
-      ` as Promise<InsightRow[]>,
+        SELECT ${sql.unsafe(INSIGHT_ROW_COLUMNS)}
+        FROM ${sql.unsafe(INSIGHT_ROW_FROM)}
+        WHERE i.scope = 'between_games'
+          AND (i.surface IS NULL OR i.surface <> 'player')
+          AND i.is_active = true
+        ORDER BY i.importance DESC
+        LIMIT 30
+      ` as Promise<InsightDbRow[]>,
 
       // H: When the data pipeline last ran (nightly post-game workflow or the
       //    game-night runner), else when the newest box score landed.
@@ -482,7 +468,9 @@ export async function loadHome(): Promise<ApiResult> {
 
     // ── insights ──────────────────────────────────────────────────────────────
 
-    const insights = insightRows.map((row: InsightRow) => ({
+    // The quality bar hides tags, merges and cuts; notes stay visible until Part B (Ruling 9).
+    const barred = await barFilter(insightRows);
+    const insights = [...barred.cards, ...barred.notes].sort((a, b) => b.importance - a.importance).slice(0, 10).map((row) => ({
       insight_id: row.insight_id,
       category: row.category,
       headline: row.headline,

@@ -6,6 +6,7 @@
 import { json, type ApiResult } from './result';
 import { sql } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
+import { INSIGHT_ROW_COLUMNS, INSIGHT_ROW_FROM, barFilter, type InsightDbRow } from './insight-quality';
 
 const VALID_SCOPES = ['live', 'between_games', 'historical'] as const;
 type InsightScope = (typeof VALID_SCOPES)[number];
@@ -13,16 +14,6 @@ type InsightScope = (typeof VALID_SCOPES)[number];
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
 const NUMERIC_ID = /^\d+$/;
-
-interface InsightRow {
-  insight_id: string;
-  scope: InsightScope;
-  category: string;
-  headline: string;
-  detail: string;
-  importance: number;
-  proof_result: Record<string, unknown>;
-}
 
 export async function loadInsights(url: URL): Promise<ApiResult> {
   try {
@@ -68,37 +59,36 @@ export async function loadInsights(url: URL): Promise<ApiResult> {
       );
     }
 
-    const rows = await sql<InsightRow[]>`
-      SELECT
-        insight_id::text AS insight_id,
-        scope,
-        category,
-        headline,
-        detail,
-        importance,
-        proof_result
-      FROM insights
-      WHERE is_active = true
-        AND scope = ${scope}
-        AND (surface IS NULL OR surface <> 'player')
-        ${gameId ? sql`AND game_id = ${gameId}::bigint` : sql``}
-        ${playerId ? sql`AND player_id = ${playerId}::bigint` : sql``}
-      ORDER BY importance DESC, created_at DESC
-      LIMIT ${limitParam}
+    // Over-fetch 3x: the quality bar drops tags, merges and cuts, and the page still wants `limit` rows.
+    const rows = await sql<InsightDbRow[]>`
+      SELECT ${sql.unsafe(INSIGHT_ROW_COLUMNS)}
+      FROM ${sql.unsafe(INSIGHT_ROW_FROM)}
+      WHERE i.is_active = true
+        AND i.scope = ${scope}
+        AND (i.surface IS NULL OR i.surface <> 'player')
+        ${gameId ? sql`AND i.game_id = ${gameId}::bigint` : sql``}
+        ${playerId ? sql`AND i.player_id = ${playerId}::bigint` : sql``}
+      ORDER BY i.importance DESC, i.created_at DESC
+      LIMIT ${Math.min(limitParam * 3, MAX_LIMIT * 3)}
     `;
 
-    const insights = rows.map((row) => ({
-      insight_id: row.insight_id,
-      scope: row.scope,
-      category: row.category,
-      headline: row.headline,
-      detail: row.detail,
-      importance: row.importance,
-      proof: {
-        summary: row.category,
-        result: row.proof_result,
-      },
-    }));
+    // Only cards and notes are shown (Ruling 11); query order is importance DESC, so a stable sort keeps ties.
+    const { cards, notes } = await barFilter(rows);
+    const insights = [...cards, ...notes]
+      .sort((a, b) => b.importance - a.importance)
+      .slice(0, limitParam)
+      .map((row) => ({
+        insight_id: row.insight_id,
+        scope: row.scope,
+        category: row.category,
+        headline: row.headline,
+        detail: row.detail,
+        importance: row.importance,
+        proof: {
+          summary: row.category,
+          result: row.proof_result,
+        },
+      }));
 
     return json(
       { meta: buildMeta('db', 30), insights },

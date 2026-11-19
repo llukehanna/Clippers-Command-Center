@@ -13,6 +13,7 @@ import { ESPN_INJURIES_URL, parseEspnInjuries } from '@/src/lib/espn/injuries';
 import { expectedLacMargin, modelSigma, pregameLacWinProb } from '@/src/lib/live/win-prob';
 import { daysSince, lacSpreadSeries, latestLacLine, type OddsRow } from '@/src/lib/game-preview-utils';
 import type { WpCalibration } from '@/src/lib/types/live-state';
+import { INSIGHT_ROW_COLUMNS, INSIGHT_ROW_FROM, barFilter, type InsightDbRow } from './insight-quality';
 import type { GamePreviewPayload, Insight, PreviewTeamForm } from '@/src/lib/ui/types';
 
 interface GameRow {
@@ -27,7 +28,6 @@ interface RollingRow { team_id: string; net_rating: number | null; record_wins: 
 interface RankRow { team_id: string; off: number; def: number; net: number; off_rank: number; def_rank: number; net_rank: number; total: number }
 interface MeetingRow { game_id: string; game_date: string; season_id: number; lac_home: boolean; home_score: number; away_score: number }
 interface RestRow { team_id: string; prev_date: string | null }
-interface InsightRow { insight_id: string; scope: string; category: string; headline: string; detail: string | null; importance: number }
 
 const notFound = (id: string) => json(buildError('NOT_FOUND', `Game ${id} not found`), { status: 404 });
 const round1 = (x: number) => Math.round(x * 10) / 10;
@@ -139,11 +139,11 @@ export async function loadGamePreview(gameIdParam: string): Promise<ApiResult> {
         WHERE g.game_date < ${g.game_date}::date AND g.game_date >= ${g.game_date}::date - 30 AND NOT g.is_preseason
         GROUP BY t.team_id
       `,
-      sql<InsightRow[]>`
-        SELECT insight_id::text AS insight_id, scope, category, headline, detail, importance
-        FROM insights
-        WHERE game_id = ${g.game_id}::bigint AND is_active = true
-        ORDER BY importance DESC
+      sql<InsightDbRow[]>`
+        SELECT ${sql.unsafe(INSIGHT_ROW_COLUMNS)}
+        FROM ${sql.unsafe(INSIGHT_ROW_FROM)}
+        WHERE i.game_id = ${g.game_id}::bigint AND i.is_active = true
+        ORDER BY i.importance DESC
       `,
       fetchEspnJson(espnScheduleUrl(g.season_id + 1)),
       fetchEspnJson(ESPN_INJURIES_URL),
@@ -208,7 +208,9 @@ export async function loadGamePreview(gameIdParam: string): Promise<ApiResult> {
     const injuryJson = settled(injuriesR, 'espn injuries');
     const report = injuryJson ? parseEspnInjuries(injuryJson) : null;
 
-    const insights: Insight[] = (settled(insightsR, 'insights') ?? []).map((r) => ({
+    // Quality bar: cards and notes only (notes stay visible until Part B moves them into Matchup notes).
+    const barred = await barFilter(settled(insightsR, 'insights') ?? []);
+    const insights: Insight[] = [...barred.cards, ...barred.notes].sort((a, b) => b.importance - a.importance).map((r) => ({
       insight_id: r.insight_id, scope: r.scope, category: r.category, headline: r.headline, detail: r.detail, importance: r.importance,
     }));
 
