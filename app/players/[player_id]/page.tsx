@@ -7,28 +7,38 @@ import { SplitsPanel } from '@/components/players/SplitsPanel'
 import { PlayerTransactions } from '@/components/players/PlayerTransactions'
 import { GameLog, type GameLogRow } from '@/components/players/GameLog'
 import { Eyebrow } from '@/components/ui/eyebrow'
+import { CareerHero, CareerHighs, CareerNumbers, CareerSeasons } from '@/components/players/ClippersCareer'
+import type { PlayerCareerPayload } from '@/src/lib/data/player-career'
 import { getJson } from '@/src/lib/ui/api'
 import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
-import type { HistoryGame } from '@/src/lib/ui/season'
+import { seasonShort, type HistoryGame } from '@/src/lib/ui/season'
 import type { MovesPayload, PlayerDetailPayload, PlayersPayload } from '@/src/lib/ui/types'
 
 // Live data on every request (loaders read the database directly).
 export const dynamic = 'force-dynamic'
 
-type Params = { params: Promise<{ player_id: string }> }
+type Params = { params: Promise<{ player_id: string }>; searchParams: Promise<{ season?: string }> }
+
+/** Clippers games only: the profile is about a player's Clippers years. */
+const detailPath = (id: string, season: string | null) =>
+  `/api/players/${encodeURIComponent(id)}?lac_only=true${season ? `&season_id=${season}` : ''}`
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { player_id } = await params
-  const data = await getJson<PlayerDetailPayload>(`/api/players/${encodeURIComponent(player_id)}`)
+  const data = await getJson<PlayerDetailPayload>(detailPath(player_id, null))
   return { title: data?.player.display_name ?? 'Player' }
 }
 
-export default async function PlayerDetailPage({ params }: Params) {
+export default async function PlayerDetailPage({ params, searchParams }: Params) {
   const { player_id } = await params
-  const [data, roster, moves] = await Promise.all([
-    getJson<PlayerDetailPayload>(`/api/players/${encodeURIComponent(player_id)}`),
+  const { season } = await searchParams
+  const seasonParam = season && /^\d{4}$/.test(season) ? season : null
+  const numericId = /^\d{1,15}$/.test(player_id)
+  const [data, roster, moves, career] = await Promise.all([
+    getJson<PlayerDetailPayload>(detailPath(player_id, seasonParam)),
     getJson<PlayersPayload>('/api/players?include_traded=true'),
-    /^\d{1,15}$/.test(player_id) ? getJson<MovesPayload>(`/api/franchise/moves?player_id=${player_id}`) : null,
+    numericId ? getJson<MovesPayload>(`/api/franchise/moves?player_id=${player_id}`) : null,
+    numericId ? getJson<PlayerCareerPayload>(`/api/players/${player_id}/career`) : null,
   ])
   if (!data) notFound()
 
@@ -46,24 +56,50 @@ export default async function PlayerDetailPage({ params }: Params) {
       score: g?.final_score ? `${g.final_score.team}–${g.final_score.opp}` : null,
     }
   })
-  const nbaId: string | number | null = roster?.players.find((p) => String(p.player_id) === String(player_id))?.nba_person_id ?? null
+  const rosterEntry = roster?.players.find((p) => String(p.player_id) === String(player_id))
+  const nbaId: string | number | null = rosterEntry?.nba_person_id ?? career?.nba_person_id ?? null
+  const clippersSeasons = career ? career.seasons.regular.length + career.seasons.playoffs.length : 0
+  // Former: played for the Clippers, but isn't on (or was traded off) this season's roster.
+  const former = clippersSeasons > 0 && (!rosterEntry || !!rosterEntry.is_traded)
+  const seasonLabel = seasonId ? formatSeasonLabel(seasonId).replace('-', '–') : 'Season'
+  const careerPanels = career && clippersSeasons > 0 && (
+    <section className="enter grid grid-cols-1 gap-4 lg:gap-[18px]" style={{ ['--i' as string]: 1 }} aria-label="Clippers career">
+      <CareerSeasons playerId={player_id} career={career} selected={seasonId} />
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:gap-[18px]">
+        <CareerNumbers career={career} />
+        <CareerHighs highs={career.highs} />
+      </div>
+    </section>
+  )
 
   return (
     <div className="page">
-      <Link href="/players" className="w-fit font-mono text-[12px] text-mute hover:text-text">
-        ← Players
+      <Link href={former ? '/players?mode=all-time' : '/players'} className="w-fit font-mono text-[12px] text-mute hover:text-text">
+        {former ? '← Players · All-time' : '← Players'}
       </Link>
       <div className="enter">
-        <PlayerHero
-          name={data.player.display_name}
-          position={data.player.position}
-          nbaPlayerId={nbaId}
-          seasonLabel={seasonId ? formatSeasonLabel(seasonId).replace('-', '–') : 'Season'}
-          gamesPlayed={log.length}
-          season={data.season_averages}
-          recent={data.trend_summary}
-        />
+        {former && career ? (
+          <CareerHero name={data.player.display_name} position={data.player.position} career={career} />
+        ) : (
+          <PlayerHero
+            name={data.player.display_name}
+            position={data.player.position}
+            nbaPlayerId={nbaId}
+            seasonLabel={seasonLabel}
+            gamesPlayed={log.length}
+            season={data.season_averages}
+            recent={data.trend_summary}
+          />
+        )}
       </div>
+
+      {/* Former players lead with their whole Clippers career; current ones with this season. */}
+      {former && careerPanels}
+      {former && seasonId && (
+        <Eyebrow as="h2" className="-mb-2 mt-2" aside="trend, splits and game log">
+          {seasonShort(seasonId)} season
+        </Eyebrow>
+      )}
 
       <section className="enter grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 1 }}>
         <TrendChart charts={data.charts} />
@@ -76,6 +112,8 @@ export default async function PlayerDetailPage({ params }: Params) {
           <GameLog rows={rows} />
         </section>
       )}
+
+      {!former && clippersSeasons > 1 && careerPanels}
 
       <PlayerTransactions moves={moves?.moves ?? []} personKey={personKey} />
     </div>

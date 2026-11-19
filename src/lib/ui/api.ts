@@ -13,6 +13,8 @@ import { loadSchedule } from '@/src/lib/data/schedule'
 import { loadGamePreview } from '@/src/lib/data/game-preview'
 import { loadPlayers } from '@/src/lib/data/players'
 import { loadPlayer } from '@/src/lib/data/player'
+import { loadPlayersAllTime } from '@/src/lib/data/players-all-time'
+import { loadPlayerCareer } from '@/src/lib/data/player-career'
 import { loadInsights } from '@/src/lib/data/insights'
 import { loadMedia } from '@/src/lib/data/media'
 import { loadHistorySeasons } from '@/src/lib/data/history-seasons'
@@ -38,6 +40,8 @@ const ROUTES: Array<[RegExp, Loader]> = [
   [/^\/api\/schedule$/, (_, url) => loadSchedule(url)],
   [/^\/api\/schedule\/([^/]+)$/, (m) => loadGamePreview(decodeURIComponent(m[1]))],
   [/^\/api\/players$/, (_, url) => loadPlayers(url)],
+  [/^\/api\/players\/all-time$/, () => loadPlayersAllTime()],
+  [/^\/api\/players\/([^/]+)\/career$/, (m) => loadPlayerCareer(decodeURIComponent(m[1]))],
   [/^\/api\/players\/([^/]+)$/, (m, url) => loadPlayer(decodeURIComponent(m[1]), url)],
   [/^\/api\/insights$/, (_, url) => loadInsights(url)],
   [/^\/api\/media$/, (_, url) => loadMedia(url)],

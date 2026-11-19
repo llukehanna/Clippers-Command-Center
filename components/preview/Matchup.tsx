@@ -57,7 +57,7 @@ export function Matchup({ matchup, oppAbbr }: { matchup: GamePreviewPayload['mat
               {meetings.map((m) => (
                 <li key={m.game_id}>
                   <Link href={`/history/${m.game_id}`} className="flex items-center justify-between gap-3 rounded-[10px] px-2 py-2 text-[13.5px] transition-colors hover:bg-ink-2/60">
-                    <span className="font-mono text-[12px] text-mute">{formatDayShort(m.game_date)}, {m.game_date.slice(0, 4)}</span>
+                    <span className="font-mono text-[12px] text-mute">{formatDayShort(m.game_date)}</span>
                     <span className="flex items-center gap-2 tabular-nums">
                       {m.lac_home ? 'vs' : '@'} {oppAbbr} {m.lac_score}-{m.opp_score}
                       <ResultBadge result={m.won ? 'W' : 'L'} />
