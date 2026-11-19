@@ -37,3 +37,6 @@ export function laToday(now: Date = new Date()): string {
     timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(now);
 }
+
+/** The default postgame window in days: finals dated (asOf − days, asOf]. One source for the engine, the CLI and verify. */
+export const DEFAULT_POSTGAME_DAYS = 3;

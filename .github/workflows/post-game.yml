@@ -100,6 +100,7 @@ jobs:
         run: npm run verify-insights
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          POSTGAME_DAYS: ${{ inputs.postgame_days || '3' }}
 
       # Current roster (ESPN) → /api/players default. An ESPN outage keeps the
       # previous snapshot, so it doesn't fail the pipeline.
@@ -113,6 +114,7 @@ jobs:
       # Line scores for Clippers games finalized before they were stored
       # (bounded per night; a no-op once the backlog is done).
       - name: Backfill line scores
+        id: line_scores
         if: ${{ success() || (failure() && steps.verify.outcome == 'failure') }}
         run: node node_modules/.bin/tsx scripts/backfill-periods.ts --limit 150
         env:
@@ -120,7 +122,7 @@ jobs:
 
       # Read by /api/home as meta.last_sync_at.
       - name: Record last sync time
-        if: ${{ success() || (failure() && steps.verify.outcome == 'failure') }}
+        if: ${{ success() || (failure() && steps.verify.outcome == 'failure' && steps.line_scores.outcome != 'failure') }}
         run: node node_modules/.bin/tsx scripts/record-sync.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

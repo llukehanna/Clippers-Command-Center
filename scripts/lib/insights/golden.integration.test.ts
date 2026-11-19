@@ -80,7 +80,9 @@ describe.skipIf(!url)(`insight engine golden expectations (${REAL ? 'real data, 
         expect(Math.max(0, ...counts.values()), placement).toBeLessThanOrEqual(2);
       }
       // player_page is exempt from the per-player cap; each player's own page holds at most six.
-      for (const pid of new Set(items.map((i) => i.player_id).filter((x): x is string => !!x))) {
+      const pids = new Set(items.map((i) => i.player_id).filter((x): x is string => !!x));
+      expect(pids.size).toBeGreaterThan(0);
+      for (const pid of pids) {
         const page = composeFeed(items.filter((i) => i.player_id === pid), 'player_page');
         expect(page.length, `player ${pid}`).toBeLessThanOrEqual(6);
       }
@@ -211,6 +213,7 @@ describe.skipIf(!url)(`insight engine golden expectations (${REAL ? 'real data, 
       }
       for (const d of all.drafts.filter((x) => x.category === 'opp_hot_player')) {
         expect(d.surface).toBe('pregame');
+        expect(d.score_parts.salience_class).toBe('opponent');
         expect(all.context!.roster.has(d.player_id!)).toBe(false);
       }
     }, TIMEOUT);
@@ -221,7 +224,6 @@ describe.skipIf(!url)(`insight engine golden expectations (${REAL ? 'real data, 
       expect(r.drafts.length).toBeGreaterThan(0);
       expect(r.drafts.every((d) => d.game_id === g.game_id && d.surface === 'postgame' && d.scope === 'historical')).toBe(true);
     }, TIMEOUT);
-
 
     it('G11 a 28-PPG scorer’s "20+ in 3 straight" never appears (mutates data: keep last)', async () => {
       await sql`

@@ -11,7 +11,7 @@ import { escapeAnnotation } from './lib/game-night-logic.js';
 async function main(): Promise<void> {
   const { checked, legacy, failures, retired } = await verifyActiveInsights();
   console.log(`[verify-insights] ${checked} checked, ${legacy} legacy skipped, ${failures.length} failed, ${retired.length} retired`);
-  for (const r of retired) console.log(`::warning title=Insight proof retired::${escapeAnnotation(`${r.insight_id} ${r.headline}`)}`);
+  for (const r of retired) console.log(`::warning title=Insight proof retired::${escapeAnnotation(`${r.insight_id} ${r.headline} (${r.reason})`)}`);
   for (const f of failures) console.error(`  ✗ ${f.headline} — ${f.reason} (${f.insight_id})`);
   await sql.end();
   if (failures.length > 0) process.exit(1);

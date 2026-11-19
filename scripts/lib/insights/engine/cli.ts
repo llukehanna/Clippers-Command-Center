@@ -2,11 +2,11 @@
 // generate-insights flags (spec §5.1: --surface, --game, --as-of; plus --days
 // for the postgame window and --dry). Pure.
 import type { Surface } from '../../../../src/lib/insights/types';
-import { isIsoDate } from './dates.js';
+import { DEFAULT_POSTGAME_DAYS, isIsoDate } from './dates.js';
 
 /** Surfaces generate-insights writes. Live insights come from the game-night runner (Plan 6). */
 export const BATCH_SURFACES: Surface[] = ['season', 'pregame', 'postgame', 'player'];
-export const DEFAULT_DAYS = 3;
+export const DEFAULT_DAYS = DEFAULT_POSTGAME_DAYS;
 const MAX_DAYS = 400;
 
 export interface EngineArgs {

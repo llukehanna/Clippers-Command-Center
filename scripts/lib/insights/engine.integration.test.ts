@@ -5,7 +5,7 @@
 //   FIXTURE_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55496/fixture npx vitest run scripts/lib/insights/engine.integration
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { laToday } from './engine/dates';
+import { addDays, laToday } from './engine/dates';
 import { REGULAR_SEASON } from '../sql-fragments';
 import { makeFact } from './engine/__fixtures__/facts';
 import { seedGameFlows } from './engine/__fixtures__/flows';
@@ -1751,36 +1751,74 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       await sql`DELETE FROM insights WHERE proof_hash LIKE 'retired-%'`;
     }, TIMEOUT);
 
-    it('verify retires a frozen postgame row with a broken proof, but still fails any other broken row', async () => {
-      const [g] = await sql<{ game_id: string }[]>`
-        SELECT game_id::text FROM games WHERE status = 'final' AND 1 IN (home_team_id, away_team_id) AND season_id = 2025
-        ORDER BY game_date LIMIT 1`;
+    describe('verify retirement of frozen postgame proofs', () => {
       // The stored proof says one = 2; the live proof_sql returns one = 1, so the proof no longer holds.
-      const insert = (key: string, surface: string, scope: string, gameId: string | null) => sql`
+      const insert = (key: string, o: { surface: string; scope: string; gameId: string | null; proofSql?: string; result?: string }) => sql`
         INSERT INTO insights (scope, surface, category, headline, importance, proof_sql, proof_params, proof_result, proof_hash, game_id, first_emitted_at)
-        VALUES (${scope}, ${surface}, 'player_game_stat', 'Broken proof claim', 10, 'SELECT 1 AS one', '{}'::jsonb,
-                '[{"part":"fact","data":{"one":2}}]'::jsonb, ${key}, ${gameId}::bigint, now())`;
-      try {
-        await insert('verify-frozen', 'postgame', 'historical', g.game_id);
-        const out = run('scripts/verify-insights.ts');
-        expect(out).toMatch(/\b0 failed, 1 retired\b/);
-        expect(out).toMatch(/^::warning title=Insight proof retired::[0-9a-f-]{36} Broken proof claim$/m);
-        const [row] = await sql<{ is_active: boolean }[]>`SELECT is_active FROM insights WHERE proof_hash = 'verify-frozen'`;
-        expect(row.is_active).toBe(false);
+        VALUES (${o.scope}, ${o.surface}, 'player_game_stat', 'Broken proof claim', 10, ${o.proofSql ?? 'SELECT 1 AS one'}, '{}'::jsonb,
+                ${o.result ?? '[{"part":"fact","data":{"one":2}}]'}::text::jsonb, ${key}, ${o.gameId}::bigint, now())`;
+      const active = async (key: string) => (await sql<{ is_active: boolean }[]>`SELECT is_active FROM insights WHERE proof_hash = ${key}`)[0].is_active;
+      type Failed = { status?: number; stdout?: string; stderr?: string };
+      const runFailing = () => { try { run('scripts/verify-insights.ts'); return null; } catch (e) { return e as Failed; } };
+      const oldGame = async () => (await sql<{ game_id: string }[]>`
+        SELECT game_id::text FROM games WHERE status = 'final' AND 1 IN (home_team_id, away_team_id) AND season_id = 2025
+        ORDER BY game_date LIMIT 1`)[0].game_id;
+      const clean = () => sql`DELETE FROM insights WHERE proof_hash LIKE 'verify-%'`;
 
-        await insert('verify-season', 'season', 'between_games', null);
-        type Failed = { status?: number; stdout?: string; stderr?: string };
-        const failed = (() => { try { run('scripts/verify-insights.ts'); return null; } catch (e) { return e as Failed; } })();
-        expect(failed).not.toBeNull();
-        expect(failed!.status).toBe(1);
-        expect(failed!.stdout).toMatch(/\b1 failed\b/);
-        expect(failed!.stderr).toMatch(/Broken proof claim/);
-        const [kept] = await sql<{ is_active: boolean }[]>`SELECT is_active FROM insights WHERE proof_hash = 'verify-season'`;
-        expect(kept.is_active).toBe(true);
-      } finally {
-        await sql`DELETE FROM insights WHERE proof_hash IN ('verify-frozen', 'verify-season')`;
-      }
-    }, TIMEOUT);
+      it('retires a frozen postgame row whose data changed (with the reason), and still fails any other broken row', async () => {
+        try {
+          await insert('verify-frozen', { surface: 'postgame', scope: 'historical', gameId: await oldGame() });
+          const out = run('scripts/verify-insights.ts');
+          expect(out).toMatch(/\b0 failed, 1 retired\b/);
+          expect(out).toMatch(/^::warning title=Insight proof retired::[0-9a-f-]{36} Broken proof claim \(stored proof rows not returned by proof_sql\)$/m);
+          expect(await active('verify-frozen')).toBe(false);
+
+          await insert('verify-season', { surface: 'season', scope: 'between_games', gameId: null });
+          const failed = runFailing();
+          expect(failed?.status).toBe(1);
+          expect(failed!.stdout).toMatch(/\b1 failed\b/);
+          expect(failed!.stderr).toMatch(/Broken proof claim/);
+          expect(await active('verify-season')).toBe(true);
+        } finally { await clean(); }
+      }, TIMEOUT);
+
+      it('a frozen postgame row whose proof_sql errors or whose proof is empty is a failure, not a retirement', async () => {
+        try {
+          const gameId = await oldGame();
+          await insert('verify-sqlerr', { surface: 'postgame', scope: 'historical', gameId, proofSql: 'SELECT 1 / 0 AS one' });
+          await insert('verify-empty', { surface: 'postgame', scope: 'historical', gameId, result: '[]' });
+          const failed = runFailing();
+          expect(failed?.status).toBe(1);
+          expect(failed!.stdout).toMatch(/\b2 failed, 0 retired\b/);
+          expect(await active('verify-sqlerr')).toBe(true);
+          expect(await active('verify-empty')).toBe(true);
+        } finally { await clean(); }
+      }, TIMEOUT);
+
+      it('a failing postgame row inside the current window still fails verify and stays active; a wider window keeps older rows', async () => {
+        try {
+          const { verifyActiveInsights } = await import('./verify');
+          const [g] = await sql<{ game_id: string; game_date: string }[]>`
+            SELECT game_id::text, game_date::text FROM games WHERE status = 'final' AND 1 IN (home_team_id, away_team_id) AND season_id = 2025
+            ORDER BY game_date DESC LIMIT 1`;
+          await insert('verify-window', { surface: 'postgame', scope: 'historical', gameId: g.game_id });
+          // today = the day after the game: inside the 3-day window, same season.
+          const inside = await verifyActiveInsights(addDays(g.game_date, 1), 3);
+          expect(inside.failures.map((f) => f.headline)).toContain('Broken proof claim');
+          expect(inside.retired).toHaveLength(0);
+          expect(await active('verify-window')).toBe(true);
+          // today = game + 3 days: the game is now outside the window, so its drift retires it.
+          const outside = await verifyActiveInsights(addDays(g.game_date, 3), 3);
+          expect(outside.retired.map((f) => f.headline)).toContain('Broken proof claim');
+          expect(await active('verify-window')).toBe(false);
+          // A backfill window of 30 days keeps a game 3 days old inside the window.
+          await sql`UPDATE insights SET is_active = TRUE WHERE proof_hash = 'verify-window'`;
+          const wide = await verifyActiveInsights(addDays(g.game_date, 3), 30);
+          expect(wide.retired).toHaveLength(0);
+          expect(await active('verify-window')).toBe(true);
+        } finally { await clean(); }
+      }, TIMEOUT);
+    });
 
     it('a single-game postgame run leaves other games alone', async () => {
       const [g1, g2] = (await sql<{ game_id: string }[]>`

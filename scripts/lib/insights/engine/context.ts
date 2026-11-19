@@ -5,6 +5,7 @@
 // records starts, league coverage and the stored prior state.
 import { MINUTES_SECONDS_SQL } from '../../../../src/lib/minutes';
 import { sql } from '../../db.js';
+import { DEFAULT_POSTGAME_DAYS } from './dates.js';
 import { currentSeasonId, seasonLabel } from '../../schedule-utils.js';
 import { REGULAR_SEASON } from '../../sql-fragments.js';
 import { assessLeagueCoverage, type TeamGames } from './coverage.js';
@@ -15,7 +16,7 @@ import { loadPrior } from './store.js';
 import type { EngineContext, PriorState, RosterPlayer, TeamInfo } from './types.js';
 
 export const MIN_SEASON_GAMES = 10;
-export const DEFAULT_POSTGAME_DAYS = 3;
+export { DEFAULT_POSTGAME_DAYS };
 
 export interface LoadOptions { asOf: string; gameId?: string | null; withPrior: boolean; postgameDays?: number }
 
