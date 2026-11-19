@@ -1355,6 +1355,66 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     }, TIMEOUT);
   });
 
+  describe('quality context (Q1/Q2: engine and loader agree)', () => {
+    it('the loader\'s games_since and team_game_number equal the engine\'s counts for the same fact', async () => {
+      const { QUALITY_CONTEXT_SQL, qualityContextParams } = await import('../../../src/lib/insights/quality-context-sql');
+      const { subjectFirstSince, groupFirstSince, groupSeasonHigh } = await import('./engine/questions');
+      const { runQuery } = await import('./engine/query');
+      const ctx = await ctxAt(laToday());
+      const [{ nba_team_id: lacNba }] = await sql<{ nba_team_id: number }[]>`SELECT nba_team_id::int FROM teams WHERE abbreviation = 'LAC'`;
+      // The 55-point game, and his first 25+ night of 2025-26, whose previous 25+ night is in 2024-25 (a count across seasons).
+      // 25, not 30: the 55 is his first 30+ game in the fixture, so a 30 has no previous occurrence to count from.
+      const games = await sql<{ game_id: string; d: string }[]>`
+        SELECT pb.game_id::text, g.game_date::text AS d FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
+        WHERE pb.player_id = 1 AND g.season_id = 2025 AND (pb.points = 55 OR g.game_date = (
+          SELECT MIN(g2.game_date) FROM game_player_box_scores p2 JOIN games g2 ON g2.game_id = p2.game_id
+          WHERE p2.player_id = 1 AND g2.season_id = 2025 AND p2.points >= 25))
+        ORDER BY g.game_date`;
+      expect(games).toHaveLength(2);
+      const subjectCounts: number[] = [];
+      for (const g of games) {
+        const label = `game ${g.game_id} on ${g.d}`;
+        const fact = makeFact({
+          kind: 'player_game_stat', surface: 'postgame', stat: 'pts', value: 25,
+          window: { type: 'game', game_id: g.game_id, season_id: 2025 }, context: { date: g.d }, gameId: g.game_id, seasonId: 2025,
+        });
+        const loaderCounts = async (need: { since_date: string | null; at_date: string | null; player_id?: string | null }) => {
+          const rows = await sql.unsafe(QUALITY_CONTEXT_SQL, qualityContextParams([{
+            insight_id: 'x', player_id: '1', until_date: g.d, season_id: 2025, ...need,
+          }], lacNba) as never);
+          expect(rows, label).toHaveLength(1);
+          return rows[0] as unknown as { insight_id: string; games_since: number | null; team_game_number: number | null };
+        };
+
+        // Q1, subject frame: his regular-season games (any team) strictly between the previous 25+ night and this one.
+        const [prev] = await runQuery(subjectFirstSince.build(fact, ctx)!);
+        expect(prev, `${label}: an earlier 25-point game`).toBeDefined();
+        const sinceRow = await loaderCounts({ since_date: String(prev.game_date), at_date: g.d });
+        expect(sinceRow.insight_id).toBe('x');
+        expect(typeof prev.games_since, label).toBe('number');
+        expect(sinceRow.games_since, label).toBe(prev.games_since);
+        subjectCounts.push(Number(prev.games_since));
+
+        // Q1, group frame: the Clippers' regular-season games strictly between the previous Clipper 25+ night and this one.
+        const [groupPrev] = await runQuery(groupFirstSince.build(fact, ctx)!);
+        expect(groupPrev, `${label}: an earlier Clipper 25-point game`).toBeDefined();
+        const groupRow = await loaderCounts({ since_date: String(groupPrev.game_date), at_date: null, player_id: null });
+        expect(typeof groupPrev.games_since, label).toBe('number');
+        expect(groupRow, label).toMatchObject({ games_since: groupPrev.games_since, team_game_number: null });
+
+        // Q2: the Clippers' regular-season games this season through the fact's date, its own game included.
+        const [high] = await runQuery(groupSeasonHigh.build(fact, ctx)!);
+        expect(Number(high.team_games), label).toBeGreaterThan(0);
+        expect(sinceRow.team_game_number, label).toBe(Number(high.team_games));
+
+        // A need without its dates yields no count (the bar then fails closed).
+        expect(await loaderCounts({ since_date: null, at_date: null })).toMatchObject({ games_since: null, team_game_number: null });
+      }
+      // Not a vacuous 0 = 0: the cross-season count spans many games.
+      expect(Math.max(...subjectCounts)).toBeGreaterThan(10);
+    }, TIMEOUT);
+  });
+
   describe('buzzer pregame pass (FF-2)', () => {
     const REASON = 'buzzer: league sync pending';
     const AS_OF = '2026-02-10';
