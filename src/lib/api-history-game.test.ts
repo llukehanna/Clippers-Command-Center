@@ -19,6 +19,7 @@ const row = (id: string, over: Partial<InsightRow> = {}): InsightRow => ({
   detail: `Detail ${id}`, importance: 50, proof_result: [{ part: 'fact' }], game_id: '640', player_id: null,
   season_id: 2026, game_date: '2026-11-17', evidence: null, entities: null, updated_at: '2026-11-17T00:00:00Z',
   frame: { type: 'first_since', strength: 0.5, who: 'subject', text: `Detail ${id}`, proof_rows: [] },
+  nba_person_id: null, player_name: null, opp_abbr: 'OKC', lac_home: true, lac_score: 112, opp_score: 104,
   score_parts: { salience_class: 'roster' }, ...over,
 });
 

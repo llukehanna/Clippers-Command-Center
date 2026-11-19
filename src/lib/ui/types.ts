@@ -9,6 +9,8 @@ import type { PlayerInjury } from '../types/live'
 import type { Shot } from '../shots'
 import type { RecordNote } from '../record-notes'
 
+export type { InsightCardData, MatchupNote } from '../insights/card'
+
 export type HomeAway = 'home' | 'away'
 
 export interface GameOdds {

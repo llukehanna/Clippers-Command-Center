@@ -5,7 +5,8 @@
 import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db';
 import { applyBar, contextNeeds, type BarResult, type BarRow, type QualityContext } from '../insights/quality';
 import { QUALITY_CONTEXT_SQL, qualityContextParams } from '../insights/quality-context-sql';
-import type { EntityRef, SalienceClass } from '../insights/types';
+import type { CardSourceRow } from '../insights/card';
+import type { SalienceClass } from '../insights/types';
 
 export const INSIGHT_ROW_COLUMNS = `i.insight_id::text AS insight_id, i.scope::text AS scope, i.surface::text AS surface,
   i.category::text AS category, i.headline::text AS headline, i.detail::text AS detail,
@@ -13,17 +14,21 @@ export const INSIGHT_ROW_COLUMNS = `i.insight_id::text AS insight_id, i.scope::t
   i.season_id::int AS season_id, i.frame::jsonb AS frame, i.evidence::jsonb AS evidence,
   i.entities::jsonb AS entities, i.score_parts::jsonb AS score_parts, i.proof_result::jsonb AS proof_result,
   to_char(i.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
-  ig.game_date::text AS game_date`;
+  ig.game_date::text AS game_date,
+  ip.nba_person_id::int AS nba_person_id, ip.display_name::text AS player_name,
+  (CASE WHEN ig.home_team_id = i.team_id THEN iat.abbreviation ELSE iht.abbreviation END)::text AS opp_abbr,
+  (ig.home_team_id = i.team_id)::boolean AS lac_home,
+  (CASE WHEN ig.home_team_id = i.team_id THEN ig.home_score ELSE ig.away_score END)::int AS lac_score,
+  (CASE WHEN ig.home_team_id = i.team_id THEN ig.away_score ELSE ig.home_score END)::int AS opp_score`;
 
-export const INSIGHT_ROW_FROM = 'insights i LEFT JOIN games ig ON ig.game_id = i.game_id';
+export const INSIGHT_ROW_FROM = `insights i LEFT JOIN games ig ON ig.game_id = i.game_id
+  LEFT JOIN players ip ON ip.player_id = i.player_id
+  LEFT JOIN teams iht ON iht.team_id = ig.home_team_id
+  LEFT JOIN teams iat ON iat.team_id = ig.away_team_id`;
 
-export interface InsightDbRow extends BarRow {
+export interface InsightDbRow extends CardSourceRow {
   scope: string;
-  headline: string;
-  importance: number;
-  entities: EntityRef[] | null;
   score_parts: { salience_class?: SalienceClass } | null;
-  updated_at: string;
 }
 
 /** Dates travel as 'YYYY-MM-DD' strings, never JS Dates (no timezone day shifts). */
