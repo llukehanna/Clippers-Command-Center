@@ -136,6 +136,9 @@ describe('GET /api/home', () => {
     const impl = mockSqlFn.getMockImplementation()!;
     mockSqlFn.mockImplementation(async (...args: SqlArgs) => (INSIGHT_QUERY.test(queryText(args)) ? rows : impl(...args)));
   }
+  function setNext() {
+    upcomingRows = [{ game_id: '555', game_date: '2026-10-22', start_time_utc: null, home_team_id: '9', away_team_id: LAC_TEAM_ID, home_abbr: 'GSW', away_abbr: 'LAC', status: 'scheduled' }];
+  }
   const ids = (xs: { insight_id: string }[]) => xs.map((x) => x.insight_id);
   const yoy = (id: string, stat: string, imp: number) => ({
     ...base, insight_id: id, category: 'yoy_change', importance: imp, headline: id, frame: fr('none', 'group'),
@@ -191,6 +194,43 @@ describe('GET /api/home', () => {
     expect(recent.filter((c: { player_id: string }) => c.player_id === '1').length).toBeLessThanOrEqual(2);
   });
 
+  it('a hero postgame leader folds its followers out of every other feed', async () => {
+    const pg = (id: string, strength: number, imp: number, cat: string) => ({
+      ...base, insight_id: id, surface: 'postgame', player_id: '1', game_id: 'G1', category: cat, importance: imp, frame: { ...fr('league_rank'), strength },
+    });
+    const other = (id: string, player: string, imp: number) => ({
+      ...base, insight_id: id, surface: 'postgame', player_id: player, game_id: `G${id}`, category: `c${id}`, importance: imp, frame: fr('league_rank'),
+    });
+    withInsightRows([
+      pg('lead', 0.9, 95, 'a'), pg('follow', 0.4, 94, 'b'),
+      other('o1', '2', 80), other('o2', '3', 79), other('o3', '4', 78), other('o4', '5', 77), other('o5', '6', 76), other('o6', '7', 75),
+    ]);
+    const body = await (await getHome()).json();
+    expect(body.feeds.hero.insight_id).toBe('lead');
+    expect(body.feeds.hero.merged_ids).toEqual(['follow']);
+    expect(body.feeds.recent).toHaveLength(5);
+    expect(ids(body.feeds.recent)).not.toContain('lead');
+    expect(ids(body.feeds.recent)).not.toContain('follow');
+    expect(body.feeds.recent.some((c: { player_id: string }) => c.player_id === '1')).toBe(false);
+  });
+
+  it('stale pregame rows (not the next game) are excluded; no next game means no pregame feeds', async () => {
+    const stale = { ...base, insight_id: 'stale', surface: 'pregame', game_id: '111', category: 'opp_rank', importance: 99, frame: fr('league_rank', 'group') };
+    const staleNote = { ...base, insight_id: 'sn', surface: 'pregame', game_id: '111', category: 'opp_form', importance: 50, frame: null };
+    setNext();
+    withInsightRows([stale, staleNote]);
+    let body = await (await getHome()).json();
+    expect(body.feeds.hero).toBeNull();
+    expect(body.feeds.scouting).toEqual([]);
+    expect(body.feeds.notes).toEqual([]);
+    upcomingRows = [];
+    withInsightRows([{ ...stale, game_id: '555' }, { ...staleNote, game_id: '555' }]);
+    body = await (await getHome()).json();
+    expect(body.feeds.hero).toBeNull();
+    expect(body.feeds.scouting).toEqual([]);
+    expect(body.feeds.notes).toEqual([]);
+  });
+
   it('season holds season cards plus one merged ratings card', async () => {
     withInsightRows([
       { ...base, insight_id: 'hero', importance: 99, category: 'standings', frame: fr('league_rank', 'group') },
@@ -208,11 +248,13 @@ describe('GET /api/home', () => {
 
   it('scouting holds pregame cards, at most 3; notes hold Q8 notes by importance, at most 4', async () => {
     const pre = (id: string, imp: number, cat: string) => ({
-      ...base, insight_id: id, surface: 'pregame', game_id: `g${id}`, category: cat, importance: imp, frame: fr('league_rank', 'group'),
+      ...base, insight_id: id, surface: 'pregame', game_id: '555', category: cat, importance: imp, frame: fr('league_rank', 'group'),
     });
     const note = (id: string, imp: number, cat: string) => ({
-      ...base, insight_id: id, surface: 'pregame', game_id: 'g1', category: cat, importance: imp, frame: null,
+      ...base, insight_id: id, surface: 'pregame', game_id: '555', category: cat, importance: imp, frame: null,
     });
+    setNext();
+    setNext();
     withInsightRows([
       { ...base, insight_id: 'hero', importance: 99, category: 'standings', frame: fr('league_rank', 'group') },
       pre('p1', 70, 'c1'), pre('p2', 69, 'c2'), pre('p3', 68, 'c3'), pre('p4', 67, 'c4'),

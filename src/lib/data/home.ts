@@ -14,7 +14,7 @@ import { getDisplaySeasonId } from '@/src/lib/season';
 import { REGULAR_SEASON_SQL } from '@/src/lib/game-type';
 import { MINUTES_SECONDS_SQL } from '@/src/lib/minutes';
 import { composeFeed } from '../insights/compose';
-import { toCardData, toMatchupNote, type InsightCardData, type MatchupNote } from '../insights/card';
+import { toCardData, toMatchupNote, type InsightCardData } from '../insights/card';
 import { mergeTeamYoy, teamYoyRow } from '../insights/team-yoy';
 import { INSIGHT_ROW_COLUMNS, INSIGHT_ROW_FROM, barFilter, type InsightDbRow } from './insight-quality';
 
@@ -478,17 +478,21 @@ export async function loadHome(): Promise<ApiResult> {
     // The quality bar hides tags, merges and cuts. One bar pass serves every feed.
     const barred = await barFilter(insightRows);
     const byImportance = (x: { importance: number }, y: { importance: number }) => y.importance - x.importance;
-    const cards = barred.cards;
-    const notes = barred.notes.filter((r) => r.surface === 'pregame');
+    // Pregame rows aren't deactivated once their game is played: only the next game's rows are live.
+    const nextGameId = nextGame ? String(nextGame.game_id) : null;
+    const live = (r: InsightDbRow) => r.surface !== 'pregame' || (nextGameId !== null && r.game_id === nextGameId);
+    const cards = barred.cards.filter(live);
+    const notes = barred.notes.filter((r) => r.surface === 'pregame' && live(r));
     // Team yoy rows with frame none come back from the bar as "merge" (Q8); they fold into one ratings card.
     const yoyRows = barred.merged.filter((r) => r.surface === 'season' && teamYoyRow(r) !== null);
     const plain = cards.filter((r): r is typeof r & { surface: NonNullable<typeof r.surface> } => r.surface !== null);
 
     const hero = composeFeed(plain, 'home_hero')[0] ?? null;
-    const notHero = (r: InsightDbRow) => r.insight_id !== hero?.insight_id;
-    const recentRows = composeFeed(plain.filter((r) => r.surface === 'postgame' && notHero(r)), 'recent_games');
-    const seasonRows = composeFeed(plain.filter((r) => r.surface === 'season' && notHero(r)), 'season_feed');
-    const scoutingRows = composeFeed(plain.filter((r) => r.surface === 'pregame' && notHero(r)), 'up_next');
+    const used = new Set<string>(hero ? [hero.insight_id, ...hero.merged_ids] : []);
+    const rest = (surface: string) => plain.filter((r) => r.surface === surface && !used.has(r.insight_id));
+    const recentRows = composeFeed(rest('postgame'), 'recent_games');
+    const seasonRows = composeFeed(rest('season'), 'season_feed');
+    const scoutingRows = composeFeed(rest('pregame'), 'up_next');
     const ratings = mergeTeamYoy(yoyRows);
     const season: InsightCardData[] = [...seasonRows.map(toCardData), ...(ratings ? [ratings] : [])].sort(byImportance);
     const feeds = {
@@ -496,7 +500,7 @@ export async function loadHome(): Promise<ApiResult> {
       recent: recentRows.map(toCardData),
       season,
       scouting: scoutingRows.map(toCardData),
-      notes: notes.slice().sort(byImportance).slice(0, 4).map(toMatchupNote) as MatchupNote[],
+      notes: notes.filter((r) => !used.has(r.insight_id)).sort(byImportance).slice(0, 4).map(toMatchupNote),
     };
 
     const legacy = [...cards, ...notes].filter((r) => r.surface === 'season' || r.surface === 'pregame')
