@@ -133,7 +133,21 @@ describe('GET /api/home', () => {
     await getHome();
     const call = findCall(/scope = 'between_games'/);
     expect(call).toBeDefined();
-    expect(queryText(call!)).toMatch(/surface IS NULL OR surface <> 'player'/);
+    expect(queryText(call!)).toMatch(/i\.surface IS NULL OR i\.surface <> 'player'/);
+  });
+
+  it('insights hides cut and tag rows', async () => {
+    const base = { scope: 'between_games', surface: 'season', player_id: '9', game_id: null, season_id: 2026, game_date: null, evidence: null, proof_result: {}, detail: 'd', importance: 50, headline: 'h' };
+    const fr = (type: string, who: string) => ({ type, strength: 0.5, who, text: 't', proof_rows: [] });
+    const rows = [
+      { ...base, insight_id: 'tag', category: 'player_game_stat', frame: fr('season_high', 'subject') },
+      { ...base, insight_id: 'card', category: 'player_game_stat', frame: fr('league_rank', 'subject') },
+    ];
+    const impl = mockSqlFn.getMockImplementation()!;
+    mockSqlFn.mockImplementation(async (...args: SqlArgs) =>
+      queryText(args).includes("i.scope = 'between_games'") ? rows : impl(...args));
+    const body = await (await getHome()).json();
+    expect(body.insights.map((i: { insight_id: string }) => i.insight_id)).toEqual(['card']);
   });
 
   // ── Season scoping ──────────────────────────────────────────────────────────

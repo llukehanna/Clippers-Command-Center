@@ -48,19 +48,19 @@ describe('ties never read as a sole rank or best (FW-1)', () => {
   });
 
   it('group and subject season highs are strict: a tie with another game keeps no frame', () => {
-    expect(groupSeasonHigh.interpret([{ best: 55, games: 59 }], night, ctx)).toBeNull();
-    expect(groupSeasonHigh.interpret([{ best: 54, games: 59 }], night, ctx)).toMatchObject({ type: 'season_high', who: 'group' });
+    expect(groupSeasonHigh.interpret([{ best: 55, games: 59, team_games: 59 }], night, ctx)).toBeNull();
+    expect(groupSeasonHigh.interpret([{ best: 54, games: 59, team_games: 59 }], night, ctx)).toMatchObject({ type: 'season_high', who: 'group' });
     expect(subjectSeasonHigh.interpret([{ best: 55, games: 20 }], night, ctx)).toBeNull();
     expect(subjectSeasonHigh.interpret([{ best: 54, games: 20 }], night, ctx)).toMatchObject({ type: 'season_high', who: 'subject' });
     // lower is better: a tie at the minimum is not "the fewest"
     const low = { ...team, stat: 'opp_pts_low', value: 88 };
-    expect(groupSeasonHigh.interpret([{ best: 88, games: 10 }], low, ctx)).toBeNull();
-    expect(groupSeasonHigh.interpret([{ best: 90, games: 10 }], low, ctx)).toMatchObject({ type: 'season_high' });
+    expect(groupSeasonHigh.interpret([{ best: 88, games: 10, team_games: 30 }], low, ctx)).toBeNull();
+    expect(groupSeasonHigh.interpret([{ best: 90, games: 10, team_games: 30 }], low, ctx)).toMatchObject({ type: 'season_high' });
   });
 
   it('records_best never fires on a tie: an earlier equal game makes it first_since (the query is >=)', () => {
     expect(groupFirstSince.build(night, ctx)!.sql).toContain('value >= $4::float8');
-    expect(groupFirstSince.interpret([{ subject_id: '7', subject_name: 'Paul George', value: 55, game_id: '400', game_date: '2023-01-05' }], night, ctx))
+    expect(groupFirstSince.interpret([{ subject_id: '7', subject_name: 'Paul George', value: 55, game_id: '400', game_date: '2023-01-05', games_since: 300 }], night, ctx))
       .toMatchObject({ type: 'first_since', since_date: '2023-01-05' });
     // a same-game teammate tying it: no frame at all
     expect(groupFirstSince.interpret([{ subject_id: '2', subject_name: 'Big Clipper', value: 55, game_id: '500', game_date: '2025-11-28' }], night, ctx)).toBeNull();

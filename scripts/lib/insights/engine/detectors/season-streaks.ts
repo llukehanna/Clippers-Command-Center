@@ -6,6 +6,7 @@
 // play-in (stored non-playoff, NBA ids 5xxxxxxx) counts. The team's win/losing streak is
 // emitted while the season is being played; once the Clippers have a playoff game the
 // regular season is over, so the team streak goes and player streaks read as closed.
+import { MIN_STREAK_GAMES } from '../../../../../src/lib/insights/quality';
 import { runQuery } from '../query.js';
 import { clippersTeamResultShare, playerHitRates, teamResultRate } from '../rates.js';
 import { rosterSubquery } from '../sql.js';
@@ -117,7 +118,12 @@ SELECT (SELECT won FROM latest) AS winning,
        (SELECT COUNT(*) FILTER (WHERE won) FROM team_games WHERE recency <= 10)::int AS last10_wins,
        (SELECT COUNT(*) FROM team_games WHERE recency <= 10)::int AS last10_games`.trim();
 
-export const TEAM_STREAK_MIN = { wins: 3, losses: 4 } as const;
+export const TEAM_STREAK_MIN = { wins: MIN_STREAK_GAMES, losses: MIN_STREAK_GAMES } as const;
+
+/** Q6: no streak under MIN_STREAK_GAMES, whatever its definition asks for. */
+export function streakMinGames(def: StreakDef): number {
+  return Math.max(def.minGames, MIN_STREAK_GAMES);
+}
 
 export function streakDetector(surface: 'season' | 'player'): Detector {
   return {
@@ -130,7 +136,7 @@ export function streakDetector(surface: 'season' | 'player'): Detector {
       const [po] = await runQuery({ sql: LAC_PLAYOFFS_SQL, params: [ctx.season.id, ctx.lac.teamId, ctx.asOf] });
       const playoffs = po?.playoffs === true;
       for (const def of STREAKS) {
-        const q = { sql: playerStreakSql(def), params: [ctx.season.id, ctx.lac.teamId, def.minGames, ctx.asOf] };
+        const q = { sql: playerStreakSql(def), params: [ctx.season.id, ctx.lac.teamId, streakMinGames(def), ctx.asOf] };
         const rows = await runQuery(q);
         if (rows.length === 0) continue;
         const { rates, pRef } = await playerHitRates(ctx, def.qualifies,

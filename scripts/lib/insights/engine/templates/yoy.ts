@@ -1,4 +1,5 @@
 // Year-over-year phrasings: team rank moves, record, player rises.
+import { YOY_JUMP } from '../../../../../src/lib/insights/quality';
 import { ordinal } from '../../proof-utils.js';
 import type { Fact } from '../types.js';
 import { overrides, pron, prevPhrase, prevSeasonLabel, rankText, sinceText, type ContextLine, type Headline, type TemplateModule } from './shared.js';
@@ -79,6 +80,11 @@ const context: ContextLine = (f, fr, rc, i) => {
     if (fr.type === 'first_since' && since) return `${pron(f)} best ${d.label ?? 'performance'} since ${since}`;
     if (fr.type === 'records_best' && fr.records_seasons !== undefined) {
       return `${pron(f)} best ${d.label ?? 'performance'} in ${fr.records_seasons} season${fr.records_seasons === 1 ? '' : 's'} of records`;
+    }
+    // Q7: an in-progress jump (>= YOY_JUMP) with no frame says how many games it rests on; anything else keeps the detail line.
+    if (fr.type === 'none' && d.games !== undefined && rc.season.isCurrent) {
+      const prev = playerPrev(f);
+      if (prev && Number.isFinite(prev) && Math.abs(f.value - prev) / Math.abs(prev) >= YOY_JUMP) return `Through ${d.games} games`;
     }
   }
   return detail(f, fr, rc, i);

@@ -79,3 +79,26 @@ describe('composeFeed (spec §2.7)', () => {
     expect(composeFeed(live, 'season_feed')).toEqual([]);
   });
 });
+
+describe('composeFeed Q4 and generics', () => {
+  const fr = (strength: number) => ({ type: 'none' as const, strength, text: '' });
+  const pg = (id: string, strength: number, detail: string) =>
+    item(id, { surface: 'postgame', player_id: '1', game_id: '9', category: 'player_game_stat', detail, frame: fr(strength) });
+
+  it('folds a third same-player same-game row (Q4)', () => {
+    const out = mergeSameGamePlayer([pg('c', 0.5, 'c'), pg('a', 1, 'a'), pg('b', 0.8, 'b')]);
+    expect(out).toHaveLength(1);
+    expect(out[0].merged_ids).toEqual(['b', 'c']);
+    expect(out[0].detail).toBe('a · b');
+  });
+
+  it('merges postgame rows in the hero placement too', () => {
+    const out = composeFeed([pg('a', 1, 'a'), pg('b', 0.8, 'b')], 'home_hero');
+    expect(out).toHaveLength(1);
+    expect(out[0].merged_ids.length).toBe(1);
+  });
+
+  it('keeps extra fields', () => {
+    expect(composeFeed([{ ...item('x'), extra: 1 }], 'season_feed')[0].extra).toBe(1);
+  });
+});

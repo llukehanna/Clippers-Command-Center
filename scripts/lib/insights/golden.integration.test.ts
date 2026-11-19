@@ -6,9 +6,11 @@
 // The last fixture test mutates data; keep it last.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import type { Surface } from '../../../src/lib/insights/types';
+import type { Frame, Surface } from '../../../src/lib/insights/types';
+import { careerBestHolds, contextNeeds, factRow, MIN_FIRST_SINCE_GAMES, MIN_STREAK_GAMES, verdict, type BarRow } from '../../../src/lib/insights/quality';
 import { EXEMPT_FRAMES, EXEMPT_KINDS } from './engine/score';
 import type { EngineResult } from './engine/run';
+import type { InsightDraft } from './engine/types';
 import { addDays } from './engine/dates';
 import { seedGameFlows } from './engine/__fixtures__/flows';
 
@@ -17,6 +19,12 @@ const url = REAL ? process.env.DATABASE_URL : process.env.FIXTURE_DATABASE_URL;
 const TIMEOUT = 300_000;
 const RECORD_FRAMES = ['records_best', 'only_one', 'joins_company', 'first_since', 'longest_since', 'clippers_rank'];
 const SURFACES: Surface[] = ['season', 'pregame', 'postgame', 'player'];
+
+/** A draft as the quality bar sees a stored row (no joined game date: the bar reads the fact row). */
+const toBarRow = (d: InsightDraft): BarRow => ({
+  insight_id: d.key, surface: d.surface, category: d.category, player_id: d.player_id, game_id: d.game_id,
+  season_id: d.season_id, game_date: null, detail: d.detail, frame: d.frame, evidence: d.evidence, proof_result: d.proof_result,
+});
 
 function run(script: string, args: string[] = []): string {
   return execFileSync('npx', ['tsx', script, ...args], {
@@ -112,6 +120,55 @@ describe.skipIf(!url)(`insight engine golden expectations (${REAL ? 'real data, 
         if (d.frame.since_date) expect(d.frame.since_date >= `${floor}-08-01`, d.detail).toBe(true);
       }
     });
+
+    it('G18 every draft obeys the engine side of the bar', () => {
+      expect(all.drafts.length).toBeGreaterThan(0);
+      for (const d of all.drafts) {
+        const label = `${d.category} | ${d.headline} | ${d.detail}`;
+        const f = d.frame;
+        expect(typeof f.stat, label).toBe('string');
+        expect(typeof f.value, label).toBe('number');
+        if ((f.type === 'first_since' || f.type === 'longest_since') && f.since_date) {
+          expect(f.games_since, label).toBeGreaterThanOrEqual(MIN_FIRST_SINCE_GAMES);
+        }
+        if (d.category === 'streak') expect(Number(factRow(d.proof_result)?.streak), label).toBeGreaterThanOrEqual(MIN_STREAK_GAMES);
+        if (d.category === 'yoy_change' && d.player_id !== null && f.type === 'career_high') {
+          const games = Number(factRow(d.proof_result)?.games);
+          expect(careerBestHolds(games, f.value!, f.prior_value!), label).toBe(true);
+        }
+      }
+    });
+
+    it('G18b a context-needing frame on any engine draft finds its dates (rows are never cut at load for a missing date)', () => {
+      // The fixture run emits few first_since / group season_high frames, so give every real draft each needing frame
+      // (no games_since, as a legacy row) and check the draft's own fact row supplies the dates the loaders query by.
+      const needing: Frame[] = [
+        { type: 'first_since', strength: 0.5, who: 'subject', since_date: '2020-01-01', text: '', proof_rows: [] },
+        { type: 'longest_since', strength: 0.5, who: 'group', since_date: '2020-01-01', text: '', proof_rows: [] },
+        { type: 'season_high', strength: 0.6, who: 'group', text: '', proof_rows: [] },
+      ];
+      let needs = 0;
+      for (const d of all.drafts) {
+        // Dated drafts only: a game's facts or a streak. Season totals and standings never get a since/high frame.
+        if (d.game_id === null && d.category !== 'streak') continue;
+        if (d.surface === 'pregame') continue;
+        for (const frame of needing) {
+          const label = `${d.category} | ${d.headline} | ${frame.type}`;
+          const got = contextNeeds([{ ...toBarRow(d), frame }]);
+          expect(got, label).toHaveLength(1);
+          needs += 1;
+          const n = got[0];
+          if (frame.type === 'season_high') {
+            expect(n.at_date, label).not.toBeNull();
+            expect(n.season_id, label).not.toBeNull();
+          } else {
+            expect(n.until_date, label).not.toBeNull();
+            expect(n.since_date, label).not.toBeNull();
+          }
+        }
+      }
+      expect(needs).toBeGreaterThan(0);
+    });
   });
 
   describe.skipIf(REAL)('fixture league', () => {
@@ -158,6 +215,9 @@ describe.skipIf(!url)(`insight engine golden expectations (${REAL ? 'real data, 
       const last = composeFeed(items, 'last_game');
       expect(last[0]).toMatchObject({ game_id: g.game_id });
       expect(last[0].headline).toMatch(/^Star Clipper/);
+      const lead = r.drafts.find((d) => d.game_id === g.game_id && /^Star Clipper/.test(d.headline) && d.headline === last[0].headline);
+      expect(lead, last[0].headline).toBeDefined();
+      expect(verdict({ ...toBarRow(lead!) })).toBe('card');
       const hero = items
         .filter((i) => ['postgame', 'pregame', 'season'].includes(i.surface) && i.score_parts?.salience_class !== 'former')
         .sort((a, b) => b.importance - a.importance)
@@ -225,14 +285,14 @@ describe.skipIf(!url)(`insight engine golden expectations (${REAL ? 'real data, 
       expect(r.drafts.every((d) => d.game_id === g.game_id && d.surface === 'postgame' && d.scope === 'historical')).toBe(true);
     }, TIMEOUT);
 
-    it('G11 a 28-PPG scorer’s "20+ in 3 straight" never appears (mutates data: keep last)', async () => {
+    it('G11 a 28-PPG scorer’s "20+ in 5 straight" never appears (mutates data: keep last)', async () => {
       await sql`
         UPDATE game_player_box_scores pb SET points = pb.points + 12
         FROM games g WHERE g.game_id = pb.game_id AND pb.player_id = 1 AND g.season_id IN (2024, 2025)`;
-      const [fourth] = await sql<{ game_id: string }[]>`
+      const [sixth] = await sql<{ game_id: string }[]>`
         SELECT pb.game_id::text FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
-        WHERE pb.player_id = 1 AND g.season_id = 2025 ORDER BY g.game_date DESC, g.game_id DESC OFFSET 3 LIMIT 1`;
-      await sql`UPDATE game_player_box_scores SET points = 12 WHERE player_id = 1 AND game_id = ${fourth.game_id}::bigint`;
+        WHERE pb.player_id = 1 AND g.season_id = 2025 ORDER BY g.game_date DESC, g.game_id DESC OFFSET 5 LIMIT 1`;
+      await sql`UPDATE game_player_box_scores SET points = 12 WHERE player_id = 1 AND game_id = ${sixth.game_id}::bigint`;
       run('scripts/build-record-book.ts');
       const [avg] = await sql<{ ppg: number }[]>`
         SELECT AVG(pb.points)::float8 AS ppg FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id

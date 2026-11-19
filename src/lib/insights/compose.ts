@@ -38,10 +38,10 @@ export interface ComposableInsight {
   score_parts: { salience_class?: SalienceClass } | null;
 }
 
-export interface ComposedInsight extends ComposableInsight {
-  /** Insights folded into this one (their context lines are listed in `detail`). */
+export type ComposedInsight = ComposableInsight & {
+  /** Insights folded into this one (the first follower's context line is in `detail`). */
   merged_ids: string[];
-}
+};
 
 const byImportance = (a: ComposableInsight, b: ComposableInsight) =>
   b.importance - a.importance || a.insight_id.localeCompare(b.insight_id);
@@ -55,36 +55,40 @@ const byLeadership = (a: ComposableInsight, b: ComposableInsight) =>
  * leader (stronger frame, then importance) keeps its fields; the follower's
  * context line is appended with " · " and its id goes in `merged_ids`.
  */
-export function mergeSameGamePlayer(items: ComposableInsight[]): ComposedInsight[] {
-  const out: ComposedInsight[] = [];
-  const primaries = new Map<string, ComposedInsight>();
+export function mergeSameGamePlayer<T extends ComposableInsight>(items: T[]): (T & { merged_ids: string[] })[] {
+  const out: (T & { merged_ids: string[] })[] = [];
+  const primaries = new Map<string, T & { merged_ids: string[] }>();
   for (const it of [...items].sort(byLeadership)) {
     const key = it.surface === 'postgame' && it.player_id && it.game_id ? `${it.game_id}:${it.player_id}` : null;
     const primary = key ? primaries.get(key) : undefined;
-    if (primary && primary.merged_ids.length === 0) {
-      primary.detail = [primary.detail, it.detail].filter(Boolean).join(' · ') || null;
+    if (primary) {
+      // Q4/Ruling 7: every follower is folded; only the first follower's line is appended.
+      if (primary.merged_ids.length === 0) {
+        primary.detail = [primary.detail, it.detail].filter(Boolean).join(' · ') || null;
+      }
       primary.merged_ids.push(it.insight_id);
       continue;
     }
-    const copy: ComposedInsight = { ...it, merged_ids: [] };
+    const copy: T & { merged_ids: string[] } = { ...it, merged_ids: [] };
     if (key && !primary) primaries.set(key, copy);
     out.push(copy);
   }
   return out.sort(byImportance);
 }
 
-export function composeFeed(items: ComposableInsight[], placement: Placement): ComposedInsight[] {
+export function composeFeed<T extends ComposableInsight>(items: T[], placement: Placement): (T & { merged_ids: string[] })[] {
   const surfaces = PLACEMENT_SURFACES[placement];
   const eligible = items.filter((i) =>
     surfaces.includes(i.surface) && (placement === 'game_page' || i.score_parts?.salience_class !== 'former'));
-  const ranked = placement === 'last_game' || placement === 'game_page'
+  type Out = T & { merged_ids: string[] };
+  const ranked: Out[] = surfaces.includes('postgame')
     ? mergeSameGamePlayer(eligible)
-    : eligible.map((i) => ({ ...i, merged_ids: [] })).sort(byImportance);
+    : eligible.map((i): Out => ({ ...i, merged_ids: [] })).sort(byImportance);
   if (placement === 'live') return ranked;
 
   const size = FEED_SIZES[placement];
-  const count = (list: ComposedInsight[], pred: (c: ComposedInsight) => boolean) => list.filter(pred).length;
-  const picked: ComposedInsight[] = [];
+  const count = (list: Out[], pred: (c: Out) => boolean) => list.filter(pred).length;
+  const picked: Out[] = [];
   for (const it of ranked) {
     if (picked.length >= size) break;
     if (placement !== 'player_page' && it.player_id && count(picked, (p) => p.player_id === it.player_id) >= MAX_PER_PLAYER) continue;

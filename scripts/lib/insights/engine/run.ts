@@ -3,7 +3,7 @@
 // → evidence → score → combined proof → store, per surface. Every detector runs
 // before anything is written, so a failing detector never leaves a half-run
 // (no upserts, no deactivation).
-import { scopeForSurface, type Surface } from '../../../../src/lib/insights/types';
+import { scopeForSurface, type Frame, type Surface } from '../../../../src/lib/insights/types';
 import { paramsRecord } from '../proof-utils.js';
 import { loadEngineContext } from './context.js';
 import { daysBetween } from './dates.js';
@@ -67,6 +67,11 @@ export async function loadLateJoiners(fact: Fact, ctx: EngineContext, run: Runne
   (ctx.lateJoiners ??= new Map()).set(guard.key, new Set(rows.map((r) => String(r.player_id))));
 }
 
+/** The stored frame: the rendered context line, plus the fact's stat and value so the app can place box-score tags. */
+export function finalFrame(frame: Frame, context: string, fact: Pick<Fact, 'stat' | 'value'>): Frame {
+  return { ...frame, text: context, stat: fact.stat, value: fact.value };
+}
+
 export async function buildDraft(
   fact: Fact, key: string, detector: string, ctx: EngineContext, run: Runner = runQuery,
 ): Promise<InsightDraft | { reason: DropReason }> {
@@ -86,7 +91,7 @@ export async function buildDraft(
     : factSeason;
   const rendered = renderInsight(fact, framed.frame, { surface: fact.surface, season, teams: ctx.teams }, key);
   if (!rendered) return { reason: 'too_long' };
-  const frame = { ...framed.frame, text: rendered.context };
+  const frame = finalFrame(framed.frame, rendered.context, fact);
 
   const proof = combineProof(fact.proof, framed.proof);
   const rows = selectProofRows((await run(proof)) as unknown as ProofPart[], fact.proof.match);

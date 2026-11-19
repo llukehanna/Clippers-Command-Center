@@ -32,7 +32,7 @@ function respond(overrides: Record<string, Responder> = {}) {
     '-- preview:ranks': () => [{ team_id: '2', off: 114.1, def: 112.0, net: 2.1, off_rank: 9, def_rank: 14, net_rank: 11, total: 30 }],
     '-- preview:meetings': () => [{ game_id: '50', game_date: '2026-11-01', season_id: 2026, lac_home: true, home_score: 110, away_score: 100 }],
     '-- preview:rest': () => [{ team_id: '1', prev_date: '2026-11-19' }, { team_id: '2', prev_date: '2026-11-17' }],
-    'FROM insights': () => [],
+    'i.is_active = true': () => [],
   };
   const table = { ...base, ...overrides };
   mockSql.mockImplementation(async (strings: readonly string[]) => {
@@ -95,6 +95,22 @@ describe('loadGamePreview', () => {
     const rest = mockSql.mock.calls.map((c) => (c[0] as readonly string[]).join('?')).find((q) => q.includes('-- preview:rest'));
     expect(rest).toContain('JOIN all_games g');
     expect(rest).toContain('AND NOT g.is_preseason');
+  });
+
+  it('the bar applies; notes stay visible in Part A', async () => {
+    const base = { scope: 'between_games', surface: 'pregame', player_id: null, game_id: '101', season_id: 2026, game_date: '2026-11-20', evidence: null, proof_result: {}, detail: 'd', headline: 'h' };
+    const none = { type: 'none', strength: 0, who: 'group', text: '', proof_rows: [] };
+    respond({
+      'i.is_active = true': () => [
+        { ...base, insight_id: 'form', category: 'opp_form', importance: 60, frame: none },
+        { ...base, insight_id: 'h2h', category: 'h2h', importance: 50, frame: none },
+        { ...base, insight_id: 'rank', category: 'opp_rank', importance: 70, frame: { ...none, type: 'league_rank', strength: 0.6 } },
+        { ...base, insight_id: 'cutme', category: 'opp_other', importance: 99, frame: none },
+      ],
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = (await load()).body as any;
+    expect(body.insights.map((i: { insight_id: string }) => i.insight_id)).toEqual(['rank', 'form', 'h2h']);
   });
 
   it('hides a section whose query fails and keeps the page', async () => {
