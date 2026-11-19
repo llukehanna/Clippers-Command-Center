@@ -1278,7 +1278,11 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
 
       const full = await runEngine({ surfaces: ['pregame'], asOf: AS_OF, write: false });
       expect(full.drafts.some((d) => LEAGUE.includes(d.category))).toBe(true);
-      const buzzer = await runEngine({ surfaces: ['pregame'], asOf: AS_OF, write: false, leagueIncomplete: REASON });
+      const logs: string[] = [];
+      const buzzer = await runEngine({ surfaces: ['pregame'], asOf: AS_OF, write: false, leagueIncomplete: REASON, log: (m) => logs.push(m) });
+      // A forced incomplete is expected at every buzzer: a plain log line, never a ::warning annotation (fix round a).
+      expect(logs.some((m) => m.includes(REASON))).toBe(true);
+      expect(logs.filter((m) => m.startsWith('::warning'))).toEqual([]);
       expect(buzzer.context!.league).toEqual({ complete: false, reason: REASON });
       expect(buzzer.drafts.filter((d) => LEAGUE.includes(d.category)).map((d) => d.headline)).toEqual([]);
       expect(leagueFree(full).length).toBeGreaterThan(0);
@@ -1412,6 +1416,51 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       expect(shared!.data.tied).toBeGreaterThan(0);
       expect((await wordsTie(shared!, ctx)).headline).toMatch(/^LAC Player 10 (was|finished) tied for 8th in the NBA in steals \+ blocks/);
       expect(facts.some((f) => f.data.tied === 0)).toBe(true);
+    }, TIMEOUT);
+
+    it('tied ranks (FF-1): recent form and YoY team-rank tie counts equal a direct count of equal values (0 in this fixture)', async () => {
+      const { recentFormDetector } = await import('./engine/detectors/season-ranks');
+      const { yoyDetector } = await import('./engine/detectors/season-yoy');
+      // The fixture has no tie for either kind (checked over every 2025-26 date and both seasons), so these pin equality at 0.
+      const done = await ctxAt('2026-02-20');
+      const form = (await recentFormDetector().run({ ...done, season: { ...done.season, isCurrent: true } })).facts;
+      expect(form.length).toBeGreaterThan(0);
+      for (const f of form) {
+        const metric = f.stat.replace('last10_', '');
+        const [direct] = await sql.unsafe(`
+          WITH latest AS (
+            SELECT DISTINCT ON (team_id) team_id, ${metric}::float8 AS value
+            FROM rolling_team_stats
+            WHERE season_id = $1::int AND window_games = 10 AND ${metric} IS NOT NULL AND as_of_game_date <= $2::date
+            ORDER BY team_id, as_of_game_date DESC)
+          SELECT COUNT(*)::int AS tied FROM latest
+          WHERE team_id <> $3::bigint AND value = (SELECT value FROM latest WHERE team_id = $3::bigint)`,
+        [done.season.id, f.context.date, done.lac.teamId] as never[]);
+        expect(f.data.tied, f.stat).toBe(Number(direct.tied));
+        expect(f.data.tied).toBe(0);
+      }
+
+      const ctx = await ctxAt(laToday());
+      const yoy = (await yoyDetector('season').run(ctx)).facts.filter((f) => f.data.yoy === 'team_rank');
+      expect(yoy.length).toBeGreaterThan(0);
+      const { TEAM_METRICS } = await import('./engine/detectors/metrics');
+      for (const f of yoy) {
+        const m = TEAM_METRICS.find((x) => `team_rank_${x.key}` === f.stat)!;
+        const counts = await sql.unsafe(`
+          WITH v AS (
+            SELECT g.season_id, a.team_id, ROUND((${m.aggregate})::numeric, 6)::float8 AS value
+            FROM advanced_team_game_stats a JOIN games g ON g.game_id = a.game_id
+            WHERE g.season_id IN ($1::int, $1::int - 1) AND ${REGULAR_SEASON} AND g.game_date <= $2::date
+            GROUP BY g.season_id, a.team_id HAVING COUNT(*) >= 5)
+          SELECT v.season_id::int AS season_id, COUNT(*) FILTER (WHERE o.team_id <> v.team_id AND o.value = v.value)::int AS tied
+          FROM v JOIN v o ON o.season_id = v.season_id
+          WHERE v.team_id = $3::bigint GROUP BY v.season_id`,
+        [ctx.season.id, ctx.asOf, ctx.lac.teamId] as never[]);
+        const by = new Map(counts.map((r) => [Number(r.season_id), Number(r.tied)]));
+        expect(f.data.tied, f.stat).toBe(by.get(ctx.season.id));
+        expect(f.data.prev_tied, f.stat).toBe(by.get(ctx.season.id - 1));
+        expect(f.data.tied).toBe(0);
+      }
     }, TIMEOUT);
 
     it('recent form is suppressed once the Clippers play a postseason game, and rolling rows stop at the regular season', async () => {

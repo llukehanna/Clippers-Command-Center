@@ -95,17 +95,27 @@ describe('tied ranks say "tied for" (FF-1)', () => {
   it('opponent rank: every phrasing, now and in the past', () => {
     expect(all(oppRank, pre)[0].headline).toBe('Up next: the Golden State Warriors have the 3rd-ranked defense this season');
     expect(all(tie(oppRank, { tied: 2 }), pre)).toEqual([
-      { headline: 'Up next: the Golden State Warriors are tied for 3rd in defense this season', context: 'Defensive rating 108.2 — tied for 3rd of 30 (lower is better)' },
-      { headline: 'Next opponent: the Golden State Warriors are tied for 3rd in defense', context: 'Defensive rating 108.2 — tied for 3rd of 30 (lower is better)' },
+      { headline: 'Up next: the Golden State Warriors are tied for 3rd in defensive rating this season', context: 'Defensive rating 108.2 — tied for 3rd of 30 (lower is better)' },
+      { headline: 'Next opponent: the Golden State Warriors are tied for 3rd in defensive rating', context: 'Defensive rating 108.2 — tied for 3rd of 30 (lower is better)' },
     ]);
     expect(all(tie(oppRank, { tied: 2, side: 'offense' }), preDone).map((o) => o.headline)).toEqual([
-      'Up next: the Golden State Warriors were tied for 3rd in offense in 2025-26',
-      'Next opponent: the Golden State Warriors were tied for 3rd in offense',
+      'Up next: the Golden State Warriors were tied for 3rd in offensive rating in 2025-26',
+      'Next opponent: the Golden State Warriors were tied for 3rd in offensive rating',
     ]);
     expect(all(tie(oppRank, { rank: 1, tied: 1 }), pre).map((o) => o.headline)).toEqual([
-      'Up next: the Golden State Warriors are tied for 1st in defense this season',
-      'Next opponent: the Golden State Warriors are tied for 1st in defense',
+      'Up next: the Golden State Warriors are tied for 1st in defensive rating this season',
+      'Next opponent: the Golden State Warriors are tied for 1st in defensive rating',
     ]);
+    // The detector's metric label is used when present; a long name stays within 90 characters via the fallback.
+    expect(all(tie(oppRank, { tied: 1, label: 'defensive rating' }), pre)[1].headline).toBe('Next opponent: the Golden State Warriors are tied for 3rd in defensive rating');
+    const long = { ...tie(oppRank, { rank: 28, tied: 2, side: 'offense', label: 'offensive rating', bottom: true }), subject: { type: 'team' as const, id: '15', name: 'Portland Trail Blazers' } };
+    for (const rc of [pre, preDone]) {
+      for (const key of ['00000000', '00000001']) {
+        const out = renderInsight(long, fr(), rc, key)!;
+        expect(out.headline).toMatch(/^(Up next|Next opponent): the Portland Trail Blazers (are|were) tied for 28th in offensive rating/);
+        expect(out.headline.length, out.headline).toBeLessThanOrEqual(MAX_HEADLINE);
+      }
+    }
   });
 
   it('YoY team rank moves: either season can be a tie', () => {

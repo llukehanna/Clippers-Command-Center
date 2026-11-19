@@ -21,15 +21,20 @@ export interface RefSpec {
   leagueMin?: number;
 }
 
-/** `thing`: the claim noun for a game at this value ("23-point game"; threes read "game with 4+ threes", FF-3). */
-export interface PlayerGameStat { column: string; noun: string; plural: string; label: string; thing: (v: number) => string }
+/**
+ * `thing`: the claim noun for a game at this value ("23-point game"; threes read "game with 4+ threes", FF-3).
+ * `company`: the joins_company phrase when "with a {thing}" reads badly ("with 8+ threes in a game").
+ */
+export interface PlayerGameStat {
+  column: string; noun: string; plural: string; label: string; thing: (v: number) => string; company?: (v: number) => string;
+}
 
 const statGame = (noun: string) => (v: number) => `${v}-${noun} game`;
 export const PLAYER_GAME_STATS: Record<'pts' | 'reb' | 'ast' | 'fg3m' | 'stl' | 'blk', PlayerGameStat> = {
   pts: { column: 'points', noun: 'point', plural: 'points', label: 'scoring', thing: statGame('point') },
   reb: { column: 'rebounds', noun: 'rebound', plural: 'rebounds', label: 'rebounding', thing: statGame('rebound') },
   ast: { column: 'assists', noun: 'assist', plural: 'assists', label: 'assist', thing: statGame('assist') },
-  fg3m: { column: 'fg3_made', noun: 'three', plural: 'threes', label: 'three-point', thing: (v) => `game with ${v}+ threes` },
+  fg3m: { column: 'fg3_made', noun: 'three', plural: 'threes', label: 'three-point', thing: (v) => `game with ${v}+ threes`, company: (v) => `${v}+ threes in a game` },
   stl: { column: 'steals', noun: 'steal', plural: 'steals', label: 'steal', thing: statGame('steal') },
   blk: { column: 'blocks', noun: 'block', plural: 'blocks', label: 'shot-blocking', thing: statGame('block') },
 };

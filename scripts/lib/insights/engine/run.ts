@@ -120,7 +120,10 @@ export async function runEngine(opts: RunOptions): Promise<EngineResult> {
     leagueIncomplete: opts.leagueIncomplete,
   });
   if (!ctx) return { context: null, drafts: [], dropped: [], upserted: 0, deactivated: 0, legacyDeactivated: 0, retiredDeactivated: 0 };
-  if (!ctx.league.complete) {
+  if (opts.leagueIncomplete) {
+    // Forced by the caller (the buzzer pregame pass): expected, so a plain line, not a ::warning annotation.
+    log(`League data treated as incomplete (${opts.leagueIncomplete}): league-wide detectors and frames are skipped`);
+  } else if (!ctx.league.complete) {
     log(`::warning title=League data incomplete::${ctx.league.reason} — league-wide detectors and frames are skipped`);
   }
 

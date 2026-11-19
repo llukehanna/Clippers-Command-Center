@@ -41,6 +41,7 @@ export interface StreakGame { date: string; value: number; hit: boolean }
 /** Kind-specific values detectors set and the framer, templates and evidence read. */
 export interface FactData {
   // Wording
+  company?: string;          // joins_company phrase after "the only Clippers with": "8+ threes in a game" (default "a {thing}")
   thing?: string;            // singular claim noun: "55-point game", "streak of 30+ points", "1,500-point season"
   best?: string;             // lower-case superlative: "most points in a game", "longest streak of 30+ points"
   by?: string;               // "by a Clipper" | "by the Clippers"

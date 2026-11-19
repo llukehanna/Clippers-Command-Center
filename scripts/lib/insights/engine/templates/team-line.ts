@@ -41,7 +41,7 @@ const fallback: ContextLine = (f, fr, rc) => {
 export const teamLineTemplates: TemplateModule = {
   default: phrasings(headlines, fallback),
   first_since: overrides(headlines, (f, fr) => {
-    const lead = (FIRST[f.stat] ?? ((x: Fact) => `First ${x.data.thing ?? 'game like it'}`))(f);
+    const lead = `${(FIRST[f.stat] ?? ((x: Fact) => `First ${x.data.thing ?? 'game like it'}`))(f)} by the Clippers`;
     const since = sinceText(fr);
     return since ? `${lead} since ${since}` : lead;
   }),

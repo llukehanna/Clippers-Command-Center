@@ -84,7 +84,7 @@ export function frameLine(f: Fact, fr: Frame, rc: RenderContext, variant: number
       ]);
     case 'joins_company':
       return label && fr.names?.length
-        ? pick([`${frozen(rc) ? 'Joined' : 'Joins'} ${listNames(fr.names)} as the only Clippers with a ${thing} since ${label}${then}`])
+        ? pick([`${frozen(rc) ? 'Joined' : 'Joins'} ${listNames(fr.names)} as the only Clippers with ${f.data.company ?? `a ${thing}`} since ${label}${then}`])
         : null;
     case 'first_since':
       // Every variant names the thing: "His first since Mar 26, 2018" leaves out what is first (FW-4).

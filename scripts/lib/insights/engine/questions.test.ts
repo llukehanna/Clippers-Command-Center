@@ -10,6 +10,7 @@ import {
   nthTime, QUESTIONS_BY_KIND, questionsFor, subjectFirstSince, streakLongestSince, streakSeasonHigh, subjectSeasonHigh, yoyPlayerBest, yoyRecordBest,
 } from './questions';
 import { makeCtx, makeFact } from './__fixtures__/facts';
+import type { Fact } from './types';
 
 const ctx = makeCtx();
 const night = makeFact({
@@ -324,6 +325,20 @@ describe('first_since needs a meaningful gap; threes wording (FF-3)', () => {
     const team = { ...night, kind: 'team_game_stat' as const, subject: { type: 'team' as const, id: '1', name: 'Clippers' }, stat: 'team_fg3m', value: 18,
       data: { thing: TEAM_GAME_STATS.team_fg3m.thing(18), best: 'most threes in a game', by: 'by the Clippers' } };
     expect(phrasingsFor(team, frame('group')).map((p) => p(team, frame('group'), rc).context))
-      .toEqual(['First game with 18+ threes since Dec 2021', 'First game with 18+ threes since Dec 2021']);
+      .toEqual(['First game with 18+ threes by the Clippers since Dec 2021', 'First game with 18+ threes by the Clippers since Dec 2021']);
+  });
+  it('joins_company words threes as "with 8+ threes in a game"; other stats keep "with a {N}-point game" (fix round I1)', () => {
+    expect(PLAYER_GAME_STATS.fg3m.company!(8)).toBe('8+ threes in a game');
+    expect(PLAYER_GAME_STATS.pts.company).toBeUndefined();
+    const company = { type: 'joins_company' as const, strength: 0.7, who: 'group' as const, text: '', names: ['Paul George', 'Kawhi Leonard'], records_label: '2020-21', proof_rows: [] };
+    const threes = { ...night, stat: 'fg3m', value: 8,
+      data: { ...night.data, thing: PLAYER_GAME_STATS.fg3m.thing(8), company: PLAYER_GAME_STATS.fg3m.company!(8), unit: 'threes' } };
+    const season = { surface: 'season' as const, season: COMPLETED_SEASON, teams: ctx.teams };
+    const post = { ...season, surface: 'postgame' as const };
+    const lines = (f: Fact, rc: typeof season | typeof post) => [...new Set(phrasingsFor(f, company).map((p) => p(f, company, rc).context))];
+    expect(lines(threes, season)).toEqual(['Joins Paul George and Kawhi Leonard as the only Clippers with 8+ threes in a game since 2020-21']);
+    expect(lines(threes, post)).toEqual(['Joined Paul George and Kawhi Leonard as the only Clippers with 8+ threes in a game since 2020-21 at the time']);
+    const points = { ...night, value: 50, data: { ...night.data, thing: PLAYER_GAME_STATS.pts.thing(50) } };
+    expect(lines(points, post)).toEqual(['Joined Paul George and Kawhi Leonard as the only Clippers with a 50-point game since 2020-21 at the time']);
   });
 });
