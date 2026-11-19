@@ -114,3 +114,28 @@ const FINALIZE_MARGIN_MS = 5 * 60_000;
 export function finalizeRetryDelay(elapsedMs: number, maxRuntimeMs: number): number | null {
   return maxRuntimeMs - elapsedMs >= FINALIZE_RETRY_MS + FINALIZE_MARGIN_MS ? FINALIZE_RETRY_MS : null;
 }
+
+// ── Pregame insights ─────────────────────────────────────────────────────────
+
+/** Pregame insights are refreshed once this long before tip (fresher line, injuries in the box scores). */
+export const PREGAME_REFRESH_LEAD_MS = 75 * 60_000;
+
+/**
+ * True once per run: on the first check at or after tip − PREGAME_REFRESH_LEAD_MS,
+ * when the start-up pregame pass ran earlier than that and tip hasn't passed.
+ */
+export function pregameRefreshDue(nowMs: number, tipMs: number | null, lastRunMs: number | null): boolean {
+  if (tipMs === null || lastRunMs === null) return false;
+  const at = tipMs - PREGAME_REFRESH_LEAD_MS;
+  return lastRunMs < at && nowMs >= at && nowMs < tipMs;
+}
+
+/**
+ * Whether the runner writes pregame insights for this game now. Never for a
+ * preseason game (it lives in all_games only and counts nowhere), and not once
+ * tip has passed: a mid-game successor or hand-off launch must not re-run pregame.
+ */
+export function shouldRunPregame(candidate: { isPreseason: boolean }, tipMs: number | null, nowMs: number): boolean {
+  if (candidate.isPreseason) return false;
+  return tipMs === null || nowMs < tipMs;
+}

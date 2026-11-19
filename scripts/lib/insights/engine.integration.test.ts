@@ -3,7 +3,7 @@
 // league (scripts/dev/seed-fixture-league.ts), with stats and the record book
 // built. Skipped unless FIXTURE_DATABASE_URL is set. The database is WIPED.
 //   FIXTURE_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55496/fixture npx vitest run scripts/lib/insights/engine.integration
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { laToday } from './engine/dates';
 import { REGULAR_SEASON } from '../sql-fragments';
@@ -1149,6 +1149,49 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     }, TIMEOUT);
   });
 
+  describe('runner hooks', () => {
+    // The hooks read today's LA date; pin it so the fixture's season is "now".
+    const at = (iso: string) => vi.useFakeTimers({ toFake: ['Date'], now: new Date(`${iso}T20:00:00Z`) });
+    afterEach(() => vi.useRealTimers());
+
+    it('postgame at the final writes that game only; pregame at start writes the next game', async () => {
+      const { postgameAtFinal, pregameAtStart } = await import('./engine/hooks');
+      const { nextClippersGame } = await import('./engine/games');
+      // Leave the shared table as found: later tests assert which surfaces are active.
+      const before = await sql<{ proof_hash: string; is_active: boolean }[]>`SELECT proof_hash, is_active FROM insights`;
+      try {
+        const [g] = await sql<{ game_id: string; d: string }[]>`
+          SELECT pb.game_id::text, gm.game_date::text AS d FROM game_player_box_scores pb JOIN games gm ON gm.game_id = pb.game_id
+          WHERE pb.player_id = 1 AND pb.points = 55`;
+        const postgameOutside = async () => (await sql<{ n: number }[]>`
+          SELECT COUNT(*)::int AS n FROM insights WHERE is_active AND surface = 'postgame' AND game_id <> ${g.game_id}::bigint`)[0].n;
+        const otherBefore = await postgameOutside();
+
+        at(g.d);
+        const post = await postgameAtFinal(g.game_id);
+        expect(post.status).toBe('ok');
+        expect(post.upserted).toBeGreaterThan(0);
+        expect(post.message).toBe(`${post.upserted} postgame insights for game ${g.game_id}`);
+        const rows = await sql<{ game_id: string }[]>`SELECT DISTINCT game_id::text FROM insights WHERE is_active AND surface = 'postgame' AND game_id = ${g.game_id}::bigint`;
+        expect(rows).toHaveLength(1);
+        expect(await postgameOutside()).toBe(otherBefore);
+
+        at('2026-01-10');
+        const pre = await pregameAtStart();
+        expect(pre.status).toBe('ok');
+        expect(pre.upserted).toBeGreaterThan(0);
+        const next = await nextClippersGame(await ctxAt('2026-01-10'));
+        const pregame = await sql<{ game_id: string }[]>`SELECT DISTINCT game_id::text FROM insights WHERE is_active AND surface = 'pregame'`;
+        expect(pregame.map((r) => r.game_id)).toEqual([next!.gameId]);
+        expect(run('scripts/verify-insights.ts')).toMatch(/\b0 failed\b/);
+      } finally {
+        const had = before.map((r) => r.proof_hash);
+        await sql`DELETE FROM insights WHERE proof_hash <> ALL(${had}::text[])`;
+        await sql`UPDATE insights SET is_active = (proof_hash = ANY(${before.filter((r) => r.is_active).map((r) => r.proof_hash)}::text[]))`;
+      }
+    }, TIMEOUT);
+  });
+
   describe('season detectors: ranks and year over year', () => {
     it('ranks the Clippers and their players league-wide, only with complete league data', async () => {
       const { leagueRankDetector } = await import('./engine/detectors/season-ranks');
@@ -1686,7 +1729,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       run('scripts/generate-insights.ts', ['--surface=season']);
       const done = await sql<{ headline: string }[]>`SELECT headline FROM insights WHERE is_active AND surface = 'season'`;
       expect(done.some((r) => r.headline.includes('this season'))).toBe(false);
-      expect(run('scripts/verify-insights.ts')).toMatch(/0 failed/);
+      expect(run('scripts/verify-insights.ts')).toMatch(/\b0 failed\b/);
     }, TIMEOUT);
 
     it('retires league_night: its batch rows are deactivated on a write run, live rows are untouched', async () => {

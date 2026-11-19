@@ -6,6 +6,9 @@ import {
   FINAL_SAVE_MAX_ATTEMPTS,
   mainHasNewRunnerCode,
   handOffMomentOk,
+  pregameRefreshDue,
+  PREGAME_REFRESH_LEAD_MS,
+  shouldRunPregame,
   HAND_OFF_FAILURES,
   RUNNER_CODE_PATHS,
   type GameNightTick,
@@ -127,5 +130,37 @@ describe('handOffMomentOk', () => {
   it('hands off at once when the runner keeps failing, not on one blip', () => {
     expect(handOffMomentOk('LIVE', 1)).toBe(false);
     expect(handOffMomentOk('LIVE', HAND_OFF_FAILURES)).toBe(true);
+  });
+});
+
+describe('pregameRefreshDue', () => {
+  const tip = Date.UTC(2026, 10, 19, 3, 30);
+  const at = tip - PREGAME_REFRESH_LEAD_MS;
+  it('fires once when the sleep passes tip − 75 min after an earlier run', () => {
+    expect(pregameRefreshDue(at - 60_000, tip, at - 4 * 3600_000)).toBe(false);
+    expect(pregameRefreshDue(at + 60_000, tip, at - 4 * 3600_000)).toBe(true);
+    expect(pregameRefreshDue(at + 120_000, tip, at + 60_000)).toBe(false);
+  });
+  it('does not fire when the run started inside the window, after tip, or without a tip', () => {
+    expect(pregameRefreshDue(at + 60_000, tip, at + 30_000)).toBe(false);
+    expect(pregameRefreshDue(tip + 60_000, tip, at - 3600_000)).toBe(false);
+    expect(pregameRefreshDue(at + 60_000, null, at - 3600_000)).toBe(false);
+    expect(pregameRefreshDue(at + 60_000, tip, null)).toBe(false);
+  });
+});
+
+describe('shouldRunPregame', () => {
+  const tip = Date.UTC(2026, 10, 19, 3, 30);
+  it('runs before tip for a regular-season (or unknown-tip) game', () => {
+    expect(shouldRunPregame({ isPreseason: false }, tip, tip - 3600_000)).toBe(true);
+    expect(shouldRunPregame({ isPreseason: false }, null, tip)).toBe(true);
+  });
+  it('never runs for a preseason game', () => {
+    expect(shouldRunPregame({ isPreseason: true }, tip, tip - 3600_000)).toBe(false);
+    expect(shouldRunPregame({ isPreseason: true }, null, tip)).toBe(false);
+  });
+  it('does not run once tip has passed (a mid-game successor or hand-off launch)', () => {
+    expect(shouldRunPregame({ isPreseason: false }, tip, tip)).toBe(false);
+    expect(shouldRunPregame({ isPreseason: false }, tip, tip + 90 * 60_000)).toBe(false);
   });
 });
