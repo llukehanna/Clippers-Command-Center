@@ -72,10 +72,12 @@ export async function loadInsights(url: URL): Promise<ApiResult> {
       LIMIT ${Math.min(limitParam * 3, MAX_LIMIT * 3)}
     `;
 
-    // Only cards and notes are shown (Ruling 11); query order is importance DESC, so a stable sort keeps ties.
+    // Only cards and notes are shown (Ruling 11); the SQL order (importance DESC, created_at DESC) is kept.
     const { cards, notes } = await barFilter(rows);
-    const insights = [...cards, ...notes]
-      .sort((a, b) => b.importance - a.importance)
+    const kept = new Map([...cards, ...notes].map((r) => [r.insight_id, r]));
+    const insights = rows
+      .filter((r) => kept.has(r.insight_id))
+      .map((r) => kept.get(r.insight_id)!)
       .slice(0, limitParam)
       .map((row) => ({
         insight_id: row.insight_id,

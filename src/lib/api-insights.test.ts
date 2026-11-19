@@ -51,7 +51,7 @@ const mockSqlImpl = (...args: unknown[]) => {
 };
 
 // sql.unsafe(fragment) carries the shared select/from fragments; the tests only read the template text.
-const mockSqlTag = Object.assign(vi.fn(mockSqlImpl), { unsafe: (s: string) => s });
+const mockSqlTag = Object.assign(vi.fn(mockSqlImpl), { unsafe: (s: string, params?: unknown) => (params === undefined ? s : Promise.resolve([])) });
 
 vi.mock('@/src/lib/db', () => ({
   sql: mockSqlTag,
@@ -264,6 +264,18 @@ describe('GET /api/insights', () => {
     const { GET } = await import('@/app/api/insights/route');
     const body = await (await GET(new Request('http://localhost/api/insights?scope=historical'))).json();
     expect(body.insights.map((i: { insight_id: string }) => i.insight_id)).toEqual(['card']);
+  });
+
+  it('keeps the SQL order for a card and a note at equal importance', async () => {
+    const base = { scope: 'between_games', player_id: null, game_id: '1', season_id: 2026, game_date: '2026-11-17', evidence: null, proof_result: {}, headline: 'h', detail: 'd', importance: 50 };
+    const none = { type: 'none', strength: 0, who: 'group', text: '', proof_rows: [] };
+    mockRows = [
+      { ...base, insight_id: 'note-first', surface: 'pregame', category: 'opp_form', frame: none },
+      { ...base, insight_id: 'card-second', surface: 'postgame', category: 'player_game_stat', frame: { ...none, type: 'league_rank' } },
+    ];
+    const { GET } = await import('@/app/api/insights/route');
+    const body = await (await GET(new Request('http://localhost/api/insights?scope=between_games'))).json();
+    expect(body.insights.map((i: { insight_id: string }) => i.insight_id)).toEqual(['note-first', 'card-second']);
   });
 
   it('scope param "historical" is accepted as valid', async () => {

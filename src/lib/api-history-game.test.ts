@@ -3,11 +3,12 @@
 // dispatches on query text, so the tests run offline.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { InsightDbRow as InsightRow } from './data/insight-quality';
+import { INSIGHT_ROW_COLUMNS } from './data/insight-quality';
 
 type SqlArgs = [readonly string[], ...unknown[]];
 const mockSql = vi.fn<(...args: SqlArgs) => Promise<unknown[]>>();
 vi.mock('@/src/lib/db', () => ({
-  sql: Object.assign((...args: SqlArgs) => mockSql(...args), { unsafe: (fragment: string) => fragment }),
+  sql: Object.assign((...args: SqlArgs) => mockSql(...args), { unsafe: (fragment: string, params?: unknown) => (params === undefined ? fragment : Promise.resolve([])) }),
   LAC_NBA_TEAM_ID: 1610612746,
 }));
 
@@ -50,6 +51,9 @@ describe('game page insights (FW-7, FW-8)', () => {
     await loadHistoryGame('640');
     const q = mockSql.mock.calls.map((c) => c[0].join('?')).find((t) => t.includes('i.is_active = true'))!;
     expect(q).toContain("AND (i.surface IS NULL OR i.surface <> 'pregame')");
+    for (const col of ['surface', 'frame', 'score_parts', 'player_id']) expect(INSIGHT_ROW_COLUMNS).toContain(`i.${col}`);
+    // the loader passes the shared column fragment to sql.unsafe
+    expect(mockSql.mock.calls.some((c) => c.includes(INSIGHT_ROW_COLUMNS))).toBe(true);
   });
 
   it('composes postgame rows: at most 8, two per player and per category, same-player rows merged', () => {

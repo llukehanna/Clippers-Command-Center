@@ -470,7 +470,8 @@ export async function loadHome(): Promise<ApiResult> {
 
     // The quality bar hides tags, merges and cuts; notes stay visible until Part B (Ruling 9).
     const barred = await barFilter(insightRows);
-    const insights = [...barred.cards, ...barred.notes].sort((a, b) => b.importance - a.importance).slice(0, 10).map((row) => ({
+    const kept = new Map([...barred.cards, ...barred.notes].map((r) => [r.insight_id, r]));
+    const insights = insightRows.filter((r) => kept.has(r.insight_id)).map((r) => kept.get(r.insight_id)!).slice(0, 10).map((row) => ({
       insight_id: row.insight_id,
       category: row.category,
       headline: row.headline,
