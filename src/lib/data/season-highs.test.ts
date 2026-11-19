@@ -11,6 +11,14 @@ describe('seasonHighTags', () => {
   it('tags a value above the prior max', () => {
     expect(seasonHighTags([player()], [prior()])).toEqual({ '7': { PTS: { tone: 'season_high', label: 'Season high' } } });
   });
+  it('floors: 1 block over a prior max of 0 is no tag, 4 blocks is', () => {
+    expect(seasonHighTags([player({ pts: null, blk: 1 })], [prior({ pts: null, blk: 0 })])).toEqual({});
+    expect(seasonHighTags([player({ pts: null, blk: 4 })], [prior({ pts: null, blk: 0 })])).toEqual({ '7': { BLK: { tone: 'season_high', label: 'Season high' } } });
+  });
+  it('floors: 4 assists no tag, 26 points tag', () => {
+    expect(seasonHighTags([player({ pts: null, ast: 4 })], [prior({ pts: null, ast: 2 })])).toEqual({});
+    expect(seasonHighTags([player()], [prior()])).toHaveProperty('7.PTS');
+  });
   it('ties are not a season high', () => expect(seasonHighTags([player({ pts: 24 })], [prior()])).toEqual({}));
   it('needs 3 earlier games', () => expect(seasonHighTags([player()], [prior({ games: 2 })])).toEqual({}));
   it('null prior max, no tag', () => expect(seasonHighTags([player()], [prior({ pts: null })])).toEqual({}));

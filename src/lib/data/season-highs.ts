@@ -17,6 +17,9 @@ const STAT_KEYS = Object.keys(STAT_COL) as StatKey[];
 /** A season high needs this many earlier games to mean anything. */
 const MIN_PRIOR_GAMES = 3;
 
+/** Season highs below these floors are noise (1 block over a prior max of 0), so they get no grey tag. */
+export const SEASON_HIGH_FLOORS: Record<StatKey, number> = { pts: 15, reb: 8, ast: 5, stl: 3, blk: 3, fg3m: 3 };
+
 type StatLine = Record<StatKey, number | null>;
 export interface SeasonHighPlayer extends StatLine { player_id: string; team_is_lac: boolean }
 export interface PriorMax extends StatLine { player_id: string; games: number }
@@ -31,7 +34,7 @@ export function seasonHighTags(players: SeasonHighPlayer[], prior: PriorMax[]): 
     for (const k of STAT_KEYS) {
       const v = p[k];
       const max = pr[k];
-      if (v == null || max == null || v <= max) continue;
+      if (v == null || max == null || v <= max || v < SEASON_HIGH_FLOORS[k]) continue;
       (out[p.player_id] ??= {})[STAT_COL[k]] = { tone: 'season_high', label: 'Season high' };
     }
   }
