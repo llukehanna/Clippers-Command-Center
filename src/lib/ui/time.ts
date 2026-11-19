@@ -18,14 +18,32 @@ function day(date: string): Date {
   return new Date(`${date.slice(0, 10)}T12:00:00Z`)
 }
 
-/** "Wed, Oct 21" */
-export function formatDay(date: string): string {
-  return day(date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+/** The current calendar year in Pacific time (the app's clock). */
+export function currentYear(now: Date = new Date()): number {
+  return Number(now.toLocaleDateString('en-US', { year: 'numeric', timeZone: TZ }))
 }
 
-/** "Oct 21" */
-export function formatDayShort(date: string): string {
-  return day(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+/** Dates outside the current year carry the year, so "Feb 8" is never ambiguous. */
+const yearIfNeeded = (d: Date, now?: Date): { year?: 'numeric' } =>
+  d.getUTCFullYear() === currentYear(now) ? {} : { year: 'numeric' }
+
+/** "Wed, Oct 21" this year; "Wed, Feb 8, 2023" otherwise. */
+export function formatDay(date: string, now?: Date): string {
+  const d = day(date)
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', ...yearIfNeeded(d, now), timeZone: 'UTC' })
+}
+
+/** "Oct 21" this year; "Feb 8, 2023" otherwise. */
+export function formatDayShort(date: string, now?: Date): string {
+  const d = day(date)
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...yearIfNeeded(d, now), timeZone: 'UTC' })
+}
+
+/** Compact chart-axis label: "Oct 21" this year; "Feb 8 ’23" otherwise. */
+export function formatDayTick(date: string, now?: Date): string {
+  const d = day(date)
+  const md = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  return d.getUTCFullYear() === currentYear(now) ? md : `${md} ’${String(d.getUTCFullYear()).slice(2)}`
 }
 
 /** "Wednesday, October 21, 2026" */

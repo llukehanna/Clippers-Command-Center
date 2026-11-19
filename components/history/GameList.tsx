@@ -86,7 +86,7 @@ export function GameList({ played, upcoming }: { played: PlayedGame[]; upcoming:
                   prefetch={false}
                   className="row-hover flex items-center gap-3 rounded-[12px] px-3.5 py-2.5 text-[14px] text-mute transition-colors hover:text-text"
                 >
-                  <span className="w-[92px] font-mono text-[12px]">{formatDay(g.game_date)}</span>
+                  <span className="min-w-[92px] whitespace-nowrap font-mono text-[12px]">{formatDay(g.game_date)}</span>
                   <TeamLogo abbr={g.opponent_abbr} size="xs" />
                   {g.home_away === 'home' ? 'vs' : '@'} {teamName(g.opponent_abbr, g.opponent_name)}
                   <span aria-hidden className="ml-auto font-mono text-[12px] text-dim">→</span>

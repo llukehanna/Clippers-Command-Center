@@ -40,7 +40,7 @@ export function GameLog({ rows }: { rows: GameLogRow[] }) {
               <Tr key={r.game_id} href={`/history/${r.game_id}`}>
                 <Td align="left" sticky>
                   <RowLink href={`/history/${r.game_id}`} className="flex items-center gap-2.5">
-                    <span className="w-[46px] font-mono text-[11.5px] text-dim">{formatDayShort(r.game_date)}</span>
+                    <span className="min-w-[46px] whitespace-nowrap font-mono text-[11.5px] text-dim">{formatDayShort(r.game_date)}</span>
                     <TeamLogo abbr={r.opp} size="xs" />
                     <span className="text-text">
                       <span className="text-mute">{r.home_away === 'home' ? 'vs' : '@'}</span> {r.opp}

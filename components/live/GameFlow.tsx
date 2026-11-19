@@ -29,6 +29,7 @@ import {
   type FlowRow,
 } from '@/src/lib/live/flow-view'
 import type { LiveFlow, LiveWinProb } from '@/src/lib/types/live-state'
+import { formatDayShort } from '@/src/lib/ui/time'
 
 const LAC = 'var(--pacific)'
 const OPP = 'var(--neg)'
@@ -82,7 +83,7 @@ function ModelNote({ wp }: { wp: LiveWinProb }) {
               <p className="m-0">
                 Fitted on {note.n_games.toLocaleString()} Clippers games
                 {note.basis === 'spread' ? ' with a closing spread' : note.basis === 'home_court' ? ' without a stored spread' : ''} ·
-                Brier score {note.brier.toFixed(3)} · updated {new Date(c.fitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                Brier score {note.brier.toFixed(3)} · updated {formatDayShort(c.fitted_at)}
               </p>
               <p className="m-0 font-mono text-[11px] text-dim">All fitted games (σ {c.sigma}):</p>
               <table className="w-full max-w-[320px] font-mono text-[11px] tabular-nums">
