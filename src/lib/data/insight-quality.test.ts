@@ -47,8 +47,8 @@ describe('loadQualityContext / barFilter', () => {
 
 describe('INSIGHT_ROW_COLUMNS', () => {
   it('casts every column', () => {
-    const items = INSIGHT_ROW_COLUMNS.split(/,\s*(?=\w+[.(])/).map((s) => s.trim());
-    expect(items.length).toBe(17);
+    const items = INSIGHT_ROW_COLUMNS.split(/,\s*(?=\(|\w+[.(])/).map((s) => s.trim());
+    expect(items.length).toBe(23);
     for (const it of items) expect(it).toMatch(/::\w+(\[\])? AS \w+$|^to_char\(/);
   });
 });

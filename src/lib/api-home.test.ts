@@ -129,25 +129,142 @@ describe('GET /api/home', () => {
     expect(Array.isArray(body.insights)).toBe(true);
   });
 
-  it('the between-games insights query leaves player-surface rows to the player pages', async () => {
+  const INSIGHT_QUERY = /i\.surface IN \('season', 'pregame', 'postgame'\)/;
+  const base = { scope: 'between_games', surface: 'season', player_id: null as string | null, game_id: null as string | null, season_id: 2026, game_date: null as string | null, evidence: null, proof_result: {} as unknown, detail: 'd', importance: 50, headline: 'h', category: 'streak', entities: null, updated_at: '2026-11-01T00:00:00Z', nba_person_id: null, player_name: null, opp_abbr: null, lac_home: null, lac_score: null, opp_score: null, score_parts: null };
+  const fr = (type: string, who = 'subject') => ({ type, strength: 0.5, who, text: 't', proof_rows: [] });
+  function withInsightRows(rows: unknown[]) {
+    const impl = mockSqlFn.getMockImplementation()!;
+    mockSqlFn.mockImplementation(async (...args: SqlArgs) => (INSIGHT_QUERY.test(queryText(args)) ? rows : impl(...args)));
+  }
+  function setNext() {
+    upcomingRows = [{ game_id: '555', game_date: '2026-10-22', start_time_utc: null, home_team_id: '9', away_team_id: LAC_TEAM_ID, home_abbr: 'GSW', away_abbr: 'LAC', status: 'scheduled' }];
+  }
+  const ids = (xs: { insight_id: string }[]) => xs.map((x) => x.insight_id);
+  const yoy = (id: string, stat: string, imp: number) => ({
+    ...base, insight_id: id, category: 'yoy_change', importance: imp, headline: id, frame: fr('none', 'group'),
+    proof_result: [
+      { part: 'fact', data: { season_id: 2025, stat, rank: 10, total_teams: 30 } },
+      { part: 'fact', data: { season_id: 2026, stat, rank: 20, total_teams: 30 } },
+    ],
+  });
+
+  it('the insight query limits postgame rows to the last 10 Clippers games', async () => {
     await getHome();
-    const call = findCall(/scope = 'between_games'/);
-    expect(call).toBeDefined();
-    expect(queryText(call!)).toMatch(/i\.surface IS NULL OR i\.surface <> 'player'/);
+    const text = queryText(findCall(INSIGHT_QUERY)!).replace(/\s+/g, ' ');
+    expect(text).toContain('ORDER BY g.game_date DESC, g.game_id DESC LIMIT 10');
+    expect(text).toContain("i.surface IN ('season', 'pregame', 'postgame')");
+    expect(text).toMatch(/i\.surface <> 'postgame' OR i\.game_id IN \(/);
   });
 
   it('insights hides cut and tag rows', async () => {
-    const base = { scope: 'between_games', surface: 'season', player_id: '9', game_id: null, season_id: 2026, game_date: null, evidence: null, proof_result: {}, detail: 'd', importance: 50, headline: 'h' };
-    const fr = (type: string, who: string) => ({ type, strength: 0.5, who, text: 't', proof_rows: [] });
-    const rows = [
-      { ...base, insight_id: 'tag', category: 'player_game_stat', frame: fr('season_high', 'subject') },
-      { ...base, insight_id: 'card', category: 'player_game_stat', frame: fr('league_rank', 'subject') },
-    ];
-    const impl = mockSqlFn.getMockImplementation()!;
-    mockSqlFn.mockImplementation(async (...args: SqlArgs) =>
-      queryText(args).includes("i.scope = 'between_games'") ? rows : impl(...args));
+    withInsightRows([
+      { ...base, insight_id: 'tag', player_id: '9', category: 'player_game_stat', frame: fr('season_high') },
+      { ...base, insight_id: 'card', player_id: '9', category: 'player_game_stat', frame: fr('league_rank') },
+    ]);
     const body = await (await getHome()).json();
-    expect(body.insights.map((i: { insight_id: string }) => i.insight_id)).toEqual(['card']);
+    expect(ids(body.insights)).toEqual(['card']);
+  });
+
+  it('the hero is the top bar-passing card and is not repeated', async () => {
+    withInsightRows([
+      { ...base, insight_id: 'top', importance: 90, category: 'standings', frame: fr('league_rank', 'group') },
+      { ...base, insight_id: 'next', importance: 60, category: 'standings', frame: fr('league_rank', 'group') },
+    ]);
+    const body = await (await getHome()).json();
+    expect(body.feeds.hero.insight_id).toBe('top');
+    const others = [...body.feeds.recent, ...body.feeds.season, ...body.feeds.scouting];
+    expect(ids(others)).not.toContain('top');
+    expect(ids(body.feeds.season)).toContain('next');
+  });
+
+  it('recent holds postgame cards only, at most 5, at most 2 per player', async () => {
+    const pg = (id: string, player: string, imp: number, cat: string) => ({
+      ...base, insight_id: id, surface: 'postgame', player_id: player, game_id: `g${id}`, category: cat, importance: imp, frame: fr('league_rank'),
+    });
+    withInsightRows([
+      { ...base, insight_id: 'hero', importance: 99, frame: fr('league_rank', 'group'), category: 'standings' },
+      pg('a', '1', 80, 'c1'), pg('b', '1', 79, 'c2'), pg('c', '1', 78, 'c3'),
+      pg('d', '2', 70, 'c4'), pg('e', '3', 69, 'c5'), pg('f', '4', 68, 'c6'), pg('g', '5', 67, 'c7'), pg('h', '6', 66, 'c8'),
+      { ...base, insight_id: 'pre', surface: 'pregame', category: 'opp_rank', frame: fr('league_rank', 'group') },
+    ]);
+    const body = await (await getHome()).json();
+    const recent = body.feeds.recent;
+    expect(recent.length).toBeLessThanOrEqual(5);
+    expect(recent.every((c: { surface: string }) => c.surface === 'postgame')).toBe(true);
+    expect(recent.filter((c: { player_id: string }) => c.player_id === '1').length).toBeLessThanOrEqual(2);
+  });
+
+  it('a hero postgame leader folds its followers out of every other feed', async () => {
+    const pg = (id: string, strength: number, imp: number, cat: string) => ({
+      ...base, insight_id: id, surface: 'postgame', player_id: '1', game_id: 'G1', category: cat, importance: imp, frame: { ...fr('league_rank'), strength },
+    });
+    const other = (id: string, player: string, imp: number) => ({
+      ...base, insight_id: id, surface: 'postgame', player_id: player, game_id: `G${id}`, category: `c${id}`, importance: imp, frame: fr('league_rank'),
+    });
+    withInsightRows([
+      pg('lead', 0.9, 95, 'a'), pg('follow', 0.4, 94, 'b'),
+      other('o1', '2', 80), other('o2', '3', 79), other('o3', '4', 78), other('o4', '5', 77), other('o5', '6', 76), other('o6', '7', 75),
+    ]);
+    const body = await (await getHome()).json();
+    expect(body.feeds.hero.insight_id).toBe('lead');
+    expect(body.feeds.hero.merged_ids).toEqual(['follow']);
+    expect(body.feeds.recent).toHaveLength(5);
+    expect(ids(body.feeds.recent)).not.toContain('lead');
+    expect(ids(body.feeds.recent)).not.toContain('follow');
+    expect(body.feeds.recent.some((c: { player_id: string }) => c.player_id === '1')).toBe(false);
+  });
+
+  it('stale pregame rows (not the next game) are excluded; no next game means no pregame feeds', async () => {
+    const stale = { ...base, insight_id: 'stale', surface: 'pregame', game_id: '111', category: 'opp_rank', importance: 99, frame: fr('league_rank', 'group') };
+    const staleNote = { ...base, insight_id: 'sn', surface: 'pregame', game_id: '111', category: 'opp_form', importance: 50, frame: null };
+    setNext();
+    withInsightRows([stale, staleNote]);
+    let body = await (await getHome()).json();
+    expect(body.feeds.hero).toBeNull();
+    expect(body.feeds.scouting).toEqual([]);
+    expect(body.feeds.notes).toEqual([]);
+    upcomingRows = [];
+    withInsightRows([{ ...stale, game_id: '555' }, { ...staleNote, game_id: '555' }]);
+    body = await (await getHome()).json();
+    expect(body.feeds.hero).toBeNull();
+    expect(body.feeds.scouting).toEqual([]);
+    expect(body.feeds.notes).toEqual([]);
+  });
+
+  it('season holds season cards plus one merged ratings card', async () => {
+    withInsightRows([
+      { ...base, insight_id: 'hero', importance: 99, category: 'standings', frame: fr('league_rank', 'group') },
+      { ...base, insight_id: 's1', importance: 55, category: 'standings', frame: fr('league_rank', 'group') },
+      yoy('y1', 'team_off_rtg_rank', 40), yoy('y2', 'team_def_rtg_rank', 41), yoy('y3', 'team_net_rtg_rank', 42),
+    ]);
+    const body = await (await getHome()).json();
+    const merged = body.feeds.season.filter((c: { team_yoy?: unknown[] }) => c.team_yoy);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].team_yoy).toHaveLength(3);
+    const all = [body.feeds.hero, ...body.feeds.recent, ...body.feeds.season, ...body.feeds.scouting].filter((c) => c && !c.team_yoy);
+    for (const id of ['y1', 'y2', 'y3']) expect(ids(all)).not.toContain(id);
+    expect(ids(body.feeds.season)).toContain('s1');
+  });
+
+  it('scouting holds pregame cards, at most 3; notes hold Q8 notes by importance, at most 4', async () => {
+    const pre = (id: string, imp: number, cat: string) => ({
+      ...base, insight_id: id, surface: 'pregame', game_id: '555', category: cat, importance: imp, frame: fr('league_rank', 'group'),
+    });
+    const note = (id: string, imp: number, cat: string) => ({
+      ...base, insight_id: id, surface: 'pregame', game_id: '555', category: cat, importance: imp, frame: null,
+    });
+    setNext();
+    setNext();
+    withInsightRows([
+      { ...base, insight_id: 'hero', importance: 99, category: 'standings', frame: fr('league_rank', 'group') },
+      pre('p1', 70, 'c1'), pre('p2', 69, 'c2'), pre('p3', 68, 'c3'), pre('p4', 67, 'c4'),
+      note('n1', 30, 'opp_form'), note('n2', 35, 'last_meeting'), note('n3', 32, 'rest'), note('n4', 31, 'line'),
+      note('n5', 20, 'h2h'), note('n6', 36, 'opp_hot_player'),
+    ]);
+    const body = await (await getHome()).json();
+    expect(body.feeds.scouting.length).toBeLessThanOrEqual(3);
+    expect(body.feeds.scouting.every((c: { surface: string }) => c.surface === 'pregame')).toBe(true);
+    expect(ids(body.feeds.notes)).toEqual(['n6', 'n2', 'n3', 'n4']);
   });
 
   // ── Season scoping ──────────────────────────────────────────────────────────

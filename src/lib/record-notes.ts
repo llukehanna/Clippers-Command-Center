@@ -3,6 +3,8 @@
 // page ("Kawhi Leonard: 45 points — 4th-most by a Clipper since 2020-21").
 // "since" is where complete records start (app_kv insights.records_start /
 // insights.pbp_records_start), so a rank is never framed as all-time.
+// A player's season high under SEASON_HIGH_FLOORS is noise and gets no note.
+import { meetsSeasonHighFloor } from './insights/season-highs';
 
 export interface HighRow {
   scope: string;
@@ -39,20 +41,26 @@ export function seasonLabel(startYear: number): string {
   return `${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`;
 }
 
+/** "1 block", "2 blocks", "1 point in a quarter": the stat label, singular for exactly one. */
+function amount(v: number, key: string): string {
+  const label = LABEL[key] ?? key;
+  return `${v} ${v === 1 ? label.replace(/^(\w+?)s\b/, '$1') : label}`;
+}
+
 const most = (rank: number) => (rank === 1 ? 'most' : `${ordinal(rank)}-most`);
 
 function teamText(r: HighRow, since: string): string {
   const v = Math.round(r.value);
   if (r.stat_key === 'margin') return `${v}-point win — the Clippers' ${r.rank === 1 ? 'biggest' : `${ordinal(r.rank)}-biggest`}${since}`;
   if (r.stat_key === 'opp_pts_low') return `Held the opponent to ${v} points — the Clippers' ${r.rank === 1 ? 'fewest' : `${ordinal(r.rank)}-fewest`} allowed${since}`;
-  return `${v} ${LABEL[r.stat_key] ?? r.stat_key} — ${most(r.rank)} by the Clippers${since}`;
+  return `${amount(v, r.stat_key)} — ${most(r.rank)} by the Clippers${since}`;
 }
 
 function noteText(r: HighRow, starts: { records: number | null; pbp: number | null }): string {
   const start = PBP_STATS.has(r.stat_key) ? starts.pbp : starts.records;
   const since = start == null ? '' : ` since ${seasonLabel(start)}`;
   if (r.scope === 'lac_team') return teamText(r, since);
-  const what = `${r.player ?? 'A player'}: ${Math.round(r.value)} ${LABEL[r.stat_key] ?? r.stat_key}`;
+  const what = `${r.player ?? 'A player'}: ${amount(Math.round(r.value), r.stat_key)}`;
   switch (r.scope) {
     case 'lac_player': return `${what} — ${most(r.rank)} by a Clipper${since}`;
     case 'player_career': return `${what} — ${r.rank === 1 ? 'career high' : `${ordinal(r.rank)}-best career game`}`;
@@ -66,6 +74,7 @@ export function recordNotes(rows: HighRow[], starts: { records: number | null; p
   for (const r of rows) {
     const order = SCOPE_ORDER.indexOf(r.scope);
     if (order === -1 || r.rank > (MAX_RANK[r.scope] ?? 0)) continue;
+    if (r.scope === 'player_season' && !meetsSeasonHighFloor(r.stat_key, r.value)) continue;
     const key = `${r.player_id ?? 'team'}:${r.stat_key}`;
     const prev = best.get(key);
     if (!prev || order < SCOPE_ORDER.indexOf(prev.scope) || (order === SCOPE_ORDER.indexOf(prev.scope) && r.rank < prev.rank)) {

@@ -89,6 +89,25 @@ describe.skipIf(!url)('game page loaders (fixture DB)', () => {
     expect(body.records[0].text).toBe('Kawhi Leonard: 41 points — career high');
   });
 
+  it('player season highs include threes from the box rows (fix wave B #10)', async () => {
+    // Two final regular-season games for player 10: threes peak in the later one, points in the earlier one.
+    await admin.unsafe(`
+      INSERT INTO all_games (game_id, nba_game_id, season_id, game_date, start_time_utc, status, home_team_id, away_team_id, home_score, away_score, arena) VALUES
+        (102, 22600003, 2026, '2026-11-17', '2026-11-18T03:30:00Z', 'final', 1, 2, 120, 100, 'Intuit Dome');
+      INSERT INTO game_player_box_scores (game_id, team_id, player_id, starter, minutes, points, rebounds, assists, fg3_made, fg3_attempted) VALUES
+        (100, 1, 10, true, '30:00', 26, 6, 3, 1, 4),
+        (102, 1, 10, true, '28:00', 18, 9, 2, 4, 7);
+    `);
+    const { loadPlayer } = await import('@/src/lib/data/player');
+    const res = await loadPlayer('10', new URL('http://ccc.local/api/players/10?lac_only=true'));
+    expect(res.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const highs = (res.body as any).season_highs as { stat: string; value: number; game_id: string; opp: string }[];
+    expect(highs.map((h) => h.stat)).toEqual(['pts', 'reb', 'ast', 'fg3m']);
+    expect(highs.find((h) => h.stat === 'fg3m')).toMatchObject({ value: 4, game_id: '102', opp: 'SAS' });
+    expect(highs.find((h) => h.stat === 'pts')).toMatchObject({ value: 26, game_id: '100' });
+  });
+
   it('404s an unknown game', async () => {
     const { loadGamePreview } = await import('@/src/lib/data/game-preview');
     expect((await loadGamePreview('999')).status).toBe(404);

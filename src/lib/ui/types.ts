@@ -7,7 +7,11 @@ import type { InjuryEntry } from '../espn/injuries'
 import type { LineupState, LivePhase, LivePlay, LiveFlow, LiveWinProb } from '../types/live-state'
 import type { PlayerInjury } from '../types/live'
 import type { Shot } from '../shots'
+import type { InsightCardData, MatchupNote } from '../insights/card'
+import type { BoxTags } from '../data/season-highs'
 import type { RecordNote } from '../record-notes'
+
+export type { InsightCardData, MatchupNote } from '../insights/card'
 
 export type HomeAway = 'home' | 'away'
 
@@ -79,6 +83,14 @@ export interface Insight {
   proof?: InsightProof | null
 }
 
+export interface HomeFeeds {
+  hero: InsightCardData | null
+  recent: InsightCardData[]
+  season: InsightCardData[]
+  scouting: InsightCardData[]
+  notes: MatchupNote[]
+}
+
 export interface HomePayload {
   meta: MetaEnvelope & { last_sync_at?: string | null }
   team_snapshot: TeamSnapshot | null
@@ -86,6 +98,7 @@ export interface HomePayload {
   upcoming_schedule: ScheduleGame[]
   player_trends: PlayerTrend[]
   insights: Insight[]
+  feeds: HomeFeeds
 }
 
 export interface SchedulePayload {
@@ -265,6 +278,12 @@ export interface PlayerDetailPayload {
   >
   splits: Record<'home' | 'away' | 'wins' | 'losses', { pts_avg: number | null; ts_pct: number | null }> | null
   game_log: PlayerGameLogRow[]
+  /** Player-surface cards for the display season (empty for other seasons). */
+  insights: InsightCardData[]
+  /** Milestone watch: milestone_progress rows only (display season). */
+  milestones: { insight_id: string; headline: string; current: number; target: number; label: string }[]
+  /** The season's best regular-season games (earliest wins a tie). */
+  season_highs: { stat: 'pts' | 'reb' | 'ast' | 'fg3m'; label: 'Points' | 'Rebounds' | 'Assists' | 'Threes'; value: number; game_id: string; game_date: string; opp: string; home: boolean }[]
 }
 
 export interface HistoryGameDetailPayload {
@@ -279,7 +298,9 @@ export interface HistoryGameDetailPayload {
     away_score: number | null
     periods?: LinePeriod[]
   }
-  box_score: { columns: string[]; teams: BoxScoreTeam[]; available: boolean }
+  box_score: { columns: string[]; teams: BoxScoreTeam[]; available: boolean; tags: BoxTags }
+  /** Postgame cards that passed the quality bar, composed (Q4 merge, at most 8), plus live and pre-v2 rows. */
+  game_story: InsightCardData[]
   insights: Array<Omit<Insight, 'category'> & { category?: string }>
 }
 
@@ -672,6 +693,8 @@ export interface GamePreviewPayload {
     opp: PreviewTeamForm
   }
   insights: Insight[]
+  /** Part B: scouting cards for Up next and matchup notes (at most 4). */
+  insight_feeds: { scouting: InsightCardData[]; notes: MatchupNote[] }
 }
 
 // ─── Game story (/history/[game_id]) ─────────────────────────────────────────

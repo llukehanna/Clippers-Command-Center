@@ -13,6 +13,10 @@ import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { formatClock } from '@/src/lib/format';
 import { getDisplaySeasonId, parseSeasonIdParam } from '@/src/lib/season';
 import { GAME_TYPE_SQL, type GameType } from '@/src/lib/game-type';
+import { composeFeed } from '../insights/compose';
+import { toCardData } from '../insights/card';
+import { playerSeasonHighs } from './season-highs';
+import { INSIGHT_ROW_COLUMNS, INSIGHT_ROW_FROM, barFilter, type InsightDbRow } from './insight-quality';
 
 const GAME_LOG_LIMIT = 25;
 
@@ -182,7 +186,7 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
     const player = playerRows[0];
 
     // 2. Run parallel queries
-    const [trendRows, chartRows, boxScoreRows] = await Promise.all([
+    const [trendRows, chartRows, boxScoreRows, insightRows] = await Promise.all([
       // A: Latest rolling stats (window=10) in the season for trend summary
       sql<Array<RollingRow>>`
         SELECT
@@ -262,7 +266,35 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
           ${lacFilter}
         ORDER BY g.game_date DESC, g.game_id DESC
       `,
+
+      // D: Player-surface insights, only when the page shows the display season (Ruling 17).
+      //    A failure logs and hides the section; it never fails the page.
+      seasonId === displaySeasonId
+        ? sql<InsightDbRow[]>`
+            SELECT ${sql.unsafe(INSIGHT_ROW_COLUMNS)}
+            FROM ${sql.unsafe(INSIGHT_ROW_FROM)}
+            WHERE i.surface = 'player' AND i.player_id = ${player_id}::bigint AND i.is_active = true
+              AND i.season_id = ${seasonId}
+            ORDER BY (i.category = 'milestone_progress') DESC, i.importance DESC, i.insight_id ASC
+            LIMIT 60
+          `.catch((err: unknown) => {
+            console.error('[GET /api/players/{player_id}] insights failed:', err);
+            return [] as InsightDbRow[];
+          })
+        : Promise.resolve([] as InsightDbRow[]),
     ]);
+
+    // 2b. Insights. milestone_progress rows carry no frame, so they skip the bar and feed the
+    //     Milestone watch only (Ruling 16); everything else passes the bar once.
+    const isMilestone = (r: InsightDbRow) => r.category === 'milestone_progress';
+    const barred = await barFilter(insightRows.filter((r) => !isMilestone(r)));
+    const plainCards = barred.cards.filter((r): r is typeof r & { surface: NonNullable<typeof r.surface> } => r.surface !== null);
+    const insights = composeFeed(plainCards, 'player_page').map(toCardData);
+    const milestones = insightRows.flatMap((r) =>
+      isMilestone(r) && r.evidence?.type === 'milestone_progress'
+        && Number.isFinite(r.evidence.current) && Number.isFinite(r.evidence.target) && r.evidence.target > r.evidence.current
+        ? [{ insight_id: r.insight_id, headline: r.headline, current: r.evidence.current, target: r.evidence.target, label: r.evidence.label }]
+        : []);
 
     // 3. Build trend_summary
     const trendSummary =
@@ -353,6 +385,13 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
         charts,
         splits,
         game_log: gameLog,
+        insights,
+        milestones,
+        season_highs: playerSeasonHighs(regularSeasonRows.map((r) => ({
+          game_id: r.game_id, game_date: r.game_date, opp_abbreviation: r.opp_abbreviation,
+          home: r.player_team_id === r.home_team_id,
+          points: r.points, rebounds: r.rebounds, assists: r.assists, fg3_made: r.fg3_made,
+        }))),
       },
       {
         headers: {

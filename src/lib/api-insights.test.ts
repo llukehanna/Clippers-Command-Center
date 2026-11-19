@@ -70,14 +70,76 @@ describe('GET /api/insights', () => {
     mockSqlTag.mockImplementation(mockSqlImpl);
   });
 
-  it('returns 400 when scope param is missing', async () => {
+  it('returns 400 when neither scope nor surface is given', async () => {
     const { GET } = await import('@/app/api/insights/route');
     const req = new Request('http://localhost/api/insights');
     const res = await GET(req);
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error.code).toBe('BAD_REQUEST');
-    expect(body.error.message).toMatch(/scope/i);
+    expect(body.error.message).toMatch(/scope or surface/i);
+  });
+
+  const allSql = () => mockSqlTag.mock.calls.map((c) => (c[0] as string[]).join('?')).join('\n');
+
+  it('surface=postgame with no scope is accepted and filters on i.surface =', async () => {
+    mockRows = [];
+    mockSqlTag.mockClear();
+    const { GET } = await import('@/app/api/insights/route');
+    const res = await GET(new Request('http://localhost/api/insights?surface=postgame'));
+    expect(res.status).toBe(200);
+    expect(allSql()).toContain('i.surface = ');
+    expect(allSql()).not.toContain('i.scope = ');
+  });
+
+  it('surface=player does not exclude player rows', async () => {
+    mockRows = [];
+    mockSqlTag.mockClear();
+    const { GET } = await import('@/app/api/insights/route');
+    const res = await GET(new Request('http://localhost/api/insights?surface=player&player_id=5'));
+    expect(res.status).toBe(200);
+    expect(allSql()).not.toContain("surface <> 'player'");
+  });
+
+  it('surface and scope together are ANDed', async () => {
+    mockRows = [];
+    mockSqlTag.mockClear();
+    const { GET } = await import('@/app/api/insights/route');
+    await GET(new Request('http://localhost/api/insights?surface=season&scope=between_games'));
+    expect(allSql()).toContain('i.surface = ');
+    expect(allSql()).toContain('i.scope = ');
+  });
+
+  it('returns 400 for an unknown surface', async () => {
+    const { GET } = await import('@/app/api/insights/route');
+    const res = await GET(new Request('http://localhost/api/insights?surface=bogus'));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.message).toMatch(/surface/);
+  });
+
+  it('items carry the card fields and verdict card', async () => {
+    mockRows = [
+      {
+        insight_id: 'uuid-card', scope: 'historical', surface: 'postgame', category: 'player_game_stat',
+        headline: 'h', detail: 'd', importance: 50, proof_result: {},
+        player_id: '9', game_id: '1', season_id: 2026, game_date: '2026-11-17',
+        frame: { type: 'league_rank', strength: 0.5, who: 'subject', text: 't', proof_rows: [] },
+        evidence: { kind: 'x' }, entities: [{ kind: 'player', id: '9' }], updated_at: '2026-11-18T00:00:00Z',
+      },
+    ];
+    const { GET } = await import('@/app/api/insights/route');
+    const body = await (await GET(new Request('http://localhost/api/insights?surface=postgame'))).json();
+    const item = body.insights[0];
+    expect(item.verdict).toBe('card');
+    expect(item.surface).toBe('postgame');
+    expect(item.frame.type).toBe('league_rank');
+    expect(item.evidence).toEqual({ kind: 'x' });
+    expect(item.entities).toEqual([{ kind: 'player', id: '9' }]);
+    expect(item.updated_at).toBe('2026-11-18T00:00:00Z');
+    expect(item.player_id).toBe('9');
+    expect(item.game_id).toBe('1');
+    expect(item.proof.summary).toBe('player_game_stat');
   });
 
   it('returns 400 when scope param is invalid', async () => {
@@ -138,8 +200,7 @@ describe('GET /api/insights', () => {
     mockSqlTag.mockClear();
     const { GET } = await import('@/app/api/insights/route');
     await GET(new Request('http://localhost/api/insights?scope=between_games'));
-    const main = mockSqlTag.mock.calls.map((c) => (c[0] as string[]).join('?')).find((t) => t.includes('i.is_active = true'));
-    expect(main).toMatch(/i\.surface IS NULL OR i\.surface <> 'player'/);
+    expect(allSql()).toMatch(/i\.surface IS NULL OR i\.surface <> 'player'/);
   });
 
   it('each insight has proof with summary=category and result=proof_result', async () => {

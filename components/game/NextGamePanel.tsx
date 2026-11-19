@@ -3,6 +3,10 @@ import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { Panel } from '@/components/ui/panel'
 import { Chip } from '@/components/ui/chip'
+import { Eyebrow } from '@/components/ui/eyebrow'
+import { ScoutCard } from '@/components/insights/kit/ScoutCard'
+import { MatchupNotes } from '@/components/insights/kit/MatchupNotes'
+import type { InsightCardData, MatchupNote } from '@/src/lib/insights/card'
 import { TeamMark } from '@/components/ui/team-mark'
 import { Countdown } from './Countdown'
 import { OddsStrip } from './OddsStrip'
@@ -18,11 +22,13 @@ interface NextGamePanelProps {
   href?: string
   /** Venue for away games (home games always read Intuit Dome). */
   arena?: string | null
+  /** Pregame insight feeds (Home): scouting cards and matchup notes. Empty blocks are hidden. */
+  insights?: { scouting: InsightCardData[]; notes: MatchupNote[] }
   className?: string
 }
 
 /** The hero card for the next Clippers game: matchup, tip-off, countdown, line. */
-export function NextGamePanel({ game, context, eyebrow = 'Next game', href, arena, className }: NextGamePanelProps) {
+export function NextGamePanel({ game, context, eyebrow = 'Next game', href, arena, insights, className }: NextGamePanelProps) {
   if (!game) {
     return (
       <Panel variant="hero" className={className}>
@@ -40,8 +46,14 @@ export function NextGamePanel({ game, context, eyebrow = 'Next game', href, aren
   const home = game.home_away === 'home'
   const odds = game.odds
   const label = `Game preview: Clippers ${home ? 'vs' : 'at'} ${teamName(game.opponent_abbr)}, ${formatDay(game.game_date)}`
-  const body = (
-    <div className="relative p-5 sm:p-7">
+  // Payloads cached before the feeds shipped may lack either list.
+  const scouting = insights?.scouting ?? []
+  const notes = insights?.notes ?? []
+  const hasBlocks = scouting.length > 0 || notes.length > 0
+  const pad = 'relative px-5 sm:px-7'
+
+  const head = (
+    <>
       <div className="flex items-center justify-between gap-3">
         <p className="label-mono !text-mute">{eyebrow}</p>
         {game.is_preseason ? <Chip tone="blue">Preseason</Chip> : context}
@@ -92,34 +104,80 @@ export function NextGamePanel({ game, context, eyebrow = 'Next game', href, aren
           ]}
         />
       )}
-
-      {href && (
-        <div aria-hidden className="mt-5 flex justify-end">
-          <span className="font-mono text-[12px] text-mute transition-colors duration-300 group-hover:text-text">
-            Game preview <span className="inline-block transition-transform duration-300 ease-premium group-hover:translate-x-0.5">→</span>
-          </span>
-        </div>
-      )}
-    </div>
+    </>
   )
 
-  // With an href the whole card opens the game preview, like every other game card.
-  if (href) {
+  const blocks = hasBlocks && (
+    <>
+      {scouting.length > 0 && (
+        <div className="mt-6 border-t border-line pt-5">
+          <Eyebrow as="h3" aside={`${scouting.length} verified`}>
+            Scouting the {teamName(game.opponent_abbr)}
+          </Eyebrow>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
+            {scouting.map((card) => (
+              <ScoutCard key={card.insight_id} card={card} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {notes.length > 0 && (
+        <div className="mt-5">
+          <Eyebrow as="h3">Matchup notes</Eyebrow>
+          <MatchupNotes notes={notes} />
+        </div>
+      )}
+    </>
+  )
+
+  const arrow = (
+    <span className="font-mono text-[12px] text-mute transition-colors duration-300 group-hover:text-text">
+      Game preview{' '}
+      <span aria-hidden className="inline-block transition-transform duration-300 ease-premium group-hover:translate-x-0.5">
+        →
+      </span>
+    </span>
+  )
+
+  if (!href) {
     return (
-      <Panel
-        as={Link}
-        href={href}
-        aria-label={label}
-        variant="hero"
-        className={cn('group block transition-colors duration-300 hover:border-line-2', className)}
-      >
-        {body}
+      <Panel variant="hero" className={className}>
+        <div className="relative p-5 sm:p-7">
+          {head}
+          {blocks}
+        </div>
       </Panel>
     )
   }
+
+  // The matchup opens the game preview, like every other game card. The
+  // scouting and notes blocks sit outside that link (their own content, not a
+  // label for it); below them a plain "Game preview →" link opens it too.
   return (
-    <Panel variant="hero" className={className}>
-      {body}
+    <Panel variant="hero" className={cn('transition-colors duration-300 hover:border-line-2', className)}>
+      <Link
+        href={href}
+        aria-label={label}
+        className={cn('group block pt-5 sm:pt-7', pad, !hasBlocks && 'pb-5 sm:pb-7')}
+      >
+        {head}
+        {!hasBlocks && (
+          <div aria-hidden className="mt-5 flex justify-end">
+            {arrow}
+          </div>
+        )}
+      </Link>
+      {hasBlocks && (
+        <div className={cn('pb-5 sm:pb-7', pad)}>
+          {blocks}
+          <div className="mt-5 flex justify-end">
+            <Link href={href} className="group">
+              {arrow}
+            </Link>
+          </div>
+        </div>
+      )}
     </Panel>
   )
 }

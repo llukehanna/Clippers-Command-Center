@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { cn } from '@/lib/utils'
 import { NextGamePanel } from '@/components/game/NextGamePanel'
 import { UpNextList } from '@/components/game/UpNextList'
 import { SeasonPanel } from '@/components/home/SeasonPanel'
@@ -6,7 +7,8 @@ import { LastTenPanel } from '@/components/home/LastTenPanel'
 import { PlayerLeaders } from '@/components/home/PlayerLeaders'
 import { BuzzPanel } from '@/components/home/BuzzPanel'
 import { HomeLive } from '@/components/home/HomeLive'
-import { InsightStack } from '@/components/insights/InsightStack'
+import { InsightTile } from '@/components/insights/kit/InsightTile'
+import { CompactInsightList } from '@/components/insights/kit/CompactInsightList'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -15,7 +17,7 @@ import { annotateSchedule } from '@/src/lib/ui/schedule'
 import { playedGames, regularSeason, seasonSummary, type HistoryGame } from '@/src/lib/ui/season'
 import { ageLabel } from '@/src/lib/ui/time'
 import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
-import type { HomePayload, Insight, MediaPayload, PlayersPayload } from '@/src/lib/ui/types'
+import type { HomePayload, MediaPayload, PlayersPayload } from '@/src/lib/ui/types'
 
 // Live data on every request (loaders read the database directly).
 export const dynamic = 'force-dynamic'
@@ -23,9 +25,8 @@ export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Home' }
 
 export default async function HomePage() {
-  const [home, insightsRes, roster, media] = await Promise.all([
+  const [home, roster, media] = await Promise.all([
     getJson<HomePayload>('/api/home'),
-    getJson<{ insights: Insight[] }>('/api/insights?scope=between_games&limit=12'),
     getJson<PlayersPayload>('/api/players?include_traded=true'),
     getJson<MediaPayload>('/api/media?limit=3'),
   ])
@@ -69,7 +70,11 @@ export default async function HomePage() {
       return { ...p, position: r?.position ?? null, nba_person_id: p.nba_person_id ?? r?.nba_person_id ?? null }
     })
 
-  const insights = (insightsRes?.insights ?? []).slice().sort((a, b) => b.importance - a.importance)
+  const feeds = home.feeds
+  const hero = feeds?.hero ?? null
+  const recent = feeds?.recent ?? []
+  const seasonCards = feeds?.season ?? []
+  const gamesPlayed = snapshot ? snapshot.record.wins + snapshot.record.losses : null
   const last10 = (snapshot?.last10_games ?? []).map((g) => ({
     ...g,
     game_id: gameIdByDate.get(`${g.game_date}|${g.opponent_abbr}`),
@@ -80,7 +85,12 @@ export default async function HomePage() {
     <div className="page">
       <section className="enter grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 0 }}>
         <HomeLive>
-          <NextGamePanel game={next} context={nextContext} href={next ? `/schedule/${next.game_id}` : undefined} />
+          <NextGamePanel
+            game={next}
+            context={nextContext}
+            href={next ? `/schedule/${next.game_id}` : undefined}
+            insights={feeds ? { scouting: feeds.scouting, notes: feeds.notes } : undefined}
+          />
         </HomeLive>
         {snapshot && (
           <SeasonPanel
@@ -101,28 +111,56 @@ export default async function HomePage() {
         </section>
       )}
 
-      <section className="enter grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 2 }}>
-        {leaders.length > 0 && (
-          <div>
-            <Eyebrow aside={isPastSeason ? 'final 10 games' : 'last 10 games'}>Player trends</Eyebrow>
-            <PlayerLeaders players={leaders} />
+      {(hero || recent.length > 0) && (
+        <section className="enter" style={{ ['--i' as string]: 2 }}>
+          <Eyebrow aside="ranked by how rare · all verified">Insights</Eyebrow>
+          {/* Two columns only when both sides have something; otherwise one, with no blank column. */}
+          <div
+            className={cn(
+              'grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:gap-[18px]',
+              hero && recent.length > 0 && 'lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]',
+            )}
+          >
+            {hero && (
+              <div className="min-w-0">
+                <InsightTile card={hero} size="hero" />
+              </div>
+            )}
+            {recent.length > 0 && (
+              <div className="min-w-0">
+                <Eyebrow as="h3" aside="last 10">From recent games</Eyebrow>
+                <CompactInsightList cards={recent} />
+              </div>
+            )}
           </div>
-        )}
-        {insights.length > 0 && (
-          <div>
-            <Eyebrow aside={`${insights.length} verified`}>Insights</Eyebrow>
-            <InsightStack insights={insights} />
+        </section>
+      )}
+
+      {seasonCards.length > 0 && (
+        <section className="enter" style={{ ['--i' as string]: 3 }}>
+          <Eyebrow aside={gamesPlayed != null ? `through ${gamesPlayed} games` : undefined}>This season</Eyebrow>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3.5 min-[760px]:grid-cols-2 min-[1100px]:grid-cols-3">
+            {seasonCards.map((card) => (
+              <InsightTile key={card.insight_id} card={card} size="standard" />
+            ))}
           </div>
-        )}
-      </section>
+        </section>
+      )}
+
+      {leaders.length > 0 && (
+        <section className="enter" style={{ ['--i' as string]: 4 }}>
+          <Eyebrow aside={isPastSeason ? 'final 10 games' : 'last 10 games'}>Player trends</Eyebrow>
+          <PlayerLeaders players={leaders} />
+        </section>
+      )}
 
       {media && (media.articles.length > 0 || media.social.length > 0) && (
-        <section className="enter" style={{ ['--i' as string]: 3 }}>
+        <section className="enter" style={{ ['--i' as string]: 5 }}>
           <BuzzPanel articles={media.articles.slice(0, 3)} social={media.social.slice(0, 2)} />
         </section>
       )}
       {upcoming.length > 1 && (
-        <section className="enter" style={{ ['--i' as string]: 4 }}>
+        <section className="enter" style={{ ['--i' as string]: 6 }}>
           <Eyebrow aside="all times PT">Up next</Eyebrow>
           <UpNextList games={upcoming.slice(1, 5)} />
         </section>

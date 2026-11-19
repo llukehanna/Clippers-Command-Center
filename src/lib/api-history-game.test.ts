@@ -19,6 +19,7 @@ const row = (id: string, over: Partial<InsightRow> = {}): InsightRow => ({
   detail: `Detail ${id}`, importance: 50, proof_result: [{ part: 'fact' }], game_id: '640', player_id: null,
   season_id: 2026, game_date: '2026-11-17', evidence: null, entities: null, updated_at: '2026-11-17T00:00:00Z',
   frame: { type: 'first_since', strength: 0.5, who: 'subject', text: `Detail ${id}`, proof_rows: [] },
+  nba_person_id: null, player_name: null, opp_abbr: 'OKC', lac_home: true, lac_score: 112, opp_score: 104,
   score_parts: { salience_class: 'roster' }, ...over,
 });
 
@@ -102,6 +103,90 @@ describe('game page insights (FW-7, FW-8)', () => {
     const body = res.body as { insights: { insight_id: string }[] };
     expect(body.insights.length).toBeLessThanOrEqual(8);
     expect(body.insights.length).toBeGreaterThan(0);
+  });
+});
+
+describe('game story and box score tags (B6)', () => {
+  const PRIOR = { player_id: '7', games: 12, pts: 18, reb: 5, ast: 3, stl: 1, blk: 1, fg3m: 2 };
+  beforeEach(() => {
+    const base = mockSql.getMockImplementation()!;
+    mockSql.mockImplementation(async (...args: SqlArgs) => {
+      const q = args[0].join('?');
+      if (q.includes('GROUP BY pb.player_id')) return [PRIOR];
+      if (q.includes('FROM game_player_box_scores pbs')) {
+        return [{ player_id: '7', display_name: 'A Clipper', team_id: '1', minutes: '30:00', points: 20, blocks: 4, rebounds: 5 }];
+      }
+      return base(...args);
+    });
+  });
+
+  it('season-high query is bounded by this game date and grouped per player, one extra query', async () => {
+    await loadHistoryGame('640');
+    const qs = mockSql.mock.calls.map((c) => c[0].join('?')).filter((t) => t.includes('GROUP BY pb.player_id'));
+    expect(qs).toHaveLength(1);
+    expect(qs[0]).toContain('g.game_date < (SELECT game_date FROM games WHERE game_id =');
+  });
+
+  it('game_story holds bar-passing postgame cards, composed, plus live and legacy rows', async () => {
+    const fr = (type: string, extra: Record<string, unknown> = {}) => ({ type, strength: 0.5, who: 'subject', text: 't', proof_rows: [], ...extra }) as InsightRow['frame'];
+    insightRows = [
+      row('tag', { player_id: '1', importance: 90, frame: fr('season_high') }),
+      row('keep', { player_id: '3', importance: 70, category: 'career_x', frame: fr('career_high') }),
+      row('live', { surface: 'live', scope: 'live', importance: 60 }),
+      row('legacy', { surface: null, frame: null, proof_result: null, importance: 10 }),
+    ];
+    const body = (await loadHistoryGame('640')).body as { game_story: { insight_id: string }[] };
+    expect(body.game_story.map((c) => c.insight_id)).toEqual(['keep', 'live', 'legacy']);
+  });
+
+  it('tags: grey season high, blue where frame.value matches the box, none where it disagrees', async () => {
+    const fr = (stat: string, value: number) => ({ type: 'career_high', strength: 0.5, who: 'subject', text: 't', proof_rows: [], stat, value }) as InsightRow['frame'];
+    insightRows = [row('blue', { player_id: '7', frame: fr('blk', 4) }), row('stale', { player_id: '7', category: 'other', frame: fr('reb', 9) })];
+    const body = (await loadHistoryGame('640')).body as { box_score: { tags: Record<string, Record<string, { tone: string; label: string }>> } };
+    expect(body.box_score.tags['7']).toEqual({
+      PTS: { tone: 'season_high', label: 'Season high' },
+      BLK: { tone: 'rare', label: 'Career high' },
+    });
+  });
+});
+
+describe('blue tags only from cards Game story shows (fix wave B #3)', () => {
+  const PRIOR = { player_id: '7', games: 12, pts: 30, reb: 12, ast: 9, stl: 4, blk: 5, fg3m: 6 };
+  const ch = (stat: string, value: number, strength = 0.5) =>
+    ({ type: 'career_high', strength, who: 'subject', text: 't', proof_rows: [], stat, value }) as InsightRow['frame'];
+  beforeEach(() => {
+    const base = mockSql.getMockImplementation()!;
+    mockSql.mockImplementation(async (...args: SqlArgs) => {
+      const q = args[0].join('?');
+      if (q.includes('GROUP BY pb.player_id')) return [PRIOR];
+      if (q.includes('FROM game_player_box_scores pbs')) {
+        return [{ player_id: '7', display_name: 'A Clipper', team_id: '1', minutes: '30:00', points: 20, blocks: 4, rebounds: 5 }];
+      }
+      return base(...args);
+    });
+  });
+  type Body = { game_story: { insight_id: string; merged_ids: string[] }[]; box_score: { tags: Record<string, Record<string, { tone: string }>> } };
+
+  it('a card merged into a shown card still tags its stat', async () => {
+    insightRows = [
+      row('lead', { player_id: '7', importance: 90, category: 'a', frame: ch('blk', 4, 0.9) }),
+      row('follow', { player_id: '7', importance: 80, category: 'b', frame: ch('pts', 20, 0.5) }),
+    ];
+    const body = (await loadHistoryGame('640')).body as Body;
+    expect(body.game_story.map((c) => c.insight_id)).toEqual(['lead']);
+    expect(body.game_story[0].merged_ids).toEqual(['follow']);
+    expect(Object.keys(body.box_score.tags['7']).sort()).toEqual(['BLK', 'PTS']);
+  });
+
+  it('a bar-passing card the composer leaves out gets no blue tag', async () => {
+    insightRows = [
+      // eight stronger cards about other players fill Game story
+      ...Array.from({ length: 8 }, (_, i) => row(`o${i}`, { player_id: String(100 + i), importance: 90 - i, category: `c${i}`, frame: ch('pts', 30) })),
+      row('left-out', { player_id: '7', importance: 5, category: 'z', frame: ch('reb', 5) }),
+    ];
+    const body = (await loadHistoryGame('640')).body as Body;
+    expect(body.game_story.some((c) => c.insight_id === 'left-out')).toBe(false);
+    expect(body.box_score.tags['7']).toBeUndefined();
   });
 });
 

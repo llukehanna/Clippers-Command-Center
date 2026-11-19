@@ -6,6 +6,7 @@
 import { json, type ApiResult } from './result';
 import { sql } from '@/src/lib/db';
 import { buildMeta, buildError } from '@/src/lib/api-utils';
+import { SURFACES, type Surface } from '../insights/types';
 import { INSIGHT_ROW_COLUMNS, INSIGHT_ROW_FROM, barFilter, type InsightDbRow } from './insight-quality';
 
 const VALID_SCOPES = ['live', 'between_games', 'historical'] as const;
@@ -17,7 +18,8 @@ const NUMERIC_ID = /^\d+$/;
 
 export async function loadInsights(url: URL): Promise<ApiResult> {
   try {
-        const scope = url.searchParams.get('scope');
+    const scope = url.searchParams.get('scope');
+    const surface = url.searchParams.get('surface');
     const gameId = url.searchParams.get('game_id');
     const playerId = url.searchParams.get('player_id');
     const rawLimit = parseInt(url.searchParams.get('limit') ?? '10', 10);
@@ -27,14 +29,21 @@ export async function loadInsights(url: URL): Promise<ApiResult> {
     );
 
     // Validate scope — required param
-    if (!scope) {
+    if (!scope && !surface) {
       return json(
-        buildError('BAD_REQUEST', 'scope param is required'),
+        buildError('BAD_REQUEST', 'scope or surface param is required'),
         { status: 400 }
       );
     }
 
-    if (!VALID_SCOPES.includes(scope as InsightScope)) {
+    if (surface !== null && !SURFACES.includes(surface as Surface)) {
+      return json(
+        buildError('BAD_REQUEST', `surface must be one of: ${SURFACES.join(', ')}`),
+        { status: 400 }
+      );
+    }
+
+    if (scope && !VALID_SCOPES.includes(scope as InsightScope)) {
       return json(
         buildError(
           'BAD_REQUEST',
@@ -64,8 +73,9 @@ export async function loadInsights(url: URL): Promise<ApiResult> {
       SELECT ${sql.unsafe(INSIGHT_ROW_COLUMNS)}
       FROM ${sql.unsafe(INSIGHT_ROW_FROM)}
       WHERE i.is_active = true
-        AND i.scope = ${scope}
-        AND (i.surface IS NULL OR i.surface <> 'player')
+        ${scope ? sql`AND i.scope = ${scope}` : sql``}
+        ${surface ? sql`AND i.surface = ${surface}` : sql``}
+        ${surface === 'player' ? sql`` : sql`AND (i.surface IS NULL OR i.surface <> 'player')`}
         ${gameId ? sql`AND i.game_id = ${gameId}::bigint` : sql``}
         ${playerId ? sql`AND i.player_id = ${playerId}::bigint` : sql``}
       ORDER BY i.importance DESC, i.created_at DESC
@@ -74,6 +84,9 @@ export async function loadInsights(url: URL): Promise<ApiResult> {
 
     // Only cards and notes are shown (Ruling 11); the SQL order (importance DESC, created_at DESC) is kept.
     const { cards, notes } = await barFilter(rows);
+    const verdicts = new Map<string, 'card' | 'note'>();
+    for (const r of cards) verdicts.set(r.insight_id, 'card');
+    for (const r of notes) verdicts.set(r.insight_id, 'note');
     const kept = new Map([...cards, ...notes].map((r) => [r.insight_id, r]));
     const insights = rows
       .filter((r) => kept.has(r.insight_id))
@@ -86,6 +99,14 @@ export async function loadInsights(url: URL): Promise<ApiResult> {
         headline: row.headline,
         detail: row.detail,
         importance: row.importance,
+        surface: row.surface,
+        verdict: verdicts.get(row.insight_id)!,
+        frame: row.frame,
+        evidence: row.evidence,
+        entities: row.entities,
+        updated_at: row.updated_at,
+        player_id: row.player_id,
+        game_id: row.game_id,
         proof: {
           summary: row.category,
           result: row.proof_result,

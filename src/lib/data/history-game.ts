@@ -10,6 +10,8 @@ import { buildMeta, buildError } from '@/src/lib/api-utils';
 import { formatClock } from '@/src/lib/format';
 import { composeFeed, type ComposableInsight } from '@/src/lib/insights/compose';
 import { applyBar, type QualityContext } from '@/src/lib/insights/quality';
+import { toCardData } from '@/src/lib/insights/card';
+import { seasonHighTags, rareTags, mergeTags, type BoxCol, type PriorMax } from './season-highs';
 import { INSIGHT_ROW_COLUMNS, INSIGHT_ROW_FROM, loadQualityContext, type InsightDbRow } from './insight-quality';
 
 // Box score stat columns as defined by API_SPEC.md
@@ -54,22 +56,40 @@ interface PlayerBoxRow {
   ft_attempted: number | null;
 }
 
+/** Postgame rows that pass the quality bar (cards only: tags, merges and cuts are hidden), before composing. */
+export function postgameBarCards(rows: InsightDbRow[], context: ReadonlyMap<string, QualityContext>): InsightDbRow[] {
+  return applyBar(rows.filter((r) => r.surface === 'postgame'), context).cards;
+}
+
 /**
  * The game page's insights (spec §2.7): postgame rows through the composer (at most 8, two per player and per
  * category, same-player rows merged), live and pre-v2 rows as they are. Pregame rows never reach this page: they
- * carry the next game's id, and the game they describe has been played (FW-7, FW-8).
+ * carry the next game's id, and the game they describe has been played (FW-7, FW-8). `barCards` is
+ * postgameBarCards' result when the caller already has it (the bar runs once per request).
  */
-export function gamePageInsights(rows: InsightDbRow[], context: ReadonlyMap<string, QualityContext>): InsightDbRow[] {
-  // Quality bar first (cards only: tags, merges and cuts are hidden), then the composer.
-  const postgame = applyBar(rows.filter((r) => r.surface === 'postgame'), context).cards;
+export function gamePageInsights(
+  rows: InsightDbRow[],
+  context: ReadonlyMap<string, QualityContext>,
+  barCards: InsightDbRow[] = postgameBarCards(rows, context),
+): InsightDbRow[] {
+  const postgame = barCards;
   const others = rows.filter((r) => r.surface !== 'postgame' && r.surface !== 'pregame');
   const items: ComposableInsight[] = postgame.map((r) => ({
     insight_id: r.insight_id, surface: 'postgame', category: r.category, importance: r.importance, headline: r.headline,
     detail: r.detail, game_id: r.game_id, player_id: r.player_id, frame: r.frame, score_parts: r.score_parts,
   }));
   const byId = new Map(postgame.map((r) => [r.insight_id, r]));
-  const composed = composeFeed(items, 'game_page').map((c) => ({ ...byId.get(c.insight_id)!, detail: c.detail }));
+  const composed = composeFeed(items, 'game_page').map((c) => ({ ...byId.get(c.insight_id)!, detail: c.detail, merged_ids: c.merged_ids }));
   return [...composed, ...others].sort((a, b) => b.importance - a.importance || a.insight_id.localeCompare(b.insight_id));
+}
+
+/**
+ * Bar-passing postgame cards that Game story actually shows: a composed card or one merged into it. The box
+ * score's blue tags come only from these, so "has an insight above" is always true.
+ */
+export function shownStoryCards(barCards: InsightDbRow[], storyRows: InsightDbRow[]): InsightDbRow[] {
+  const shown = new Set(storyRows.flatMap((r) => [r.insight_id, ...(r.merged_ids ?? [])]));
+  return barCards.filter((r) => shown.has(r.insight_id));
 }
 
 /** Today's date in Los Angeles (games are dated by arena date; the nightly insights run is keyed to it). */
@@ -198,7 +218,7 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
     }
 
     // Every query below keys on the game id alone, so they all run at once.
-    const [[game], playerRows, periodRows, insightRows] = await Promise.all([
+    const [[game], playerRows, periodRows, insightRows, priorRows] = await Promise.all([
     // Fetch game with team abbreviations
     sql<GameDetailRow[]>`
       SELECT
@@ -271,6 +291,19 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
         AND i.is_active = true
         AND (i.surface IS NULL OR i.surface <> 'pregame')
       ORDER BY i.importance DESC
+    `,
+    // Each player's best earlier finals this season (any game type), for the grey season-high tags. One
+    // statement for everyone in the game; strictly earlier dates, so ties and same-day games never count.
+    sql<PriorMax[]>`
+      SELECT pb.player_id::text AS player_id, COUNT(*)::int AS games,
+             MAX(pb.points)::int AS pts, MAX(pb.rebounds)::int AS reb, MAX(pb.assists)::int AS ast,
+             MAX(pb.steals)::int AS stl, MAX(pb.blocks)::int AS blk, MAX(pb.fg3_made)::int AS fg3m
+      FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
+      WHERE g.season_id = (SELECT season_id FROM games WHERE game_id = ${gameIdParam}::bigint)
+        AND g.game_date < (SELECT game_date FROM games WHERE game_id = ${gameIdParam}::bigint)
+        AND lower(g.status) = 'final'
+        AND pb.player_id IN (SELECT player_id FROM game_player_box_scores WHERE game_id = ${gameIdParam}::bigint)
+      GROUP BY pb.player_id
     `,
     ]);
 
@@ -346,7 +379,11 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
 
     // The page's one quality-context query (fails closed: a failure logs and the dependent rows are cut).
     const insightContext = await loadQualityContext(insightRows);
-    const insights = gamePageInsights(insightRows, insightContext).map((r) => ({
+    // The bar runs once: Game story composes from it, and the box score's blue tags come from what it shows.
+    const barCards = postgameBarCards(insightRows, insightContext);
+    const storyRows = gamePageInsights(insightRows, insightContext, barCards);
+    const gameStory = storyRows.map(toCardData);
+    const insights = storyRows.map((r) => ({
       insight_id: r.insight_id,
       headline: r.headline,
       detail: r.detail,
@@ -356,6 +393,27 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
         result: r.proof_result,
       },
     }));
+
+    // Box score tags: grey season highs (Clippers players) merged with blue tags from the cards Game story shows.
+    // One number conversion for both, so a grey and a blue tag read the same box value.
+    const lacTeamIds = new Set([game.home_is_lac ? game.home_team_id : null, game.away_is_lac ? game.away_team_id : null]);
+    const toNum = (v: number | string | null | undefined) => (v == null ? null : Number(v));
+    const boxNums = playerRows.map((p) => ({
+      player_id: p.player_id, team_is_lac: lacTeamIds.has(p.team_id),
+      pts: toNum(p.points), reb: toNum(p.rebounds), ast: toNum(p.assists),
+      stl: toNum(p.steals), blk: toNum(p.blocks), fg3m: toNum(p.fg3_made),
+    }));
+    const tags = available
+      ? mergeTags(
+          seasonHighTags(boxNums, priorRows),
+          rareTags(
+            shownStoryCards(barCards, storyRows).map(toCardData),
+            new Map(boxNums.map((p) => [p.player_id, {
+              PTS: p.pts, REB: p.reb, AST: p.ast, STL: p.stl, BLK: p.blk, '3PT': p.fg3m,
+            } as Partial<Record<BoxCol, number | null>>])),
+          ),
+        )
+      : {};
 
     // A finished game settles once the nightly insights run after it has landed → a day; a recent final → 5 min
     // (postgame insights land at the buzzer hook and the nightly run); anything else → 60s.
@@ -376,7 +434,8 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
           // [{ period, home, away }]; [] when the line score isn't stored yet
           periods,
         },
-        box_score: boxScore,
+        box_score: { ...boxScore, tags },
+        game_story: gameStory,
         insights,
       },
       {
