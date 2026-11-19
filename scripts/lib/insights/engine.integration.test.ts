@@ -1277,6 +1277,84 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     }
   }, TIMEOUT);
 
+  describe('group season highs (Q2)', () => {
+    /** An independent recount: Clippers regular-season final games in `season` through `date`, that game included. */
+    const clippersGamesThrough = async (teamId: string, season: number, date: string) => (await sql<{ n: number }[]>`
+      SELECT COUNT(*)::int AS n FROM games g
+      WHERE ${teamId}::bigint IN (g.home_team_id, g.away_team_id) AND ${sql.unsafe(REGULAR_SEASON)} AND g.status = 'final'
+        AND g.season_id = ${season}::int AND g.game_date <= ${date}::date`)[0].n;
+    const parts = (d: InsightDraft) => d.proof_result as { part: string; data: Record<string, unknown> }[];
+
+    it('every group season_high the engine writes counts the team game exactly, and is game #MIN_SEASON_HIGH_TEAM_GAMES or later', async () => {
+      const { runEngine } = await import('./engine/run');
+      const { MIN_SEASON_HIGH_TEAM_GAMES } = await import('../../../src/lib/insights/quality');
+      const drafts: InsightDraft[] = [];
+      for (const asOf of ['2025-02-17', '2026-02-25']) {
+        const r = await runEngine({ surfaces: ['postgame', 'season', 'player'], asOf, write: false, postgameDays: 120 });
+        drafts.push(...r.drafts.filter((d) => d.frame.type === 'season_high' && d.frame.who === 'group'));
+      }
+      expect(drafts.length).toBeGreaterThan(0);
+      for (const d of drafts) {
+        const label = `${d.category} | ${d.headline} | ${d.detail}`;
+        // The fact's date: its game's date, or a streak's end (ruling 3).
+        const fact = parts(d).find((p) => p.part === 'fact')!.data;
+        const date = d.game_id
+          ? (await sql<{ d: string }[]>`SELECT game_date::text AS d FROM games WHERE game_id = ${d.game_id}::bigint`)[0].d
+          : String(fact.streak_end);
+        expect(date, label).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        const n = await clippersGamesThrough(d.team_id, d.season_id!, date);
+        const frameRow = parts(d).find((p) => p.part === 'frame');
+        expect(Number(frameRow?.data.team_games), label).toBe(n);
+        expect(n, label).toBeGreaterThanOrEqual(MIN_SEASON_HIGH_TEAM_GAMES);
+      }
+    }, TIMEOUT);
+
+    it('a Clipper season high is a group frame from the Clippers\' game #20 on, not before; team_games is exact', async () => {
+      const { groupSeasonHigh } = await import('./engine/questions');
+      const { runQuery } = await import('./engine/query');
+      const { MIN_SEASON_HIGH_TEAM_GAMES } = await import('../../../src/lib/insights/quality');
+      const ctx = await ctxAt('2026-02-25');
+      const games = await sql<{ game_id: string; d: string }[]>`
+        SELECT g.game_id::text, g.game_date::text AS d FROM games g
+        WHERE ${ctx.lac.teamId}::bigint IN (g.home_team_id, g.away_team_id) AND ${sql.unsafe(REGULAR_SEASON)} AND g.status = 'final'
+          AND g.season_id = ${ctx.season.id}::int
+        ORDER BY g.game_date`;
+      expect(games.length).toBeGreaterThanOrEqual(MIN_SEASON_HIGH_TEAM_GAMES);
+      // A 99-point night beats every Clipper so far: only the team game number decides the frame.
+      for (const nth of [MIN_SEASON_HIGH_TEAM_GAMES - 1, MIN_SEASON_HIGH_TEAM_GAMES]) {
+        const g = games[nth - 1];
+        const fact = makeFact({ ...pointsFact(ctx, g.game_id, g.d), value: 99 });
+        const rows = await runQuery(groupSeasonHigh.build(fact, ctx)!);
+        expect(Number(rows[0].team_games), `game #${nth}`).toBe(await clippersGamesThrough(ctx.lac.teamId, ctx.season.id, g.d));
+        expect(Number(rows[0].team_games), `game #${nth}`).toBe(nth);
+        const framed = groupSeasonHigh.interpret(rows, fact, ctx);
+        if (nth < MIN_SEASON_HIGH_TEAM_GAMES) expect(framed, `game #${nth}`).toBeNull();
+        else expect(framed, `game #${nth}`).toMatchObject({ type: 'season_high', who: 'group' });
+      }
+    }, TIMEOUT);
+
+    it('streak season highs count the Clippers\' games through the streak end exactly (ruling 3)', async () => {
+      const { streakSeasonHigh } = await import('./engine/questions');
+      const { streakDetector } = await import('./engine/detectors/season-streaks');
+      const { runQuery } = await import('./engine/query');
+      const { MIN_SEASON_HIGH_TEAM_GAMES } = await import('../../../src/lib/insights/quality');
+      const ctx = await ctxAt('2026-02-25');
+      const { facts } = await streakDetector('season').run(ctx);
+      let built = 0;
+      for (const f of facts) {
+        const q = streakSeasonHigh.build(f, ctx);
+        if (!q) continue;
+        built++;
+        const rows = await runQuery(q);
+        const n = await clippersGamesThrough(ctx.lac.teamId, f.seasonId!, f.data.end_date!);
+        expect(Number(rows[0].team_games), `${f.subject.name} ${f.stat}`).toBe(n);
+        // The same streak ending before the Clippers' game #20 would be no frame.
+        expect(streakSeasonHigh.interpret([{ ...rows[0], team_games: MIN_SEASON_HIGH_TEAM_GAMES - 1 }], f, ctx)).toBeNull();
+      }
+      expect(built).toBeGreaterThan(0);
+    }, TIMEOUT);
+  });
+
   describe('buzzer pregame pass (FF-2)', () => {
     const REASON = 'buzzer: league sync pending';
     const AS_OF = '2026-02-10';
