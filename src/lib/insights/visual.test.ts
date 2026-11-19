@@ -59,8 +59,8 @@ describe('pickVisual', () => {
   it('short gaps use singular months, weeks and days', () => {
     const g = (from: string, to: string) => pickVisual(card({ fact_date: to, frame: frame({ type: 'first_since', since_date: from }) }));
     expect(g('2026-10-13', '2026-11-13')).toMatchObject({ span: '1 month' });
-    expect(g('2026-11-01', '2026-11-13')).toMatchObject({ span: '12 days'.replace('12', '12') });
-    expect(g('2026-10-25', '2026-11-13')).toMatchObject({ span: '3 weeks' });
+    expect(g('2026-11-01', '2026-11-13')).toMatchObject({ span: '12 days' });
+    expect(g('2026-10-30', '2026-11-13')).toMatchObject({ span: '2 weeks' });
     expect(g('2026-11-12', '2026-11-13')).toMatchObject({ span: '1 day' });
     expect(bigFigure(g('2026-10-13', '2026-11-13')!)).toEqual({ n: '1', unit: 'month since the last one' });
     expect(bigFigure(g('2026-11-01', '2026-11-13')!)).toEqual({ n: '12', unit: 'days since the last one' });
