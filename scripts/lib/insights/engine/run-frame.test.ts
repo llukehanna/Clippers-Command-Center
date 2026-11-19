@@ -7,7 +7,7 @@ import { finalFrame } from './run';
 describe('finalFrame', () => {
   it('stamps the context line plus the fact stat and value', () => {
     const out = finalFrame({ type: 'first_since', strength: 0.5, who: 'subject', text: '', proof_rows: [] }, 'ctx', { stat: 'ast', value: 8 });
-    expect(out).toMatchObject({ text: 'ctx', stat: 'ast', value: 8 });
+    expect(out).toEqual({ type: 'first_since', strength: 0.5, who: 'subject', proof_rows: [], text: 'ctx', stat: 'ast', value: 8 });
   });
 });
 
