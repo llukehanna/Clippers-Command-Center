@@ -6,7 +6,7 @@
 import { gameFactBase, postgameGames } from '../games.js';
 import { runQuery } from '../query.js';
 import { refRate } from '../rates.js';
-import { FLOW_SQL, FLOW_STATS, type FlowKey, type FlowStat } from '../references.js';
+import { FLOW_SERIES_SQL, FLOW_SQL, FLOW_STATS, type FlowKey, type FlowStat } from '../references.js';
 import type { Detector, Fact } from '../types.js';
 
 export { FLOW_SQL };
@@ -24,6 +24,15 @@ export function flowDetector(): Detector {
         const q = { sql: FLOW_SQL, params: [g.gameId, ctx.lac.teamId] };
         const [r] = await runQuery(q);
         if (!r) continue; // no play-by-play for this game: no flow claims from partial data
+        // The evidence's margin series, read apart from the proof (FW-12).
+        let series: [number, number][] | undefined;
+        const loadSeries = async () => {
+          if (series === undefined) {
+            const [s] = await runQuery({ sql: FLOW_SERIES_SQL, params: [g.gameId] });
+            series = Array.isArray(s?.margin_series) ? (s.margin_series as [number, number][]) : [];
+          }
+          return series.length ? series : undefined;
+        };
         for (const [key, stat] of Object.entries(FLOW_STATS) as [FlowKey, FlowStat][]) {
           if (stat.when !== 'any' && stat.when !== g.result) continue;
           const value = Number(r[key]);
@@ -34,7 +43,7 @@ export function flowDetector(): Detector {
             data: {
               thing: stat.thing(value), best: stat.best, by: stat.by,
               lead: Number(r.lac_lead), deficit: Number(r.lac_deficit),
-              margin_series: r.margin_series as [number, number][],
+              margin_series: await loadSeries(),
             },
           };
           const sample = await refRate(fact, ctx);

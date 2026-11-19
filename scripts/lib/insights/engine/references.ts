@@ -284,14 +284,21 @@ export const FLOW_STATS: Record<FlowKey, FlowStat> = {
 
 /**
  * $1 game, $2 LAC. Each stat column is the stat's own expr (the expression its reference sets use too),
- * so the fact value and the frames cannot drift. The margin series rides along so the evidence is in the receipts.
+ * so the fact value and the frames cannot drift. No margin series: it is the evidence, not the claim, so it stays
+ * out of the stored proof (2–3 KB per flow fact in every app payload) and is read by FLOW_SERIES_SQL (FW-12).
  */
 export const FLOW_SQL = `
 SELECT ${(Object.entries(FLOW_STATS) as [FlowKey, FlowStat][]).map(([key, s]) => `(${s.expr('$2')})::int AS ${key}`).join(',\n       ')},
-       gf.lac_largest_lead::int AS lac_lead, gf.lac_largest_deficit::int AS lac_deficit, gf.margin_series::jsonb AS margin_series
+       gf.lac_largest_lead::int AS lac_lead, gf.lac_largest_deficit::int AS lac_deficit
 FROM game_flow gf
 JOIN games g ON g.game_id = gf.game_id
 WHERE gf.game_id = $1::bigint AND $2::bigint IN (g.home_team_id, g.away_team_id)`.trim();
+
+/** $1 game: the margin series a flow fact's evidence (margin_spark) draws; never part of a proof. */
+export const FLOW_SERIES_SQL = `
+SELECT gf.margin_series::jsonb AS margin_series
+FROM game_flow gf
+WHERE gf.game_id = $1::bigint`.trim();
 
 /** Every Clippers regular-season game with play-by-play since `start`; `expr` is built with lac = '$1'. */
 export function clippersFlowRef(expr: string, lacTeamId: string, start: RecordsStart, asOf: string): ProofQuery {

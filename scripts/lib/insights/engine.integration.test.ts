@@ -1471,6 +1471,11 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         data: { margin_series: [[0, 0], [1440, -15], [2880, 3]], lead: 8, deficit: 15 },
       });
       expect(out.facts[0].sample).toMatchObject({ kind: 'rate', k: 0 });
+      // FW-12: the series is the evidence, read apart; the proof's rows never carry it
+      const { runQuery } = await import('./engine/query');
+      const [proofRow] = await runQuery(out.facts[0].proof);
+      expect(proofRow).toMatchObject({ comeback: 15 });
+      expect(Object.keys(proofRow)).not.toContain('margin_series');
       expect(await flowDetector().run({ ...ctx, gameId: comebackGame, pbpRecordsStart: null })).toEqual({ facts: [], gameIds: [] });
     }, TIMEOUT);
 
@@ -1662,7 +1667,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
         for (const [name, d] of Object.entries(complete)) {
           expect(d, `${name} draft`).toBeDefined();
           expect(d!.frame.type, name).toBe('records_best');
-          expect(d!.detail, name).toMatch(/ since 2025-26| in 1 season of records$/);
+          expect(d!.detail, name).toMatch(/( since 2025-26| in 1 season of records) at the time$/);
         }
         expect(complete.clutch!.detail).toMatch(/^Most clutch points in a game by a Clipper/);
 
@@ -1701,7 +1706,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
 
       const complete = await comeback();
       expect(complete.frame.type).toBe('records_best');
-      expect(complete.detail).toMatch(/^Largest comeback win by the Clippers (since 2025-26|in 1 season of records)$/);
+      expect(complete.detail).toMatch(/^Largest comeback win by the Clippers (since 2025-26|in 1 season of records) at the time$/);
 
       const [row] = await sql<{ j: unknown }[]>`SELECT to_jsonb(gf) AS j FROM game_flow gf WHERE game_id = ${early.game_id}::bigint`;
       try {

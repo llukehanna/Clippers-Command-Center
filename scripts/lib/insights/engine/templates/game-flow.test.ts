@@ -5,7 +5,7 @@ import { expectCleanPhrasings, fr, rcFor, say } from '../__fixtures__/sweep';
 import { blockedFrames, frameFact, PBP_RECORD_FRAMES, type Question } from '../framer';
 import { pbpRecordsComplete, PBP_MISSING_SQL } from '../pbp-coverage';
 import { seasonStartDate } from '../records';
-import { FLOW_SQL, FLOW_STATS, refsFor } from '../references';
+import { FLOW_SERIES_SQL, FLOW_SQL, FLOW_STATS, refsFor } from '../references';
 import type { Frame } from '../../../../../src/lib/insights/types';
 import type { ProofQuery } from '../types';
 
@@ -65,6 +65,12 @@ describe('game flow references', () => {
     const refs = refsFor(flow('best_run', 16), makeCtx())!;
     expect(refs).toMatchObject({ start: { season_id: 2019 }, league: null, subject: null, ordinal: true, betterIsHigher: true });
     expect(refsFor(flow('best_run', 16), makeCtx({ pbpRecordsStart: null }))).toBeNull();
+  });
+  it('keeps the margin series out of the proof: it is evidence, read on its own (FW-12)', () => {
+    expect(FLOW_SQL).not.toContain('margin_series');
+    expect(FLOW_SERIES_SQL).toContain('gf.margin_series::jsonb AS margin_series');
+    expect(FLOW_SERIES_SQL).toContain('$1::bigint');
+    expect(FLOW_SERIES_SQL).not.toContain('$2');
   });
   it('uses one expression for the fact column and its reference set', () => {
     for (const [key, stat] of Object.entries(FLOW_STATS)) {
