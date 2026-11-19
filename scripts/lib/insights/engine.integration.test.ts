@@ -1187,7 +1187,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       } finally {
         const had = before.map((r) => r.proof_hash);
         await sql`DELETE FROM insights WHERE proof_hash <> ALL(${had}::text[])`;
-        await sql`UPDATE insights SET is_active = (proof_hash = ANY(${before.filter((r) => r.is_active).map((r) => r.proof_hash)}::text[]))`;
+        await sql`UPDATE insights SET is_active = (proof_hash = ANY(${before.filter((r) => r.is_active).map((r) => r.proof_hash)}::text[])) WHERE proof_hash IS NOT NULL`;
       }
     }, TIMEOUT);
   });

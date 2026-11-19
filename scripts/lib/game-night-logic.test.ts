@@ -9,6 +9,8 @@ import {
   pregameRefreshDue,
   PREGAME_REFRESH_LEAD_MS,
   shouldRunPregame,
+  runnerLogLine,
+  insightsFailureAnnotation,
   HAND_OFF_FAILURES,
   RUNNER_CODE_PATHS,
   type GameNightTick,
@@ -146,6 +148,19 @@ describe('pregameRefreshDue', () => {
     expect(pregameRefreshDue(tip + 60_000, tip, at - 3600_000)).toBe(false);
     expect(pregameRefreshDue(at + 60_000, null, at - 3600_000)).toBe(false);
     expect(pregameRefreshDue(at + 60_000, tip, null)).toBe(false);
+  });
+});
+
+describe('runner log formatting', () => {
+  it('prefixes plain lines but leaves workflow commands at the start of the line', () => {
+    expect(runnerLogLine('hello')).toBe('[game-night] hello');
+    expect(runnerLogLine('::warning title=League data incomplete::x')).toBe('::warning title=League data incomplete::x');
+  });
+  it('annotates only failed hooks, on one line', () => {
+    expect(insightsFailureAnnotation('Postgame insights failed', { status: 'failed', message: 'postgame insights failed: a\nb' }))
+      .toBe('::warning title=Postgame insights failed::postgame insights failed: a b');
+    expect(insightsFailureAnnotation('Postgame insights failed', { status: 'ok', message: '3 postgame insights' })).toBeNull();
+    expect(insightsFailureAnnotation('Pregame insights failed', { status: 'skipped', message: 'x' })).toBeNull();
   });
 });
 

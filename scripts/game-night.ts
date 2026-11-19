@@ -46,7 +46,9 @@ import {
   finalizeRetryDelay,
   handOffMomentOk,
   mainHasNewRunnerCode,
+  insightsFailureAnnotation,
   pregameRefreshDue,
+  runnerLogLine,
   shouldRunPregame,
 } from './lib/game-night-logic.js';
 import { ingestGamePbp } from './lib/pbp/ingest.js';
@@ -125,8 +127,9 @@ async function finalizeWithRetries(gameDbId: string, nbaGameId: string): Promise
  */
 async function runPregame(candidate: LiveCandidate, tip: Date | null): Promise<number | null> {
   if (!shouldRunPregame({ isPreseason: candidate.is_preseason }, tip?.getTime() ?? null, Date.now())) return null;
-  const r = await pregameAtStart((m) => console.log(`[game-night] ${m}`));
-  if (r.status === 'failed') console.warn(`[game-night] ${r.message}`);
+  const r = await pregameAtStart((m) => console.log(runnerLogLine(m)));
+  const failed = insightsFailureAnnotation('Pregame insights failed', r);
+  if (failed) console.log(failed);
   else console.log(`[game-night] Pregame insights: ${r.message}`);
   return Date.now();
 }
@@ -273,8 +276,9 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
         // Postgame insights minutes after the buzzer (spec §5.1). Never throws
         // or hangs (5 min cap); the post-game workflow re-runs every surface
         // once the league syncs.
-        const insights = await postgameAtFinal(candidate.game_id, (m) => console.log(`[game-night] ${m}`));
-        if (insights.status === 'failed') console.warn(`[game-night] ${insights.message}`);
+        const insights = await postgameAtFinal(candidate.game_id, (m) => console.log(runnerLogLine(m)));
+        const failed = insightsFailureAnnotation('Postgame insights failed', insights);
+        if (failed) console.log(failed);
         else console.log(`[game-night] Postgame insights: ${insights.message}`);
       }
       return;

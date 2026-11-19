@@ -117,6 +117,16 @@ export function finalizeRetryDelay(elapsedMs: number, maxRuntimeMs: number): num
 
 // ── Pregame insights ─────────────────────────────────────────────────────────
 
+/** A runner log line; GitHub workflow commands (`::warning …`) must start the line, so they stay unprefixed. */
+export function runnerLogLine(m: string): string {
+  return m.startsWith('::') ? m : `[game-night] ${m}`;
+}
+
+/** The annotation for a failed insights hook, or null when it didn't fail. Newlines would end the command early. */
+export function insightsFailureAnnotation(title: string, r: { status: string; message: string }): string | null {
+  return r.status === 'failed' ? `::warning title=${title}::${r.message.replace(/\r?\n/g, ' ')}` : null;
+}
+
 /** Pregame insights are refreshed once this long before tip (fresher line, injuries in the box scores). */
 export const PREGAME_REFRESH_LEAD_MS = 75 * 60_000;
 
