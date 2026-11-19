@@ -2,10 +2,11 @@
 // The framer's questions (spec §2.3). Each builds one SQL statement (null when
 // it doesn't apply) and interprets its rows into a frame. Pure: queries run
 // through the framer's Runner.
+import { MIN_FIRST_SINCE_GAMES } from '../../../../src/lib/insights/quality';
 import type { Frame } from '../../../../src/lib/insights/types';
 import { seasonLabel } from '../../schedule-utils.js';
 import { REGULAR_SEASON } from '../../sql-fragments.js';
-import { daysBetween, yearsBetween } from './dates.js';
+import { yearsBetween } from './dates.js';
 import type { Question } from './framer.js';
 import { withRef } from './proof.js';
 import { recordsSeasons, seasonStartDate } from './records.js';
@@ -14,18 +15,20 @@ import { FIXED_STRENGTH, clippersRankStrength, rankStrength, sinceStrength } fro
 import type { EngineContext, Fact, FactKind } from './types.js';
 
 export const MIN_LEAGUE_SAMPLE = 2000;
-/**
- * A game-level "first ... since" needs the previous occurrence at least this many days before the fact (FF-3):
- * "His first 23-point game since Nov 13" four days later is true but not news, and would outrank plainer frames.
- */
-export const MIN_FIRST_SINCE_DAYS = 60;
-/** The previous occurrence is far enough back for a game-level first_since. */
-const sinceIsNews = (since: string, fact: Fact) => daysBetween(since, fact.context.date) >= MIN_FIRST_SINCE_DAYS;
 const MIN_CAREER_GAMES = 10;
 const MIN_SUBJECT_SEASON_GAMES = 3;
 const MIN_PREV_SEASON_GAMES = 20;
 
 const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+/**
+ * A dated "first ... since" / "longest ... since" needs at least MIN_FIRST_SINCE_GAMES games strictly between the
+ * previous occurrence and this one (Q1): "His first 23-point game since Nov 13" one game later is true but not news.
+ * The count comes from the frame query's `games_since` column; a row without one fails closed.
+ */
+const gamesSince = (r: Record<string, unknown>): number | null => {
+  const n = num(r.games_since);
+  return n === null || !Number.isFinite(n) || n < MIN_FIRST_SINCE_GAMES ? null : n;
+};
 const round1 = (v: number) => Math.round(v * 10) / 10;
 const better = (a: number, b: number, higher: boolean) => (higher ? a > b : a < b);
 const cmp = (refs: RefSpec) => ({
@@ -120,13 +123,18 @@ export const groupFirstSince: Question = {
     const c = cmp(refs);
     const value = refs.ordinal ? fact.value : 1;
     // Earlier games, plus same-game teammates (they sort first and veto the frame).
-    return withRef(refs.group, (b) => `SELECT subject_id, subject_name, value, game_id, game_date
-FROM ref
-WHERE value ${c.ge} ${b(value, 'float8')}
-  AND (game_date < ${b(fact.context.date, 'text')} OR game_id = ${b(game, 'text')})
-  AND ${notOwn(b, game, fact)}
-ORDER BY game_date DESC, game_id DESC
-LIMIT 1`);
+    // games_since: Clippers games strictly between the previous occurrence and this one (Q1).
+    return withRef(refs.group, (b) => {
+      const v = b(value, 'float8');
+      const d = b(fact.context.date, 'text');
+      return `SELECT p.subject_id, p.subject_name, p.value, p.game_id, p.game_date,
+       (SELECT COUNT(DISTINCT r.game_id) FROM ref r WHERE r.game_date > p.game_date AND r.game_date < ${d})::int AS games_since
+FROM (SELECT subject_id, subject_name, value, game_id, game_date FROM ref
+      WHERE value ${c.ge} ${v}
+        AND (game_date < ${d} OR game_id = ${b(game, 'text')})
+        AND ${notOwn(b, game, fact)}
+      ORDER BY game_date DESC, game_id DESC LIMIT 1) p`;
+    });
   },
   interpret(rows, fact, ctx) {
     const refs = refsFor(fact, ctx);
@@ -136,9 +144,10 @@ LIMIT 1`);
     if (r && String(r.game_date) >= fact.context.date) return null;
     if (!r) return refs.ordinal ? frame('records_best', FIXED_STRENGTH.records_best, 'group', recordsExtra(fact, refs)) : null;
     const since = String(r.game_date);
-    if (!sinceIsNews(since, fact)) return null;
+    const games = gamesSince(r);
+    if (games === null) return null;
     const years = yearsBetween(since, fact.context.date);
-    return frame('first_since', sinceStrength(years), 'group', { since_date: since, years: round1(years), records_label: refs.start.label });
+    return frame('first_since', sinceStrength(years), 'group', { since_date: since, years: round1(years), games_since: games, records_label: refs.start.label });
   },
 };
 
@@ -149,20 +158,26 @@ export const subjectFirstSince: Question = {
     if (!refs?.subject || !refs.start || !seasonOk(fact, refs)) return null;
     const c = cmp(refs);
     const value = refs.ordinal ? fact.value : 1;
-    return withRef(refs.subject, (b) => `SELECT subject_id, subject_name, value, game_id, game_date
-FROM ref
-WHERE value ${c.ge} ${b(value, 'float8')} AND game_date < ${b(fact.context.date, 'text')}
-  AND season_id >= ${b(refs.start!.season_id, 'int')}
-ORDER BY game_date DESC, game_id DESC
-LIMIT 1`);
+    // games_since: the subject's own games (any team) strictly between the previous occurrence and this one (Q1).
+    return withRef(refs.subject, (b) => {
+      const v = b(value, 'float8');
+      const d = b(fact.context.date, 'text');
+      return `SELECT p.subject_id, p.subject_name, p.value, p.game_id, p.game_date,
+       (SELECT COUNT(DISTINCT r.game_id) FROM ref r WHERE r.game_date > p.game_date AND r.game_date < ${d})::int AS games_since
+FROM (SELECT subject_id, subject_name, value, game_id, game_date FROM ref
+      WHERE value ${c.ge} ${v} AND game_date < ${d}
+        AND season_id >= ${b(refs.start!.season_id, 'int')}
+      ORDER BY game_date DESC, game_id DESC LIMIT 1) p`;
+    });
   },
   interpret(rows, fact) {
     const r = rows[0];
     if (!r) return null;
     const since = String(r.game_date);
-    if (!sinceIsNews(since, fact)) return null;
+    const games = gamesSince(r);
+    if (games === null) return null;
     const years = yearsBetween(since, fact.context.date);
-    return frame('first_since', sinceStrength(years), 'subject', { since_date: since, years: round1(years) });
+    return frame('first_since', sinceStrength(years), 'subject', { since_date: since, years: round1(years), games_since: games });
   },
 };
 
@@ -291,7 +306,9 @@ export const streakLongestSince: Question = {
     if (!streakApplies(fact, ctx)) return null;
     return {
       sql: `SELECT s.entity_id::text AS subject_id, COALESCE(p.display_name, 'Clippers') AS subject_name, s.length::int AS length,
-       s.start_date::text AS start_date, s.end_date::text AS end_date
+       s.start_date::text AS start_date, s.end_date::text AS end_date,
+       (SELECT COUNT(*) FROM games g WHERE $3::bigint IN (g.home_team_id, g.away_team_id) AND ${REGULAR_SEASON}
+          AND g.status = 'final' AND g.game_date > s.end_date AND g.game_date < $5::date AND g.game_date <= $7::date)::int AS games_since
 FROM rb_streaks s
 LEFT JOIN players p ON s.entity_type = 'player' AND p.player_id = s.entity_id
 WHERE s.entity_type = $1::text AND s.streak_key = $2::text AND s.team_id = $3::bigint
@@ -312,8 +329,11 @@ LIMIT 1`,
     const since = String(r.end_date);
     // A longer-or-equal streak by another Clipper overlapping this one: not the longest.
     if (fact.data.start_date && since >= fact.data.start_date) return null;
+    // Q1: Clippers games strictly between the previous streak's end and this streak's start.
+    const games = gamesSince(r);
+    if (games === null) return null;
     const years = yearsBetween(since, fact.data.start_date ?? fact.context.date);
-    return frame('longest_since', sinceStrength(years), 'group', { since_date: since, years: round1(years), records_label: start.label });
+    return frame('longest_since', sinceStrength(years), 'group', { since_date: since, years: round1(years), games_since: games, records_label: start.label });
   },
 };
 

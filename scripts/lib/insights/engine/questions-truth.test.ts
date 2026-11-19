@@ -60,7 +60,7 @@ describe('ties never read as a sole rank or best (FW-1)', () => {
 
   it('records_best never fires on a tie: an earlier equal game makes it first_since (the query is >=)', () => {
     expect(groupFirstSince.build(night, ctx)!.sql).toContain('value >= $4::float8');
-    expect(groupFirstSince.interpret([{ subject_id: '7', subject_name: 'Paul George', value: 55, game_id: '400', game_date: '2023-01-05' }], night, ctx))
+    expect(groupFirstSince.interpret([{ subject_id: '7', subject_name: 'Paul George', value: 55, game_id: '400', game_date: '2023-01-05', games_since: 300 }], night, ctx))
       .toMatchObject({ type: 'first_since', since_date: '2023-01-05' });
     // a same-game teammate tying it: no frame at all
     expect(groupFirstSince.interpret([{ subject_id: '2', subject_name: 'Big Clipper', value: 55, game_id: '500', game_date: '2025-11-28' }], night, ctx)).toBeNull();

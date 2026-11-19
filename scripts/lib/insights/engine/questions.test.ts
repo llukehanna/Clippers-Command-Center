@@ -1,11 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { COMBOS, DOUBLE_DOUBLE, PLAYER_GAME_STATS, TEAM_GAME_STATS, TEAM_LINE_SQL, TENS, refAsOf, refsFor } from './references';
 import { FACT_KINDS } from './types';
-import { addDays } from './dates';
 import { phrasingsFor } from './render';
 import { COMPLETED_SEASON } from './__fixtures__/facts';
+import { MIN_FIRST_SINCE_GAMES } from '../../../../src/lib/insights/quality';
 import {
-  MIN_FIRST_SINCE_DAYS,
   careerHigh, clippersRank, groupCompany, groupFirstSince, groupSeasonHigh, leagueRank, milestoneFirstSince,
   nthTime, QUESTIONS_BY_KIND, questionsFor, subjectFirstSince, streakLongestSince, streakSeasonHigh, subjectSeasonHigh, yoyPlayerBest, yoyRecordBest,
 } from './questions';
@@ -48,7 +47,7 @@ describe('game questions', () => {
     expect(q.sql).toContain('game_id = $6::text');
     expect(q.sql).toContain('NOT (game_id = $7::text AND subject_id = $8::text)');
     expect(q.params.slice(3)).toEqual([55, '2025-11-28', '500', '500', night.subject.id]);
-    expect(groupFirstSince.interpret([{ game_date: '2021-03-01', subject_name: 'Paul George', value: 56 }], night, ctx))
+    expect(groupFirstSince.interpret([{ game_date: '2021-03-01', subject_name: 'Paul George', value: 56, games_since: 300 }], night, ctx))
       .toMatchObject({ type: 'first_since', strength: 0.65, who: 'group', since_date: '2021-03-01', records_label: '2020-21' });
     // a same-game teammate (game_date = fact date) who matched or beat it vetoes the frame
     expect(groupFirstSince.interpret([{ game_date: '2025-11-28', subject_name: 'Teammate', value: 60 }], night, ctx)).toBeNull();
@@ -120,10 +119,10 @@ describe('game questions', () => {
     expect(q.sql).toContain('game_date < $4::text');
     expect(q.sql).toContain('season_id >= $5::int');
     expect(q.params).toEqual(['1', '2025-11-28', 55, '2025-11-28', 2020]);
-    expect(subjectFirstSince.interpret([{ game_date: '2021-03-01', value: 56 }], night, ctx))
+    expect(subjectFirstSince.interpret([{ game_date: '2021-03-01', value: 56, games_since: 300 }], night, ctx))
       .toMatchObject({ type: 'first_since', strength: 0.65, who: 'subject', since_date: '2021-03-01' });
-    expect(subjectFirstSince.interpret([{ game_date: '2021-03-01', value: 56 }], night, ctx)!.years).toBeCloseTo(4.7, 1);
-    expect(subjectFirstSince.interpret([{ game_date: '2020-10-01', value: 56 }], night, ctx))
+    expect(subjectFirstSince.interpret([{ game_date: '2021-03-01', value: 56, games_since: 300 }], night, ctx)!.years).toBeCloseTo(4.7, 1);
+    expect(subjectFirstSince.interpret([{ game_date: '2020-10-01', value: 56, games_since: 300 }], night, ctx))
       .toMatchObject({ type: 'first_since', strength: 0.8 });
     expect(subjectFirstSince.interpret([], night, ctx)).toBeNull();
   });
@@ -136,7 +135,7 @@ describe('kind questions', () => {
     expect(streakLongestSince.build(streak, ctx)!.sql).toContain('s.end_date <= $7::date');
     // overlapping longer-or-equal streak by another Clipper ends after this one started: no frame
     expect(streakLongestSince.interpret([{ end_date: '2026-02-20' }], streak, ctx)).toBeNull();
-    expect(streakLongestSince.interpret([{ end_date: '2021-01-10' }], streak, ctx))
+    expect(streakLongestSince.interpret([{ end_date: '2021-01-10', games_since: 300 }], streak, ctx))
       .toMatchObject({ type: 'longest_since', strength: 0.8, since_date: '2021-01-10' });
     expect(streakLongestSince.interpret([], streak, ctx)).toMatchObject({ type: 'records_best', records_seasons: 6 });
     expect(streakLongestSince.build(streak, makeCtx({ recordsStart: null }))).toBeNull();
@@ -254,7 +253,7 @@ describe('postgame references are bounded at the fact date (R2)', () => {
   });
   it('a game tied at display precision is first since the tie, not a record; ties do not inflate a rank', () => {
     const tf = { ...night, kind: 'team_game_stat' as const, stat: 'team_fg_pct', value: 0.584, subject: { type: 'team' as const, id: '1', name: 'Clippers' } };
-    expect(groupFirstSince.interpret([{ subject_id: '1', subject_name: 'Clippers', value: 0.584, game_id: '400', game_date: '2025-03-01' }], tf, ctx))
+    expect(groupFirstSince.interpret([{ subject_id: '1', subject_name: 'Clippers', value: 0.584, game_id: '400', game_date: '2025-03-01', games_since: 300 }], tf, ctx))
       .toMatchObject({ type: 'first_since' });
     expect(groupFirstSince.build(tf, ctx)!.sql).toContain('>=');
     expect(groupSeasonHigh.build(tf, ctx)!.sql).toContain('NOT (game_id =');
@@ -291,16 +290,17 @@ describe('league refs only for the checked season (R6)', () => {
   });
 });
 
-describe('first_since needs a meaningful gap; threes wording (FF-3)', () => {
-  const at = (days: number) => addDays(night.context.date, -days);
-  it('one 60-day minimum for the subject and group game questions', () => {
-    expect(MIN_FIRST_SINCE_DAYS).toBe(60);
+describe('first_since needs 41 games between (Q1)', () => {
+  it('the constant is 41', () => {
+    expect(MIN_FIRST_SINCE_GAMES).toBe(41);
+  });
+  it('gates the subject and group game questions on games_since', () => {
+    const row = { subject_id: '2', subject_name: 'Big Clipper', value: 56, game_id: '400', game_date: '2021-03-01' };
     for (const q of [groupFirstSince, subjectFirstSince]) {
-      expect(q.interpret([{ subject_id: '2', subject_name: 'Big Clipper', value: 56, game_id: '400', game_date: at(59) }], night, ctx), `${q.name} 59`).toBeNull();
-      expect(q.interpret([{ subject_id: '2', subject_name: 'Big Clipper', value: 56, game_id: '400', game_date: at(60) }], night, ctx), `${q.name} 60`)
-        .toMatchObject({ type: 'first_since', since_date: at(60) });
-      expect(q.interpret([{ subject_id: '2', subject_name: 'Big Clipper', value: 56, game_id: '400', game_date: at(400) }], night, ctx), `${q.name} 400`)
-        .toMatchObject({ type: 'first_since', since_date: at(400) });
+      expect(q.interpret([{ ...row, games_since: 40 }], night, ctx), `${q.name} 40`).toBeNull();
+      expect(q.interpret([{ ...row, games_since: 41 }], night, ctx), `${q.name} 41`)
+        .toMatchObject({ type: 'first_since', since_date: '2021-03-01', games_since: 41 });
+      expect(q.interpret([row], night, ctx), `${q.name} no count`).toBeNull();
     }
     // No prior occurrence is still records_best (group) or nothing (subject).
     expect(groupFirstSince.interpret([], night, ctx)).toMatchObject({ type: 'records_best' });
@@ -308,9 +308,33 @@ describe('first_since needs a meaningful gap; threes wording (FF-3)', () => {
   });
   it('the production example (a 23-point game on Nov 17 after one on Nov 13) is not a first_since', () => {
     const f = { ...night, value: 23, context: { ...night.context, date: '2026-11-17' }, seasonId: 2026, window: { ...night.window, season_id: 2026 } };
-    expect(subjectFirstSince.interpret([{ game_date: '2026-11-13', value: 25 }], f, ctx)).toBeNull();
-    expect(groupFirstSince.interpret([{ game_date: '2026-11-13', value: 25, subject_name: 'Big Clipper' }], f, ctx)).toBeNull();
+    expect(subjectFirstSince.interpret([{ game_date: '2026-11-13', value: 25, games_since: 1 }], f, ctx)).toBeNull();
+    expect(groupFirstSince.interpret([{ game_date: '2026-11-13', value: 25, subject_name: 'Big Clipper', games_since: 1 }], f, ctx)).toBeNull();
   });
+  it('the frame query counts games strictly between', () => {
+    const q = subjectFirstSince.build(night, ctx)!;
+    expect(q.sql).toContain('COUNT(DISTINCT r.game_id)');
+    expect(q.sql).toContain('r.game_date > p.game_date');
+    expect(q.sql).toContain('r.game_date < $4::text');
+    expect(q.params).toEqual(['1', '2025-11-28', 55, '2025-11-28', 2020]);
+    const g = groupFirstSince.build(night, ctx)!;
+    expect(g.sql).toContain('COUNT(DISTINCT r.game_id)');
+    expect(g.sql).toContain('r.game_date < $5::text');
+    expect(g.params.slice(3)).toEqual([55, '2025-11-28', '500', '500', night.subject.id]);
+  });
+  it('streakLongestSince counts Clippers games between the streaks', () => {
+    const streak = makeFact();
+    const sql = streakLongestSince.build(streak, ctx)!.sql;
+    expect(sql).toContain('AS games_since');
+    expect(sql).toContain('g.game_date > s.end_date');
+    expect(sql).toContain('g.game_date < $5::date');
+    expect(streakLongestSince.interpret([{ end_date: '2021-01-10', games_since: 40 }], streak, ctx)).toBeNull();
+    expect(streakLongestSince.interpret([{ end_date: '2021-01-10', games_since: 300 }], streak, ctx))
+      .toMatchObject({ type: 'longest_since', games_since: 300 });
+  });
+});
+
+describe('threes wording (FF-3)', () => {
   it('made threes read "game with N+ threes"; other stats keep "N-stat game"', () => {
     expect(PLAYER_GAME_STATS.fg3m.thing(4)).toBe('game with 4+ threes');
     expect(PLAYER_GAME_STATS.pts.thing(23)).toBe('23-point game');
