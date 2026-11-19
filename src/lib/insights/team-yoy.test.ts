@@ -61,6 +61,13 @@ describe('mergeTeamYoy', () => {
     expect(mergeTeamYoy(mixed)!.headline).toBe("The Clippers' league ranks vs last season");
   });
 
+  it('duplicate labels collapse to one entry; the dropped id is still merged', () => {
+    const c = mergeTeamYoy([off(), yoy('off2', 'team_rank_off_rating', 90, 10, 22), net()])!;
+    expect(c.team_yoy?.map((r) => r.label)).toEqual(['Offense', 'Net']);
+    expect(c.insight_id).toBe('off2');
+    expect([...c.merged_ids].sort()).toEqual(['net', 'off']);
+  });
+
   it('two ratings read naturally; zero usable rows is null', () => {
     expect(mergeTeamYoy([off(), net()])!.headline).toBe('The Clippers have slipped in offense and net rating');
     expect(mergeTeamYoy([])).toBeNull();

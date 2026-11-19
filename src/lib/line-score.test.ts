@@ -1,7 +1,7 @@
 // src/lib/line-score.test.ts — buildLineScore (history game `periods`).
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('@/src/lib/db', () => ({ sql: vi.fn() }));
+vi.mock('@/src/lib/db', () => ({ sql: vi.fn(), LAC_NBA_TEAM_ID: 13 }));
 
 import { buildLineScore } from './data/history-game';
 

@@ -58,11 +58,19 @@ function list(items: string[]): string {
 }
 
 export function mergeTeamYoy(rows: CardSourceRow[]): InsightCardData | null {
-  const parsed: Array<{ row: CardSourceRow; yoy: TeamYoyRow }> = [];
+  // One entry per label: keep the highest-importance row, then the most recently updated.
+  const byLabel = new Map<string, { row: CardSourceRow; yoy: TeamYoyRow }>();
+  const dupes: string[] = [];
   for (const row of rows) {
     const yoy = teamYoyRow(row);
-    if (yoy) parsed.push({ row, yoy });
+    if (!yoy) continue;
+    const cur = byLabel.get(yoy.label);
+    if (!cur) { byLabel.set(yoy.label, { row, yoy }); continue; }
+    const wins = row.importance > cur.row.importance
+      || (row.importance === cur.row.importance && row.updated_at > cur.row.updated_at);
+    if (wins) { dupes.push(cur.row.insight_id); byLabel.set(yoy.label, { row, yoy }); } else dupes.push(row.insight_id);
   }
+  const parsed = [...byLabel.values()];
   if (parsed.length === 0) return null;
   parsed.sort((a, b) => ORDER.indexOf(a.yoy.label) - ORDER.indexOf(b.yoy.label));
 
@@ -91,7 +99,7 @@ export function mergeTeamYoy(rows: CardSourceRow[]): InsightCardData | null {
     proof: [],
     importance: Math.max(...parsed.map((p) => p.row.importance)),
     updated_at: parsed.map((p) => p.row.updated_at).sort().at(-1) ?? base.updated_at,
-    merged_ids: parsed.filter((p) => p.row !== base).map((p) => p.row.insight_id),
+    merged_ids: [...parsed.filter((p) => p.row !== base).map((p) => p.row.insight_id), ...dupes],
     team_yoy: yoy,
   };
 }

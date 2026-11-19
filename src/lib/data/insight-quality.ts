@@ -16,12 +16,14 @@ export const INSIGHT_ROW_COLUMNS = `i.insight_id::text AS insight_id, i.scope::t
   to_char(i.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS updated_at,
   ig.game_date::text AS game_date,
   ip.nba_person_id::int AS nba_person_id, ip.display_name::text AS player_name,
-  (CASE WHEN ig.home_team_id = i.team_id THEN iat.abbreviation ELSE iht.abbreviation END)::text AS opp_abbr,
-  (ig.home_team_id = i.team_id)::boolean AS lac_home,
-  (CASE WHEN ig.home_team_id = i.team_id THEN ig.home_score ELSE ig.away_score END)::int AS lac_score,
-  (CASE WHEN ig.home_team_id = i.team_id THEN ig.away_score ELSE ig.home_score END)::int AS opp_score`;
+  (CASE WHEN ig.home_team_id = ilac.team_id THEN iat.abbreviation WHEN ig.away_team_id = ilac.team_id THEN iht.abbreviation END)::text AS opp_abbr,
+  (CASE WHEN ig.home_team_id = ilac.team_id THEN true WHEN ig.away_team_id = ilac.team_id THEN false END)::boolean AS lac_home,
+  (CASE WHEN ig.home_team_id = ilac.team_id THEN ig.home_score WHEN ig.away_team_id = ilac.team_id THEN ig.away_score END)::int AS lac_score,
+  (CASE WHEN ig.home_team_id = ilac.team_id THEN ig.away_score WHEN ig.away_team_id = ilac.team_id THEN ig.home_score END)::int AS opp_score`;
 
+// The Clippers' side comes from the Clippers' own team row, never from insights.team_id.
 export const INSIGHT_ROW_FROM = `insights i LEFT JOIN games ig ON ig.game_id = i.game_id
+  LEFT JOIN teams ilac ON ilac.nba_team_id = ${Number(LAC_NBA_TEAM_ID)}
   LEFT JOIN players ip ON ip.player_id = i.player_id
   LEFT JOIN teams iht ON iht.team_id = ig.home_team_id
   LEFT JOIN teams iat ON iat.team_id = ig.away_team_id`;

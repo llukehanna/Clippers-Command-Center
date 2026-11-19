@@ -75,7 +75,7 @@ function humanize(category: string): string {
 }
 
 function gameLabel(row: CardSourceRow, date: string | null): string | null {
-  if (!row.game_id || !date || !row.opp_abbr) return null;
+  if (!row.game_id || !date || !row.opp_abbr || row.lac_home === null) return null;
   const when = fmtShort(date);
   const where = row.lac_home === false ? `at ${row.opp_abbr}` : `vs ${row.opp_abbr}`;
   if (row.surface === 'postgame' && row.lac_score !== null && row.opp_score !== null) {
@@ -86,7 +86,7 @@ function gameLabel(row: CardSourceRow, date: string | null): string | null {
 }
 
 function hrefFor(row: CardSourceRow): string | null {
-  if (row.game_id && row.surface === 'postgame') return `/history/${row.game_id}`;
+  if (row.game_id && (row.surface === 'postgame' || row.surface === null)) return `/history/${row.game_id}`;
   if (row.game_id && row.surface === 'pregame') return `/schedule/${row.game_id}`;
   if (row.surface === 'player' && row.player_id) return `/players/${row.player_id}`;
   return null;

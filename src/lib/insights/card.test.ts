@@ -50,6 +50,20 @@ describe('toCardData', () => {
     expect(c.context_label).toBe('Nov 17 · vs CHA');
   });
 
+  it('lac_home null with a game gives no game line', () => {
+    const c = toCardData(row({ lac_home: null, lac_score: null, opp_score: null, category: 'season_best' }));
+    expect(c.context_label).toBe('Season high');
+  });
+
+  it('Clippers home game (loader fields from the Clippers perspective) reads vs OPP with W/L', () => {
+    const c = toCardData(row({ lac_home: true, lac_score: 98, opp_score: 110, opp_abbr: 'DEN' }));
+    expect(c.context_label).toBe('Nov 15 · L 98-110 vs DEN');
+  });
+
+  it('null-surface row with a game links to the game page', () => {
+    expect(toCardData(row({ surface: null })).href).toBe('/history/4531');
+  });
+
   it('unmapped category is humanized', () => {
     const c = toCardData(row({ surface: 'season', game_id: null, game_date: null, category: 'team_run', proof_result: [] }));
     expect(c.context_label).toBe('Team run');
