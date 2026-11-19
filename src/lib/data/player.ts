@@ -143,29 +143,30 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
     // season still shows last season instead of an empty page.
     const displaySeasonId = await getDisplaySeasonId();
     let seasonId = seasonParam ?? displaySeasonId;
-    if (seasonParam === undefined) {
-      const [latest] = await sql<{ season_id: number | null }[]>`
-        SELECT MAX(g.season_id)::int AS season_id
-        FROM game_player_box_scores gpbs
-        JOIN games g ON g.game_id = gpbs.game_id
-        WHERE gpbs.player_id = ${player_id}::bigint
-          AND g.season_id <= ${displaySeasonId}
-          AND lower(g.status) = 'final'
-      `;
-      if (latest?.season_id != null) seasonId = latest.season_id;
-    }
-
-    // 1. Fetch the player
-    const playerRows = await sql<
-      Array<{ player_id: string; display_name: string; position: string | null }>
-    >`
-      SELECT
-        player_id::text,
-        display_name,
-        position
-      FROM players
-      WHERE player_id = ${player_id}::bigint
-    `;
+    // The player and their latest season are independent lookups: run them together.
+    const [latestRows, playerRows] = await Promise.all([
+      seasonParam === undefined
+        ? sql<{ season_id: number | null }[]>`
+            SELECT MAX(g.season_id)::int AS season_id
+            FROM game_player_box_scores gpbs
+            JOIN games g ON g.game_id = gpbs.game_id
+            WHERE gpbs.player_id = ${player_id}::bigint
+              AND g.season_id <= ${displaySeasonId}
+              AND lower(g.status) = 'final'
+          `
+        : Promise.resolve([] as { season_id: number | null }[]),
+      // 1. Fetch the player
+      sql<Array<{ player_id: string; display_name: string; position: string | null }>>`
+        SELECT
+          player_id::text,
+          display_name,
+          position
+        FROM players
+        WHERE player_id = ${player_id}::bigint
+      `,
+    ]);
+    const latest = latestRows[0];
+    if (seasonParam === undefined && latest?.season_id != null) seasonId = latest.season_id;
 
     if (playerRows.length === 0) {
       return json(buildError('NOT_FOUND', 'Player not found'), { status: 404 });

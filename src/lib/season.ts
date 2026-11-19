@@ -36,7 +36,25 @@ export function nextDraftYear(now: Date = new Date()): number {
  * opener is finalized. (Flipping earlier would show an empty roster and 0-0:
  * rosters are built from games played.) The schedule is season-independent.
  */
+// Most pages ask for this, and it changes about once a year (the morning after
+// the opener is finalized), so the resolved value is kept for a few minutes.
+// Only the settled number is shared, never a pending query (see src/lib/ui/api.ts).
+const DISPLAY_SEASON_TTL_MS = 5 * 60_000;
+let displaySeasonMemo: { at: number; value: number } | null = null;
+
+/** Test hook. */
+export function resetDisplaySeasonMemo() {
+  displaySeasonMemo = null;
+}
+
 export async function getDisplaySeasonId(): Promise<number> {
+  if (displaySeasonMemo && Date.now() - displaySeasonMemo.at < DISPLAY_SEASON_TTL_MS) return displaySeasonMemo.value;
+  const value = await queryDisplaySeasonId();
+  displaySeasonMemo = { at: Date.now(), value };
+  return value;
+}
+
+async function queryDisplaySeasonId(): Promise<number> {
   const rows = await sql<{ display_season_id: number | null }[]>`
     SELECT MAX(g.season_id)::int AS display_season_id
     FROM games g

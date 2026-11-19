@@ -31,10 +31,6 @@ interface GameDetailRow {
   away_is_lac: boolean;
 }
 
-interface BoxScoreCountRow {
-  cnt: number;
-}
-
 interface PlayerBoxRow {
   player_id: string;
   nba_player_id: number | null;
@@ -214,8 +210,10 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
       );
     }
 
+    // Every query below keys on the game id alone, so they all run at once.
+    const [[game], playerRows, periodRows, insightRows] = await Promise.all([
     // Fetch game with team abbreviations
-    const [game] = await sql<GameDetailRow[]>`
+    sql<GameDetailRow[]>`
       SELECT
         g.game_id::text       AS game_id,
         g.game_date::text     AS game_date,
@@ -242,37 +240,8 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
        AND (ae.last_season_id IS NULL OR g.season_id <= ae.last_season_id)
       WHERE g.game_id = ${gameIdParam}::bigint
       LIMIT 1
-    `;
-
-    if (!game) {
-      return json(
-        buildError('NOT_FOUND', `Game ${gameIdParam} not found`),
-        { status: 404 }
-      );
-    }
-
-    // Check box score availability: any rows in game_player_box_scores for this game?
-    const [countRow] = await sql<BoxScoreCountRow[]>`
-      SELECT COUNT(*)::int AS cnt
-      FROM game_player_box_scores
-      WHERE game_id = ${gameIdParam}::bigint
-    `;
-    const available = (countRow?.cnt ?? 0) > 0;
-
-    let boxScore: {
-      columns: string[];
-      teams: Array<{
-        team_abbr: string;
-        is_lac: boolean;
-        players: ReturnType<typeof mapPlayerRow>[];
-        totals: Record<string, unknown>;
-      }>;
-      available: boolean;
-    };
-
-    if (available) {
-      // Fetch all player box score rows for this game
-      const playerRows = await sql<PlayerBoxRow[]>`
+    `,
+    sql<PlayerBoxRow[]>`
         SELECT
           p.player_id::text  AS player_id,
           p.nba_player_id,
@@ -297,7 +266,63 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
         JOIN players p ON pbs.player_id = p.player_id
         WHERE pbs.game_id = ${gameIdParam}::bigint
         ORDER BY pbs.team_id, pbs.points DESC NULLS LAST
-      `;
+      `,
+    sql<{ is_home: boolean; periods: unknown }[]>`
+      -- Rows written before the raw_payload fix hold the JSON as a string scalar.
+      SELECT is_home,
+             (CASE WHEN jsonb_typeof(raw_payload) = 'string' THEN (raw_payload #>> '{}')::jsonb
+                   ELSE raw_payload END) -> 'periods' AS periods
+      FROM game_team_box_scores
+      WHERE game_id = ${gameIdParam}::bigint
+    `,
+    // Pregame rows carry the NEXT game's id: on a played game's page they would make present-tense
+    // claims the game itself has settled.
+    sql<InsightRow[]>`
+      SELECT
+        insight_id::text  AS insight_id,
+        scope,
+        surface,
+        category,
+        headline,
+        detail,
+        importance,
+        proof_result,
+        game_id::text     AS game_id,
+        player_id::text   AS player_id,
+        frame,
+        score_parts
+      FROM insights
+      WHERE game_id = ${gameIdParam}::bigint
+        AND is_active = true
+        AND (surface IS NULL OR surface <> 'pregame')
+      ORDER BY importance DESC
+    `,
+    ]);
+
+    if (!game) {
+      return json(
+        buildError('NOT_FOUND', `Game ${gameIdParam} not found`),
+        { status: 404 }
+      );
+    }
+
+    // Box score available when the game has any player rows.
+    const available = playerRows.length > 0;
+
+    let boxScore: {
+      columns: string[];
+      teams: Array<{
+        team_abbr: string;
+        is_lac: boolean;
+        players: ReturnType<typeof mapPlayerRow>[];
+        totals: Record<string, unknown>;
+      }>;
+      available: boolean;
+    };
+
+    if (available) {
+      // Fetch all player box score rows for this game
+      // playerRows: fetched with the game above.
 
       // Split players by team
       const homePlayers = playerRows.filter((p) => p.team_id === game.home_team_id);
@@ -335,41 +360,14 @@ export async function loadHistoryGame(gameIdParam: string): Promise<ApiResult> {
 
     // Line score from the team box scores' raw_payload (stored at finalization;
     // older games are backfilled nightly by scripts/backfill-periods.ts).
-    const periodRows = await sql<{ is_home: boolean; periods: unknown }[]>`
-      -- Rows written before the raw_payload fix hold the JSON as a string scalar.
-      SELECT is_home,
-             (CASE WHEN jsonb_typeof(raw_payload) = 'string' THEN (raw_payload #>> '{}')::jsonb
-                   ELSE raw_payload END) -> 'periods' AS periods
-      FROM game_team_box_scores
-      WHERE game_id = ${gameIdParam}::bigint
-    `;
+    // periodRows: fetched with the game above.
     const periods = buildLineScore(
       periodRows.find((r) => r.is_home)?.periods,
       periodRows.find((r) => !r.is_home)?.periods
     );
 
-    // Query insights from `insights` table (NOT `generated_insights`). Pregame rows carry the NEXT game's id:
-    // on a played game's page they would make present-tense claims the game itself has settled.
-    const insightRows = await sql<InsightRow[]>`
-      SELECT
-        insight_id::text  AS insight_id,
-        scope,
-        surface,
-        category,
-        headline,
-        detail,
-        importance,
-        proof_result,
-        game_id::text     AS game_id,
-        player_id::text   AS player_id,
-        frame,
-        score_parts
-      FROM insights
-      WHERE game_id = ${gameIdParam}::bigint
-        AND is_active = true
-        AND (surface IS NULL OR surface <> 'pregame')
-      ORDER BY importance DESC
-    `;
+    // Query insights from `insights` table (NOT `generated_insights`)
+    // insightRows: fetched with the game above.
 
     const insights = gamePageInsights(insightRows).map((r) => ({
       insight_id: r.insight_id,

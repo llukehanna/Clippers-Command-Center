@@ -34,7 +34,10 @@ beforeEach(() => {
   mockSql.mockImplementation(async (...args: SqlArgs) => {
     const q = args[0].join('?');
     if (q.includes('FROM games g')) return [game];
-    if (q.includes('COUNT(*)::int AS cnt')) return [{ cnt: 20 }];
+    // Box scores are available when the game has player rows (loaded alongside the game).
+    if (q.includes('FROM game_player_box_scores pbs')) {
+      return [{ player_id: '7', display_name: 'A Clipper', team_id: '1', minutes: '30:00', points: 20 }];
+    }
     if (q.includes('FROM insights')) return insightRows;
     return [];
   });
