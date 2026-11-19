@@ -7,6 +7,7 @@ import type { InjuryEntry } from '../espn/injuries'
 import type { LineupState, LivePhase, LivePlay, LiveFlow, LiveWinProb } from '../types/live-state'
 import type { PlayerInjury } from '../types/live'
 import type { Shot } from '../shots'
+import type { InsightCardData, MatchupNote } from '../insights/card'
 import type { RecordNote } from '../record-notes'
 
 export type { InsightCardData, MatchupNote } from '../insights/card'
@@ -81,6 +82,14 @@ export interface Insight {
   proof?: InsightProof | null
 }
 
+export interface HomeFeeds {
+  hero: InsightCardData | null
+  recent: InsightCardData[]
+  season: InsightCardData[]
+  scouting: InsightCardData[]
+  notes: MatchupNote[]
+}
+
 export interface HomePayload {
   meta: MetaEnvelope & { last_sync_at?: string | null }
   team_snapshot: TeamSnapshot | null
@@ -88,6 +97,7 @@ export interface HomePayload {
   upcoming_schedule: ScheduleGame[]
   player_trends: PlayerTrend[]
   insights: Insight[]
+  feeds: HomeFeeds
 }
 
 export interface SchedulePayload {

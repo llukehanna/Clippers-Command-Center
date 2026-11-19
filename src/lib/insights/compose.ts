@@ -4,15 +4,16 @@
 // request time (a few dozen rows per surface), never stored. Pure.
 import type { Frame, SalienceClass, Surface } from './types';
 
-export type Placement = 'home_hero' | 'last_game' | 'up_next' | 'season_feed' | 'game_page' | 'player_page' | 'live';
+export type Placement = 'home_hero' | 'last_game' | 'recent_games' | 'up_next' | 'season_feed' | 'game_page' | 'player_page' | 'live';
 
 export const FEED_SIZES: Record<Placement, number> = {
-  home_hero: 1, last_game: 3, up_next: 3, season_feed: 12, game_page: 8, player_page: 6, live: Number.POSITIVE_INFINITY,
+  home_hero: 1, last_game: 3, recent_games: 5, up_next: 3, season_feed: 12, game_page: 8, player_page: 6, live: Number.POSITIVE_INFINITY,
 };
 
 export const PLACEMENT_SURFACES: Record<Placement, readonly Surface[]> = {
   home_hero: ['postgame', 'pregame', 'season'],
   last_game: ['postgame'],
+  recent_games: ['postgame'],
   up_next: ['pregame'],
   season_feed: ['season'],
   game_page: ['postgame'],

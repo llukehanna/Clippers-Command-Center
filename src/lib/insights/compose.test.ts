@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { composeFeed, mergeSameGamePlayer, type ComposableInsight } from './compose';
+import { composeFeed, FEED_SIZES, PLACEMENT_SURFACES, mergeSameGamePlayer, type ComposableInsight } from './compose';
 
 const item = (id: string, over: Partial<ComposableInsight> = {}): ComposableInsight => ({
   insight_id: id, surface: 'season', category: 'streak', importance: 50, headline: id, detail: `${id} detail`,
@@ -100,5 +100,14 @@ describe('composeFeed Q4 and generics', () => {
 
   it('keeps extra fields', () => {
     expect(composeFeed([{ ...item('x'), extra: 1 }], 'season_feed')[0].extra).toBe(1);
+  });
+});
+
+describe('recent_games placement', () => {
+  it('holds up to 5 postgame items', () => {
+    expect(FEED_SIZES.recent_games).toBe(5);
+    expect(PLACEMENT_SURFACES.recent_games).toEqual(['postgame']);
+    const many = Array.from({ length: 9 }, (_, i) => item(`r${i}`, { surface: 'postgame', category: `c${i}`, player_id: `${i}`, game_id: `${i}`, importance: 90 - i }));
+    expect(ids(composeFeed(many, 'recent_games'))).toHaveLength(5);
   });
 });
