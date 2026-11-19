@@ -139,6 +139,32 @@ describe('quality bar', () => {
     expect(contextNeeds([row({ frame: frame({ type: 'career_high' }) })])).toEqual([]);
   });
 
+  it('Q6 streak without a numeric count is cut', () => {
+    const base = { category: 'streak', frame: frame({ type: 'records_best', who: 'group' }) };
+    expect(verdict(row({ ...base, proof_result: [{ part: 'fact', data: {} }] }))).toBe('cut');
+    expect(verdict(row({ ...base, proof_result: [] }))).toBe('cut');
+  });
+
+  it('yoy jump is direction-agnostic', () => {
+    const mk = (before: number, after: number, betterIsHigher = true) => row({
+      surface: 'season', category: 'yoy_change', player_id: '7', frame: frame({ type: 'none' }),
+      evidence: { type: 'delta', before: { value: before, label: 'a' }, after: { value: after, label: 'b' }, betterIsHigher },
+    });
+    expect(verdict(mk(10, 7))).toBe('card');
+    expect(verdict(mk(10, 7, false))).toBe('card');
+    expect(verdict(mk(10, 8.2))).toBe('cut');
+    expect(verdict(mk(10, 11.8))).toBe('cut');
+    expect(verdict(mk(0, 5))).toBe('cut');
+  });
+
+  it('applyBar resolves first_since through the context map', () => {
+    const r = row({ insight_id: 'fs' });
+    expect(applyBar([r], new Map([['fs', ctx(45)]])).cards).toHaveLength(1);
+    const low = applyBar([r], new Map([['fs', ctx(40)]]));
+    expect(low.cards).toHaveLength(0);
+    expect(low.tags.length + low.notes.length + low.merged.length).toBe(0);
+  });
+
   it('applyBar sorts verdicts and keeps order', () => {
     const card = row({ insight_id: 'card', frame: frame({ type: 'career_high' }) });
     const tag = row({ insight_id: 'tag', frame: frame({ type: 'season_high' }) });

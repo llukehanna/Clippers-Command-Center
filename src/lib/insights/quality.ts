@@ -90,8 +90,9 @@ export function careerBestHolds(games: number, value: number, prior: number): bo
 }
 
 export function yoyJump(e: Evidence | null): number | null {
-  if (!e || e.type !== 'delta' || !(e.before.value > 0)) return null;
-  return (e.after.value - e.before.value) / e.before.value;
+  if (!e || e.type !== 'delta' || e.before.value === 0) return null;
+  // Magnitude only: a 30% drop is as newsworthy as a 30% rise.
+  return Math.abs(e.after.value - e.before.value) / Math.abs(e.before.value);
 }
 
 const isPlayerYoy = (r: BarRow) => r.category === 'yoy_change' && r.player_id !== null;
@@ -126,7 +127,7 @@ function decide(row: BarRow, ctx?: QualityContext): Decision {
   }
   if (row.category === 'streak') {
     const s = num(factRow(row.proof_result)?.streak);
-    if (s !== null && s < MIN_STREAK_GAMES) return 'cut';
+    if (s === null || s < MIN_STREAK_GAMES) return 'cut';
   }
   if ((f.type === 'first_since' || f.type === 'longest_since') && f.since_date) {
     const gs = f.games_since ?? ctx?.games_since ?? null;
