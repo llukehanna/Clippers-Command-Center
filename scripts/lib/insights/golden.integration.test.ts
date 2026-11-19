@@ -6,8 +6,8 @@
 // The last fixture test mutates data; keep it last.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import type { Surface } from '../../../src/lib/insights/types';
-import { careerBestHolds, factRow, MIN_FIRST_SINCE_GAMES, MIN_STREAK_GAMES, verdict, type BarRow } from '../../../src/lib/insights/quality';
+import type { Frame, Surface } from '../../../src/lib/insights/types';
+import { careerBestHolds, contextNeeds, factRow, MIN_FIRST_SINCE_GAMES, MIN_STREAK_GAMES, verdict, type BarRow } from '../../../src/lib/insights/quality';
 import { EXEMPT_FRAMES, EXEMPT_KINDS } from './engine/score';
 import type { EngineResult } from './engine/run';
 import type { InsightDraft } from './engine/types';
@@ -137,6 +137,37 @@ describe.skipIf(!url)(`insight engine golden expectations (${REAL ? 'real data, 
           expect(careerBestHolds(games, f.value!, f.prior_value!), label).toBe(true);
         }
       }
+    });
+
+    it('G18b a context-needing frame on any engine draft finds its dates (rows are never cut at load for a missing date)', () => {
+      // The fixture run emits few first_since / group season_high frames, so give every real draft each needing frame
+      // (no games_since, as a legacy row) and check the draft's own fact row supplies the dates the loaders query by.
+      const needing: Frame[] = [
+        { type: 'first_since', strength: 0.5, who: 'subject', since_date: '2020-01-01', text: '', proof_rows: [] },
+        { type: 'longest_since', strength: 0.5, who: 'group', since_date: '2020-01-01', text: '', proof_rows: [] },
+        { type: 'season_high', strength: 0.6, who: 'group', text: '', proof_rows: [] },
+      ];
+      let needs = 0;
+      for (const d of all.drafts) {
+        // Dated drafts only: a game's facts or a streak. Season totals and standings never get a since/high frame.
+        if (d.game_id === null && d.category !== 'streak') continue;
+        if (d.surface === 'pregame') continue;
+        for (const frame of needing) {
+          const label = `${d.category} | ${d.headline} | ${frame.type}`;
+          const got = contextNeeds([{ ...toBarRow(d), frame }]);
+          expect(got, label).toHaveLength(1);
+          needs += 1;
+          const n = got[0];
+          if (frame.type === 'season_high') {
+            expect(n.at_date, label).not.toBeNull();
+            expect(n.season_id, label).not.toBeNull();
+          } else {
+            expect(n.until_date, label).not.toBeNull();
+            expect(n.since_date, label).not.toBeNull();
+          }
+        }
+      }
+      expect(needs).toBeGreaterThan(0);
     });
   });
 
