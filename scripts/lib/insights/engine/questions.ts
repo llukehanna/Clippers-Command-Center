@@ -2,7 +2,7 @@
 // The framer's questions (spec §2.3). Each builds one SQL statement (null when
 // it doesn't apply) and interprets its rows into a frame. Pure: queries run
 // through the framer's Runner.
-import { MIN_FIRST_SINCE_GAMES } from '../../../../src/lib/insights/quality';
+import { MIN_FIRST_SINCE_GAMES, MIN_SEASON_HIGH_TEAM_GAMES } from '../../../../src/lib/insights/quality';
 import type { Frame } from '../../../../src/lib/insights/types';
 import { seasonLabel } from '../../schedule-utils.js';
 import { REGULAR_SEASON } from '../../sql-fragments.js';
@@ -28,6 +28,15 @@ const num = (v: unknown): number | null => (v === null || v === undefined ? null
 const gamesSince = (r: Record<string, unknown>): number | null => {
   const n = num(r.games_since);
   return n === null || !Number.isFinite(n) || n < MIN_FIRST_SINCE_GAMES ? null : n;
+};
+/**
+ * "The most ... by a Clipper this season" needs the fact's game to be the Clippers' game #MIN_SEASON_HIGH_TEAM_GAMES
+ * or later (Q2): a season high three games in is true but not news. The count comes from the frame query's
+ * `team_games` column; a row without one fails closed.
+ */
+const teamGamesOk = (r: Record<string, unknown> | undefined): boolean => {
+  const n = num(r?.team_games);
+  return n !== null && Number.isFinite(n) && n >= MIN_SEASON_HIGH_TEAM_GAMES;
 };
 const round1 = (v: number) => Math.round(v * 10) / 10;
 const better = (a: number, b: number, higher: boolean) => (higher ? a > b : a < b);
@@ -218,15 +227,29 @@ function seasonHigh(who: 'group' | 'subject'): Question {
       const game = gameOf(fact);
       if (!refs || !ref || !refs.ordinal || !seasonOk(fact, refs) || !game) return null;
       const c = cmp(refs);
-      return withRef(ref, (b) => `SELECT ${c.agg}(value)::float8 AS best, COUNT(*)::int AS games
+      if (who === 'subject') {
+        return withRef(ref, (b) => `SELECT ${c.agg}(value)::float8 AS best, COUNT(*)::int AS games
 FROM ref
 WHERE season_id = ${b(fact.seasonId!, 'int')} AND ${notOwn(b, game, fact)}`);
+      }
+      // Q2: Clippers games this season through the fact's date, its own game included (the ref set reads as of the
+      // game date, so it holds that game); the season_id filter scopes the count to the fact's season.
+      return withRef(ref, (b) => {
+        const season = b(fact.seasonId!, 'int');
+        const others = notOwn(b, game, fact);
+        return `SELECT ${c.agg}(value) FILTER (WHERE ${others})::float8 AS best,
+       (COUNT(*) FILTER (WHERE ${others}))::int AS games,
+       (COUNT(DISTINCT game_id) FILTER (WHERE game_date <= ${b(fact.context.date, 'text')}))::int AS team_games
+FROM ref
+WHERE season_id = ${season}`;
+      });
     },
     interpret(rows, fact, ctx) {
       const refs = refsFor(fact, ctx);
       const best = num(rows[0]?.best);
       const games = num(rows[0]?.games) ?? 0;
       if (!refs || best === null || games < (who === 'group' ? 1 : MIN_SUBJECT_SEASON_GAMES)) return null;
+      if (who === 'group' && !teamGamesOk(rows[0])) return null;
       // Strictly better: a tie with another game is not "the most" (FW-1).
       return better(fact.value, best, refs.betterIsHigher) ? frame('season_high', FIXED_STRENGTH.season_high, who) : null;
     },
@@ -343,17 +366,23 @@ export const streakSeasonHigh: Question = {
     const start = ctx.recordsStart;
     if (fact.kind !== 'streak' || !start || fact.seasonId === null || fact.seasonId < start.season_id || !fact.data.start_date) return null;
     return {
-      sql: `SELECT COALESCE(MAX(s.length), 0)::int AS best, COUNT(*)::int AS streaks
+      sql: `SELECT COALESCE(MAX(s.length), 0)::int AS best, COUNT(*)::int AS streaks,
+       (SELECT COUNT(*) FROM games g WHERE $3::bigint IN (g.home_team_id, g.away_team_id) AND ${REGULAR_SEASON}
+          AND g.status = 'final' AND g.season_id = $9::int AND g.game_date <= $8::date)::int AS team_games
 FROM rb_streaks s
 WHERE s.entity_type = $1::text AND s.streak_key = $2::text AND s.team_id = $3::bigint
   AND s.start_date >= $4::date AND s.end_date <= $5::date
   AND NOT (s.entity_id::text = $6::text AND s.start_date = $7::date)`,
-      params: [fact.subject.type, fact.stat, ctx.lac.teamId, seasonStartDate(fact.seasonId), ctx.asOf, fact.subject.id, fact.data.start_date],
+      // $8/$9: Q2 counts the Clippers' games through the streak's end (ruling 3), which is the fact date.
+      params: [fact.subject.type, fact.stat, ctx.lac.teamId, seasonStartDate(fact.seasonId), ctx.asOf, fact.subject.id, fact.data.start_date,
+        fact.context.date, fact.seasonId],
     };
   },
   interpret(rows, fact) {
     const best = num(rows[0]?.best) ?? 0;
     const streaks = num(rows[0]?.streaks) ?? 0;
+    // Q2 (ruling 4): "the longest streak by a Clipper this season" is a group season high.
+    if (!teamGamesOk(rows[0])) return null;
     return streaks >= 1 && fact.value > best ? frame('season_high', FIXED_STRENGTH.season_high, 'group') : null;
   },
 };

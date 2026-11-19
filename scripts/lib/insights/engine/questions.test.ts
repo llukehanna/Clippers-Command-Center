@@ -3,7 +3,7 @@ import { COMBOS, DOUBLE_DOUBLE, PLAYER_GAME_STATS, TEAM_GAME_STATS, TEAM_LINE_SQ
 import { FACT_KINDS } from './types';
 import { phrasingsFor } from './render';
 import { COMPLETED_SEASON } from './__fixtures__/facts';
-import { MIN_FIRST_SINCE_GAMES } from '../../../../src/lib/insights/quality';
+import { MIN_FIRST_SINCE_GAMES, MIN_SEASON_HIGH_TEAM_GAMES } from '../../../../src/lib/insights/quality';
 import {
   careerHigh, clippersRank, groupCompany, groupFirstSince, groupSeasonHigh, leagueRank, milestoneFirstSince,
   nthTime, QUESTIONS_BY_KIND, questionsFor, subjectFirstSince, streakLongestSince, streakSeasonHigh, subjectSeasonHigh, yoyPlayerBest, yoyRecordBest,
@@ -74,7 +74,7 @@ describe('game questions', () => {
     }
     // a teammate's 45 in the same game beats this 40: not a season high
     const forty = { ...night, value: 40 };
-    expect(groupSeasonHigh.interpret([{ best: 45, games: 60 }], forty, ctx)).toBeNull();
+    expect(groupSeasonHigh.interpret([{ best: 45, games: 60, team_games: 60 }], forty, ctx)).toBeNull();
   });
   it('career_high and group_company only count games strictly before the fact', () => {
     const ch = careerHigh.build(night, ctx)!;
@@ -103,14 +103,30 @@ describe('game questions', () => {
     expect(clippersRank.interpret([{ rank: 3, ties: 0, total: 1199 }], night, ctx)).toMatchObject({ type: 'clippers_rank', strength: 0.7, rank: 3, total: 1200 });
     expect(clippersRank.interpret([{ rank: 1, ties: 0, total: 1199 }], night, ctx)).toBeNull();
     expect(clippersRank.interpret([{ rank: 11, ties: 0, total: 1199 }], night, ctx)).toBeNull();
-    expect(groupSeasonHigh.interpret([{ best: 41, games: 59 }], night, ctx)).toMatchObject({ type: 'season_high', who: 'group' });
-    expect(groupSeasonHigh.interpret([{ best: 60, games: 59 }], night, ctx)).toBeNull();
+    expect(groupSeasonHigh.interpret([{ best: 41, games: 59, team_games: 59 }], night, ctx)).toMatchObject({ type: 'season_high', who: 'group' });
+    expect(groupSeasonHigh.interpret([{ best: 60, games: 59, team_games: 59 }], night, ctx)).toBeNull();
     expect(subjectSeasonHigh.interpret([{ best: 30, games: 2 }], night, ctx)).toBeNull();
     expect(leagueRank.interpret([{ rank: 1, ties: 0, total: 18000 }], night, ctx)).toMatchObject({ type: 'league_rank', strength: 0.85, who: 'league' });
     expect(leagueRank.interpret([{ rank: 1, ties: 0, total: 1500 }], night, ctx)).toBeNull();
     expect(leagueRank.build(night, makeCtx({ league: { complete: false, reason: 'x' } }))).toBeNull();
     expect(nthTime.interpret([{ n: 3 }], night, ctx)).toMatchObject({ type: 'nth_time', strength: 0.4, count: 3 });
     expect(nthTime.interpret([{ n: 1 }], night, ctx)).toBeNull();
+  });
+  it('group season highs wait for the Clippers\' game #20 (Q2); subject season highs do not', () => {
+    expect(MIN_SEASON_HIGH_TEAM_GAMES).toBe(20);
+    expect(groupSeasonHigh.interpret([{ best: 41, games: 59, team_games: 19 }], night, ctx)).toBeNull();
+    expect(groupSeasonHigh.interpret([{ best: 41, games: 59, team_games: 20 }], night, ctx)).toMatchObject({ type: 'season_high', who: 'group' });
+    // no team-game count: fail closed
+    expect(groupSeasonHigh.interpret([{ best: 41, games: 59 }], night, ctx)).toBeNull();
+    expect(subjectSeasonHigh.interpret([{ best: 30, games: 5 }], night, ctx)).toMatchObject({ type: 'season_high', who: 'subject' });
+    const g = groupSeasonHigh.build(night, ctx)!;
+    expect(g.sql).toContain('COUNT(DISTINCT game_id) FILTER (WHERE game_date <= $');
+    expect(g.sql).toContain('AS team_games');
+    // team games count through the fact's own game, which the ref set holds (it reads as of the game date)
+    expect(g.sql).toMatch(/COUNT\(DISTINCT game_id\) FILTER \(WHERE game_date <= \$(\d+)::text\)/);
+    const idx = Number(g.sql.match(/COUNT\(DISTINCT game_id\) FILTER \(WHERE game_date <= \$(\d+)::text\)/)![1]);
+    expect(g.params[idx - 1]).toBe(night.context.date);
+    expect(subjectSeasonHigh.build(night, ctx)!.sql).not.toContain('team_games');
   });
   it('subject_first_since: the subject\'s last game at or above the value, floored at records start', () => {
     const q = subjectFirstSince.build(night, ctx)!;
@@ -141,8 +157,18 @@ describe('kind questions', () => {
     expect(streakLongestSince.build(streak, makeCtx({ recordsStart: null }))).toBeNull();
   });
   it('season_high for streaks', () => {
-    expect(streakSeasonHigh.interpret([{ best: 4, streaks: 2 }], streak, ctx)).toMatchObject({ type: 'season_high', who: 'group' });
-    expect(streakSeasonHigh.interpret([{ best: 0, streaks: 0 }], streak, ctx)).toBeNull();
+    expect(streakSeasonHigh.interpret([{ best: 4, streaks: 2, team_games: 30 }], streak, ctx)).toMatchObject({ type: 'season_high', who: 'group' });
+    expect(streakSeasonHigh.interpret([{ best: 0, streaks: 0, team_games: 30 }], streak, ctx)).toBeNull();
+  });
+  it('streak season highs wait for the Clippers\' game #20 through the streak end (Q2, ruling 4)', () => {
+    expect(streakSeasonHigh.interpret([{ best: 4, streaks: 2, team_games: 19 }], streak, ctx)).toBeNull();
+    expect(streakSeasonHigh.interpret([{ best: 4, streaks: 2 }], streak, ctx)).toBeNull();
+    expect(streakSeasonHigh.interpret([{ best: 4, streaks: 2, team_games: 20 }], streak, ctx)).toMatchObject({ type: 'season_high', who: 'group' });
+    const q = streakSeasonHigh.build(streak, ctx)!;
+    expect(q.params.slice(-2)).toEqual([streak.context.date, streak.seasonId]);
+    expect(q.params).toHaveLength(9);
+    expect(q.sql).toContain('AS team_games');
+    expect(q.sql).toContain('g.season_id = $9::int AND g.game_date <= $8::date');
   });
   it('milestone first_since compares completed Clippers seasons', () => {
     const m = makeFact({ kind: 'milestone', stat: 'season_points', value: 1500, keyExtra: '1500', data: { threshold: 1500, step: 2, expr: 'SUM(pb.points)' } });

@@ -48,14 +48,14 @@ describe('ties never read as a sole rank or best (FW-1)', () => {
   });
 
   it('group and subject season highs are strict: a tie with another game keeps no frame', () => {
-    expect(groupSeasonHigh.interpret([{ best: 55, games: 59 }], night, ctx)).toBeNull();
-    expect(groupSeasonHigh.interpret([{ best: 54, games: 59 }], night, ctx)).toMatchObject({ type: 'season_high', who: 'group' });
+    expect(groupSeasonHigh.interpret([{ best: 55, games: 59, team_games: 59 }], night, ctx)).toBeNull();
+    expect(groupSeasonHigh.interpret([{ best: 54, games: 59, team_games: 59 }], night, ctx)).toMatchObject({ type: 'season_high', who: 'group' });
     expect(subjectSeasonHigh.interpret([{ best: 55, games: 20 }], night, ctx)).toBeNull();
     expect(subjectSeasonHigh.interpret([{ best: 54, games: 20 }], night, ctx)).toMatchObject({ type: 'season_high', who: 'subject' });
     // lower is better: a tie at the minimum is not "the fewest"
     const low = { ...team, stat: 'opp_pts_low', value: 88 };
-    expect(groupSeasonHigh.interpret([{ best: 88, games: 10 }], low, ctx)).toBeNull();
-    expect(groupSeasonHigh.interpret([{ best: 90, games: 10 }], low, ctx)).toMatchObject({ type: 'season_high' });
+    expect(groupSeasonHigh.interpret([{ best: 88, games: 10, team_games: 30 }], low, ctx)).toBeNull();
+    expect(groupSeasonHigh.interpret([{ best: 90, games: 10, team_games: 30 }], low, ctx)).toMatchObject({ type: 'season_high' });
   });
 
   it('records_best never fires on a tie: an earlier equal game makes it first_since (the query is >=)', () => {
