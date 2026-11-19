@@ -2,7 +2,7 @@
 import { ordinal } from '../../proof-utils.js';
 import { fmtDate } from '../dates.js';
 import type { Fact } from '../types.js';
-import { cap, oppFull, oppShort, phrasings, type Headline, type TemplateModule } from './shared.js';
+import { cap, oppFull, oppShort, phrasings, rankSeason, type Headline, type TemplateModule } from './shared.js';
 
 export const STAT_VERB: Record<string, (v: number) => string> = {
   pts: (v) => `scored ${v}`,
@@ -27,8 +27,9 @@ export const playerLineTemplates: TemplateModule = {
     if (fr.type === 'league_rank') {
       const r = fr.rank ?? 1;
       const label = f.data.label ?? 'scoring';
-      if (r === 1) return i === 0 ? `The best ${label} night in the NBA ${rc.season.phrase}` : `No bigger ${label} night in the NBA ${rc.season.phrase}`;
-      return i === 0 ? `The ${ordinal(r)}-best ${label} night in the NBA ${rc.season.phrase}` : `${cap(ordinal(r))}-best ${label} night in the NBA ${rc.season.phrase}`;
+      const when = rankSeason(rc);
+      if (r === 1) return i === 0 ? `The best ${label} night in the NBA ${when}` : `No bigger ${label} night in the NBA ${when}`;
+      return i === 0 ? `The ${ordinal(r)}-best ${label} night in the NBA ${when}` : `${cap(ordinal(r))}-best ${label} night in the NBA ${when}`;
     }
     return `${fmtDate(f.context.date)} vs the ${oppFull(f, rc)}`;
   }),

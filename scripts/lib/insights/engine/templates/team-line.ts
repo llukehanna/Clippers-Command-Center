@@ -3,7 +3,7 @@ import { ordinal } from '../../proof-utils.js';
 import { fmtDate } from '../dates.js';
 import type { Fact } from '../types.js';
 import { winLoss } from './player-line.js';
-import { cap, oppShort, overrides, phrasings, sinceText, type ContextLine, type Headline, type RenderContext, type TemplateModule } from './shared.js';
+import { cap, oppShort, overrides, phrasings, rankSeason, sinceText, type ContextLine, type Headline, type RenderContext, type TemplateModule } from './shared.js';
 
 type Words = ((f: Fact, rc: RenderContext) => string)[];
 const WORDS: Record<string, Words> = {
@@ -19,21 +19,21 @@ const WORDS: Record<string, Words> = {
 const FIRST: Record<string, (f: Fact) => string> = {
   team_pts: (f) => `First ${f.value}-point game`,
   team_fg3m: (f) => `First ${f.value}-three game`,
-  team_fg_pct: (f) => `First time shooting ${f.data.formatted} or better`,
+  team_fg_pct: (f) => `First ${f.data.thing ?? `${f.data.formatted} shooting game`} or better`,
   margin: (f) => `First ${f.value}-point win`,
   loss_margin: (f) => `First ${f.value}-point loss`,
-  opp_pts_low: () => 'Fewest points allowed',
+  opp_pts_low: (f) => `First ${f.data.thing ?? `game allowing ${f.value}`} or fewer`,
 };
 
 const headlines: Headline[] = [0, 1].map((i) => (f: Fact, rc: RenderContext) => WORDS[f.stat][i](f, rc));
 
-/** League ranks go through rc.season.phrase, so postgame reads "so far in {label}" (never a hard-coded "this season"). */
+/** League ranks go through rankSeason, so postgame reads "in {label} at the time" (never a hard-coded "this season"). */
 const fallback: ContextLine = (f, fr, rc) => {
   if (fr.type === 'league_rank') {
     const best = f.data.best ?? 'best game';
     return (fr.rank ?? 1) === 1
-      ? `${cap(best)} by any NBA team ${rc.season.phrase}`
-      : `The ${ordinal(fr.rank ?? 1)}-${best} by any NBA team ${rc.season.phrase}`;
+      ? `${cap(best)} by any NBA team ${rankSeason(rc)}`
+      : `The ${ordinal(fr.rank ?? 1)}-${best} by any NBA team ${rankSeason(rc)}`;
   }
   return `${fmtDate(f.context.date)}, ${f.context.home ? 'at home' : 'on the road'}`;
 };

@@ -79,8 +79,8 @@ describe('templates (exact copy)', () => {
       .toEqual({ headline: 'Last meeting: Clippers won 118-104 vs the Golden State Warriors', context: 'Home, Feb 1, 2026' });
     const post: RenderContext = { ...rcDone, surface: 'postgame' };
     expect(say(FIXTURES.night, records, post))
-      .toEqual({ headline: 'Star Clipper scored 55 in a win over the Warriors', context: 'Most points in a game by a Clipper since 2020-21' });
-    expect(say(FIXTURES.night, fr('league_rank', { rank: 1 }), post).context).toBe('The best scoring night in the NBA in 2025-26');
+      .toEqual({ headline: 'Star Clipper scored 55 in a win over the Warriors', context: 'Most points in a game by a Clipper since 2020-21 at the time' });
+    expect(say(FIXTURES.night, fr('league_rank', { rank: 1 }), post).context).toBe('The best scoring night in the NBA in 2025-26 at the time');
   });
 });
 

@@ -25,7 +25,7 @@ describe('period and clutch templates', () => {
   const post = rcFor('postgame');
   it('words quarters, halves and clutch time', () => {
     expect(say(quarter, fr('records_best', { records_label: '2019-20', records_seasons: 7 }), post)).toEqual({
-      headline: 'Star Clipper scored 18 in the 4th quarter vs the Warriors', context: 'Most points in a quarter by a Clipper since 2019-20',
+      headline: 'Star Clipper scored 18 in the 4th quarter vs the Warriors', context: 'Most points in a quarter by a Clipper since 2019-20 at the time',
     });
     expect(say(half, fr('none'), post).headline).toBe('Star Clipper scored 27 in the second half vs the Warriors');
     expect(say(teamQ, fr('none'), post, 1).headline).toBe('A 44-point 3rd quarter for the Clippers vs the Warriors');
@@ -35,10 +35,10 @@ describe('period and clutch templates', () => {
     });
   });
   it('names the condition each reference set filters on', () => {
-    expect(say(clutch, fr('records_best', { records_label: '2019-20' }), post).context).toBe('Most clutch points in a game by a Clipper since 2019-20');
+    expect(say(clutch, fr('records_best', { records_label: '2019-20' }), post).context).toBe('Most clutch points in a game by a Clipper since 2019-20 at the time');
     expect(say(clutch, fr('first_since', { since_date: '2025-03-05' }), post).context).toBe('First 11-point clutch performance by a Clipper since Mar 2025');
-    expect(say(half, fr('records_best', { records_label: '2019-20' }), post).context).toBe('Most points in a half by a Clipper since 2019-20');
-    expect(say(teamQ, fr('records_best', { records_label: '2019-20' }), post).context).toBe('Most points in a quarter by the Clippers since 2019-20');
+    expect(say(half, fr('records_best', { records_label: '2019-20' }), post).context).toBe('Most points in a half by a Clipper since 2019-20 at the time');
+    expect(say(teamQ, fr('records_best', { records_label: '2019-20' }), post).context).toBe('Most points in a quarter by the Clippers since 2019-20 at the time');
   });
   it('words the season through the frozen postgame phrase, never "this season"', () => {
     for (const f of facts) {

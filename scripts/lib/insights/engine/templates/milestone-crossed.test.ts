@@ -25,11 +25,11 @@ describe('milestones crossed', () => {
   it('words season and career crossings with the postgame season phrase', () => {
     const post = rcFor('postgame');
     expect(say(season, fr('milestone', { step: 0 }), post)).toEqual({
-      headline: 'Star Clipper passed 1,000 points for the season vs the Warriors', context: '1,012 points so far in 2025-26',
+      headline: 'Star Clipper passed 1,000 points for the season vs the Warriors', context: '1,012 points in 2025-26 through Jan 10, 2026',
     });
     expect(say(season, fr('milestone', { step: 0 }), post, 1).headline).toBe('Star Clipper passed 1,000 points so far in 2025-26 vs the Warriors');
     expect(say(career, fr('milestone', { step: 1 }), post)).toEqual({
-      headline: 'Star Clipper passed 10,000 points for his career vs the Warriors', context: '10,021 points in his career',
+      headline: 'Star Clipper passed 10,000 points for his career vs the Warriors', context: '10,021 points in his career through Jan 10, 2026',
     });
   });
   it('says reached, not passed, when the total lands exactly on the threshold', () => {

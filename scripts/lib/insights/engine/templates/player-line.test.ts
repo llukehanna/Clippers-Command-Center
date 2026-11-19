@@ -15,11 +15,11 @@ describe('player line templates', () => {
   it('words a big night in the past tense with the result', () => {
     const post = rcFor('postgame', false);
     expect(say(line, fr('records_best', { records_label: '2024-25', records_seasons: 2 }), post)).toEqual({
-      headline: 'Star Clipper scored 55 in a win over the Warriors', context: 'Most points in a game by a Clipper since 2024-25',
+      headline: 'Star Clipper scored 55 in a win over the Warriors', context: 'Most points in a game by a Clipper since 2024-25 at the time',
     });
     expect(say({ ...line, context: { ...line.context, result: 'L' } }, fr('none'), post, 1))
       .toEqual({ headline: 'Star Clipper: 55 points vs the Warriors', context: 'Nov 28, 2025 vs the Golden State Warriors' });
-    expect(say(line, fr('league_rank', { rank: 1 }), post).context).toBe('The best scoring night in the NBA so far in 2025-26');
+    expect(say(line, fr('league_rank', { rank: 1 }), post).context).toBe('The best scoring night in the NBA in 2025-26 at the time');
   });
   it('words a loss as a loss to the opponent', () => {
     const lost = { ...line, context: { ...line.context, result: 'L' as const } };
@@ -27,7 +27,7 @@ describe('player line templates', () => {
   });
   it('words a combo, framed as the only one', () => {
     expect(say(combo, fr('only_one', { records_label: '2020-21' }), rcFor('postgame'))).toEqual({
-      headline: 'Star Clipper posted a triple-double vs the Warriors', context: 'The only triple-double by a Clipper since 2020-21',
+      headline: 'Star Clipper posted a triple-double vs the Warriors', context: 'The only triple-double by a Clipper since 2020-21 at the time',
     });
     expect(say(combo, fr('none'), rcFor('postgame'), 1))
       .toEqual({ headline: 'Star Clipper had 24 pts, 12 reb, 11 ast vs the Warriors', context: '24 pts, 12 reb, 11 ast in a win' });
