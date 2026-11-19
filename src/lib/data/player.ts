@@ -274,7 +274,8 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
             SELECT ${sql.unsafe(INSIGHT_ROW_COLUMNS)}
             FROM ${sql.unsafe(INSIGHT_ROW_FROM)}
             WHERE i.surface = 'player' AND i.player_id = ${player_id}::bigint AND i.is_active = true
-            ORDER BY i.importance DESC
+              AND i.season_id = ${seasonId}
+            ORDER BY (i.category = 'milestone_progress') DESC, i.importance DESC, i.insight_id ASC
             LIMIT 60
           `.catch((err: unknown) => {
             console.error('[GET /api/players/{player_id}] insights failed:', err);
@@ -291,6 +292,7 @@ export async function loadPlayer(player_id: string, url: URL): Promise<ApiResult
     const insights = composeFeed(plainCards, 'player_page').map(toCardData);
     const milestones = insightRows.flatMap((r) =>
       isMilestone(r) && r.evidence?.type === 'milestone_progress'
+        && Number.isFinite(r.evidence.current) && Number.isFinite(r.evidence.target) && r.evidence.target > r.evidence.current
         ? [{ insight_id: r.insight_id, headline: r.headline, current: r.evidence.current, target: r.evidence.target, label: r.evidence.label }]
         : []);
 

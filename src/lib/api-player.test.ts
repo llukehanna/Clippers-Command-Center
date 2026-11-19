@@ -58,6 +58,15 @@ describe('loadPlayer insights', () => {
     expect(body.milestones).toEqual([{ insight_id: 'ms', headline: '20 to go', current: 980, target: 1000, label: 'points' }]);
   });
 
+  it('drops milestones that are reached, passed or malformed; query binds season_id', async () => {
+    const ms = (id: string, current: unknown, target: unknown) => ({ ...base, insight_id: id, category: 'milestone_progress', importance: 50, headline: id, frame: null, evidence: { type: 'milestone_progress', current, target, label: 'points' } });
+    respond([ms('eq', 1000, 1000), ms('over', 1010, 1000), ms('nan', null, 1000), ms('ok', 990, 1000)]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = (await load('?season_id=2026')).body as any;
+    expect(body.milestones.map((m: { insight_id: string }) => m.insight_id)).toEqual(['ok']);
+    expect(insightQueries()[0]).toContain('i.season_id = ?');
+  });
+
   it('another season: no insight query, empty insights and milestones', async () => {
     respond([]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
