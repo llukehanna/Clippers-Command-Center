@@ -96,14 +96,14 @@ describe('game questions', () => {
     expect(careerHigh.interpret([{ prev_best: 20, first_season: 2021, games: 5 }], night, ctx)).toBeNull();
   });
   it('ranks among Clippers, the season and the league', () => {
-    expect(clippersRank.interpret([{ rank: 3, total: 1199 }], night, ctx)).toMatchObject({ type: 'clippers_rank', strength: 0.7, rank: 3, total: 1200 });
-    expect(clippersRank.interpret([{ rank: 1, total: 1199 }], night, ctx)).toBeNull();
-    expect(clippersRank.interpret([{ rank: 11, total: 1199 }], night, ctx)).toBeNull();
+    expect(clippersRank.interpret([{ rank: 3, ties: 0, total: 1199 }], night, ctx)).toMatchObject({ type: 'clippers_rank', strength: 0.7, rank: 3, total: 1200 });
+    expect(clippersRank.interpret([{ rank: 1, ties: 0, total: 1199 }], night, ctx)).toBeNull();
+    expect(clippersRank.interpret([{ rank: 11, ties: 0, total: 1199 }], night, ctx)).toBeNull();
     expect(groupSeasonHigh.interpret([{ best: 41, games: 59 }], night, ctx)).toMatchObject({ type: 'season_high', who: 'group' });
     expect(groupSeasonHigh.interpret([{ best: 60, games: 59 }], night, ctx)).toBeNull();
     expect(subjectSeasonHigh.interpret([{ best: 30, games: 2 }], night, ctx)).toBeNull();
-    expect(leagueRank.interpret([{ rank: 1, total: 18000 }], night, ctx)).toMatchObject({ type: 'league_rank', strength: 0.85, who: 'league' });
-    expect(leagueRank.interpret([{ rank: 1, total: 1500 }], night, ctx)).toBeNull();
+    expect(leagueRank.interpret([{ rank: 1, ties: 0, total: 18000 }], night, ctx)).toMatchObject({ type: 'league_rank', strength: 0.85, who: 'league' });
+    expect(leagueRank.interpret([{ rank: 1, ties: 0, total: 1500 }], night, ctx)).toBeNull();
     expect(leagueRank.build(night, makeCtx({ league: { complete: false, reason: 'x' } }))).toBeNull();
     expect(nthTime.interpret([{ n: 3 }], night, ctx)).toMatchObject({ type: 'nth_time', strength: 0.4, count: 3 });
     expect(nthTime.interpret([{ n: 1 }], night, ctx)).toBeNull();
@@ -259,9 +259,9 @@ describe('postgame references are bounded at the fact date (R2)', () => {
   });
   it('a team league rank needs its own 500-game sample, not the player 2000', () => {
     const teamFact = { ...night, kind: 'team_game_stat' as const, stat: 'team_pts', value: 132, subject: { type: 'team' as const, id: '1', name: 'Clippers' } };
-    expect(leagueRank.interpret([{ rank: 1, total: 600 }], teamFact, ctx)).toMatchObject({ type: 'league_rank', who: 'league' });
-    expect(leagueRank.interpret([{ rank: 1, total: 400 }], teamFact, ctx)).toBeNull();
-    expect(leagueRank.interpret([{ rank: 1, total: 600 }], night, ctx)).toBeNull();
+    expect(leagueRank.interpret([{ rank: 1, ties: 0, total: 600 }], teamFact, ctx)).toMatchObject({ type: 'league_rank', who: 'league' });
+    expect(leagueRank.interpret([{ rank: 1, ties: 0, total: 400 }], teamFact, ctx)).toBeNull();
+    expect(leagueRank.interpret([{ rank: 1, ties: 0, total: 600 }], night, ctx)).toBeNull();
   });
   it('the double-double predicate is NULL-safe like the combos', () => {
     expect(DOUBLE_DOUBLE.match(/COALESCE\(pb\.\w+ >= 10, FALSE\)::int/g)).toHaveLength(5);

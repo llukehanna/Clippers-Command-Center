@@ -2,6 +2,8 @@
 // Which Clippers games a run talks about, as of the cutoff.
 import { sql } from '../../db.js';
 import { REGULAR_SEASON } from '../../sql-fragments.js';
+import { runQuery } from './query.js';
+import { LATE_JOINERS_SQL } from './references.js';
 import type { EngineContext } from './types.js';
 
 export interface NextGame { gameId: string; date: string; home: boolean; opponentId: string; seasonId: number | null; isPlayoffs: boolean }
@@ -85,18 +87,6 @@ export function gameFactBase(g: PostgameGame, ctx: EngineContext) {
  * their previous team when league data is incomplete.
  */
 export async function lateJoiners(ctx: EngineContext, seasonId: number = ctx.season.id, asOf: string = ctx.asOf): Promise<Set<string>> {
-  const rows = await sql<{ player_id: string }[]>`
-    SELECT pb.player_id::text AS player_id
-    FROM game_player_box_scores pb
-    JOIN games g ON g.game_id = pb.game_id
-    WHERE pb.team_id = ${ctx.lac.teamId}::bigint AND g.season_id = ${seasonId}::int
-      AND ${sql.unsafe(REGULAR_SEASON)} AND g.game_date <= ${asOf}::date
-    GROUP BY pb.player_id
-    HAVING MIN(g.game_date) > (
-      SELECT MIN(g2.game_date)
-      FROM game_player_box_scores pb2
-      JOIN games g2 ON g2.game_id = pb2.game_id
-      WHERE pb2.team_id = ${ctx.lac.teamId}::bigint AND g2.season_id = ${seasonId}::int
-        AND ${sql.unsafe(REGULAR_SEASON.replace(/\bg\./g, 'g2.'))} AND g2.game_date <= ${asOf}::date)`;
-  return new Set(rows.map((r) => r.player_id));
+  const rows = await runQuery({ sql: LATE_JOINERS_SQL, params: [ctx.lac.teamId, seasonId, asOf] });
+  return new Set(rows.map((r) => String(r.player_id)));
 }

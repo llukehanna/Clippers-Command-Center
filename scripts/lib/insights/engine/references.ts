@@ -77,6 +77,61 @@ export function refAsOf(fact: Fact, ctx: EngineContext): string {
   return fact.surface === 'postgame' && fact.context.date < ctx.asOf ? fact.context.date : ctx.asOf;
 }
 
+/**
+ * League reference sets are only built when league coverage holds for the fact: league data complete, the fact in
+ * the stats season (coverage is only assessed for it), and, for a postgame fact, a later LA day than the game. At the
+ * final buzzer (as-of = game date) the night's other box scores are not synced yet, so a league rank would ignore
+ * them; the nightly run (as-of the next day, after the league sync) adds the league frames (FW-2).
+ */
+export function leagueRefsOk(fact: Fact, ctx: EngineContext): boolean {
+  return ctx.league.complete && (fact.seasonId ?? ctx.season.id) === ctx.season.id
+    && (fact.surface !== 'postgame' || fact.context.date < ctx.asOf);
+}
+
+/** Kinds whose subject set is the player's own games for every team (career high, his first since, season high, nth time). */
+const SUBJECT_REF_KINDS: ReadonlySet<Fact['kind']> = new Set<Fact['kind']>(['player_game_stat', 'player_combo', 'season_best']);
+
+export interface LateJoinerGuard { key: string; seasonId: number; date: string }
+
+/**
+ * FR-I3 for the subject's own frames (FW-6). When league box scores may be incomplete for the fact (league data
+ * incomplete, or the fact outside the stats season, where coverage is unknown), a player who joined the Clippers
+ * mid-season may be missing his games for his previous team, so his own reference set could hide a better game or
+ * an earlier occurrence. The guard names the late-joiner set to check (keyed by the fact's season and date, filled
+ * into ctx.lateJoiners by run.ts before framing); null when no guard is needed.
+ */
+export function lateJoinerGuard(fact: Fact, ctx: EngineContext): LateJoinerGuard | null {
+  if (fact.subject.type !== 'player' || !SUBJECT_REF_KINDS.has(fact.kind)) return null;
+  const seasonId = fact.seasonId ?? ctx.season.id;
+  if (ctx.league.complete && seasonId === ctx.season.id) return null;
+  return { key: `${seasonId}:${fact.context.date}`, seasonId, date: fact.context.date };
+}
+
+/** The subject set is safe to use: no guard needed, or the late joiners are loaded and he is not one (unloaded: not safe). */
+function subjectRefOk(fact: Fact, ctx: EngineContext): boolean {
+  const guard = lateJoinerGuard(fact, ctx);
+  if (!guard) return true;
+  const late = ctx.lateJoiners?.get(guard.key);
+  return late !== undefined && !late.has(fact.subject.id);
+}
+
+/**
+ * $1 LAC, $2 season, $3 as-of: players whose first regular-season Clippers game in the season (through the as-of)
+ * came after the Clippers' first one — acquired mid-season.
+ */
+export const LATE_JOINERS_SQL = `
+SELECT pb.player_id::text AS player_id
+FROM game_player_box_scores pb
+JOIN games g ON g.game_id = pb.game_id
+WHERE pb.team_id = $1::bigint AND g.season_id = $2::int AND ${REGULAR_SEASON} AND g.game_date <= $3::date
+GROUP BY pb.player_id
+HAVING MIN(g.game_date) > (
+  SELECT MIN(g2.game_date)
+  FROM game_player_box_scores pb2
+  JOIN games g2 ON g2.game_id = pb2.game_id
+  WHERE pb2.team_id = $1::bigint AND g2.season_id = $2::int
+    AND ${REGULAR_SEASON.replace(/\bg\./g, 'g2.')} AND g2.game_date <= $3::date)`.trim();
+
 function playerStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
   const stat = PLAYER_GAME_STATS[fact.stat as keyof typeof PLAYER_GAME_STATS];
   if (!stat) return null;
@@ -84,10 +139,8 @@ function playerStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
   const asOf = refAsOf(fact, ctx);
   return {
     group: ctx.recordsStart ? clippersPlayerRef(expr, ctx.lac.teamId, ctx.recordsStart, asOf) : null,
-    subject: playerCareerRef(expr, fact.subject.id, asOf),
-    // League coverage is only assessed for the stats season: a fact in another season gets no league frames.
-    league: ctx.league.complete && (fact.seasonId ?? ctx.season.id) === ctx.season.id
-      ? leagueSeasonPlayerRef(expr, ctx.season.id, asOf) : null,
+    subject: subjectRefOk(fact, ctx) ? playerCareerRef(expr, fact.subject.id, asOf) : null,
+    league: leagueRefsOk(fact, ctx) ? leagueSeasonPlayerRef(expr, ctx.season.id, asOf) : null,
     start: ctx.recordsStart,
     betterIsHigher: true,
     ordinal: true,
@@ -117,7 +170,7 @@ function comboRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
   const asOf = refAsOf(fact, ctx);
   return {
     group: ctx.recordsStart ? clippersPlayerRef(expr, ctx.lac.teamId, ctx.recordsStart, asOf) : null,
-    subject: playerCareerRef(expr, fact.subject.id, asOf),
+    subject: subjectRefOk(fact, ctx) ? playerCareerRef(expr, fact.subject.id, asOf) : null,
     league: null,
     start: ctx.recordsStart,
     betterIsHigher: true,
@@ -194,9 +247,8 @@ function teamStatRefs(fact: Fact, ctx: EngineContext): RefSpec | null {
   return {
     group: ctx.recordsStart ? clippersTeamRef(stat.expr, ctx.lac.teamId, ctx.recordsStart, asOf) : null,
     subject: null,
-    // No league frame for losses by design (a league-wide worst-loss rank is not a Clippers claim); league coverage covers the stats season only.
-    league: ctx.league.complete && fact.stat !== 'loss_margin' && (fact.seasonId ?? ctx.season.id) === ctx.season.id
-      ? leagueSeasonTeamRef(stat.expr, ctx.season.id, asOf) : null,
+    // No league frame for losses by design (a league-wide worst-loss rank is not a Clippers claim).
+    league: fact.stat !== 'loss_margin' && leagueRefsOk(fact, ctx) ? leagueSeasonTeamRef(stat.expr, ctx.season.id, asOf) : null,
     start: ctx.recordsStart,
     betterIsHigher: stat.betterIsHigher,
     ordinal: true,

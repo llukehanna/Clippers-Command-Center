@@ -183,6 +183,11 @@ export interface EngineContext {
   postgameDays: number;
   /** Stored state by key (novelty); empty for dry runs. */
   prior: Map<string, PriorState>;
+  /**
+   * Late joiners by `${seasonId}:${date}` (references.lateJoinerGuard), loaded by run.ts before framing so the
+   * pure reference builders can read them. A guarded fact whose set is not loaded gets no subject frames.
+   */
+  lateJoiners?: Map<string, Set<string>>;
 }
 
 export interface DetectorOutput {

@@ -496,6 +496,34 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       }
     }, TIMEOUT);
 
+    it('postgame lines: a late joiner loses his own (subject) frames while league data is incomplete (FW-6)', async () => {
+      const { loadLateJoiners } = await import('./engine/run');
+      const { refsFor } = await import('./engine/references');
+      const { runQuery } = await import('./engine/query');
+      const { careerHigh, nthTime, subjectFirstSince, subjectSeasonHigh } = await import('./engine/questions');
+      const base = await lastGameCtx();
+      const [g] = await sql<{ date: string }[]>`SELECT game_date::text AS date FROM games WHERE game_id = ${base.gameId}::bigint`;
+      await withLateJoiner(base, async () => {
+        const fact = makeFact({
+          kind: 'player_game_stat', surface: 'postgame', stat: 'pts', value: 1100,
+          subject: { type: 'player', id: String(LATE_ID), name: 'Late Joiner' },
+          window: { type: 'game', game_id: base.gameId!, season_id: base.season.id }, context: { date: g.date },
+          gameId: base.gameId, seasonId: base.season.id, data: {},
+        });
+        const ctx = incomplete(base);
+        await loadLateJoiners(fact, ctx, runQuery);
+        expect(ctx.lateJoiners!.get(`${base.season.id}:${g.date}`)!.has(String(LATE_ID))).toBe(true);
+        expect(refsFor(fact, ctx)!.subject).toBeNull();
+        for (const q of [careerHigh, subjectFirstSince, subjectSeasonHigh, nthTime]) expect(q.build(fact, ctx), q.name).toBeNull();
+        // positive controls: a Clipper since opening night keeps his own frames; with complete league data so does the late joiner
+        const star = { ...fact, subject: { type: 'player' as const, id: '1', name: 'Star Clipper' }, value: 30 };
+        await loadLateJoiners(star, ctx, runQuery);
+        expect(refsFor(star, ctx)!.subject).not.toBeNull();
+        expect(careerHigh.build(star, ctx)).not.toBeNull();
+        expect(refsFor(fact, base)!.subject).not.toBeNull();
+      });
+    }, TIMEOUT);
+
     it('loadEngineContext: a roster snapshot changes nothing while the league is complete', async () => {
       const { loadEngineContext } = await import('./engine/context');
       const base = await ctxAt('2026-02-25');

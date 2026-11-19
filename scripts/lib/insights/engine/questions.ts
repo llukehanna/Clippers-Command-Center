@@ -164,16 +164,22 @@ export const clippersRank: Question = {
     const game = gameOf(fact);
     if (!refs?.group || !refs.ordinal || !seasonOk(fact, refs) || !game) return null;
     const c = cmp(refs);
-    return withRef(refs.group, (b) => `SELECT (COUNT(*) FILTER (WHERE value ${c.gt} ${b(fact.value, 'float8')}) + 1)::int AS rank,
+    return withRef(refs.group, (b) => {
+      const v = b(fact.value, 'float8');
+      return `SELECT (COUNT(*) FILTER (WHERE value ${c.gt} ${v}) + 1)::int AS rank,
+       (COUNT(*) FILTER (WHERE value = ${v}))::int AS ties,
        COUNT(*)::int AS total
 FROM ref
-WHERE ${notOwn(b, game, fact)}`);
+WHERE ${notOwn(b, game, fact)}`;
+    });
   },
   interpret(rows, fact, ctx) {
     const refs = refsFor(fact, ctx);
     const rank = num(rows[0]?.rank);
+    const ties = num(rows[0]?.ties);
     const total = num(rows[0]?.total);
-    if (!refs?.start || rank === null || total === null) return null;
+    // A tie is not a rank of its own: "the 4th-most" would hide the games it shares 4th with, so no frame (FW-1).
+    if (!refs?.start || rank === null || total === null || ties === null || ties > 0) return null;
     const strength = clippersRankStrength(rank);
     return strength === null ? null : frame('clippers_rank', strength, 'group', { rank, total: total + 1, records_label: refs.start.label });
   },
@@ -197,6 +203,7 @@ WHERE season_id = ${b(fact.seasonId!, 'int')} AND ${notOwn(b, game, fact)}`);
       const best = num(rows[0]?.best);
       const games = num(rows[0]?.games) ?? 0;
       if (!refs || best === null || games < (who === 'group' ? 1 : MIN_SUBJECT_SEASON_GAMES)) return null;
+      // Strictly better: a tie with another game is not "the most" (FW-1).
       return better(fact.value, best, refs.betterIsHigher) ? frame('season_high', FIXED_STRENGTH.season_high, who) : null;
     },
   };
@@ -208,16 +215,25 @@ export const leagueRank: Question = {
   name: 'league_rank',
   build(fact, ctx) {
     const refs = refsFor(fact, ctx);
-    if (!refs?.league || !refs.ordinal) return null;
+    const game = gameOf(fact);
+    if (!refs?.league || !refs.ordinal || !game) return null;
     const c = cmp(refs);
-    return withRef(refs.league, (b) => `SELECT (COUNT(*) FILTER (WHERE value ${c.gt} ${b(fact.value, 'float8')}) + 1)::int AS rank,
+    // The league set holds the fact's own row: it counts in the total, never as a tie.
+    return withRef(refs.league, (b) => {
+      const v = b(fact.value, 'float8');
+      return `SELECT (COUNT(*) FILTER (WHERE value ${c.gt} ${v}) + 1)::int AS rank,
+       (COUNT(*) FILTER (WHERE value = ${v} AND ${notOwn(b, game, fact)}))::int AS ties,
        COUNT(*)::int AS total
-FROM ref`);
+FROM ref`;
+    });
   },
   interpret(rows, fact, ctx) {
     const rank = num(rows[0]?.rank);
+    const ties = num(rows[0]?.ties);
     const total = num(rows[0]?.total);
-    if (rank === null || total === null || total < (refsFor(fact, ctx)?.leagueMin ?? MIN_LEAGUE_SAMPLE)) return null;
+    // A tie for a rank is not that rank alone ("the best ... in the NBA"): no frame (FW-1).
+    if (rank === null || total === null || ties === null || ties > 0) return null;
+    if (total < (refsFor(fact, ctx)?.leagueMin ?? MIN_LEAGUE_SAMPLE)) return null;
     const strength = rankStrength(rank);
     return strength === null ? null : frame('league_rank', strength, 'league', { rank, total });
   },

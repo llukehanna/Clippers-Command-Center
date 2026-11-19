@@ -15,6 +15,7 @@ import { pbpRecordsComplete } from './pbp-coverage.js';
 import { combineProof, selectProofRows, type ProofPart } from './proof.js';
 import { runQuery } from './query.js';
 import { questionsFor } from './questions.js';
+import { LATE_JOINERS_SQL, lateJoinerGuard } from './references.js';
 import { renderSeason } from './records.js';
 import { renderInsight } from './render.js';
 import { isTrivial, probability, salienceClass, scoreInsight, unchangedSince } from './score.js';
@@ -53,12 +54,21 @@ export function ageDays(fact: Fact, ctx: EngineContext): number {
   return daysBetween(fact.context.date, ref);
 }
 
+/** Loads (once per season and date) the late joiners a guarded fact's subject frames depend on (references.lateJoinerGuard, FW-6). */
+export async function loadLateJoiners(fact: Fact, ctx: EngineContext, run: Runner = runQuery): Promise<void> {
+  const guard = lateJoinerGuard(fact, ctx);
+  if (!guard || ctx.lateJoiners?.has(guard.key)) return;
+  const rows = await run({ sql: LATE_JOINERS_SQL, params: [ctx.lac.teamId, guard.seasonId, guard.date] });
+  (ctx.lateJoiners ??= new Map()).set(guard.key, new Set(rows.map((r) => String(r.player_id))));
+}
+
 export async function buildDraft(
   fact: Fact, key: string, detector: string, ctx: EngineContext, run: Runner = runQuery,
 ): Promise<InsightDraft | { reason: DropReason }> {
   const cls = fact.surface === 'pregame' && fact.data.opponent_player ? 'opponent' : salienceClass(fact.subject, ctx.roster);
   if (cls === 'former' && fact.surface !== 'postgame') return { reason: 'former' };
 
+  await loadLateJoiners(fact, ctx, run);
   // Play-by-play record frames are only honest when every earlier Clippers game in range has play-by-play.
   const pbpComplete = PBP_KINDS.has(fact.kind) ? await pbpRecordsComplete(ctx, fact.context.date, run) : true;
   const framed = await frameFact(fact, ctx, run, questionsFor(fact), blockedFrames(fact, pbpComplete));
