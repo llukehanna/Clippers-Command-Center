@@ -11,6 +11,7 @@ import {
   shouldRunPregame,
   runnerLogLine,
   insightsFailureAnnotation,
+  escapeAnnotation,
   HAND_OFF_FAILURES,
   RUNNER_CODE_PATHS,
   type GameNightTick,
@@ -158,9 +159,21 @@ describe('runner log formatting', () => {
   });
   it('annotates only failed hooks, on one line', () => {
     expect(insightsFailureAnnotation('Postgame insights failed', { status: 'failed', message: 'postgame insights failed: a\nb' }))
-      .toBe('::warning title=Postgame insights failed::postgame insights failed: a b');
+      .toBe('::warning title=Postgame insights failed::postgame insights failed: a%0Ab');
     expect(insightsFailureAnnotation('Postgame insights failed', { status: 'ok', message: '3 postgame insights' })).toBeNull();
     expect(insightsFailureAnnotation('Pregame insights failed', { status: 'skipped', message: 'x' })).toBeNull();
+  });
+});
+
+describe('escapeAnnotation', () => {
+  it('encodes % first so the other escapes are not double-encoded', () => {
+    expect(escapeAnnotation('100% done')).toBe('100%25 done');
+    expect(escapeAnnotation('a\rb')).toBe('a%0Db');
+    expect(escapeAnnotation('a\r\nb')).toBe('a%0D%0Ab');
+    expect(escapeAnnotation('50%\n')).toBe('50%25%0A');
+  });
+  it('leaves :: literal', () => {
+    expect(escapeAnnotation('x::error::y')).toBe('x::error::y');
   });
 });
 

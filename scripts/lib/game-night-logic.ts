@@ -122,9 +122,14 @@ export function runnerLogLine(m: string): string {
   return m.startsWith('::') ? m : `[game-night] ${m}`;
 }
 
-/** The annotation for a failed insights hook, or null when it didn't fail. Newlines would end the command early. */
+/** Encodes a workflow-command message: `%` first, then CR and LF (a raw newline would end the command). */
+export function escapeAnnotation(msg: string): string {
+  return msg.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+}
+
+/** The annotation for a failed insights hook, or null when it didn't fail. */
 export function insightsFailureAnnotation(title: string, r: { status: string; message: string }): string | null {
-  return r.status === 'failed' ? `::warning title=${title}::${r.message.replace(/\r?\n/g, ' ')}` : null;
+  return r.status === 'failed' ? `::warning title=${title}::${escapeAnnotation(r.message)}` : null;
 }
 
 /** Pregame insights are refreshed once this long before tip (fresher line, injuries in the box scores). */

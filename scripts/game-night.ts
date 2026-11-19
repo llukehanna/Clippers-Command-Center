@@ -46,6 +46,7 @@ import {
   finalizeRetryDelay,
   handOffMomentOk,
   mainHasNewRunnerCode,
+  escapeAnnotation,
   insightsFailureAnnotation,
   pregameRefreshDue,
   runnerLogLine,
@@ -111,7 +112,7 @@ async function finalizeWithRetries(gameDbId: string, nbaGameId: string): Promise
       const msg = (err as Error).message;
       const delay = finalizeRetryDelay(Date.now() - startedAt, MAX_RUNTIME_MS);
       if (delay === null) {
-        console.log(`::warning title=Game not finalized::${msg} — the nightly post-game pipeline will finalize it.`);
+        console.log(`::warning title=Game not finalized::${escapeAnnotation(msg)} — the nightly post-game pipeline will finalize it.`);
         return false;
       }
       console.warn(`[game-night] Finalization failed (${msg}); retrying in ${delay / 60_000} min.`);
