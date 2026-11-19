@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
-import { headshotUrl, initials } from '@/src/lib/ui/headshot'
+import { clippersHeadshotUrl, headshotUrl, initials } from '@/src/lib/ui/headshot'
 
 interface PlayerAvatarProps {
   name: string
@@ -13,16 +13,27 @@ interface PlayerAvatarProps {
   variant?: 'circle' | 'card' | 'hero'
   priority?: boolean
   className?: string
+  /**
+   * For former players: a Clippers season (start year) to show him in a
+   * Clippers jersey from. Falls back to his latest photo, then initials.
+   */
+  clippersSeason?: number | null
 }
 
 /**
  * NBA headshot with an initials fallback when the id is missing or the image
  * fails to load. `card` and `hero` crop the 1040x760 image into a panel.
  */
-export function PlayerAvatar({ name, nbaPlayerId, size = 32, variant = 'circle', priority, className }: PlayerAvatarProps) {
-  const [failed, setFailed] = React.useState(false)
-  const src = headshotUrl(nbaPlayerId, variant === 'circle' ? 'sm' : 'lg')
-  const showImage = src && !failed
+export function PlayerAvatar({ name, nbaPlayerId, size = 32, variant = 'circle', priority, className, clippersSeason }: PlayerAvatarProps) {
+  const res = variant === 'circle' ? 'sm' : 'lg'
+  const sources = [clippersHeadshotUrl(nbaPlayerId, clippersSeason, res), headshotUrl(nbaPlayerId, res)].filter(
+    (s): s is string => s != null,
+  )
+  // Index into sources; past the end means show initials.
+  const [attempt, setAttempt] = React.useState(0)
+  const src = sources[attempt] ?? null
+  const showImage = src != null
+  const setFailed = () => setAttempt((a) => a + 1)
 
   if (variant === 'circle') {
     return (
@@ -41,7 +52,8 @@ export function PlayerAvatar({ name, nbaPlayerId, size = 32, variant = 'circle',
             sizes={`${size * 2}px`}
             priority={priority}
             className="object-cover object-top [transform:scale(1.35)_translateY(12%)]"
-            onError={() => setFailed(true)}
+            key={src}
+          onError={setFailed}
           />
         ) : (
           <span aria-hidden style={{ fontSize: Math.max(10, size * 0.34) }}>{initials(name)}</span>
@@ -66,7 +78,8 @@ export function PlayerAvatar({ name, nbaPlayerId, size = 32, variant = 'circle',
           sizes={variant === 'hero' ? '(min-width: 1024px) 520px, 100vw' : '(min-width: 1024px) 300px, 50vw'}
           priority={priority}
           className="object-contain object-bottom"
-          onError={() => setFailed(true)}
+          key={src}
+          onError={setFailed}
         />
       ) : (
         <span className="absolute inset-0 grid place-items-center text-[40px] font-semibold tracking-[-0.03em] text-mute/60">

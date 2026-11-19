@@ -27,6 +27,7 @@ const EDGE_TTLS: Array<[source: string, fresh: number, stale: number]> = [
   ["/players/:player_id", 600, 3600],
   ["/api/players", 600, 3600],
   ["/api/players/:player_id", 600, 3600],
+  ["/api/players/:player_id/career", 3600, 3600],
   ["/history", 3600, 3600],
   // A game page gains postgame insights at the final buzzer and again at the nightly run: 5 min fresh, then
   // served stale while one background render refreshes it (the response's own max-age is 24 h only once settled).

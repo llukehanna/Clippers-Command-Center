@@ -79,3 +79,8 @@ export function previousSeasonId(seasonIds: number[], current: number): number |
   const earlier = seasonIds.filter((id) => id < current).sort((a, b) => a - b)
   return earlier.at(-1) ?? null
 }
+
+/** "2013–14" from a season start year. */
+export function seasonShort(startYear: number): string {
+  return `${startYear}–${String(startYear + 1).slice(2)}`
+}
