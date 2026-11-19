@@ -1,8 +1,19 @@
-# Meta's AI-training crawler walked every game and player page on 2026-10-04
-# (~23.7k requests in a day), burning through the Hobby plan's limits.
-# robots.txt is only a request; a Vercel Firewall rule denying this user agent enforces it.
+# Meta's crawlers walked every page twice: as meta-externalagent on 2026-10-04
+# (~23.7k requests in a day), and on 2026-11-19 from Meta's network with a
+# desktop-Chrome user agent through every /franchise filter combination, which
+# used up the day's database queries. robots.txt is only a request; the Worker
+# refuses these crawlers outright (src/lib/bot-guard.ts).
 User-Agent: meta-externalagent
 Disallow: /
 
+User-Agent: Bytespider
+Disallow: /
+
+# Every page is reachable without a query string. URLs with one are filtered
+# or re-sorted views of those pages (franchise moves by season/type/player,
+# history filters, a player's other seasons) and multiply into hundreds of
+# thousands of near-duplicates, so crawlers should skip them.
 User-Agent: *
+Disallow: /*?
+Disallow: /api/
 Allow: /
