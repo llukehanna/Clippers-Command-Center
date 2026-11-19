@@ -717,6 +717,29 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
       }
     }, TIMEOUT);
 
+    it('rest ignores a Clippers preseason game (all_games holds it) (FW-9)', async () => {
+      const { matchupDetector } = await import('./engine/detectors/pregame-matchup');
+      const ctx = await ctxAt(IN_SEASON);
+      const next = await nextAt(IN_SEASON);
+      let id: string | undefined;
+      try {
+        // A preseason game the night before would make a false Clippers back-to-back.
+        [{ game_id: id }] = await sql<{ game_id: string }[]>`
+          INSERT INTO all_games (nba_game_id, season_id, game_date, status, home_team_id, away_team_id, home_score, away_score, is_preseason)
+          VALUES (10000001, 2025, ${IN_SEASON}::date, 'final', ${ctx.lac.teamId}::bigint, 5, 101, 99, TRUE)
+          RETURNING game_id::text AS game_id`;
+        const rest = (await matchupDetector().run(ctx)).facts.filter((f) => f.kind === 'rest');
+        expect(rest.map((f) => f.stat)).not.toContain('lac_b2b');
+        // positive control: the same game as a regular-season one is a back-to-back
+        await sql`UPDATE all_games SET is_preseason = FALSE WHERE game_id = ${id}::bigint`;
+        const counted = (await matchupDetector().run(ctx)).facts.filter((f) => f.kind === 'rest');
+        expect(counted.map((f) => f.stat)).toContain('lac_b2b');
+        expect(next.date).toBe('2026-01-11');
+      } finally {
+        if (id) await sql`DELETE FROM all_games WHERE game_id = ${id}::bigint`;
+      }
+    }, TIMEOUT);
+
     it('rest counts the opponent\'s scheduled game between as-of and the next game (the schedule is known)', async () => {
       const { matchupDetector } = await import('./engine/detectors/pregame-matchup');
       const ctx = await ctxAt(IN_SEASON);
@@ -740,7 +763,7 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     }, TIMEOUT);
 
     it('the line: the latest snapshot by the end of the as-of day in Los Angeles; Clippers-side only without league data', async () => {
-      const { matchupDetector, LINE_SQL } = await import('./engine/detectors/pregame-matchup');
+      const { matchupDetector, LINE_PROOF_SQL } = await import('./engine/detectors/pregame-matchup');
       const ctx = await ctxAt(IN_SEASON);
       const next = await nextAt(IN_SEASON);
       const snap = (at: string, spread: number, total: number) => sql`
@@ -763,8 +786,13 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
           surface: 'pregame', gameId: next.gameId, subject: { type: 'team', id: ctx.lac.teamId }, value: lacSpread,
           data: { spread: lacSpread, total_points: 228.5 },
         });
-        expect(line!.proof.sql).toBe(LINE_SQL);
-        expect((await proofRows(line!)).length).toBeGreaterThan(0);
+        expect(line!.proof.sql).toBe(LINE_PROOF_SQL);
+        const proven = await proofRows(line!);
+        expect(proven).toHaveLength(1);
+        // FW-10: a sync-odds snapshot landing between Generate and Verify (same day, before tip) changes nothing
+        await snap('2026-01-10T19:00:00-08:00', -6, 231);
+        expect(await proofRows(line!)).toEqual(proven);
+        expect((await matchupDetector().run(ctx)).facts.find((f) => f.kind === 'line')!.value).toBe(next.home ? -6 : 6);
         const partial = await matchupDetector().run({ ...ctx, league: { complete: false, reason: 'x' } });
         expect(partial.facts.map((f) => f.kind)).toEqual(['line']);
       } finally {

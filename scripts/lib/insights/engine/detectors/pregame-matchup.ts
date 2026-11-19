@@ -24,29 +24,38 @@ export const HOT_NOUN: Record<string, string> = {
 
 /**
  * $1 LAC, $2 opponent, $3 next game date: each team's last scheduled game before the next one, played or not
- * (the schedule is known; a game between as-of and the next game still costs rest). Mirrors the game page's
- * rest query (src/lib/data/game-preview.ts, preview:rest). Statuses are scheduled | in_progress | final only.
+ * (the schedule is known; a game between as-of and the next game still costs rest). Preseason games don't count
+ * (all_games holds the Clippers' preseason; FW-9). Mirrors the game page's rest query (src/lib/data/game-preview.ts,
+ * preview:rest). Statuses are scheduled | in_progress | final only.
  */
 export const REST_SQL = `
 SELECT t.team_id::text AS team_id, MAX(g.game_date)::text AS last_game
 FROM (VALUES ($1::bigint), ($2::bigint)) AS t(team_id)
 JOIN all_games g ON t.team_id IN (g.home_team_id, g.away_team_id)
-WHERE g.game_date < $3::date AND g.game_date >= $3::date - 30
+WHERE g.game_date < $3::date AND g.game_date >= $3::date - 30 AND NOT g.is_preseason
 GROUP BY t.team_id
 ORDER BY 1`.trim();
 
-/** $1 next game, $2 LAC, $3 as-of: the latest snapshot with a Clippers spread, captured by the end of the as-of day in Los Angeles and before tip. */
-export const LINE_SQL = `
+const lineSql = (bound: string) => `
 SELECT (CASE WHEN g.home_team_id = $2::bigint THEN o.spread_home ELSE o.spread_away END)::float8 AS lac_spread,
        o.total_points::float8 AS total, o.captured_at::text AS captured_at
 FROM odds_snapshots o
 JOIN all_games g ON g.game_id = o.game_id
 WHERE o.game_id = $1::bigint
-  AND o.captured_at < (($3::date + 1)::timestamp AT TIME ZONE 'America/Los_Angeles')
+  AND o.captured_at < (($3::date + 1)::timestamp AT TIME ZONE 'America/Los_Angeles')${bound}
   AND (g.start_time_utc IS NULL OR o.captured_at <= g.start_time_utc)
   AND (CASE WHEN g.home_team_id = $2::bigint THEN o.spread_home ELSE o.spread_away END) IS NOT NULL
 ORDER BY o.captured_at DESC
 LIMIT 1`.trim();
+
+/** $1 next game, $2 LAC, $3 as-of: the latest snapshot with a Clippers spread, captured by the end of the as-of day in Los Angeles and before tip. */
+export const LINE_SQL = lineSql('');
+
+/**
+ * The line's stored proof: LINE_SQL bounded by the chosen snapshot's captured_at ($4), so a sync-odds run landing
+ * between Generate and Verify cannot change the row it re-selects (FW-10).
+ */
+export const LINE_PROOF_SQL = lineSql('\n  AND o.captured_at <= $4::timestamptz');
 
 export function matchupDetector(): Detector {
   return {
@@ -148,12 +157,12 @@ export function matchupDetector(): Detector {
         }
       }
 
-      const lineQ = { sql: LINE_SQL, params: [next.gameId, ctx.lac.teamId, ctx.asOf] };
-      const [line] = await runQuery(lineQ);
+      const [line] = await runQuery({ sql: LINE_SQL, params: [next.gameId, ctx.lac.teamId, ctx.asOf] });
       if (line && line.lac_spread !== null && line.lac_spread !== undefined) {
+        const proof = { sql: LINE_PROOF_SQL, params: [next.gameId, ctx.lac.teamId, ctx.asOf, String(line.captured_at)], match: {} };
         facts.push({
           ...base, kind: 'line', subject: clippers, stat: 'spread', value: Number(line.lac_spread),
-          window: { type: 'game', game_id: next.gameId }, polarity: 'neutral', proof: { ...lineQ, match: {} }, sample: { kind: 'context' },
+          window: { type: 'game', game_id: next.gameId }, polarity: 'neutral', proof, sample: { kind: 'context' },
           data: { spread: Number(line.lac_spread), total_points: line.total === null || line.total === undefined ? undefined : Number(line.total) },
         });
       }
