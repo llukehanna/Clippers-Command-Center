@@ -5,7 +5,7 @@
 import type { Frame } from '../../../../src/lib/insights/types';
 import { seasonLabel } from '../../schedule-utils.js';
 import { REGULAR_SEASON } from '../../sql-fragments.js';
-import { yearsBetween } from './dates.js';
+import { daysBetween, yearsBetween } from './dates.js';
 import type { Question } from './framer.js';
 import { withRef } from './proof.js';
 import { recordsSeasons, seasonStartDate } from './records.js';
@@ -14,6 +14,13 @@ import { FIXED_STRENGTH, clippersRankStrength, rankStrength, sinceStrength } fro
 import type { EngineContext, Fact, FactKind } from './types.js';
 
 export const MIN_LEAGUE_SAMPLE = 2000;
+/**
+ * A game-level "first ... since" needs the previous occurrence at least this many days before the fact (FF-3):
+ * "His first 23-point game since Nov 13" four days later is true but not news, and would outrank plainer frames.
+ */
+export const MIN_FIRST_SINCE_DAYS = 60;
+/** The previous occurrence is far enough back for a game-level first_since. */
+const sinceIsNews = (since: string, fact: Fact) => daysBetween(since, fact.context.date) >= MIN_FIRST_SINCE_DAYS;
 const MIN_CAREER_GAMES = 10;
 const MIN_SUBJECT_SEASON_GAMES = 3;
 const MIN_PREV_SEASON_GAMES = 20;
@@ -129,6 +136,7 @@ LIMIT 1`);
     if (r && String(r.game_date) >= fact.context.date) return null;
     if (!r) return refs.ordinal ? frame('records_best', FIXED_STRENGTH.records_best, 'group', recordsExtra(fact, refs)) : null;
     const since = String(r.game_date);
+    if (!sinceIsNews(since, fact)) return null;
     const years = yearsBetween(since, fact.context.date);
     return frame('first_since', sinceStrength(years), 'group', { since_date: since, years: round1(years), records_label: refs.start.label });
   },
@@ -152,6 +160,7 @@ LIMIT 1`);
     const r = rows[0];
     if (!r) return null;
     const since = String(r.game_date);
+    if (!sinceIsNews(since, fact)) return null;
     const years = yearsBetween(since, fact.context.date);
     return frame('first_since', sinceStrength(years), 'subject', { since_date: since, years: round1(years) });
   },

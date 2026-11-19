@@ -23,7 +23,7 @@ const FACTS: Fact[] = [
   makeFact({ ...base, kind: 'player_game_stat', stat: 'pts', value: 55,
     data: { thing: '55-point game', best: 'most points in a game', by: 'by a Clipper', label: 'scoring', unit: 'points' } }),
   makeFact({ ...base, kind: 'player_game_stat', stat: 'fg3m', value: 4,
-    data: { thing: '4-three game', best: 'most threes in a game', by: 'by a Clipper', label: 'three-point', unit: 'threes' } }),
+    data: { thing: 'game with 4+ threes', best: 'most threes in a game', by: 'by a Clipper', label: 'three-point', unit: 'threes' } }),
   makeFact({ ...base, kind: 'player_combo', stat: 'triple_double', value: 1,
     data: { thing: 'triple-double', best: 'triple-double', by: 'by a Clipper', line: '24 pts, 12 reb, 11 ast' } }),
   ...(Object.keys(TEAM_GAME_STATS) as (keyof typeof TEAM_GAME_STATS)[]).map((stat) => {

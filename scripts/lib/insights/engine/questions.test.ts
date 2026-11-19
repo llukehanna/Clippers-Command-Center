@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { COMBOS, DOUBLE_DOUBLE, TEAM_GAME_STATS, TEAM_LINE_SQL, TENS, refAsOf, refsFor } from './references';
+import { COMBOS, DOUBLE_DOUBLE, PLAYER_GAME_STATS, TEAM_GAME_STATS, TEAM_LINE_SQL, TENS, refAsOf, refsFor } from './references';
 import { FACT_KINDS } from './types';
+import { addDays } from './dates';
+import { phrasingsFor } from './render';
+import { COMPLETED_SEASON } from './__fixtures__/facts';
 import {
+  MIN_FIRST_SINCE_DAYS,
   careerHigh, clippersRank, groupCompany, groupFirstSince, groupSeasonHigh, leagueRank, milestoneFirstSince,
   nthTime, QUESTIONS_BY_KIND, questionsFor, subjectFirstSince, streakLongestSince, streakSeasonHigh, subjectSeasonHigh, yoyPlayerBest, yoyRecordBest,
 } from './questions';
@@ -249,7 +253,7 @@ describe('postgame references are bounded at the fact date (R2)', () => {
   });
   it('a game tied at display precision is first since the tie, not a record; ties do not inflate a rank', () => {
     const tf = { ...night, kind: 'team_game_stat' as const, stat: 'team_fg_pct', value: 0.584, subject: { type: 'team' as const, id: '1', name: 'Clippers' } };
-    expect(groupFirstSince.interpret([{ subject_id: '1', subject_name: 'Clippers', value: 0.584, game_id: '400', game_date: '2025-11-01' }], tf, ctx))
+    expect(groupFirstSince.interpret([{ subject_id: '1', subject_name: 'Clippers', value: 0.584, game_id: '400', game_date: '2025-03-01' }], tf, ctx))
       .toMatchObject({ type: 'first_since' });
     expect(groupFirstSince.build(tf, ctx)!.sql).toContain('>=');
     expect(groupSeasonHigh.build(tf, ctx)!.sql).toContain('NOT (game_id =');
@@ -283,5 +287,43 @@ describe('league refs only for the checked season (R6)', () => {
     expect(refsFor(night, ctx)!.league).not.toBeNull();
     expect(refsFor({ ...night, seasonId: 2026 }, ctx)!.league).toBeNull();
     expect(refsFor({ ...night, seasonId: null }, ctx)!.league).not.toBeNull();
+  });
+});
+
+describe('first_since needs a meaningful gap; threes wording (FF-3)', () => {
+  const at = (days: number) => addDays(night.context.date, -days);
+  it('one 60-day minimum for the subject and group game questions', () => {
+    expect(MIN_FIRST_SINCE_DAYS).toBe(60);
+    for (const q of [groupFirstSince, subjectFirstSince]) {
+      expect(q.interpret([{ subject_id: '2', subject_name: 'Big Clipper', value: 56, game_id: '400', game_date: at(59) }], night, ctx), `${q.name} 59`).toBeNull();
+      expect(q.interpret([{ subject_id: '2', subject_name: 'Big Clipper', value: 56, game_id: '400', game_date: at(60) }], night, ctx), `${q.name} 60`)
+        .toMatchObject({ type: 'first_since', since_date: at(60) });
+      expect(q.interpret([{ subject_id: '2', subject_name: 'Big Clipper', value: 56, game_id: '400', game_date: at(400) }], night, ctx), `${q.name} 400`)
+        .toMatchObject({ type: 'first_since', since_date: at(400) });
+    }
+    // No prior occurrence is still records_best (group) or nothing (subject).
+    expect(groupFirstSince.interpret([], night, ctx)).toMatchObject({ type: 'records_best' });
+    expect(subjectFirstSince.interpret([], night, ctx)).toBeNull();
+  });
+  it('the production example (a 23-point game on Nov 17 after one on Nov 13) is not a first_since', () => {
+    const f = { ...night, value: 23, context: { ...night.context, date: '2026-11-17' }, seasonId: 2026, window: { ...night.window, season_id: 2026 } };
+    expect(subjectFirstSince.interpret([{ game_date: '2026-11-13', value: 25 }], f, ctx)).toBeNull();
+    expect(groupFirstSince.interpret([{ game_date: '2026-11-13', value: 25, subject_name: 'Big Clipper' }], f, ctx)).toBeNull();
+  });
+  it('made threes read "game with N+ threes"; other stats keep "N-stat game"', () => {
+    expect(PLAYER_GAME_STATS.fg3m.thing(4)).toBe('game with 4+ threes');
+    expect(PLAYER_GAME_STATS.pts.thing(23)).toBe('23-point game');
+    expect(PLAYER_GAME_STATS.blk.thing(4)).toBe('4-block game');
+    expect(TEAM_GAME_STATS.team_fg3m.thing(18)).toBe('game with 18+ threes');
+    expect(TEAM_GAME_STATS.team_pts.thing(132)).toBe('132-point game');
+    const rc = { surface: 'postgame' as const, season: COMPLETED_SEASON, teams: ctx.teams };
+    const frame = (who: 'subject' | 'group') => ({ type: 'first_since' as const, strength: 0.65, who, text: '', since_date: '2021-12-10', proof_rows: [] });
+    const threes = { ...night, stat: 'fg3m', value: 4, data: { ...night.data, thing: PLAYER_GAME_STATS.fg3m.thing(4), unit: 'threes' } };
+    expect(phrasingsFor(threes, frame('subject')).map((p) => p(threes, frame('subject'), rc).context))
+      .toEqual(['His first game with 4+ threes since Dec 2021', 'His first game with 4+ threes since Dec 10, 2021']);
+    const team = { ...night, kind: 'team_game_stat' as const, subject: { type: 'team' as const, id: '1', name: 'Clippers' }, stat: 'team_fg3m', value: 18,
+      data: { thing: TEAM_GAME_STATS.team_fg3m.thing(18), best: 'most threes in a game', by: 'by the Clippers' } };
+    expect(phrasingsFor(team, frame('group')).map((p) => p(team, frame('group'), rc).context))
+      .toEqual(['First game with 18+ threes since Dec 2021', 'First game with 18+ threes since Dec 2021']);
   });
 });

@@ -21,15 +21,17 @@ export interface RefSpec {
   leagueMin?: number;
 }
 
-export interface PlayerGameStat { column: string; noun: string; plural: string; label: string }
+/** `thing`: the claim noun for a game at this value ("23-point game"; threes read "game with 4+ threes", FF-3). */
+export interface PlayerGameStat { column: string; noun: string; plural: string; label: string; thing: (v: number) => string }
 
+const statGame = (noun: string) => (v: number) => `${v}-${noun} game`;
 export const PLAYER_GAME_STATS: Record<'pts' | 'reb' | 'ast' | 'fg3m' | 'stl' | 'blk', PlayerGameStat> = {
-  pts: { column: 'points', noun: 'point', plural: 'points', label: 'scoring' },
-  reb: { column: 'rebounds', noun: 'rebound', plural: 'rebounds', label: 'rebounding' },
-  ast: { column: 'assists', noun: 'assist', plural: 'assists', label: 'assist' },
-  fg3m: { column: 'fg3_made', noun: 'three', plural: 'threes', label: 'three-point' },
-  stl: { column: 'steals', noun: 'steal', plural: 'steals', label: 'steal' },
-  blk: { column: 'blocks', noun: 'block', plural: 'blocks', label: 'shot-blocking' },
+  pts: { column: 'points', noun: 'point', plural: 'points', label: 'scoring', thing: statGame('point') },
+  reb: { column: 'rebounds', noun: 'rebound', plural: 'rebounds', label: 'rebounding', thing: statGame('rebound') },
+  ast: { column: 'assists', noun: 'assist', plural: 'assists', label: 'assist', thing: statGame('assist') },
+  fg3m: { column: 'fg3_made', noun: 'three', plural: 'threes', label: 'three-point', thing: (v) => `game with ${v}+ threes` },
+  stl: { column: 'steals', noun: 'steal', plural: 'steals', label: 'steal', thing: statGame('steal') },
+  blk: { column: 'blocks', noun: 'block', plural: 'blocks', label: 'shot-blocking', thing: statGame('block') },
 };
 
 const playerColumns = (valueExpr: string) =>
@@ -198,7 +200,7 @@ export const FG_PCT_EXPR = 'ROUND((t.fg_made::numeric / NULLIF(t.fg_attempted, 0
 
 export const TEAM_GAME_STATS: Record<'team_pts' | 'team_fg3m' | 'team_fg_pct' | 'margin' | 'loss_margin' | 'opp_pts_low', TeamGameStat> = {
   team_pts: { expr: 't.points', betterIsHigher: true, floor: 120, when: 'any', polarity: 'positive', thing: (v) => `${v}-point game`, best: 'most points in a game', fmt: String },
-  team_fg3m: { expr: 't.fg3_made', betterIsHigher: true, floor: 18, when: 'any', polarity: 'positive', thing: (v) => `${v}-three game`, best: 'most threes in a game', fmt: String },
+  team_fg3m: { expr: 't.fg3_made', betterIsHigher: true, floor: 18, when: 'any', polarity: 'positive', thing: (v) => `game with ${v}+ threes`, best: 'most threes in a game', fmt: String },
   team_fg_pct: { expr: FG_PCT_EXPR, betterIsHigher: true, floor: 0.55, when: 'any', polarity: 'positive', thing: (v) => `${pct1(v)} shooting game`, best: 'best shooting game', fmt: pct1 },
   margin: { expr: 't.points - o.points', betterIsHigher: true, floor: 20, when: 'W', polarity: 'positive', thing: (v) => `${v}-point win`, best: 'largest win', fmt: String },
   loss_margin: { expr: 'o.points - t.points', betterIsHigher: true, floor: 20, when: 'L', polarity: 'negative', thing: (v) => `${v}-point loss`, best: 'worst loss', fmt: String },

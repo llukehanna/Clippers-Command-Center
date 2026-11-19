@@ -63,7 +63,7 @@ export function seasonBestDetector(): Detector {
             stat: key, value, window: { type: 'game', game_id: String(r.game_id), season_id: ctx.season.id },
             context: { date: String(r.game_date), opponent_id: opp, opponent_name: ctx.teams.get(opp)?.fullName, home: r.home === true, result: r.won === true ? 'W' : 'L' },
             polarity: 'positive', proof: { ...q, match: { player_id: playerId } }, asOf: ctx.asOf, sample: { kind: 'context' },
-            data: { thing: `${value}-${stat.noun} game`, best: `most ${stat.plural} in a game`, by: 'by a Clipper', label: stat.label, unit: stat.plural, for_lac: r.for_lac === true },
+            data: { thing: stat.thing(value), best: `most ${stat.plural} in a game`, by: 'by a Clipper', label: stat.label, unit: stat.plural, for_lac: r.for_lac === true },
             gameId: null, seasonId: ctx.season.id,
           };
           const sample = await refRate(fact, ctx);

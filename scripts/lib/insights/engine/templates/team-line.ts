@@ -18,7 +18,7 @@ const WORDS: Record<string, Words> = {
 /** "First ... since": the first time at or past this value. */
 const FIRST: Record<string, (f: Fact) => string> = {
   team_pts: (f) => `First ${f.value}-point game`,
-  team_fg3m: (f) => `First ${f.value}-three game`,
+  team_fg3m: (f) => `First ${f.data.thing ?? `game with ${f.value}+ threes`}`,
   team_fg_pct: (f) => `First ${f.data.thing ?? `${f.data.formatted} shooting game`} or better`,
   margin: (f) => `First ${f.value}-point win`,
   loss_margin: (f) => `First ${f.value}-point loss`,

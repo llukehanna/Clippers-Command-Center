@@ -1248,6 +1248,21 @@ describe.skipIf(!url)('insight engine v2 (fixture DB)', () => {
     }, TIMEOUT);
   });
 
+  it('first_since (FF-3): every game-level first_since the engine writes is at least 60 days after the previous one', async () => {
+    const { runEngine } = await import('./engine/run');
+    const { daysBetween } = await import('./engine/dates');
+    const r = await runEngine({ surfaces: ['postgame'], asOf: '2025-02-17', write: false, postgameDays: 120 });
+    const firsts = r.drafts.filter((d) => d.frame.type === 'first_since' && d.frame.since_date);
+    expect(firsts.length).toBeGreaterThan(0);
+    const dates = new Map((await sql<{ game_id: string; d: string }[]>`
+      SELECT game_id::text, game_date::text AS d FROM games WHERE game_id = ANY(${firsts.map((d) => d.game_id!)}::bigint[])`).map((g) => [g.game_id, g.d]));
+    for (const d of firsts) {
+      const date = dates.get(d.game_id!);
+      expect(date, d.headline).toBeDefined();
+      expect(daysBetween(d.frame.since_date!, date!), `${d.headline} | ${d.detail}`).toBeGreaterThanOrEqual(60);
+    }
+  }, TIMEOUT);
+
   describe('buzzer pregame pass (FF-2)', () => {
     const REASON = 'buzzer: league sync pending';
     const AS_OF = '2026-02-10';
