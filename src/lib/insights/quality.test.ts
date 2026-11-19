@@ -60,6 +60,12 @@ describe('quality bar', () => {
     expect(verdict(row({ frame: frame({ type: 'season_high', who: 'subject' }) }))).toBe('tag');
   });
 
+  it('Q9 nth_time is cut on every surface', () => {
+    for (const surface of ['postgame', 'player', 'season'] as const) {
+      expect(verdict(row({ surface, frame: frame({ type: 'nth_time', count: 3 }) })), surface).toBe('cut');
+    }
+  });
+
   it('Q5 none is cut', () => {
     expect(verdict(row({ frame: frame({ type: 'none' }) }))).toBe('cut');
     expect(verdict(row({ frame: null }))).toBe('cut');

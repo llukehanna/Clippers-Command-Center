@@ -286,6 +286,7 @@ FROM ref`;
   },
 };
 
+// Q9: the quality bar cuts nth_time frames, so nthTime is in no question list; the object stays for its own tests.
 export const nthTime: Question = {
   name: 'nth_time',
   build(fact, ctx) {
@@ -305,7 +306,7 @@ WHERE season_id = ${b(fact.seasonId!, 'int')} AND value ${c.ge} ${b(value, 'floa
 };
 
 export const GAME_QUESTIONS: readonly Question[] = [
-  careerHigh, groupCompany, groupFirstSince, subjectFirstSince, clippersRank, groupSeasonHigh, subjectSeasonHigh, leagueRank, nthTime,
+  careerHigh, groupCompany, groupFirstSince, subjectFirstSince, clippersRank, groupSeasonHigh, subjectSeasonHigh, leagueRank,
 ];
 
 /** A season high is his season high by construction, so the subject's own season-high frame would only repeat the headline. */

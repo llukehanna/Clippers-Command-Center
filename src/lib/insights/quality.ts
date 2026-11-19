@@ -1,5 +1,5 @@
 // src/lib/insights/quality.ts
-// The insights quality bar (Q1-Q8): one verdict per stored insight row. Pure
+// The insights quality bar (Q1-Q9): one verdict per stored insight row. Pure
 // and DB-free; loaders supply the game-count context. Relative imports only.
 
 import type { Evidence, Frame, Surface } from './types';
@@ -125,6 +125,8 @@ function decide(row: BarRow, ctx?: QualityContext): Decision {
     const j = yoyJump(row.evidence);
     return isPlayerYoy(row) && j !== null && j >= YOY_JUMP ? 'card' : 'cut';
   }
+  // Q9: an in-season count ("3rd 20-point game so far") is weaker than a subject season high, itself only a tag.
+  if (f.type === 'nth_time') return 'cut';
   if (row.category === 'streak') {
     const s = num(factRow(row.proof_result)?.streak);
     if (s === null || s < MIN_STREAK_GAMES) return 'cut';
