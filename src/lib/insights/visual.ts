@@ -4,7 +4,7 @@
 // never parsed. DB-free, relative imports only.
 import { evidenceAria } from './evidence-aria';
 import type { InsightCardData } from './card';
-import { fmtDate, yearsBetween } from './time';
+import { fmtDate, gapSpan, spanCount, spanText, yearsBetween } from './time';
 import type { TeamYoyRow } from './team-yoy';
 import type { Evidence } from './types';
 
@@ -17,23 +17,6 @@ export type CardVisual =
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v);
-
-const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
-
-/** Gap length as a count and a singular unit; weeks or days under a month, never zero months. */
-function shortSpan(from: string, to: string): { n: number; unit: string; half: boolean } {
-  const y = yearsBetween(from, to);
-  if (y >= 1) {
-    const half = Math.round(y * 2) / 2;
-    return { n: Math.floor(half), unit: 'year', half: half % 1 !== 0 };
-  }
-  const mo = Math.round(y * 12);
-  if (mo >= 12) return { n: 1, unit: 'year', half: false };
-  if (mo >= 1) return { n: mo, unit: 'month', half: false };
-  const days = Math.max(1, Math.round((Date.parse(to.slice(0, 10)) - Date.parse(from.slice(0, 10))) / 864e5));
-  if (days >= 14) return { n: Math.round(days / 7), unit: 'week', half: false };
-  return { n: days, unit: 'day', half: false };
-}
 
 function gapVisual(card: InsightCardData): CardVisual | null {
   const f = card.frame;
@@ -48,8 +31,7 @@ function gapVisual(card: InsightCardData): CardVisual | null {
     const t = yearsBetween(from, `${y}-01-01`) / total;
     if (t > 0 && t < 1) ticks.push(t);
   }
-  const sp = shortSpan(from, to);
-  const span = sp.half ? `${sp.n}½ years` : plural(sp.n, sp.unit);
+  const span = spanText(gapSpan(from, to));
   return {
     kind: 'gap', from, to, span, ticks, then: fmtDate(from), now: fmtDate(to),
     aria: `Last time ${fmtDate(from)}; this time ${fmtDate(to)}: ${span} apart`,
@@ -109,7 +91,8 @@ export function pickVisual(card: InsightCardData): CardVisual | null {
 
 export function bigFigure(v: CardVisual): { n: string; unit: string } | null {
   if (v.kind !== 'gap') return null;
-  const sp = shortSpan(v.from, v.to);
-  if (sp.half) return { n: `${sp.n}½`, unit: 'years since the last one' };
-  return { n: String(sp.n), unit: `${sp.unit}${sp.n === 1 ? '' : 's'} since the last one` };
+  // spanText minus its count: "years", "month", "days".
+  const sp = gapSpan(v.from, v.to);
+  const words = spanText(sp).slice(spanCount(sp).length + 1);
+  return { n: spanCount(sp), unit: `${words} since the last one` };
 }

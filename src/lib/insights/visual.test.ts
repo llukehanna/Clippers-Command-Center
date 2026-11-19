@@ -28,10 +28,10 @@ describe('pickVisual', () => {
     const v = pickVisual(card({ fact_date: '2026-11-13', frame: frame({ type: 'first_since', since_date: '2021-12-04' }) }));
     expect(v?.kind).toBe('gap');
     if (v?.kind !== 'gap') throw new Error('x');
-    expect(v.span).toBe('5 years');
+    expect(v.span).toBe('4½ years');
     expect(v.ticks).toHaveLength(5);
     for (const t of v.ticks) { expect(t).toBeGreaterThan(0); expect(t).toBeLessThan(1); }
-    expect(v.aria).toBe('Last time Dec 4, 2021; this time Nov 13, 2026: 5 years apart');
+    expect(v.aria).toBe('Last time Dec 4, 2021; this time Nov 13, 2026: 4½ years apart');
   });
 
   it('first_since with since_date >= fact_date or no fact_date is not a gap', () => {
@@ -117,8 +117,13 @@ describe('bigFigure', () => {
   it('8.64 years reads 8½', () => {
     expect(bigFigure(gap('2018-03-26', '2026-11-15'))).toEqual({ n: '8½', unit: 'years since the last one' });
   });
-  it('half a year reads 6 months', () => {
-    expect(bigFigure(gap('2026-05-14', '2026-11-13'))).toEqual({ n: '6', unit: 'months since the last one' });
+  it('a day short of six months reads 5 months, never rounded up', () => {
+    expect(bigFigure(gap('2026-05-14', '2026-11-13'))).toEqual({ n: '5', unit: 'months since the last one' });
+    expect(bigFigure(gap('2026-05-13', '2026-11-13'))).toEqual({ n: '6', unit: 'months since the last one' });
+  });
+  it('1.76 years reads 1½, and a whole single year is singular', () => {
+    expect(bigFigure(gap('2025-02-10', '2026-11-13'))).toEqual({ n: '1½', unit: 'years since the last one' });
+    expect(bigFigure(gap('2025-11-13', '2026-11-13'))).toEqual({ n: '1', unit: 'year since the last one' });
   });
   it('non-gap visuals have none', () => {
     expect(bigFigure({ kind: 'best', prev: 1, value: 2, aria: '' })).toBeNull();

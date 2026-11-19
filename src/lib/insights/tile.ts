@@ -8,7 +8,7 @@ import type { InsightCardData } from './card';
 import { receiptTable, sampleLabel, type ReceiptTable } from './receipts';
 import { visualDrawable } from './kit-geometry';
 import { teamYoyChip } from './team-yoy';
-import { fmtShort } from './time';
+import { fmtDate, fmtShort } from './time';
 import { bigFigure, pickVisual, type CardVisual } from './visual';
 import { whyChip, type WhyChip } from './why';
 
@@ -46,6 +46,50 @@ export function compactMeta(card: InsightCardData): string {
   const date = fmtShort(card.fact_date);
   if (!ctx || ctx === date) return date;
   return ctx.startsWith(`${date} ·`) ? ctx : `${date} · ${ctx}`;
+}
+
+/** The page a card sits on, so it never links back to itself. */
+export type CardPage = { kind: 'game'; game_id: string } | { kind: 'player'; player_id: string };
+
+/**
+ * Where a card links on a page. On a game page, a card about that game is
+ * unlinked (it would open the page it is on). On a player page, a card opens
+ * its game when it has one and is otherwise unlinked. Elsewhere: card.href.
+ */
+export function cardHref(card: InsightCardData, page?: CardPage): string | null {
+  if (!page) return card.href;
+  if (page.kind === 'player') return card.game_id ? `/history/${card.game_id}` : null;
+  return card.href === `/history/${page.game_id}` ? null : card.href;
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** True when the card's header (or compact meta) shows its game line: "Nov 17 · W 120-100 vs UTA". */
+export function showsGameLine(card: InsightCardData): boolean {
+  return !!card.game_id && !!card.fact_date && card.context_label.startsWith(`${fmtShort(card.fact_date)} ·`);
+}
+
+/**
+ * The card's detail line, or null when it only restates the game the header
+ * already shows ("Nov 17, 2026 vs the Utah Jazz" under "Nov 17 · W 120-100 vs
+ * UTA"), as a postgame milestone written exactly on its mark does.
+ */
+export function shownDetail(card: InsightCardData): string | null {
+  const d = card.detail;
+  if (!d || !card.fact_date || !showsGameLine(card)) return d || null;
+  const onlyGame = new RegExp(`^${escapeRe(fmtDate(card.fact_date))}\\s+(?:vs|at)\\s+(?:the\\s+)?[^,.;·]+$`, 'i');
+  return onlyGame.test(d.trim()) ? null : d;
+}
+
+/**
+ * A scouting card's headline without the stored "Up next: " / "Next opponent: "
+ * prefix (the panel already says who is next), first letter capitalized.
+ * Cosmetic only: the rest of the stored headline is shown as written.
+ */
+export function scoutHeadline(headline: string): string {
+  const rest = headline.replace(/^\s*(?:up next|next opponent)\s*:\s*/i, '');
+  if (rest === headline || rest === '') return headline;
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
 }
 
 export function tileParts(card: InsightCardData): TileParts {

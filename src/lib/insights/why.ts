@@ -3,7 +3,7 @@
 // claims more than its frame proves, and time phrasing comes from since_date /
 // years only, never from frame.games_since (that count can undercount).
 import { ordinal } from '../record-notes';
-import { yearsBetween } from './time';
+import { gapSpan, spanCount, yearsSpan, type Span } from './time';
 import type { Evidence, Frame, Surface } from './types';
 
 export type WhyTone = 'rare' | 'career' | 'gold' | 'low' | 'ctx';
@@ -17,24 +17,22 @@ export interface WhyInput {
   fact_date: string | null;
 }
 
-/** Years from since_date to the fact date; falls back to frame.years when either date is missing. */
-function yearsFor(frame: Frame, factDate: string | null): number | null {
-  if (frame.since_date && factDate) {
-    const y = yearsBetween(frame.since_date, factDate);
-    if (Number.isFinite(y) && y >= 0) return y;
+/** The gap from since_date to the fact date; from frame.years when either date is missing. */
+function spanFor(frame: Frame, factDate: string | null): Span | null {
+  if (frame.since_date && factDate && frame.since_date.slice(0, 10) < factDate.slice(0, 10)) {
+    return gapSpan(frame.since_date, factDate);
   }
-  return typeof frame.years === 'number' && Number.isFinite(frame.years) ? frame.years : null;
+  return typeof frame.years === 'number' && Number.isFinite(frame.years) && frame.years > 0 ? yearsSpan(frame.years) : null;
 }
 
-function firstInLabel(y: number): string {
-  if (y >= 1) {
-    const half = Math.round(y * 2) / 2;
-    const whole = Math.floor(half);
-    const n = half % 1 ? `${whole}½` : `${whole}`;
-    return `First in ${n} ${half === 1 ? 'yr' : 'yrs'}`;
-  }
-  const mo = Math.max(1, Math.round(y * 12));
-  return mo >= 12 ? 'First in 1 yr' : `First in ${mo} mo`;
+const SHORT_UNIT: Record<Span['unit'], [string, string]> = {
+  year: ['yr', 'yrs'], month: ['mo', 'mo'], week: ['wk', 'wks'], day: ['day', 'days'],
+};
+
+/** "First in 8½ yrs", "First in 1 yr", "First in 5 mo": rounded down, never more than the gap. */
+function firstInLabel(s: Span): string {
+  const [one, many] = SHORT_UNIT[s.unit];
+  return `First in ${spanCount(s)} ${s.half || s.n !== 1 ? many : one}`;
 }
 
 /** "'21" from a YYYY-.. string. */
@@ -106,8 +104,8 @@ export function whyChip(input: WhyInput): WhyChip | null {
           ? { label: seasonsLabel(Math.round(frame.years)), tone: 'rare' }
           : null;
       }
-      const y = yearsFor(frame, input.fact_date);
-      return y === null ? null : { label: firstInLabel(y), tone: 'rare' };
+      const span = spanFor(frame, input.fact_date);
+      return span === null ? null : { label: firstInLabel(span), tone: 'rare' };
     }
     case 'longest_since': {
       const yr = shortYear(frame.since_date) ?? shortYear(frame.since_label);

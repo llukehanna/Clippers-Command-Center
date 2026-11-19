@@ -11,7 +11,13 @@ describe('teamYoyChip', () => {
   });
 
   it('every rank better: "Up in all N", green', () => {
-    expect(teamYoyChip([r('Offense', 22, 10), r('Defense', 25, 18)])).toEqual({ label: 'Up in all 2', tone: 'career' });
+    expect(teamYoyChip([r('Offense', 22, 10), r('Defense', 25, 18), r('Net', 20, 12)])).toEqual({ label: 'Up in all 3', tone: 'career' });
+  });
+
+  it('exactly two rows read "both", not "all 2"', () => {
+    expect(teamYoyChip([r('Offense', 22, 10), r('Defense', 25, 18)])).toEqual({ label: 'Up in both', tone: 'career' });
+    expect(teamYoyChip([r('Offense', 10, 22), r('Net', 12, 20)])).toEqual({ label: 'Down in both', tone: 'low' });
+    expect(teamYoyChip([r('Offense', 10, 22), r('Net', 20, 12)])).toEqual({ label: 'Down in 1 of 2', tone: 'low' });
   });
 
   it('mixed with some worse: "Down in X of N", red', () => {

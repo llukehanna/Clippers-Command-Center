@@ -16,11 +16,17 @@ const chip = (f: Partial<Frame>, over: Partial<WhyInput> = {}) => whyChip(input(
 describe('whyChip', () => {
   it('first_since phrases years from the dates', () => {
     expect(chip({ since_date: '2018-03-26' })).toEqual({ label: 'First in 8½ yrs', tone: 'rare' });
-    expect(chip({ since_date: '2023-12-29' }, { fact_date: '2026-11-13' })).toEqual({ label: 'First in 3 yrs', tone: 'rare' });
+    // 2 years 10 months: rounds down to 2½, never up to 3
+    expect(chip({ since_date: '2023-12-29' }, { fact_date: '2026-11-13' })).toEqual({ label: 'First in 2½ yrs', tone: 'rare' });
+    // 1.76 years reads 1½
+    expect(chip({ since_date: '2025-02-10' }, { fact_date: '2026-11-13' })?.label).toBe('First in 1½ yrs');
+    expect(chip({ years: 1.76 }, { fact_date: null })?.label).toBe('First in 1½ yrs');
   });
 
   it('first_since under a year reads months; just over a year reads 1 yr', () => {
-    expect(chip({ years: 0.4 }, { fact_date: null })?.label).toBe('First in 5 mo');
+    expect(chip({ years: 0.4 }, { fact_date: null })?.label).toBe('First in 4 mo');
+    expect(chip({ since_date: '2025-11-20' }, { fact_date: '2026-11-15' })?.label).toBe('First in 11 mo');
+    expect(chip({ since_date: '2026-10-30' }, { fact_date: '2026-11-13' })?.label).toBe('First in 2 wks');
     expect(chip({ years: 1.1 }, { fact_date: null })?.label).toBe('First in 1 yr');
   });
 

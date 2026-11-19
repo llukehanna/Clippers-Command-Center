@@ -69,7 +69,13 @@ export function receiptTable(card: InsightCardData): ReceiptTable | null {
   if (label) source += ` · Records since ${dash(label)}`;
   return {
     columns: used.map((c) => ({ key: c.key, label: c.label(stat), numeric: c.numeric })),
-    rows: parts.map((p) => ({ cells: used.map((c) => cell(c.key, p.data[c.key])), me: p.part === 'fact' })),
+    rows: parts.map((p) => {
+      const me = p.part === 'fact';
+      // The fact row is the card's own subject: name him when the Player column is shown and the row omits it.
+      const value = (key: string) =>
+        me && key === 'subject_name' && !present(p.data[key]) ? card.subject.name : p.data[key];
+      return { cells: used.map((c) => cell(c.key, value(c.key))), me };
+    }),
     source,
   };
 }

@@ -37,6 +37,21 @@ describe('receiptTable', () => {
     expect(t.source.endsWith('Records since 1996–97')).toBe(false);
   });
 
+  it("fills the fact row's Player cell with the subject when the row omits it", () => {
+    const rows = [
+      { part: 'fact' as const, data: { game_date: '2026-11-15', value: 8 } },
+      { part: 'frame' as const, data: { game_date: '2018-03-26', value: 9, subject_name: 'Brook Lopez' } },
+    ];
+    const t = receiptTable(card({ frame: frame({ stat: 'ast' }), proof: rows }))!;
+    expect(t.columns.map((c) => c.label)).toEqual(['Date', 'Player', 'AST']);
+    expect(t.rows[0].cells).toEqual(['Nov 15, 2026', 'Brook Lopez', '8']);
+    // A non-fact row keeps its own (or no) name
+    const t2 = receiptTable(card({ proof: [rows[0], { part: 'frame', data: { value: 2 } }, rows[1]] }))!;
+    expect(t2.rows[1].cells[1]).toBe('—');
+    // No Player column, nothing added
+    expect(receiptTable(card({ proof: [rows[0]] }))!.columns.map((c) => c.key)).toEqual(['game_date', 'value']);
+  });
+
   it('appends the records label', () => {
     const t = receiptTable(card({ frame: frame({ stat: 'ast', records_label: '1996-97' }), proof }))!;
     expect(t.source.endsWith(' · Records since 1996–97')).toBe(true);

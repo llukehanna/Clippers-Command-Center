@@ -67,8 +67,9 @@ export function teamYoyChip(rows: TeamYoyRow[]): WhyChip | null {
     if (better) return { label: `${valid[0].label} up`, tone: 'career' };
     return null;
   }
-  if (worse === n) return { label: `Down in all ${n}`, tone: 'low' };
-  if (better === n) return { label: `Up in all ${n}`, tone: 'career' };
+  const all = n === 2 ? 'both' : `all ${n}`;
+  if (worse === n) return { label: `Down in ${all}`, tone: 'low' };
+  if (better === n) return { label: `Up in ${all}`, tone: 'career' };
   if (worse > 0) return { label: `Down in ${worse} of ${n}`, tone: 'low' };
   return null;
 }
