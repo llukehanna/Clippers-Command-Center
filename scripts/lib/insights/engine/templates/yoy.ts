@@ -80,6 +80,8 @@ const context: ContextLine = (f, fr, rc, i) => {
     if (fr.type === 'records_best' && fr.records_seasons !== undefined) {
       return `${pron(f)} best ${d.label ?? 'performance'} in ${fr.records_seasons} season${fr.records_seasons === 1 ? '' : 's'} of records`;
     }
+    // Q7: a jump with no frame still says how many games it rests on.
+    if (fr.type === 'none' && d.games !== undefined) return `Through ${d.games} games`;
   }
   return detail(f, fr, rc, i);
 };

@@ -191,8 +191,21 @@ describe('kind questions', () => {
       .toMatchObject({ type: 'first_since', since_label: '2021-22', years: 4, strength: 0.65 });
     expect(milestoneFirstSince.interpret([], m, ctx)).toMatchObject({ type: 'records_best', records_seasons: 6 });
   });
+  it('YoY: career-best gate (Q7)', () => {
+    const mk = (value: number, games: number) => makeFact({ kind: 'yoy_change', stat: 'player_ppg', value, data: { yoy: 'player', expr: 'AVG(pb.points)', games } });
+    const prior = [{ season_id: 2021, value: 20.1, first_season: 2021 }, { season_id: 2024, value: 24.3, first_season: 2021 }];
+    expect(yoyPlayerBest.interpret(prior, mk(24.5, 11), ctx)).toBeNull();
+    expect(yoyPlayerBest.interpret(prior, mk(24.5, 20), ctx)).toMatchObject({ type: 'career_high' });
+    expect(yoyPlayerBest.interpret(prior, mk(25.6, 11), ctx)).toMatchObject({ type: 'career_high' });
+  });
+  it('yoy context says "Through N games" when no frame holds (Q7)', () => {
+    const f = makeFact({ kind: 'yoy_change', stat: 'player_ppg', value: 27.1, data: { yoy: 'player', label: 'scoring', formatted: '27.1 PPG', prev_formatted: '21.4 PPG', games: 11, prev_games: 58 } });
+    const none = { type: 'none' as const, strength: 0, who: 'subject' as const, text: '', proof_rows: [] };
+    const rc = { surface: 'season' as const, season: COMPLETED_SEASON, teams: ctx.teams };
+    expect(phrasingsFor(f, none).map((p) => p(f, none, rc).context)).toContain('Through 11 games');
+  });
   it('YoY: career-best season, or best since a season', () => {
-    const rise = makeFact({ kind: 'yoy_change', stat: 'player_ppg', value: 27.5, data: { yoy: 'player', expr: 'AVG(pb.points)' } });
+    const rise = makeFact({ kind: 'yoy_change', stat: 'player_ppg', value: 27.5, data: { yoy: 'player', expr: 'AVG(pb.points)', games: 60 } });
     expect(yoyPlayerBest.interpret([{ season_id: 2021, value: 20.1, first_season: 2021 }, { season_id: 2024, value: 24.3, first_season: 2021 }], rise, ctx))
       .toMatchObject({ type: 'career_high', prior_value: 24.3 });
     expect(yoyPlayerBest.interpret([{ season_id: 2023, value: 28, first_season: 2015 }, { season_id: 2024, value: 21, first_season: 2015 }], rise, ctx))

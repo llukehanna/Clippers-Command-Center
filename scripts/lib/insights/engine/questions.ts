@@ -2,7 +2,7 @@
 // The framer's questions (spec §2.3). Each builds one SQL statement (null when
 // it doesn't apply) and interprets its rows into a frame. Pure: queries run
 // through the framer's Runner.
-import { MIN_FIRST_SINCE_GAMES, MIN_SEASON_HIGH_TEAM_GAMES } from '../../../../src/lib/insights/quality';
+import { careerBestHolds, MIN_FIRST_SINCE_GAMES, MIN_SEASON_HIGH_TEAM_GAMES } from '../../../../src/lib/insights/quality';
 import type { Frame } from '../../../../src/lib/insights/types';
 import { seasonLabel } from '../../schedule-utils.js';
 import { REGULAR_SEASON } from '../../sql-fragments.js';
@@ -461,6 +461,8 @@ ORDER BY g.season_id`,
     const first = num(prior[0].first_season) ?? start.season_id;
     const maxPrior = Math.max(...prior.map((r) => Number(r.value)));
     if (first > start.season_id && fact.value > maxPrior) {
+      // Q7: a thin sample needs a real margin, else no career-best claim (the row falls to none).
+      if (!careerBestHolds(fact.data.games ?? 0, fact.value, maxPrior)) return null;
       return frame('career_high', FIXED_STRENGTH.career_high, 'subject', { prior_value: maxPrior });
     }
     const last = [...prior].reverse().find((r) => Number(r.value) >= fact.value);
