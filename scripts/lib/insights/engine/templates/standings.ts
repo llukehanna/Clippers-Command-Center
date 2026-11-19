@@ -1,11 +1,10 @@
 // Standings phrasings (only notable conference ranks are emitted).
-import { ordinal } from '../../proof-utils.js';
-import { phrasings, type Headline, type TemplateModule } from './shared.js';
+import { cap, phrasings, rankText, type Headline, type TemplateModule } from './shared.js';
 
 const headline = (i: number): Headline => (f, rc) => {
   const d = f.data;
   const conf = d.conference ?? 'conference';
-  const ord = ordinal(d.rank ?? f.value);
+  const ord = rankText(d.rank ?? f.value, d.tied);
   if (rc.season.isCurrent) {
     return i === 0 ? `Clippers are ${d.wins}-${d.losses}, ${ord} in the ${conf}` : `At ${d.wins}-${d.losses}, the Clippers are ${ord} in the ${conf}`;
   }
@@ -16,5 +15,5 @@ const headline = (i: number): Headline => (f, rc) => {
 
 export const standingsTemplates: TemplateModule = {
   default: phrasings([headline(0), headline(1)], (f) =>
-    `${ordinal(f.data.league_rank ?? 0)} of ${f.data.league_teams} teams league-wide by win percentage`),
+    `${cap(rankText(f.data.league_rank ?? 0, f.data.league_tied))} of ${f.data.league_teams} teams league-wide by win percentage`),
 };

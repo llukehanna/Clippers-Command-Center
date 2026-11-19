@@ -33,6 +33,8 @@ export interface Frame {
   years?: number;            // years since the previous occurrence
   rank?: number;
   total?: number;
+  /** league_rank: how many others share the rank (a tie reads "tied for", never the rank alone). */
+  tied?: number;
   count?: number;            // nth_time / joins_company
   names?: string[];          // joins_company
   records_label?: string;    // first season of the records searched ("2020-21")
@@ -50,7 +52,7 @@ export interface EntityRef {
 
 export type Evidence =
   | { type: 'streak_strip'; games: { date: string; value: number; hit: boolean }[]; threshold: number }
-  | { type: 'rank_track'; rank: number; total: number; betterIsHigher: boolean; label: string }
+  | { type: 'rank_track'; rank: number; total: number; tied?: number; betterIsHigher: boolean; label: string }
   | { type: 'history_ladder'; current: { value: number; label: string };
       others: { value: number; label: string; date: string }[] }
   | { type: 'delta'; before: { value: number; label: string }; after: { value: number; label: string };

@@ -46,18 +46,22 @@ export function pickFrame(frames: Frame[]): Frame {
   return best ?? noneFrame();
 }
 
-/** League-rank frame counted from whichever end the fact is notable at. */
-export function rankFrame(rank: number, total: number, bottom: boolean): Frame | null {
+/**
+ * League-rank frame counted from whichever end the fact is notable at. A tie keeps the type and strength and carries
+ * the tie count; the frame text (the template's context line) says "tied for" (FF-1).
+ */
+export function rankFrame(rank: number, total: number, bottom: boolean, tied = 0): Frame | null {
   const effective = bottom ? total - rank + 1 : rank;
   const strength = rankStrength(effective);
-  return strength === null ? null : { type: 'league_rank', strength, who: 'league', text: '', rank, total, proof_rows: [] };
+  if (strength === null) return null;
+  return { type: 'league_rank', strength, who: 'league', text: '', rank, total, ...(tied > 0 ? { tied } : {}), proof_rows: [] };
 }
 
 export function computedFrames(fact: Fact): Frame[] {
   const d = fact.data;
   const ranked = () => {
     if (d.rank === undefined || d.total === undefined) return [];
-    const f = rankFrame(d.rank, d.total, d.bottom === true);
+    const f = rankFrame(d.rank, d.total, d.bottom === true, d.tied ?? 0);
     return f ? [f] : [];
   };
   switch (fact.kind) {

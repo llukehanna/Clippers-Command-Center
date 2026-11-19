@@ -39,6 +39,12 @@ const sinceLong = (fr: Frame) => fr.since_label ?? (fr.since_date ? fmtDate(fr.s
  */
 export const frozen = (rc: RenderContext) => rc.surface === 'postgame';
 export const atTheTime = (rc: RenderContext) => (frozen(rc) ? ' at the time' : '');
+/**
+ * A rank as copy: "13th", or "tied for 13th" when others share it (SQL RANK() gives the tie its top place). A tie for
+ * 1st reads "tied for 1st", never "1st" alone (FF-1).
+ */
+export const rankText = (rank: number, tied?: number) => (tied && tied > 0 ? `tied for ${ordinal(rank)}` : ordinal(rank));
+
 /** A league rank's season: rc.season.phrase while current; "in 2026-27 at the time" on a frozen postgame row. */
 export const rankSeason = (rc: RenderContext) => (frozen(rc) ? `in ${rc.season.label} at the time` : rc.season.phrase);
 
@@ -78,7 +84,7 @@ export function frameLine(f: Fact, fr: Frame, rc: RenderContext, variant: number
       ]);
     case 'joins_company':
       return label && fr.names?.length
-        ? pick([`${frozen(rc) ? 'Joined' : 'Joins'} ${listNames(fr.names)} as the only Clippers with a ${thing} since ${label}${then}`])
+        ? pick([`${frozen(rc) ? 'Joined' : 'Joins'} ${listNames(fr.names)} as the only Clippers with ${f.data.company ?? `a ${thing}`} since ${label}${then}`])
         : null;
     case 'first_since':
       // Every variant names the thing: "His first since Mar 26, 2018" leaves out what is first (FW-4).

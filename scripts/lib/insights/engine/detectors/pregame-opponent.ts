@@ -72,7 +72,7 @@ export function opponentDetector(): Detector {
             polarity: 'neutral', proof: { ...q, match: {} },
             sample: { kind: 'share', p: Math.min(rank, fromBottom) / total },
             data: {
-              rank, total, bottom: rank > fromBottom, side: metric === 'def_rating' ? 'defense' : 'offense',
+              rank, total, tied: Number(r.tied), bottom: rank > fromBottom, side: metric === 'def_rating' ? 'defense' : 'offense',
               label: metric === 'def_rating' ? 'defensive rating' : 'offensive rating',
               formatted: fmt(Number(r.value)), higherIsBetter: metric === 'off_rating',
             },

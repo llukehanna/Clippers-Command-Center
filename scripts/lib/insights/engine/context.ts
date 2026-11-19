@@ -18,7 +18,11 @@ import type { EngineContext, PriorState, RosterPlayer, TeamInfo } from './types.
 export const MIN_SEASON_GAMES = 10;
 export { DEFAULT_POSTGAME_DAYS };
 
-export interface LoadOptions { asOf: string; gameId?: string | null; withPrior: boolean; postgameDays?: number }
+export interface LoadOptions {
+  asOf: string; gameId?: string | null; withPrior: boolean; postgameDays?: number;
+  /** Treat league data as incomplete with this reason, whatever the coverage says (the buzzer pregame pass, FF-2). */
+  leagueIncomplete?: string;
+}
 
 /** app_kv 'roster:LAC' (scripts/sync-roster.ts), parsed. */
 async function loadRosterSnapshot(): Promise<RosterSnapshot | null> {
@@ -100,7 +104,9 @@ export async function loadEngineContext(opts: LoadOptions): Promise<EngineContex
       AND EXISTS (SELECT 1 FROM game_team_box_scores b WHERE b.game_id = g.game_id)`,
   [chosen.season_id, asOf, lac.teamId])) as unknown as { d: string | null }[];
 
-  const league = assessLeagueCoverage(coverage, lac.teamId, latest?.d ?? null);
+  const coverageNow = assessLeagueCoverage(coverage, lac.teamId, latest?.d ?? null);
+  // A forced incomplete also arms the roster-snapshot guard below.
+  const league = opts.leagueIncomplete ? { complete: false as const, reason: opts.leagueIncomplete } : coverageNow;
   // The box-score roster can include departed players when league box scores are incomplete (a traded player still
   // looks like a Clipper) or while the stats season lags the current one (last season's roster): intersect with the synced roster.
   let roster = boxRoster;

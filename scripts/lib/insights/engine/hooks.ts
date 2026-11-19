@@ -40,12 +40,20 @@ export function postgameAtFinal(gameId: string, log: (m: string) => void = () =>
   });
 }
 
-export function pregameAtStart(log: (m: string) => void = () => {}): Promise<HookResult> {
+/** Why the buzzer pregame pass treats league data as incomplete (FF-2). */
+export const BUZZER_LEAGUE_REASON = 'buzzer: league sync pending';
+
+function pregamePass(log: (m: string) => void, leagueIncomplete?: string): Promise<HookResult> {
   return safely('pregame insights', async () => {
-    const r = await runEngine({ surfaces: ['pregame'], asOf: laToday(), write: true, log });
+    const r = await runEngine({ surfaces: ['pregame'], asOf: laToday(), write: true, log, ...(leagueIncomplete ? { leagueIncomplete } : {}) });
     if (!r.context) return { status: 'skipped', upserted: 0, message: 'no Clippers box scores' };
     return { status: 'ok', upserted: r.upserted, message: `${r.upserted} pregame insights` };
   });
+}
+
+/** The runner-start and tip−75 pregame passes: league data as the coverage check finds it. */
+export function pregameAtStart(log: (m: string) => void = () => {}): Promise<HookResult> {
+  return pregamePass(log);
 }
 
 export interface FinalHooks { postgame: HookResult; pregame: HookResult }
@@ -55,11 +63,16 @@ export interface FinalHooks { postgame: HookResult; pregame: HookResult }
  * so Home and the preview move on to the next game now instead of at the nightly run (FW-11). Each hook keeps its
  * own timeout and never throws; the pregame pass runs even when the postgame one failed. Never for a preseason
  * game, like every runner pregame pass.
+ *
+ * Tonight's other league box scores are not synced at the buzzer, so the pregame pass treats league data as
+ * incomplete (FF-2): league-dependent claims (opponent rank, form, hot players, opponent rest) are not emitted and
+ * their stale rows are swept; rest, the line, the season series, the last meeting and vs-opponent still run. The
+ * triggered post-game run rewrites them once the league syncs.
  */
 export async function insightsAtFinal(gameId: string, opts: { isPreseason: boolean }, log: (m: string) => void = () => {}): Promise<FinalHooks> {
   const postgame = await postgameAtFinal(gameId, log);
   const pregame = opts.isPreseason
     ? { status: 'skipped' as const, upserted: 0, message: 'preseason game' }
-    : await pregameAtStart(log);
+    : await pregamePass(log, BUZZER_LEAGUE_REASON);
   return { postgame, pregame };
 }

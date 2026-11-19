@@ -51,7 +51,7 @@ export function playerLinesDetector(): Detector {
             const fact: Fact = {
               ...gameFactBase(g, ctx), kind: 'player_game_stat', subject, stat: key, value, polarity: 'positive', proof,
               sample: { kind: 'context' },
-              data: { thing: `${value}-${stat.noun} game`, best: `most ${stat.plural} in a game`, by: 'by a Clipper', label: stat.label, unit: stat.plural },
+              data: { thing: stat.thing(value), ...(stat.company ? { company: stat.company(value) } : {}), best: `most ${stat.plural} in a game`, by: 'by a Clipper', label: stat.label, unit: stat.plural },
             };
             const sample = await refRate(fact, ctx);
             if (sample) facts.push({ ...fact, sample });

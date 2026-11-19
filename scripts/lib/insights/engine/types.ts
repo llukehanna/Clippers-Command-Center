@@ -41,6 +41,7 @@ export interface StreakGame { date: string; value: number; hit: boolean }
 /** Kind-specific values detectors set and the framer, templates and evidence read. */
 export interface FactData {
   // Wording
+  company?: string;          // joins_company phrase after "the only Clippers with": "8+ threes in a game" (default "a {thing}")
   thing?: string;            // singular claim noun: "55-point game", "streak of 30+ points", "1,500-point season"
   best?: string;             // lower-case superlative: "most points in a game", "longest streak of 30+ points"
   by?: string;               // "by a Clipper" | "by the Clippers"
@@ -51,6 +52,7 @@ export interface FactData {
   // Ranks
   rank?: number;
   total?: number;
+  tied?: number;             // how many others share `rank` (SQL RANK() ties): > 0 reads "tied for"
   bottom?: boolean;          // ranked from the bottom (bottom-5 facts)
   min_games?: number;
   // Streaks
@@ -73,6 +75,7 @@ export interface FactData {
   // Comparisons
   yoy?: 'team_rank' | 'record' | 'player';
   prev_rank?: number;
+  prev_tied?: number;        // how many others shared `prev_rank`
   prev_value?: number;
   cur_value?: number;
   prev_formatted?: string;
@@ -83,6 +86,7 @@ export interface FactData {
   prev_losses?: number;
   conference?: string | null;
   league_rank?: number;
+  league_tied?: number;      // how many others share `league_rank`
   league_teams?: number;
   // Matchups
   side?: 'offense' | 'defense';
