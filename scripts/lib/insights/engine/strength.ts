@@ -69,6 +69,8 @@ export function computedFrames(fact: Fact): Frame[] {
     case 'yoy_change':
       return d.yoy === 'team_rank' ? ranked() : [];
     case 'milestone':
+    case 'milestone_crossed':
+    case 'milestone_progress':
       return [{ type: 'milestone', strength: milestoneStrength(d.step ?? 0), who: 'subject', text: '', step: d.step ?? 0, proof_rows: [] }];
     default:
       return [];

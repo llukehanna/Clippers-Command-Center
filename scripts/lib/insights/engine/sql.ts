@@ -1,6 +1,7 @@
 // scripts/lib/insights/engine/sql.ts
 // DB-free SQL fragments shared by detectors and the context loader.
-export { REGULAR_SEASON } from '../../sql-fragments.js';
+import { REGULAR_SEASON } from '../../sql-fragments.js';
+export { REGULAR_SEASON };
 
 /**
  * Players of `team` as of `asOf` (v1 clippersSeasonPlayers + a date bound):
@@ -32,4 +33,15 @@ export function rosterSubquery(season: string, team: string, asOf: string): stri
   WHERE last_game.team_id = ${team}::bigint
     AND latest.team_id = ${team}::bigint
 )`;
+}
+
+/**
+ * A scalar subquery over one player's regular-season box scores up to a date: `select` is the aggregate
+ * (over pb), `where` extra ' AND ...' conditions (over pb and g), `asOf` the date placeholder.
+ * `alias` is the outer row whose player_id it totals. Shared by the crossed and progress milestone queries.
+ */
+export function playerTotalSub(alias: string, select: string, where: string, asOf = '$4'): string {
+  return `(SELECT ${select}
+    FROM game_player_box_scores pb JOIN games g ON g.game_id = pb.game_id
+    WHERE pb.player_id = ${alias}.player_id AND ${REGULAR_SEASON} AND g.game_date <= ${asOf}::date${where})`;
 }

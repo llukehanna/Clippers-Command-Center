@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Frame } from '../../../../src/lib/insights/types';
 import { MAX_HEADLINE, phrasingsFor, renderInsight } from './render';
 import { TEMPLATES } from './templates/index';
+import { FACT_KINDS } from './types';
 import type { RenderContext } from './templates/shared';
 import { COMPLETED_SEASON, CURRENT_SEASON, makeCtx, makeFact } from './__fixtures__/facts';
 import type { Fact } from './types';
@@ -28,7 +29,7 @@ const FIXTURES: Record<string, Fact> = {
   opp_rank: makeFact({ kind: 'opp_rank', surface: 'pregame', subject: { type: 'team', id: '2', name: 'Golden State Warriors' }, stat: 'opp_def_rating', value: 3, context: { date: '2026-03-01', opponent_id: '2' }, data: { rank: 3, total: 30, side: 'defense', formatted: '108.2' } }),
   h2h: makeFact({ kind: 'h2h', surface: 'pregame', subject: { type: 'team', id: '1', name: 'Clippers' }, stat: 'h2h', value: 2, context: { date: '2026-03-01', opponent_id: '2' }, data: { wins: 2, opp_wins: 1, meetings: 3 } }),
   last_meeting: makeFact({ kind: 'last_meeting', surface: 'pregame', subject: { type: 'team', id: '1', name: 'Clippers' }, stat: 'last_meeting', value: 14, context: { date: '2026-03-01', opponent_id: '2' }, data: { lac_score: 118, opp_score: 104, meeting_date: '2026-02-01', meeting_home: true } }),
-  night: makeFact({ kind: 'league_night', surface: 'postgame', stat: 'pts', value: 55, window: { type: 'game', game_id: '500', season_id: 2025 }, context: { date: '2025-11-28', opponent_id: '2', home: true, result: 'W' }, gameId: '500', data: { thing: '55-point game', best: 'most points in a game', by: 'by a Clipper', label: 'scoring', unit: 'points', rank: 1, total: 18000 } }),
+  night: makeFact({ kind: 'player_game_stat', surface: 'postgame', stat: 'pts', value: 55, window: { type: 'game', game_id: '500', season_id: 2025 }, context: { date: '2025-11-28', opponent_id: '2', home: true, result: 'W' }, gameId: '500', data: { thing: '55-point game', best: 'most points in a game', by: 'by a Clipper', label: 'scoring', unit: 'points', rank: 1, total: 18000 } }),
 };
 
 describe('templates (exact copy)', () => {
@@ -78,8 +79,8 @@ describe('templates (exact copy)', () => {
       .toEqual({ headline: 'Last meeting: Clippers won 118-104 vs the Golden State Warriors', context: 'Home, Feb 1, 2026' });
     const post: RenderContext = { ...rcDone, surface: 'postgame' };
     expect(say(FIXTURES.night, records, post))
-      .toEqual({ headline: 'Star Clipper scored 55 vs the Warriors', context: 'Most points in a game by a Clipper since 2020-21' });
-    expect(say(FIXTURES.night, fr('league_rank', { rank: 1 }), post).context).toBe('The best scoring night in the NBA in 2025-26');
+      .toEqual({ headline: 'Star Clipper scored 55 in a win over the Warriors', context: 'Most points in a game by a Clipper since 2020-21 at the time' });
+    expect(say(FIXTURES.night, fr('league_rank', { rank: 1 }), post).context).toBe('The best scoring night in the NBA in 2025-26 at the time');
   });
 });
 
@@ -108,8 +109,7 @@ describe('every template renders clean and fits', () => {
     }
   });
   it('covers every fact kind', () => {
-    expect(Object.keys(TEMPLATES).sort()).toEqual(
-      ['h2h', 'last_meeting', 'league_night', 'league_rank', 'milestone', 'opp_rank', 'recent_form', 'standings', 'streak', 'yoy_change']);
+    expect(Object.keys(TEMPLATES).sort()).toEqual([...FACT_KINDS].sort());
   });
 });
 
@@ -202,5 +202,15 @@ describe('renderInsight', () => {
   it('drops the insight when even the shortest phrasing overflows', () => {
     const huge = { ...FIXTURES.streak, subject: { ...FIXTURES.streak.subject, name: 'A'.repeat(120) } };
     expect(renderInsight(huge, records, rcDone, '00000000')).toBeNull();
+  });
+});
+
+describe('streak wording: closed streaks', () => {
+  it('data.closed words player streaks in the past while the season is current', () => {
+    const closed = makeFact({ data: { closed: true } });
+    expect(say(makeFact(), none, rcNow).headline).toBe('Star Clipper has scored 30+ in 5 straight games');
+    expect(say(closed, none, rcNow).headline).toBe('Star Clipper closed the regular season with 30+ points in 5 straight games');
+    expect(say(closed, none, rcNow, 1).headline).toBe('Star Clipper ended the regular season with 5 straight 30-point games');
+    expect(say(closed, none, rcDone).headline).toBe(say(makeFact(), none, rcDone).headline);
   });
 });

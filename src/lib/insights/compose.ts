@@ -87,7 +87,7 @@ export function composeFeed(items: ComposableInsight[], placement: Placement): C
   const picked: ComposedInsight[] = [];
   for (const it of ranked) {
     if (picked.length >= size) break;
-    if (it.player_id && count(picked, (p) => p.player_id === it.player_id) >= MAX_PER_PLAYER) continue;
+    if (placement !== 'player_page' && it.player_id && count(picked, (p) => p.player_id === it.player_id) >= MAX_PER_PLAYER) continue;
     if (count(picked, (p) => p.category === it.category) >= MAX_PER_CATEGORY) continue;
     picked.push(it);
   }

@@ -130,6 +130,15 @@ describe('GET /api/insights', () => {
     expect(body.insights[0].insight_id).toBe('uuid-active');
   });
 
+  it('never serves player-surface rows: the legacy reader filters them out in SQL', async () => {
+    mockRows = [];
+    mockSqlTag.mockClear();
+    const { GET } = await import('@/app/api/insights/route');
+    await GET(new Request('http://localhost/api/insights?scope=between_games'));
+    const main = mockSqlTag.mock.calls.map((c) => (c[0] as string[]).join('?')).find((t) => t.includes('FROM insights'));
+    expect(main).toMatch(/surface IS NULL OR surface <> 'player'/);
+  });
+
   it('each insight has proof with summary=category and result=proof_result', async () => {
     mockRows = [
       {

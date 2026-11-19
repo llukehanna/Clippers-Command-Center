@@ -9,14 +9,17 @@ import { loadEngineContext } from './context.js';
 import { daysBetween } from './dates.js';
 import { DETECTORS } from './detectors/index.js';
 import { buildEntities, buildEvidence } from './evidence.js';
-import { frameFact } from './framer.js';
+import { blockedFrames, frameFact, PBP_KINDS } from './framer.js';
 import { factKey } from './keys.js';
+import { pbpRecordsComplete } from './pbp-coverage.js';
 import { combineProof, selectProofRows, type ProofPart } from './proof.js';
 import { runQuery } from './query.js';
 import { questionsFor } from './questions.js';
+import { LATE_JOINERS_SQL, lateJoinerGuard } from './references.js';
+import { renderSeason } from './records.js';
 import { renderInsight } from './render.js';
 import { isTrivial, probability, salienceClass, scoreInsight, unchangedSince } from './score.js';
-import { deactivateLegacy, deactivateStale, upsertInsight } from './store.js';
+import { deactivateLegacy, deactivateRetired, deactivateStale, upsertInsight } from './store.js';
 import type { Detector, DetectorOutput, EngineContext, Fact, FactKind, InsightDraft, Runner } from './types.js';
 
 export interface RunOptions {
@@ -24,6 +27,8 @@ export interface RunOptions {
   asOf: string;
   write: boolean;
   gameId?: string | null;
+  /** Postgame window in days (default 3). */
+  postgameDays?: number;
   log?: (msg: string) => void;
   /** Override the registry (tests). */
   detectors?: readonly Detector[];
@@ -39,6 +44,7 @@ export interface EngineResult {
   upserted: number;
   deactivated: number;
   legacyDeactivated: number;
+  retiredDeactivated: number;
 }
 
 /** Days from the fact to the reference date; a completed season is measured from its last game. */
@@ -48,16 +54,32 @@ export function ageDays(fact: Fact, ctx: EngineContext): number {
   return daysBetween(fact.context.date, ref);
 }
 
+/** Loads (once per season and date) the late joiners a guarded fact's subject frames depend on (references.lateJoinerGuard, FW-6). */
+export async function loadLateJoiners(fact: Fact, ctx: EngineContext, run: Runner = runQuery): Promise<void> {
+  const guard = lateJoinerGuard(fact, ctx);
+  if (!guard || ctx.lateJoiners?.has(guard.key)) return;
+  const rows = await run({ sql: LATE_JOINERS_SQL, params: [ctx.lac.teamId, guard.seasonId, guard.date] });
+  (ctx.lateJoiners ??= new Map()).set(guard.key, new Set(rows.map((r) => String(r.player_id))));
+}
+
 export async function buildDraft(
   fact: Fact, key: string, detector: string, ctx: EngineContext, run: Runner = runQuery,
 ): Promise<InsightDraft | { reason: DropReason }> {
-  const cls = salienceClass(fact.subject, ctx.roster);
+  const cls = fact.surface === 'pregame' && fact.data.opponent_player ? 'opponent' : salienceClass(fact.subject, ctx.roster);
   if (cls === 'former' && fact.surface !== 'postgame') return { reason: 'former' };
 
-  const framed = await frameFact(fact, ctx, run, questionsFor(fact));
+  await loadLateJoiners(fact, ctx, run);
+  // Play-by-play record frames are only honest when every earlier Clippers game in range has play-by-play.
+  const pbpComplete = PBP_KINDS.has(fact.kind) ? await pbpRecordsComplete(ctx, fact.context.date, run) : true;
+  const framed = await frameFact(fact, ctx, run, questionsFor(fact), blockedFrames(fact, pbpComplete));
   if (isTrivial(probability(fact.sample), framed.frame.type, fact.kind)) return { reason: 'trivial' };
 
-  const rendered = renderInsight(fact, framed.frame, { surface: fact.surface, season: ctx.season, teams: ctx.teams }, key);
+  // Postgame claims freeze after their window, so they name their season, "so far" because their references stop at the game date (a later game may beat it).
+  const factSeason = renderSeason(fact.seasonId, ctx.season, ctx.asOf, fact.context.date);
+  const season = fact.surface === 'postgame'
+    ? { ...factSeason, isCurrent: false, phrase: `so far in ${factSeason.label}` }
+    : factSeason;
+  const rendered = renderInsight(fact, framed.frame, { surface: fact.surface, season, teams: ctx.teams }, key);
   if (!rendered) return { reason: 'too_long' };
   const frame = { ...framed.frame, text: rendered.context };
 
@@ -85,8 +107,13 @@ export async function buildDraft(
 
 export async function runEngine(opts: RunOptions): Promise<EngineResult> {
   const log = opts.log ?? (() => {});
-  const ctx = await loadEngineContext({ asOf: opts.asOf, gameId: opts.gameId ?? null, withPrior: opts.write });
-  if (!ctx) return { context: null, drafts: [], dropped: [], upserted: 0, deactivated: 0, legacyDeactivated: 0 };
+  if (opts.gameId && opts.surfaces.some((s) => s !== 'postgame')) {
+    throw new Error('gameId runs cover the postgame surface only');
+  }
+  const ctx = await loadEngineContext({
+    asOf: opts.asOf, gameId: opts.gameId ?? null, withPrior: opts.write, postgameDays: opts.postgameDays,
+  });
+  if (!ctx) return { context: null, drafts: [], dropped: [], upserted: 0, deactivated: 0, legacyDeactivated: 0, retiredDeactivated: 0 };
   if (!ctx.league.complete) {
     log(`::warning title=League data incomplete::${ctx.league.reason} — league-wide detectors and frames are skipped`);
   }
@@ -98,6 +125,14 @@ export async function runEngine(opts: RunOptions): Promise<EngineResult> {
     // A null gameIds means "the whole surface", which for postgame would deactivate every game's rows.
     if (detector.surface === 'postgame' && out.gameIds === null) {
       throw new Error(`postgame detector ${detector.name} returned gameIds null; postgame detectors must name the games they covered`);
+    }
+    for (const f of out.facts) {
+      if (f.surface !== detector.surface || !detector.categories.includes(f.kind)) {
+        throw new Error(`${detector.name} emitted ${f.surface}/${f.kind}, outside its scope ${detector.surface}/${detector.categories.join(',')}`);
+      }
+      if (detector.surface === 'postgame' && (f.gameId === null || !out.gameIds!.includes(f.gameId))) {
+        throw new Error(`${detector.name} emitted a fact for game ${f.gameId}, which it did not cover`);
+      }
     }
     outputs.push({ detector, out });
   }
@@ -118,7 +153,7 @@ export async function runEngine(opts: RunOptions): Promise<EngineResult> {
     }
   }
 
-  if (!opts.write) return { context: ctx, drafts, dropped, upserted: 0, deactivated: 0, legacyDeactivated: 0 };
+  if (!opts.write) return { context: ctx, drafts, dropped, upserted: 0, deactivated: 0, legacyDeactivated: 0, retiredDeactivated: 0 };
 
   for (const d of drafts) await upsertInsight(d);
   let deactivated = 0;
@@ -127,5 +162,6 @@ export async function runEngine(opts: RunOptions): Promise<EngineResult> {
     deactivated += await deactivateStale({ surface: detector.surface, categories: detector.categories, gameIds: out.gameIds }, kept);
   }
   const legacyDeactivated = await deactivateLegacy();
-  return { context: ctx, drafts, dropped, upserted: drafts.length, deactivated, legacyDeactivated };
+  const retiredDeactivated = await deactivateRetired();
+  return { context: ctx, drafts, dropped, upserted: drafts.length, deactivated, legacyDeactivated, retiredDeactivated };
 }

@@ -132,10 +132,11 @@ export async function loadGamePreview(gameIdParam: string): Promise<ApiResult> {
       `,
       sql<RestRow[]>`
         -- preview:rest
+        -- Preseason games don't count as rest (all_games holds the Clippers' preseason); same rule as the engine's REST_SQL.
         SELECT t.team_id::text AS team_id, MAX(g.game_date)::text AS prev_date
         FROM unnest(${teamIds}::bigint[]) AS t(team_id)
         JOIN all_games g ON g.home_team_id = t.team_id OR g.away_team_id = t.team_id
-        WHERE g.game_date < ${g.game_date}::date AND g.game_date >= ${g.game_date}::date - 30
+        WHERE g.game_date < ${g.game_date}::date AND g.game_date >= ${g.game_date}::date - 30 AND NOT g.is_preseason
         GROUP BY t.team_id
       `,
       sql<InsightRow[]>`

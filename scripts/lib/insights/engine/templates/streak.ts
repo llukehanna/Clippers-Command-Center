@@ -43,6 +43,9 @@ const headline = (i: number): Headline => (f, rc) => {
   if (team) return rc.season.isCurrent ? team.current[i](f.value) : team.closed[i](f.value, rc.season.label);
   const words = PLAYER_WORDS[f.stat];
   if (!words) throw new Error(`no streak wording for ${f.stat}`);
+  // A player streak the playoffs have closed reads in the past even while the season is current.
+  // The streak counts regular-season games only, so while the playoffs are on it names the regular season, not the season.
+  if (f.data.closed === true && rc.season.isCurrent) return `${f.subject.name} ${words.closed[i](f.value, 'the regular season')}`;
   return `${f.subject.name} ${rc.season.isCurrent ? words.current[i](f.value) : words.closed[i](f.value, rc.season.label)}`;
 };
 

@@ -5,17 +5,26 @@
 // records starts, league coverage and the stored prior state.
 import { MINUTES_SECONDS_SQL } from '../../../../src/lib/minutes';
 import { sql } from '../../db.js';
+import { DEFAULT_POSTGAME_DAYS } from './dates.js';
 import { currentSeasonId, seasonLabel } from '../../schedule-utils.js';
 import { REGULAR_SEASON } from '../../sql-fragments.js';
 import { assessLeagueCoverage, type TeamGames } from './coverage.js';
+import { applyRosterSnapshot, parseRosterSnapshot, rosterGuardReason, snapshotProblem, type RosterSnapshot } from './roster.js';
 import { parseRecordsStart } from './records.js';
 import { rosterSubquery } from './sql.js';
 import { loadPrior } from './store.js';
 import type { EngineContext, PriorState, RosterPlayer, TeamInfo } from './types.js';
 
 export const MIN_SEASON_GAMES = 10;
+export { DEFAULT_POSTGAME_DAYS };
 
-export interface LoadOptions { asOf: string; gameId?: string | null; withPrior: boolean }
+export interface LoadOptions { asOf: string; gameId?: string | null; withPrior: boolean; postgameDays?: number }
+
+/** app_kv 'roster:LAC' (scripts/sync-roster.ts), parsed. */
+async function loadRosterSnapshot(): Promise<RosterSnapshot | null> {
+  const [kv] = await sql<{ value: unknown }[]>`SELECT value FROM app_kv WHERE key = 'roster:LAC'`;
+  return parseRosterSnapshot(kv?.value);
+}
 
 export async function loadEngineContext(opts: LoadOptions): Promise<EngineContext | null> {
   const { asOf } = opts;
@@ -71,7 +80,7 @@ export async function loadEngineContext(opts: LoadOptions): Promise<EngineContex
       AND pb.player_id IN ${rosterSubquery('$1', '$2', '$3')}
     GROUP BY pb.player_id, p.display_name`,
   [chosen.season_id, lac.teamId, asOf])) as unknown as { player_id: string; name: string; games: number; mpg: number }[];
-  const roster = new Map<string, RosterPlayer>(
+  const boxRoster = new Map<string, RosterPlayer>(
     rosterRows.map((r) => [r.player_id, { playerId: r.player_id, name: r.name, games: r.games, mpg: r.mpg }]));
 
   const coverage = (await sql.unsafe(`
@@ -91,6 +100,20 @@ export async function loadEngineContext(opts: LoadOptions): Promise<EngineContex
       AND EXISTS (SELECT 1 FROM game_team_box_scores b WHERE b.game_id = g.game_id)`,
   [chosen.season_id, asOf, lac.teamId])) as unknown as { d: string | null }[];
 
+  const league = assessLeagueCoverage(coverage, lac.teamId, latest?.d ?? null);
+  // The box-score roster can include departed players when league box scores are incomplete (a traded player still
+  // looks like a Clipper) or while the stats season lags the current one (last season's roster): intersect with the synced roster.
+  let roster = boxRoster;
+  const guardReason = rosterGuardReason(league.complete, chosen.season_id, asOf);
+  if (guardReason) {
+    const snapshot = await loadRosterSnapshot();
+    const problem = snapshotProblem(snapshot, asOf, boxRoster);
+    if (problem) {
+      console.log(`::warning title=Roster snapshot unusable::roster:LAC snapshot ${problem}; the box-score roster is used unguarded while ${guardReason}`);
+    }
+    roster = applyRosterSnapshot(boxRoster, snapshot, asOf);
+  }
+
   const prior: Map<string, PriorState> = opts.withPrior ? await loadPrior() : new Map();
 
   return {
@@ -102,8 +125,9 @@ export async function loadEngineContext(opts: LoadOptions): Promise<EngineContex
     recordsStart: parseRecordsStart(kvValue('insights.records_start')),
     pbpRecordsStart: parseRecordsStart(kvValue('insights.pbp_records_start')),
     roster,
-    league: assessLeagueCoverage(coverage, lac.teamId, latest?.d ?? null),
+    league,
     gameId: opts.gameId ?? null,
+    postgameDays: opts.postgameDays ?? DEFAULT_POSTGAME_DAYS,
     prior,
   };
 }

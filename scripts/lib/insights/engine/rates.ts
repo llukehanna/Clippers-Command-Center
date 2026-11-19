@@ -4,7 +4,10 @@
 // player-games since records start.
 import { sql } from '../../db.js';
 import { REGULAR_SEASON } from '../../sql-fragments.js';
-import type { EngineContext } from './types.js';
+import { withRef } from './proof.js';
+import { runQuery } from './query.js';
+import { refsFor } from './references.js';
+import type { EngineContext, Fact, Runner, Sample } from './types.js';
 
 export interface Rate { k: number; n: number }
 
@@ -40,9 +43,11 @@ export async function playerHitRates(
   return { rates: new Map(rows.map((r) => [r.player_id, { k: r.k, n: r.n }])), pRef: await clippersPlayerRate(ctx, predicate) };
 }
 
-/** The Clippers' wins (or losses) / games before `beforeDate`, stats season and the one before. */
-export async function teamResultRate(ctx: EngineContext, wins: boolean, beforeDate: string): Promise<Rate> {
-  const lac = ctx.lac.teamId;
+/** A team's (default the Clippers') wins (or losses) / games before `beforeDate`, stats season and the one before. */
+export async function teamResultRate(
+  ctx: EngineContext, wins: boolean, beforeDate: string, teamId: string = ctx.lac.teamId,
+): Promise<Rate> {
+  const lac = teamId;
   const [r] = await sql<{ k: number; n: number }[]>`
     SELECT COUNT(*) FILTER (WHERE ((g.home_team_id = ${lac}::bigint) = (g.home_score > g.away_score)) = ${wins}::boolean)::int AS k,
            COUNT(*)::int AS n
@@ -53,22 +58,36 @@ export async function teamResultRate(ctx: EngineContext, wins: boolean, beforeDa
   return { k: r?.k ?? 0, n: r?.n ?? 0 };
 }
 
-/** A player's earlier games (strictly before `factDate`, never past asOf) at or above `value` (k/n) and the Clippers-wide rate over the same games, excluding the fact's game. */
-export async function playerValueRate(
-  ctx: EngineContext, column: string, playerId: string, value: number, gameId: string, factDate: string,
-): Promise<{ k: number; n: number; pRef: number }> {
-  const col = sql.unsafe(`pb.${column}`);
-  const lac = ctx.lac.teamId;
-  const [r] = await sql<{ k: number; n: number; p_ref: number }[]>`
-    SELECT COUNT(*) FILTER (WHERE pb.player_id = ${playerId}::bigint AND g.season_id >= ${ctx.season.id - 1} AND ${col} >= ${value}::float8)::int AS k,
-           COUNT(*) FILTER (WHERE pb.player_id = ${playerId}::bigint AND g.season_id >= ${ctx.season.id - 1})::int AS n,
-           COALESCE(AVG((${col} >= ${value}::float8)::int) FILTER (WHERE pb.team_id = ${lac}::bigint AND g.season_id >= ${recordsFrom(ctx)}), 0)::float8 AS p_ref
-    FROM game_player_box_scores pb
-    JOIN games g ON g.game_id = pb.game_id
-    WHERE (pb.player_id = ${playerId}::bigint OR pb.team_id = ${lac}::bigint)
-      AND pb.game_id <> ${gameId}::bigint AND g.game_date < ${factDate}::date AND g.game_date <= ${ctx.asOf}::date
-      AND ${regular()} AND ${col} IS NOT NULL`;
-  return { k: r?.k ?? 0, n: r?.n ?? 0, pRef: r?.p_ref ?? 0 };
+/**
+ * A game-level fact's prior probability from its own reference sets (spec §2.4):
+ * k/n = the subject's games reaching the value, over the fact's season and the
+ * one before; p_ref = the rate across the group set (every Clippers player-game
+ * since records start). Only games strictly before the fact's date count, and
+ * never the fact's own game. Null when the fact has no references.
+ */
+export async function refRate(fact: Fact, ctx: EngineContext, run: Runner = runQuery): Promise<Sample | null> {
+  const refs = refsFor(fact, ctx);
+  const own = refs?.subject ?? refs?.group;
+  if (!refs || !own) return null;
+  const ge = refs.betterIsHigher ? '>=' : '<=';
+  const value = refs.ordinal ? fact.value : 1;
+  const game = fact.window.game_id ?? '';
+  const date = fact.context.date;
+  const fromSeason = (fact.seasonId ?? ctx.season.id) - 1;
+  const [mine] = await run(withRef(own, (b) => `SELECT COUNT(*) FILTER (WHERE value ${ge} ${b(value, 'float8')})::int AS k, COUNT(*)::int AS n
+FROM ref
+WHERE game_id <> ${b(game, 'text')} AND season_id >= ${b(fromSeason, 'int')}
+  AND subject_id = ${b(fact.subject.id, 'text')} AND game_date < ${b(date, 'text')}`));
+  const k = Number(mine?.k ?? 0);
+  const n = Number(mine?.n ?? 0);
+  let pRef = n > 0 ? k / n : 0;
+  if (refs.group) {
+    const [g] = await run(withRef(refs.group, (b) => `SELECT COALESCE(AVG((value ${ge} ${b(value, 'float8')})::int), 0)::float8 AS p_ref
+FROM ref
+WHERE game_id <> ${b(game, 'text')} AND game_date < ${b(date, 'text')}`));
+    pRef = Number(g?.p_ref ?? 0);
+  }
+  return { kind: 'rate', k, n, pRef, power: 1 };
 }
 
 /** Share of completed Clippers player-seasons (>= 20 games, since records start) whose total reached `threshold`; (k+1)/(n+2). */
@@ -87,9 +106,26 @@ export async function seasonTotalShare(ctx: EngineContext, expr: string, thresho
   return ((r?.k ?? 0) + 1) / ((r?.n ?? 0) + 2);
 }
 
-/** Share of the Clippers' final regular-season games won (or lost) from records start through as-of, Laplace-smoothed (k+1)/(n+2) so it is strictly inside (0,1); the team streak's p_ref. */
-export async function clippersTeamResultShare(ctx: EngineContext, wins: boolean): Promise<number> {
-  const lac = ctx.lac.teamId;
+/** Share of players (>= 200 regular-season games in the data) whose career total of `column` reached `threshold`; (k+1)/(n+2). */
+export async function careerTotalShare(ctx: EngineContext, column: string, threshold: number): Promise<number> {
+  const [r] = await sql<{ k: number; n: number }[]>`
+    SELECT COUNT(*) FILTER (WHERE total >= ${threshold}::float8)::int AS k, COUNT(*)::int AS n
+    FROM (
+      SELECT pb.player_id, SUM(${sql.unsafe(`pb.${column}`)})::float8 AS total
+      FROM game_player_box_scores pb
+      JOIN games g ON g.game_id = pb.game_id
+      WHERE ${regular()} AND g.game_date <= ${ctx.asOf}::date
+      GROUP BY pb.player_id
+      HAVING COUNT(*) >= 200
+    ) s`;
+  return ((r?.k ?? 0) + 1) / ((r?.n ?? 0) + 2);
+}
+
+/** Share of a team's (default the Clippers') final regular-season games won (or lost) from records start through as-of, Laplace-smoothed (k+1)/(n+2) so it is strictly inside (0,1); the team streak's p_ref. */
+export async function clippersTeamResultShare(
+  ctx: EngineContext, wins: boolean, teamId: string = ctx.lac.teamId,
+): Promise<number> {
+  const lac = teamId;
   const [r] = await sql<{ k: number; n: number }[]>`
     SELECT COUNT(*) FILTER (WHERE ((g.home_team_id = ${lac}::bigint) = (g.home_score > g.away_score)) = ${wins}::boolean)::int AS k,
            COUNT(*)::int AS n

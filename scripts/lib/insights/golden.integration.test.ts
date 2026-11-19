@@ -9,12 +9,14 @@ import { execFileSync } from 'node:child_process';
 import type { Surface } from '../../../src/lib/insights/types';
 import { EXEMPT_FRAMES, EXEMPT_KINDS } from './engine/score';
 import type { EngineResult } from './engine/run';
+import { addDays } from './engine/dates';
+import { seedGameFlows } from './engine/__fixtures__/flows';
 
 const REAL = process.env.GOLDEN_REAL === '1';
 const url = REAL ? process.env.DATABASE_URL : process.env.FIXTURE_DATABASE_URL;
 const TIMEOUT = 300_000;
 const RECORD_FRAMES = ['records_best', 'only_one', 'joins_company', 'first_since', 'longest_since', 'clippers_rank'];
-const SURFACES: Surface[] = ['season', 'pregame', 'postgame'];
+const SURFACES: Surface[] = ['season', 'pregame', 'postgame', 'player'];
 
 function run(script: string, args: string[] = []): string {
   return execFileSync('npx', ['tsx', script, ...args], {
@@ -70,18 +72,25 @@ describe.skipIf(!url)(`insight engine golden expectations (${REAL ? 'real data, 
       }
     });
 
-    it('G3 no composed placement has more than two items about one player', () => {
+    it('G3 no composed placement has more than two items about one player (a player page, six about its player)', () => {
       const items = all.drafts.map(toComposable);
       for (const placement of ['home_hero', 'last_game', 'up_next', 'season_feed'] as const) {
         const counts = new Map<string, number>();
         for (const i of composeFeed(items, placement)) if (i.player_id) counts.set(i.player_id, (counts.get(i.player_id) ?? 0) + 1);
         expect(Math.max(0, ...counts.values()), placement).toBeLessThanOrEqual(2);
       }
+      // player_page is exempt from the per-player cap; each player's own page holds at most six.
+      const pids = new Set(items.map((i) => i.player_id).filter((x): x is string => !!x));
+      expect(pids.size).toBeGreaterThan(0);
+      for (const pid of pids) {
+        const page = composeFeed(items.filter((i) => i.player_id === pid), 'player_page');
+        expect(page.length, `player ${pid}`).toBeLessThanOrEqual(6);
+      }
     });
 
     it('G4 former Clippers never appear outside postgame', () => {
       const roster = all.context!.roster;
-      for (const d of all.drafts) if (d.surface !== 'postgame' && d.player_id) expect(roster.has(d.player_id), d.headline).toBe(true);
+      for (const d of all.drafts) if (d.surface !== 'postgame' && d.player_id && !(d.surface === 'pregame' && d.score_parts.salience_class === 'opponent')) expect(roster.has(d.player_id), d.headline).toBe(true);
     });
 
     it('G5 nothing trivial survives: p <= 0.25 unless a milestone or record', () => {
@@ -106,14 +115,16 @@ describe.skipIf(!url)(`insight engine golden expectations (${REAL ? 'real data, 
   });
 
   describe.skipIf(REAL)('fixture league', () => {
-    it('G7 a 55-point game is framed against the records and lands on its game page', async () => {
-      const night = all.drafts.find((d) => d.category === 'league_night' && /^Star Clipper/.test(d.headline) && /\b55\b/.test(d.headline));
+    it('G7 a 55-point game is a records_best postgame insight on its game page', async () => {
+      const [g] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM game_player_box_scores WHERE player_id = 1 AND points = 55`;
+      const r = await dry(today, ['postgame'], g.game_id);
+      const night = r.drafts.find((d) => d.category === 'player_game_stat' && /^Star Clipper scored 55\b|^Star Clipper: 55 points/.test(d.headline));
       expect(night).toBeDefined();
       expect(night!.frame.type).toBe('records_best');
       expect(night!.detail).toMatch(/since 2024-25|in \d+ seasons? of records/);
-      const [g] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM game_player_box_scores WHERE player_id = 1 AND points = 55`;
       expect(night!.game_id).toBe(g.game_id);
-    });
+      expect(r.drafts.every((d) => d.game_id === g.game_id)).toBe(true);
+    }, TIMEOUT);
 
     it('G8 a completed season reads in the past tense', () => {
       const season = all.drafts.filter((d) => d.surface === 'season');
@@ -138,7 +149,81 @@ describe.skipIf(!url)(`insight engine golden expectations (${REAL ? 'real data, 
       for (const d of pre) expect(d.game_id).toBe(next.game_id);
     });
 
-    // Plan 3 inserts its golden expectations here, above G11.
+    it('G12 the day after a 55-point game, it leads "Last game" and is a top-3 Home hero candidate', async () => {
+      const [g] = await sql<{ game_id: string; game_date: string }[]>`
+        SELECT pb.game_id::text AS game_id, gm.game_date::text AS game_date
+        FROM game_player_box_scores pb JOIN games gm ON gm.game_id = pb.game_id WHERE pb.player_id = 1 AND pb.points = 55`;
+      const r = await dry(addDays(g.game_date, 1));
+      const items = r.drafts.map(toComposable);
+      const last = composeFeed(items, 'last_game');
+      expect(last[0]).toMatchObject({ game_id: g.game_id });
+      expect(last[0].headline).toMatch(/^Star Clipper/);
+      const hero = items
+        .filter((i) => ['postgame', 'pregame', 'season'].includes(i.surface) && i.score_parts?.salience_class !== 'former')
+        .sort((a, b) => b.importance - a.importance)
+        .slice(0, 3);
+      expect(hero.some((i) => i.game_id === g.game_id && /^Star Clipper/.test(i.headline))).toBe(true);
+    }, TIMEOUT);
+
+    it('G13 a 15-point comeback win produces a game-flow postgame insight framed against play-by-play records', async () => {
+      const game = await seedGameFlows(sql);
+      run('scripts/build-record-book.ts');
+      const r = await dry(today, ['postgame'], game);
+      const flow = r.drafts.find((d) => d.category === 'game_flow');
+      expect(flow?.headline).toMatch(/^Clippers (erased a 15-point deficit|came back from 15 down) to beat the /);
+      expect(flow?.frame.type).toBe('records_best');
+      expect(flow?.detail).toMatch(/since 2025-26|in \d+ seasons? of records/);
+      expect(flow?.evidence).toMatchObject({ type: 'margin_spark' });
+    }, TIMEOUT);
+
+    it('G14 passing 1,000 season points is a postgame milestone on that game', async () => {
+      const [g] = await sql<{ game_id: string }[]>`
+        SELECT game_id FROM (
+          SELECT pb.game_id::text AS game_id, SUM(pb.points) OVER (ORDER BY gm.game_date, gm.game_id) AS total
+          FROM game_player_box_scores pb JOIN games gm ON gm.game_id = pb.game_id
+          WHERE pb.player_id = 1 AND gm.season_id = 2025 AND NOT gm.is_playoffs AND gm.nba_game_id < 50000000
+        ) x WHERE total >= 1000 ORDER BY total LIMIT 1`;
+      const r = await dry(today, ['postgame'], g.game_id);
+      expect(r.drafts.map((d) => d.headline)).toContainEqual(expect.stringMatching(/^Star Clipper (passed|reached) 1,000 points /));
+    }, TIMEOUT);
+
+    it('G15 a player page holds at most six items, all about that player, never a former Clipper', async () => {
+      const r = await dry('2026-02-25', ['player']);
+      expect(r.drafts.length).toBeGreaterThan(0);
+      for (const d of r.drafts) {
+        expect(d.player_id, d.headline).not.toBeNull();
+        expect(r.context!.roster.has(d.player_id!), d.headline).toBe(true);
+      }
+      const star = composeFeed(r.drafts.filter((d) => d.player_id === '1').map(toComposable), 'player_page');
+      expect(star.length).toBeGreaterThan(0);
+      expect(star.length).toBeGreaterThan(2); // player_page is exempt from the per-player cap (R3)
+      expect(star.length).toBeLessThanOrEqual(6);
+      expect(star.every((i) => i.player_id === '1')).toBe(true);
+      expect(r.drafts.some((d) => d.player_id === '1' && d.category === 'season_best' && /\b55\b/.test(d.headline))).toBe(true);
+    }, TIMEOUT);
+
+    it('G16 opponent players appear only on the pregame surface, as opponents', async () => {
+      const r = await dry('2026-02-10', ['pregame']);
+      const hot = r.drafts.filter((x) => x.category === 'opp_hot_player');
+      expect(hot.length).toBeGreaterThan(0);
+      for (const d of hot) {
+        expect(d.surface).toBe('pregame');
+        expect(d.score_parts.salience_class).toBe('opponent');
+        expect(r.context!.roster.has(d.player_id!)).toBe(false);
+      }
+      for (const d of all.drafts.filter((x) => x.category === 'opp_hot_player')) {
+        expect(d.surface).toBe('pregame');
+        expect(d.score_parts.salience_class).toBe('opponent');
+        expect(all.context!.roster.has(d.player_id!)).toBe(false);
+      }
+    }, TIMEOUT);
+
+    it('G17 a single-game postgame run only ever talks about that game', async () => {
+      const [g] = await sql<{ game_id: string }[]>`SELECT game_id::text FROM game_player_box_scores WHERE player_id = 1 AND points = 55`;
+      const r = await dry(today, ['postgame'], g.game_id);
+      expect(r.drafts.length).toBeGreaterThan(0);
+      expect(r.drafts.every((d) => d.game_id === g.game_id && d.surface === 'postgame' && d.scope === 'historical')).toBe(true);
+    }, TIMEOUT);
 
     it('G11 a 28-PPG scorer’s "20+ in 3 straight" never appears (mutates data: keep last)', async () => {
       await sql`

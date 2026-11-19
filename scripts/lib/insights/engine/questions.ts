@@ -9,7 +9,7 @@ import { yearsBetween } from './dates.js';
 import type { Question } from './framer.js';
 import { withRef } from './proof.js';
 import { recordsSeasons, seasonStartDate } from './records.js';
-import { refsFor, type RefSpec } from './references.js';
+import { refAsOf, refsFor, type RefSpec } from './references.js';
 import { FIXED_STRENGTH, clippersRankStrength, rankStrength, sinceStrength } from './strength.js';
 import type { EngineContext, Fact, FactKind } from './types.js';
 
@@ -127,7 +127,7 @@ LIMIT 1`);
     const r = rows[0];
     // A same-game teammate matched or beat it: neither "best" nor "first since" holds.
     if (r && String(r.game_date) >= fact.context.date) return null;
-    if (!r) return frame('records_best', FIXED_STRENGTH.records_best, 'group', recordsExtra(fact, refs));
+    if (!r) return refs.ordinal ? frame('records_best', FIXED_STRENGTH.records_best, 'group', recordsExtra(fact, refs)) : null;
     const since = String(r.game_date);
     const years = yearsBetween(since, fact.context.date);
     return frame('first_since', sinceStrength(years), 'group', { since_date: since, years: round1(years), records_label: refs.start.label });
@@ -164,16 +164,22 @@ export const clippersRank: Question = {
     const game = gameOf(fact);
     if (!refs?.group || !refs.ordinal || !seasonOk(fact, refs) || !game) return null;
     const c = cmp(refs);
-    return withRef(refs.group, (b) => `SELECT (COUNT(*) FILTER (WHERE value ${c.gt} ${b(fact.value, 'float8')}) + 1)::int AS rank,
+    return withRef(refs.group, (b) => {
+      const v = b(fact.value, 'float8');
+      return `SELECT (COUNT(*) FILTER (WHERE value ${c.gt} ${v}) + 1)::int AS rank,
+       (COUNT(*) FILTER (WHERE value = ${v}))::int AS ties,
        COUNT(*)::int AS total
 FROM ref
-WHERE ${notOwn(b, game, fact)}`);
+WHERE ${notOwn(b, game, fact)}`;
+    });
   },
   interpret(rows, fact, ctx) {
     const refs = refsFor(fact, ctx);
     const rank = num(rows[0]?.rank);
+    const ties = num(rows[0]?.ties);
     const total = num(rows[0]?.total);
-    if (!refs?.start || rank === null || total === null) return null;
+    // A tie is not a rank of its own: "the 4th-most" would hide the games it shares 4th with, so no frame (FW-1).
+    if (!refs?.start || rank === null || total === null || ties === null || ties > 0) return null;
     const strength = clippersRankStrength(rank);
     return strength === null ? null : frame('clippers_rank', strength, 'group', { rank, total: total + 1, records_label: refs.start.label });
   },
@@ -197,6 +203,7 @@ WHERE season_id = ${b(fact.seasonId!, 'int')} AND ${notOwn(b, game, fact)}`);
       const best = num(rows[0]?.best);
       const games = num(rows[0]?.games) ?? 0;
       if (!refs || best === null || games < (who === 'group' ? 1 : MIN_SUBJECT_SEASON_GAMES)) return null;
+      // Strictly better: a tie with another game is not "the most" (FW-1).
       return better(fact.value, best, refs.betterIsHigher) ? frame('season_high', FIXED_STRENGTH.season_high, who) : null;
     },
   };
@@ -208,16 +215,25 @@ export const leagueRank: Question = {
   name: 'league_rank',
   build(fact, ctx) {
     const refs = refsFor(fact, ctx);
-    if (!refs?.league || !refs.ordinal) return null;
+    const game = gameOf(fact);
+    if (!refs?.league || !refs.ordinal || !game) return null;
     const c = cmp(refs);
-    return withRef(refs.league, (b) => `SELECT (COUNT(*) FILTER (WHERE value ${c.gt} ${b(fact.value, 'float8')}) + 1)::int AS rank,
+    // The league set holds the fact's own row: it counts in the total, never as a tie.
+    return withRef(refs.league, (b) => {
+      const v = b(fact.value, 'float8');
+      return `SELECT (COUNT(*) FILTER (WHERE value ${c.gt} ${v}) + 1)::int AS rank,
+       (COUNT(*) FILTER (WHERE value = ${v} AND ${notOwn(b, game, fact)}))::int AS ties,
        COUNT(*)::int AS total
-FROM ref`);
+FROM ref`;
+    });
   },
-  interpret(rows) {
+  interpret(rows, fact, ctx) {
     const rank = num(rows[0]?.rank);
+    const ties = num(rows[0]?.ties);
     const total = num(rows[0]?.total);
-    if (rank === null || total === null || total < MIN_LEAGUE_SAMPLE) return null;
+    // A tie for a rank is not that rank alone ("the best ... in the NBA"): no frame (FW-1).
+    if (rank === null || total === null || ties === null || ties > 0) return null;
+    if (total < (refsFor(fact, ctx)?.leagueMin ?? MIN_LEAGUE_SAMPLE)) return null;
     const strength = rankStrength(rank);
     return strength === null ? null : frame('league_rank', strength, 'league', { rank, total });
   },
@@ -244,6 +260,15 @@ WHERE season_id = ${b(fact.seasonId!, 'int')} AND value ${c.ge} ${b(value, 'floa
 export const GAME_QUESTIONS: readonly Question[] = [
   careerHigh, groupCompany, groupFirstSince, subjectFirstSince, clippersRank, groupSeasonHigh, subjectSeasonHigh, leagueRank, nthTime,
 ];
+
+/** A season high is his season high by construction, so the subject's own season-high frame would only repeat the headline. */
+export const SEASON_BEST_QUESTIONS: readonly Question[] = GAME_QUESTIONS.filter((q) => q.name !== subjectSeasonHigh.name);
+
+/**
+ * Quarters, halves and clutch: no clippers_rank. Their reference rows are one per player-game (or per game),
+ * so a rank would count games while the copy ranks quarters and halves, and a game with two bigger quarters would understate it.
+ */
+export const PERIOD_QUESTIONS: readonly Question[] = GAME_QUESTIONS.filter((q) => q.name !== clippersRank.name);
 
 // ── Streaks (rb_streaks holds every Clipper's streaks) ──────────────────────
 
@@ -311,18 +336,28 @@ export const milestoneFirstSince: Question = {
   build(fact, ctx) {
     const start = ctx.recordsStart;
     const { expr, threshold } = fact.data;
-    if (fact.kind !== 'milestone' || !start || fact.seasonId === null || start.season_id >= fact.seasonId || !expr || threshold === undefined) return null;
+    if ((fact.kind !== 'milestone' && fact.kind !== 'milestone_crossed') || fact.data.career === true || !start || fact.seasonId === null || start.season_id >= fact.seasonId || !expr || threshold === undefined) return null;
+    // The fact's own season counts too, for other Clippers: a teammate who got there first (before tonight's game for a
+    // crossing, as of the run for a season milestone) means this is not the first. The subject's own row is excluded.
+    const sameSeasonDate = fact.kind === 'milestone_crossed' ? '<' : '<=';
+    const seasons = `g.season_id < $3::int OR (g.season_id = $3::int AND pb.player_id <> $6::bigint AND g.game_date ${sameSeasonDate} $5::date)`;
+    // The fact's total is cross-team (a mid-season acquisition), so the references total the same expression
+    // over every team's games, for players who played for the Clippers that season.
     return {
       sql: `SELECT pb.player_id::text AS subject_id, p.display_name AS subject_name, g.season_id::int AS season_id, (${expr})::int AS total
 FROM game_player_box_scores pb
 JOIN games g ON g.game_id = pb.game_id
 JOIN players p ON p.player_id = pb.player_id
-WHERE pb.team_id = $1::bigint AND ${REGULAR_SEASON} AND g.season_id >= $2::int AND g.season_id < $3::int
+WHERE ${REGULAR_SEASON} AND g.season_id >= $2::int AND (${seasons})
+  AND g.game_date <= $5::date
+  AND EXISTS (SELECT 1 FROM game_player_box_scores cp JOIN games cg ON cg.game_id = cp.game_id
+              WHERE cp.player_id = pb.player_id AND cp.team_id = $1::bigint AND cg.season_id = g.season_id AND cg.game_date <= $5::date
+                AND ${REGULAR_SEASON.replace(/\bg\./g, 'cg.')})
 GROUP BY pb.player_id, p.display_name, g.season_id
 HAVING (${expr}) >= $4::int
 ORDER BY 3 DESC, 4 DESC, 1
 LIMIT 1`,
-      params: [ctx.lac.teamId, start.season_id, fact.seasonId, threshold],
+      params: [ctx.lac.teamId, start.season_id, fact.seasonId, threshold, refAsOf(fact, ctx), fact.subject.id],
     };
   },
   interpret(rows, fact, ctx) {
@@ -333,6 +368,8 @@ LIMIT 1`,
       records_label: start.label, records_seasons: recordsSeasons(start, fact.seasonId),
     });
     const season = Number(r.season_id);
+    // Another Clipper already reached it this season: not a first, the milestone frame stands.
+    if (season === fact.seasonId) return null;
     const years = fact.seasonId - season;
     return frame('first_since', sinceStrength(years), 'group', { since_label: seasonLabel(season), years, records_label: start.label });
   },
@@ -411,6 +448,7 @@ ORDER BY season_id`,
 export const QUESTIONS_BY_KIND: Record<FactKind, readonly Question[]> = {
   streak: [streakLongestSince, streakSeasonHigh],
   milestone: [milestoneFirstSince],
+  milestone_crossed: [milestoneFirstSince],
   league_rank: [],
   standings: [],
   recent_form: [],
@@ -418,7 +456,20 @@ export const QUESTIONS_BY_KIND: Record<FactKind, readonly Question[]> = {
   opp_rank: [],
   h2h: [],
   last_meeting: [],
-  league_night: GAME_QUESTIONS,
+  player_game_stat: GAME_QUESTIONS,
+  player_combo: GAME_QUESTIONS,
+  team_game_stat: GAME_QUESTIONS,
+  game_flow: GAME_QUESTIONS,
+  player_period_stat: PERIOD_QUESTIONS,
+  team_period_stat: PERIOD_QUESTIONS,
+  clutch: PERIOD_QUESTIONS,
+  opp_form: [],
+  vs_opponent: [],
+  opp_hot_player: [],
+  rest: [],
+  line: [],
+  season_best: SEASON_BEST_QUESTIONS,
+  milestone_progress: [],
 };
 
 export function questionsFor(fact: Fact): readonly Question[] {

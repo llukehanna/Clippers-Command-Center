@@ -38,6 +38,18 @@ describe('formatReplay', () => {
     expect(out).toContain('frame=records_best(0.9) p=4.0e-4');
     expect(out).toContain('2 insights; dropped trivial 1');
   });
+  it('prints the player page once per player', () => {
+    const player = (key: string, id: string, name: string) => draft(key, {
+      surface: 'player', category: 'milestone', player_id: id, entities: [{ type: 'player', id, name }],
+    });
+    const out = formatReplay({
+      drafts: [player('aaaaaaaaaaaaaaaa', '1', 'Star Clipper'), player('bbbbbbbbbbbbbbbb', '2', 'Big Clipper')],
+      dropped: [],
+    }, ['player']);
+    expect(out).toContain('── player_page · Star Clipper ──');
+    expect(out).toContain('── player_page · Big Clipper ──');
+    expect(out).not.toContain('── season_feed ──');
+  });
   it('maps a draft to a composable insight', () => {
     expect(toComposable(draft('abcdef0123456789'))).toMatchObject({ insight_id: 'abcdef012345', surface: 'season', player_id: '1' });
   });

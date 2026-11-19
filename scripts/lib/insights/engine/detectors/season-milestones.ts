@@ -2,9 +2,11 @@
 // Season milestones (v1 milestones.ts on the v2 engine): the highest threshold
 // each current Clipper has reached; a new threshold is a new key (novelty).
 // Totals are regular season, across teams for a mid-season acquisition.
+import { lateJoiners } from '../games.js';
 import { highestThreshold } from '../../proof-utils.js';
 import { runQuery } from '../query.js';
 import { seasonTotalShare } from '../rates.js';
+import { DOUBLE_DOUBLE } from '../references.js';
 import { REGULAR_SEASON, rosterSubquery } from '../sql.js';
 import type { Detector, Fact } from '../types.js';
 
@@ -18,8 +20,6 @@ export interface MilestoneDef {
   thing: (n: number) => string;  // 1500 → "1,500-point season"
 }
 
-const DOUBLE_DOUBLE = `((pb.points >= 10)::int + (pb.rebounds >= 10)::int + (pb.assists >= 10)::int
-   + (pb.steals >= 10)::int + (pb.blocks >= 10)::int) >= 2`;
 const thousands = (n: number) => n.toLocaleString('en-US');
 
 export const MILESTONES: MilestoneDef[] = [
@@ -54,9 +54,12 @@ export function milestoneDetector(surface: 'season' | 'player'): Detector {
     async run(ctx) {
       const facts: Fact[] = [];
       const shares = new Map<string, number>();
+      // Incomplete league data: a mid-season acquisition's games for his old team may be missing, so his total undercounts.
+      const skip = ctx.league.complete ? new Set<string>() : await lateJoiners(ctx);
       for (const m of MILESTONES) {
         const q = { sql: milestoneSql(m), params: [ctx.season.id, ctx.lac.teamId, Math.min(...m.thresholds), ctx.asOf] };
         for (const r of await runQuery(q)) {
+          if (skip.has(String(r.player_id))) continue;
           const total = Number(r.total);
           const reached = highestThreshold(total, m.thresholds);
           if (reached === null) continue;

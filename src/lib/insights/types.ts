@@ -58,7 +58,7 @@ export type Evidence =
   | { type: 'milestone_progress'; current: number; target: number; label: string }
   | { type: 'margin_spark'; series: [number, number][]; highlight?: { from: number; to: number } };
 
-export type SalienceClass = 'roster_core' | 'roster' | 'team' | 'former';
+export type SalienceClass = 'roster_core' | 'roster' | 'team' | 'former' | 'opponent';
 
 /** Every scorer term, stored for debugging and tuning (spec §2.4). */
 export interface ScoreParts {

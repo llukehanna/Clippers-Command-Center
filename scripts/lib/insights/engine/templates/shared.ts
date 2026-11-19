@@ -33,6 +33,16 @@ export const sinceText = (fr: Frame) => fr.since_label ?? (fr.since_date ? month
 const sinceLong = (fr: Frame) => fr.since_label ?? (fr.since_date ? fmtDate(fr.since_date) : '');
 
 /**
+ * Postgame rows are frozen once written, so a context line that a later game can overturn (a record, a rank, a
+ * high, "the only") says it held at the time (FW-3). Season, player and pregame rows are rewritten nightly and
+ * stay current, so they are not anchored.
+ */
+export const frozen = (rc: RenderContext) => rc.surface === 'postgame';
+export const atTheTime = (rc: RenderContext) => (frozen(rc) ? ' at the time' : '');
+/** A league rank's season: rc.season.phrase while current; "in 2026-27 at the time" on a frozen postgame row. */
+export const rankSeason = (rc: RenderContext) => (frozen(rc) ? `in ${rc.season.label} at the time` : rc.season.phrase);
+
+/**
  * Context line for the frame types every kind words the same way; null for kind-specific
  * types and when the frame lacks the field the line needs (a null lets the fallback speak).
  */
@@ -51,34 +61,38 @@ export function frameLine(f: Fact, fr: Frame, rc: RenderContext, variant: number
     const ok = options.filter((o): o is string => o !== null);
     return ok.length ? ok[variant % ok.length] : null;
   };
+  const then = atTheTime(rc);
   switch (fr.type) {
-    case 'career_high':
-      return pick([
-        `A career high${fr.prior_value !== undefined ? ` (previous best ${fmtNum(fr.prior_value)})` : ''}`,
-        `${pron(f)} career best`,
-      ]);
+    case 'career_high': {
+      const prev = fr.prior_value !== undefined ? ` (previous best ${fmtNum(fr.prior_value)})` : '';
+      return frozen(rc)
+        ? pick(prev ? [`A new career high${prev}`, `A career high at the time${prev}`] : [`A career high at the time`, `${pron(f)} career best at the time`])
+        : pick([`A career high${prev}`, `${pron(f)} career best`]);
+    }
     case 'only_one':
-      return label ? pick([`The only ${thing} ${by} since ${label}`, `No other ${thing} ${by} since ${label}`]) : null;
+      return label ? pick([`The only ${thing} ${by} since ${label}${then}`, `No other ${thing} ${by} since ${label}${then}`]) : null;
     case 'records_best':
       return pick([
-        label ? `${cap(best)} ${by} since ${label}` : null,
-        seasonsText ? `${cap(best)} ${by} in ${seasonsText}` : null,
+        label ? `${cap(best)} ${by} since ${label}${then}` : null,
+        seasonsText ? `${cap(best)} ${by} in ${seasonsText}${then}` : null,
       ]);
     case 'joins_company':
       return label && fr.names?.length
-        ? pick([`Joins ${listNames(fr.names)} as the only Clippers with a ${thing} since ${label}`])
+        ? pick([`${frozen(rc) ? 'Joined' : 'Joins'} ${listNames(fr.names)} as the only Clippers with a ${thing} since ${label}${then}`])
         : null;
     case 'first_since':
+      // Every variant names the thing: "His first since Mar 26, 2018" leaves out what is first (FW-4).
       return fr.who === 'subject'
-        ? pick([since ? `${pron(f)} first ${thing} since ${since}` : null, sinceFull ? `${pron(f)} first since ${sinceFull}` : null])
+        ? pick([since ? `${pron(f)} first ${thing} since ${since}` : null, sinceFull ? `${pron(f)} first ${thing} since ${sinceFull}` : null])
         : pick([since ? `First ${thing} ${by} since ${since}` : null, sinceFull ? `The first ${thing} ${by} since ${sinceFull}` : null]);
     case 'longest_since':
       return pick([since ? `${cap(best)} ${by} since ${since}` : null, sinceFull ? `The ${best} ${by} since ${sinceFull}` : null]);
     case 'clippers_rank':
-      return label && fr.rank !== undefined ? pick([`${ordinal(fr.rank)}-${best} ${by} since ${label}`]) : null;
+      return label && fr.rank !== undefined ? pick([`${ordinal(fr.rank)}-${best} ${by} since ${label}${then}`]) : null;
     case 'season_high':
+      // Postgame: rc.season.phrase is "so far in {label}", which anchors the high in time.
       return fr.who === 'subject'
-        ? pick([`${pron(f)} season high`, `${pron(f)} ${best} ${rc.season.phrase}`])
+        ? pick([frozen(rc) ? `${pron(f)} season high ${rc.season.phrase}` : `${pron(f)} season high`, `${pron(f)} ${best} ${rc.season.phrase}`])
         : pick([`The ${best} ${by} ${rc.season.phrase}`, `${cap(best)} ${by} ${rc.season.phrase}`]);
     case 'nth_time':
       return fr.count !== undefined

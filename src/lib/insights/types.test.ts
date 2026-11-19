@@ -28,6 +28,8 @@ describe('evidenceAria', () => {
   it('summarises a rank track', () => {
     expect(evidenceAria({ type: 'rank_track', rank: 3, total: 30, betterIsHigher: true, label: 'offensive rating' }))
       .toBe('Ranked 3rd of 30 in offensive rating');
+    expect(evidenceAria({ type: 'rank_track', rank: 2, total: 2400, betterIsHigher: true, label: 'NBA team games so far in 2025-26' }))
+      .toBe('Ranked 2nd of 2400 in NBA team games so far in 2025-26');
   });
 
   it('summarises a history ladder with and without a next best', () => {

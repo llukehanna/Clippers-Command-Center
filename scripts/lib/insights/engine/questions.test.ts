@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { refsFor } from './references';
+import { COMBOS, DOUBLE_DOUBLE, TEAM_GAME_STATS, TEAM_LINE_SQL, TENS, refAsOf, refsFor } from './references';
+import { FACT_KINDS } from './types';
 import {
   careerHigh, clippersRank, groupCompany, groupFirstSince, groupSeasonHigh, leagueRank, milestoneFirstSince,
-  nthTime, questionsFor, subjectFirstSince, streakLongestSince, streakSeasonHigh, subjectSeasonHigh, yoyPlayerBest, yoyRecordBest,
+  nthTime, QUESTIONS_BY_KIND, questionsFor, subjectFirstSince, streakLongestSince, streakSeasonHigh, subjectSeasonHigh, yoyPlayerBest, yoyRecordBest,
 } from './questions';
 import { makeCtx, makeFact } from './__fixtures__/facts';
 
 const ctx = makeCtx();
 const night = makeFact({
-  kind: 'league_night', surface: 'postgame', stat: 'pts', value: 55,
+  kind: 'player_game_stat', surface: 'postgame', stat: 'pts', value: 55,
   window: { type: 'game', game_id: '500', season_id: 2025 },
   context: { date: '2025-11-28', opponent_id: '2', opponent_name: 'Golden State Warriors', home: true, result: 'W' },
   gameId: '500',
@@ -20,9 +21,10 @@ describe('refsFor', () => {
     const refs = refsFor(night, ctx)!;
     expect(refs.group!.sql).toContain('pb.team_id = $1::bigint');
     expect(refs.group!.sql).toContain('pb.points');
-    expect(refs.group!.params).toEqual(['1', 2020, '2026-02-25']);
-    expect(refs.subject!.params).toEqual(['1', '2026-02-25']);
-    expect(refs.league!.params).toEqual([2025, '2026-02-25']);
+    // R2: a postgame fact older than the as-of reads its references as of the game's date.
+    expect(refs.group!.params).toEqual(['1', 2020, '2025-11-28']);
+    expect(refs.subject!.params).toEqual(['1', '2025-11-28']);
+    expect(refs.league!.params).toEqual([2025, '2025-11-28']);
     expect(refs).toMatchObject({ betterIsHigher: true, ordinal: true, start: { season_id: 2020 } });
   });
   it('drops league refs without complete league data and group refs without records', () => {
@@ -74,7 +76,7 @@ describe('game questions', () => {
     const ch = careerHigh.build(night, ctx)!;
     expect(ch.sql).toContain('FILTER (WHERE game_date < $3::text)');
     expect(ch.sql).not.toContain('game_id <>');
-    expect(ch.params).toEqual(['1', '2026-02-25', '2025-11-28']);
+    expect(ch.params).toEqual(['1', '2025-11-28', '2025-11-28']);
     const gc = groupCompany.build(night, ctx)!;
     expect(gc.sql).toContain('game_date < $5::text OR game_id = $6::text');
   });
@@ -94,14 +96,14 @@ describe('game questions', () => {
     expect(careerHigh.interpret([{ prev_best: 20, first_season: 2021, games: 5 }], night, ctx)).toBeNull();
   });
   it('ranks among Clippers, the season and the league', () => {
-    expect(clippersRank.interpret([{ rank: 3, total: 1199 }], night, ctx)).toMatchObject({ type: 'clippers_rank', strength: 0.7, rank: 3, total: 1200 });
-    expect(clippersRank.interpret([{ rank: 1, total: 1199 }], night, ctx)).toBeNull();
-    expect(clippersRank.interpret([{ rank: 11, total: 1199 }], night, ctx)).toBeNull();
+    expect(clippersRank.interpret([{ rank: 3, ties: 0, total: 1199 }], night, ctx)).toMatchObject({ type: 'clippers_rank', strength: 0.7, rank: 3, total: 1200 });
+    expect(clippersRank.interpret([{ rank: 1, ties: 0, total: 1199 }], night, ctx)).toBeNull();
+    expect(clippersRank.interpret([{ rank: 11, ties: 0, total: 1199 }], night, ctx)).toBeNull();
     expect(groupSeasonHigh.interpret([{ best: 41, games: 59 }], night, ctx)).toMatchObject({ type: 'season_high', who: 'group' });
     expect(groupSeasonHigh.interpret([{ best: 60, games: 59 }], night, ctx)).toBeNull();
     expect(subjectSeasonHigh.interpret([{ best: 30, games: 2 }], night, ctx)).toBeNull();
-    expect(leagueRank.interpret([{ rank: 1, total: 18000 }], night, ctx)).toMatchObject({ type: 'league_rank', strength: 0.85, who: 'league' });
-    expect(leagueRank.interpret([{ rank: 1, total: 1500 }], night, ctx)).toBeNull();
+    expect(leagueRank.interpret([{ rank: 1, ties: 0, total: 18000 }], night, ctx)).toMatchObject({ type: 'league_rank', strength: 0.85, who: 'league' });
+    expect(leagueRank.interpret([{ rank: 1, ties: 0, total: 1500 }], night, ctx)).toBeNull();
     expect(leagueRank.build(night, makeCtx({ league: { complete: false, reason: 'x' } }))).toBeNull();
     expect(nthTime.interpret([{ n: 3 }], night, ctx)).toMatchObject({ type: 'nth_time', strength: 0.4, count: 3 });
     expect(nthTime.interpret([{ n: 1 }], night, ctx)).toBeNull();
@@ -112,7 +114,7 @@ describe('game questions', () => {
     expect(q.sql).toContain('value >= $3::float8');
     expect(q.sql).toContain('game_date < $4::text');
     expect(q.sql).toContain('season_id >= $5::int');
-    expect(q.params).toEqual(['1', '2026-02-25', 55, '2025-11-28', 2020]);
+    expect(q.params).toEqual(['1', '2025-11-28', 55, '2025-11-28', 2020]);
     expect(subjectFirstSince.interpret([{ game_date: '2021-03-01', value: 56 }], night, ctx))
       .toMatchObject({ type: 'first_since', strength: 0.65, who: 'subject', since_date: '2021-03-01' });
     expect(subjectFirstSince.interpret([{ game_date: '2021-03-01', value: 56 }], night, ctx)!.years).toBeCloseTo(4.7, 1);
@@ -125,7 +127,7 @@ describe('game questions', () => {
 describe('kind questions', () => {
   const streak = makeFact();
   it('longest_since reads rb_streaks inside the records', () => {
-    expect(streakLongestSince.build(streak, ctx)!.params).toEqual(['player', 'scoring_30', '1', 5, '2026-02-13', '2020-08-01', '2026-02-25', streak.subject.id]);
+    expect(streakLongestSince.build(streak, ctx)!.params).toEqual(['player', 'scoring_30', '1', 5, '2026-02-13', '2020-11-01', '2026-02-25', streak.subject.id]);
     expect(streakLongestSince.build(streak, ctx)!.sql).toContain('s.end_date <= $7::date');
     // overlapping longer-or-equal streak by another Clipper ends after this one started: no frame
     expect(streakLongestSince.interpret([{ end_date: '2026-02-20' }], streak, ctx)).toBeNull();
@@ -140,7 +142,21 @@ describe('kind questions', () => {
   });
   it('milestone first_since compares completed Clippers seasons', () => {
     const m = makeFact({ kind: 'milestone', stat: 'season_points', value: 1500, keyExtra: '1500', data: { threshold: 1500, step: 2, expr: 'SUM(pb.points)' } });
-    expect(milestoneFirstSince.build(m, ctx)!.params).toEqual(['1', 2020, 2025, 1500]);
+    expect(milestoneFirstSince.build(m, ctx)!.params).toEqual(['1', 2020, 2025, 1500, '2026-02-25', m.subject.id]);
+    expect(milestoneFirstSince.build(m, ctx)!.sql).toContain('g.game_date <= $5::date');
+    // a postgame crossing is measured at the game date (R2); a career crossing has no season question
+    const crossed = makeFact({ kind: 'milestone_crossed', surface: 'postgame', stat: 'season_points', value: 1000, keyExtra: '1000', seasonId: 2025, context: { date: '2025-12-01' }, data: { threshold: 1000, step: 0, expr: 'SUM(pb.points)', career: false } });
+    expect(milestoneFirstSince.build(crossed, ctx)!.params).toEqual(['1', 2020, 2025, 1000, '2025-12-01', crossed.subject.id]);
+    expect(milestoneFirstSince.build({ ...crossed, data: { ...crossed.data, career: true } }, ctx)).toBeNull();
+    // a crossing also searches this season's earlier games; a plain milestone does not
+    expect(milestoneFirstSince.build(crossed, ctx)!.sql).toContain('pb.player_id <> $6::bigint AND g.game_date < $5::date');
+    expect(milestoneFirstSince.build(m, ctx)!.sql).toContain('g.season_id = $3::int AND pb.player_id <> $6::bigint AND g.game_date <= $5::date');
+    expect(milestoneFirstSince.build(m, ctx)!.sql).toContain('cg.is_playoffs');
+    // Plan 2 season milestones: another Clipper already there this season means no first_since / records_best
+    expect(milestoneFirstSince.interpret([{ season_id: 2025, subject_id: '2' }], m, ctx)).toBeNull();
+    // I1: a teammate who already crossed this season means no first_since / records_best claim
+    expect(milestoneFirstSince.interpret([{ season_id: 2025 }], crossed, ctx)).toBeNull();
+    expect(milestoneFirstSince.interpret([{ season_id: 2023 }], crossed, ctx)).toMatchObject({ type: 'first_since', years: 2 });
     expect(milestoneFirstSince.interpret([{ season_id: 2021 }], m, ctx))
       .toMatchObject({ type: 'first_since', since_label: '2021-22', years: 4, strength: 0.65 });
     expect(milestoneFirstSince.interpret([], m, ctx)).toMatchObject({ type: 'records_best', records_seasons: 6 });
@@ -162,5 +178,110 @@ describe('kind questions', () => {
     expect(questionsFor(night)).toContain(groupFirstSince);
     expect(questionsFor(streak)).toEqual([streakLongestSince, streakSeasonHigh]);
     expect(questionsFor(makeFact({ kind: 'h2h', data: {} }))).toEqual([]);
+  });
+});
+
+describe('registry', () => {
+  it('has questions (possibly none) for every fact kind', () => {
+    expect(Object.keys(QUESTIONS_BY_KIND).sort()).toEqual([...FACT_KINDS].sort());
+  });
+});
+
+describe('refAsOf (R2: postgame references are bounded by the game date)', () => {
+  it('uses the fact date for a postgame fact older than the as-of, the as-of otherwise', () => {
+    expect(refAsOf(night, ctx)).toBe('2025-11-28');
+    expect(refAsOf({ ...night, context: { ...night.context, date: '2026-02-25' } }, ctx)).toBe('2026-02-25');
+    expect(refAsOf({ ...night, surface: 'season' }, ctx)).toBe('2026-02-25');
+  });
+});
+
+describe('postgame references are bounded at the fact date (R2)', () => {
+  const combo = {
+    ...night, kind: 'player_combo' as const, stat: 'triple_double', value: 1,
+    data: { thing: 'triple-double', best: 'triple-double', by: 'by a Clipper', line: '24-12-11' },
+  };
+  it('player stat refs: older postgame facts stop at their date, a same-day or non-postgame fact at the as-of', () => {
+    const same = { ...night, context: { ...night.context, date: '2026-02-25' } };
+    expect(refsFor(same, ctx)!.group!.params).toEqual(['1', 2020, '2026-02-25']);
+    const live = refsFor({ ...night, surface: 'season' }, ctx)!;
+    expect(live.subject!.params).toEqual(['1', '2026-02-25']);
+  });
+  it('combo refs are non-ordinal 0/1 sets bounded at the fact date', () => {
+    const refs = refsFor(combo, ctx)!;
+    expect(refs).toMatchObject({ ordinal: false, betterIsHigher: true, league: null, start: { season_id: 2020 } });
+    expect(refs.group!.sql).toContain('CASE WHEN');
+    expect(refs.group!.params).toEqual(['1', 2020, '2025-11-28']);
+    expect(refs.subject!.params).toEqual(['1', '2025-11-28']);
+    expect(refsFor({ ...combo, stat: 'nope' }, ctx)).toBeNull();
+    expect(refsFor(combo, makeCtx({ recordsStart: null }))!.group).toBeNull();
+  });
+  it('combo predicates are NULL-safe: a missing steals or blocks cannot void a triple-double', () => {
+    expect(TENS.match(/COALESCE\(pb\.\w+ >= 10, FALSE\)::int/g)).toHaveLength(5);
+    expect(TENS).not.toMatch(/\(pb\.\w+ >= 10\)::int/);
+    for (const c of COMBOS.filter((x) => x.key !== 'triple_double')) expect(c.cond, c.key).toMatch(/^COALESCE\(.*\) AND COALESCE\(.*\)$/);
+  });
+  it('team stat refs: Clippers group and league sets bounded at the game date (R2); loss margin gets no league set', () => {
+    const teamFact = {
+      ...night, kind: 'team_game_stat' as const, stat: 'team_pts', value: 132, subject: { type: 'team' as const, id: '1', name: 'Clippers' },
+      data: { thing: '132-point game', best: 'most points in a game', by: 'by the Clippers', formatted: '132' },
+    };
+    const refs = refsFor(teamFact, ctx)!;
+    expect(refs).toMatchObject({ subject: null, betterIsHigher: true, ordinal: true, leagueMin: 500, start: { season_id: 2020 } });
+    expect(refs.group!.params).toEqual(['1', 2020, '2025-11-28']);
+    expect(refs.league!.params).toEqual([2025, '2025-11-28']);
+    const same = { ...teamFact, context: { ...teamFact.context, date: '2026-02-25' } };
+    expect(refsFor(same, ctx)!.group!.params).toEqual(['1', 2020, '2026-02-25']);
+    expect(refsFor({ ...teamFact, stat: 'loss_margin' }, ctx)!.league).toBeNull();
+    expect(refsFor({ ...teamFact, stat: 'opp_pts_low' }, ctx)!.betterIsHigher).toBe(false);
+    expect(refsFor({ ...teamFact, stat: 'nope' }, ctx)).toBeNull();
+    expect(refsFor(teamFact, makeCtx({ league: { complete: false, reason: 'x' } }))!.league).toBeNull();
+    expect(Object.keys(TEAM_GAME_STATS).sort()).toEqual(['loss_margin', 'margin', 'opp_pts_low', 'team_fg3m', 'team_fg_pct', 'team_pts']);
+  });
+  it('the FG% fact column and its reference sets use one display-precision expression', () => {
+    const expr = TEAM_GAME_STATS.team_fg_pct.expr;
+    expect(expr).toContain('ROUND(');
+    expect(TEAM_LINE_SQL).toContain(`${expr} AS team_fg_pct`);
+    const teamFact = { ...night, kind: 'team_game_stat' as const, stat: 'team_fg_pct', value: 0.584, subject: { type: 'team' as const, id: '1', name: 'Clippers' } };
+    const refs = refsFor(teamFact, ctx)!;
+    expect(refs.group!.sql).toContain(expr);
+    expect(refs.league!.sql).toContain(expr);
+    expect(TEAM_GAME_STATS.team_fg_pct.fmt(0.584)).toBe('58.4%');
+  });
+  it('a game tied at display precision is first since the tie, not a record; ties do not inflate a rank', () => {
+    const tf = { ...night, kind: 'team_game_stat' as const, stat: 'team_fg_pct', value: 0.584, subject: { type: 'team' as const, id: '1', name: 'Clippers' } };
+    expect(groupFirstSince.interpret([{ subject_id: '1', subject_name: 'Clippers', value: 0.584, game_id: '400', game_date: '2025-11-01' }], tf, ctx))
+      .toMatchObject({ type: 'first_since' });
+    expect(groupFirstSince.build(tf, ctx)!.sql).toContain('>=');
+    expect(groupSeasonHigh.build(tf, ctx)!.sql).toContain('NOT (game_id =');
+    const lr = leagueRank.build(tf, ctx)!.sql;
+    expect(lr).toMatch(/value > /);
+    expect(lr).not.toMatch(/value >= /);
+  });
+  it('a team league rank needs its own 500-game sample, not the player 2000', () => {
+    const teamFact = { ...night, kind: 'team_game_stat' as const, stat: 'team_pts', value: 132, subject: { type: 'team' as const, id: '1', name: 'Clippers' } };
+    expect(leagueRank.interpret([{ rank: 1, ties: 0, total: 600 }], teamFact, ctx)).toMatchObject({ type: 'league_rank', who: 'league' });
+    expect(leagueRank.interpret([{ rank: 1, ties: 0, total: 400 }], teamFact, ctx)).toBeNull();
+    expect(leagueRank.interpret([{ rank: 1, ties: 0, total: 600 }], night, ctx)).toBeNull();
+  });
+  it('the double-double predicate is NULL-safe like the combos', () => {
+    expect(DOUBLE_DOUBLE.match(/COALESCE\(pb\.\w+ >= 10, FALSE\)::int/g)).toHaveLength(5);
+    expect(DOUBLE_DOUBLE).not.toMatch(/\(pb\.\w+ >= 10\)::int/);
+    expect(DOUBLE_DOUBLE).toMatch(/>= 2$/);
+  });
+  it('a combo with nobody earlier is not "the most" (only_one comes from the company question)', () => {
+    expect(groupFirstSince.interpret([], combo, ctx)).toBeNull();
+  });
+  it('every combo key has a definition', () => {
+    for (const key of ['pts30_reb10', 'pts30_ast10', 'triple_double']) {
+      expect(COMBOS.some((c) => c.key === key), key).toBe(true);
+    }
+  });
+});
+
+describe('league refs only for the checked season (R6)', () => {
+  it('suppresses league refs for a fact outside the stats season', () => {
+    expect(refsFor(night, ctx)!.league).not.toBeNull();
+    expect(refsFor({ ...night, seasonId: 2026 }, ctx)!.league).toBeNull();
+    expect(refsFor({ ...night, seasonId: null }, ctx)!.league).not.toBeNull();
   });
 });

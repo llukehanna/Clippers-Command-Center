@@ -33,8 +33,8 @@ describe('triviality filter', () => {
     const p = (55 / 70) ** 3; // a 28-PPG scorer's "20+ in 3 straight"
     expect(isTrivial(p, 'longest_since', 'streak')).toBe(true);
     expect(isTrivial(p, 'records_best', 'streak')).toBe(false);
-    expect(isTrivial(p, 'career_high', 'league_night')).toBe(false);
-    expect(isTrivial(p, 'only_one', 'league_night')).toBe(false);
+    expect(isTrivial(p, 'career_high', 'player_game_stat')).toBe(false);
+    expect(isTrivial(p, 'only_one', 'player_game_stat')).toBe(false);
     expect(isTrivial(p, 'milestone', 'milestone')).toBe(false);
     expect(isTrivial(p, 'first_since', 'milestone')).toBe(false);
     expect(isTrivial(0.25, 'none', 'league_rank')).toBe(false);
@@ -78,7 +78,7 @@ describe('salience, recency, novelty', () => {
 describe('scoreInsight', () => {
   it('combines every term (spec §2.4)', () => {
     const s = scoreInsight({
-      surface: 'postgame', kind: 'league_night', sample: { kind: 'rate', k: 2, n: 60, pRef: 0.05, power: 1 },
+      surface: 'postgame', kind: 'player_game_stat', sample: { kind: 'rate', k: 2, n: 60, pRef: 0.05, power: 1 },
       frameStrength: 0.9, salienceClass: 'roster_core', polarity: 'positive', ageDays: 0,
       asOf: '2026-02-25', firstEmittedAt: null, unchangedSince: '2026-02-25',
     });

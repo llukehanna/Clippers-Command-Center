@@ -107,6 +107,14 @@ SELECT EXISTS (
     AND (g.home_team_id = $2::bigint OR g.away_team_id = $2::bigint)
 )::boolean AS postseason`.trim();
 
+/** $1 season, $2 LAC, $3 as-of. True once the Clippers have a playoff game (the play-in is not one). */
+export const LAC_PLAYOFFS_SQL = `
+SELECT EXISTS (
+  SELECT 1 FROM games g
+  WHERE g.season_id = $1::int AND g.game_date <= $3::date AND g.is_playoffs
+    AND (g.home_team_id = $2::bigint OR g.away_team_id = $2::bigint)
+)::boolean AS playoffs`.trim();
+
 /** $1 season, $2 window, $3 LAC, $4 as-of. Rolling rows are capped at the last regular-season game date. */
 export function rollingRankSql(metric: 'off_rating' | 'net_rating'): string {
   return `

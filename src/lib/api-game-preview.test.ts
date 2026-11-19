@@ -90,6 +90,13 @@ describe('loadGamePreview', () => {
     expect(m.opp.days_since_last).toBe(3);
   });
 
+  it('rest never counts a Clippers preseason game, like the engine\'s REST_SQL (FW-9)', async () => {
+    await load();
+    const rest = mockSql.mock.calls.map((c) => (c[0] as readonly string[]).join('?')).find((q) => q.includes('-- preview:rest'));
+    expect(rest).toContain('JOIN all_games g');
+    expect(rest).toContain('AND NOT g.is_preseason');
+  });
+
   it('hides a section whose query fails and keeps the page', async () => {
     respond({ 'FROM odds_snapshots': () => { throw new Error('boom'); } });
     const res = await load();

@@ -586,6 +586,8 @@ Provide the Historical Game Detail view (header, box score, insights).
 
 Rules:
 - For historical games, insights should come from DB `insights` if computed, else empty array.
+- Pregame rows are never returned (they carry the next game's id). Postgame rows go through the composer (`composeFeed(…, 'game_page')`: at most 8, two per player and per category, same-player rows merged with their context lines joined by " · "); live rows are returned as they are.
+- `ttl_seconds` / `Cache-Control: max-age`: 86400 once the game is final with box scores and dated before yesterday (Los Angeles), 300 for a more recent final, 60 otherwise.
 
 ---
 

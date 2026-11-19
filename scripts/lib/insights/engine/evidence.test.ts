@@ -5,7 +5,7 @@ import { makeCtx, makeFact } from './__fixtures__/facts';
 
 const fr = (type: Frame['type'], extra: Partial<Frame> = {}): Frame => ({ type, strength: 0.5, who: 'group', text: '', proof_rows: [], ...extra });
 const night = makeFact({
-  kind: 'league_night', surface: 'postgame', stat: 'pts', value: 55,
+  kind: 'player_game_stat', surface: 'postgame', stat: 'pts', value: 55,
   window: { type: 'game', game_id: '500', season_id: 2025 },
   context: { date: '2025-11-28', opponent_id: '2', home: true, result: 'W' }, gameId: '500',
   data: { rank: 1, total: 18000, label: 'scoring' },
@@ -38,7 +38,13 @@ describe('buildEvidence', () => {
       others: [{ value: 56, label: 'Paul George', date: 'Mar 1, 2021' }],
     });
     expect(buildEvidence(night, fr('league_rank', { rank: 1, total: 18000 })))
-      .toEqual({ type: 'rank_track', rank: 1, total: 18000, betterIsHigher: true, label: 'NBA player games in 2025-26' });
+      .toEqual({ type: 'rank_track', rank: 1, total: 18000, betterIsHigher: true, label: 'NBA player games so far in 2025-26' });
+    const teamNight = makeFact({ ...night, kind: 'team_game_stat', subject: { type: 'team', id: '1', name: 'Clippers' }, stat: 'team_pts', value: 132, data: {} });
+    expect(buildEvidence(teamNight, fr('league_rank', { rank: 2, total: 2400 })))
+      .toEqual({ type: 'rank_track', rank: 2, total: 2400, betterIsHigher: true, label: 'NBA team games so far in 2025-26' });
+    expect(buildEvidence(teamNight, fr('records_best'))).toBeNull();
+    expect(buildEvidence({ ...night, surface: 'season' }, fr('league_rank', { rank: 1, total: 18000 })))
+      .toMatchObject({ label: 'NBA player games in 2025-26' });
     expect(buildEvidence(makeFact({ kind: 'h2h', data: {} }), fr('none'))).toBeNull();
   });
 });

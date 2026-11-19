@@ -5,7 +5,10 @@ import { seasonLabel } from '../../schedule-utils.js';
 import { fmtDate } from './dates.js';
 import type { EngineContext, Fact } from './types.js';
 
-/** Game-level facts: a ladder of the company joined, else the league-night rank. */
+/** Postgame ranks are frozen at the game date, so they read "so far in {label}" like the draft text (run.ts). */
+const seasonWording = (f: Fact, label: string) => (f.surface === 'postgame' ? `so far in ${label}` : `in ${label}`);
+
+/** Game-level facts: a ladder of the company joined, else the league rank. */
 export function gameStatEvidence(f: Fact, fr: Frame, seasonText: string): Evidence | null {
   if (fr.type === 'joins_company' && fr.proof_rows.length > 0) {
     return {
@@ -20,7 +23,7 @@ export function gameStatEvidence(f: Fact, fr: Frame, seasonText: string): Eviden
   const rank = fr.type === 'league_rank' ? fr.rank : f.data.rank;
   const total = fr.type === 'league_rank' ? fr.total : f.data.total;
   if (rank === undefined || total === undefined) return null;
-  return { type: 'rank_track', rank, total, betterIsHigher: true, label: `NBA player games in ${seasonText}` };
+  return { type: 'rank_track', rank, total, betterIsHigher: true, label: `NBA ${f.kind === 'team_game_stat' ? 'team' : 'player'} games ${seasonWording(f, seasonText)}` };
 }
 
 export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
@@ -28,10 +31,13 @@ export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
   const season = f.seasonId !== null ? seasonLabel(f.seasonId) : '';
   switch (f.kind) {
     case 'streak':
+    case 'opp_hot_player':
       return d.streak_games && d.streak_games.length > 0
         ? { type: 'streak_strip', games: d.streak_games, threshold: d.hit_threshold ?? 0 }
         : null;
     case 'milestone':
+    case 'milestone_crossed':
+    case 'milestone_progress':
       return { type: 'milestone_progress', current: d.total_value ?? f.value, target: d.threshold ?? f.value, label: d.unit ?? '' };
     case 'league_rank':
     case 'recent_form':
@@ -43,6 +49,10 @@ export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
       return d.rank !== undefined && d.total !== undefined
         ? { type: 'rank_track', rank: d.rank, total: d.total, betterIsHigher: true, label: `the ${d.conference ?? 'conference'}` }
         : null;
+    case 'vs_opponent':
+      return d.prev_value !== undefined && d.cur_value !== undefined
+        ? { type: 'delta', before: { value: d.prev_value, label: 'overall' }, after: { value: d.cur_value, label: 'vs this opponent' }, betterIsHigher: true }
+        : null;
     case 'yoy_change':
       if (d.prev_value === undefined || d.cur_value === undefined || f.seasonId === null) return null;
       return {
@@ -51,8 +61,12 @@ export function buildEvidence(f: Fact, fr: Frame): Evidence | null {
         after: { value: d.cur_value, label: season },
         betterIsHigher: d.higherIsBetter ?? true,
       };
-    case 'league_night':
+    case 'player_game_stat':
+    case 'season_best':
+    case 'team_game_stat':
       return gameStatEvidence(f, fr, season);
+    case 'game_flow':
+      return d.margin_series && d.margin_series.length > 1 ? { type: 'margin_spark', series: d.margin_series } : null;
     default:
       return null;
   }

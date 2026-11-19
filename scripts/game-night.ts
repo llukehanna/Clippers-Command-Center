@@ -3,6 +3,8 @@
 //
 // 1. Looks for a Clippers game that isn't final and tips within the next
 //    LEAD_MINUTES (or tipped in the last 4 hours). None → exits in seconds.
+//    Pregame insights are written at start (not for preseason games, nor after
+//    tip) and again at tip − 75 min.
 //    The lead is long because GitHub drops scheduled runs at busy times —
 //    whole evenings of the hourly cron have gone missing — so any launch that
 //    does fire in the hours before tip catches the game and sleeps until then.
@@ -12,7 +14,9 @@
 // 3. When the scoreboard says Final, finalizes the game (box scores, stints,
 //    advanced stats; from ESPN's summary or, last, the final live doc,
 //    provisionally, while the NBA refuses its box score — the nightly league
-//    sync swaps in the NBA's), asks the workflow to start the post-game pipeline
+//    sync swaps in the NBA's), ingests the play-by-play, writes postgame
+//    insights for the game and refreshes pregame insights for the next one
+//    (scripts/lib/insights/engine/hooks.ts), asks the workflow to start the post-game pipeline
 //    (league sync, stats, insights — postgame=true in $GITHUB_OUTPUT; its
 //    nightly cron runs hours late) and exits. Preseason games (all_games.is_preseason)
 //    are polled the same way but never finalized: they don't count anywhere.
@@ -43,8 +47,14 @@ import {
   finalizeRetryDelay,
   handOffMomentOk,
   mainHasNewRunnerCode,
+  escapeAnnotation,
+  insightsFailureAnnotation,
+  pregameRefreshDue,
+  runnerLogLine,
+  shouldRunPregame,
 } from './lib/game-night-logic.js';
 import { ingestGamePbp } from './lib/pbp/ingest.js';
+import { insightsAtFinal, pregameAtStart } from './lib/insights/engine/hooks.js';
 
 const LEAD_MINUTES = Number(process.env.GAME_NIGHT_LEAD_MINUTES ?? 300);
 const PRE_TIP_MS = 10 * 60_000;
@@ -103,13 +113,27 @@ async function finalizeWithRetries(gameDbId: string, nbaGameId: string): Promise
       const msg = (err as Error).message;
       const delay = finalizeRetryDelay(Date.now() - startedAt, MAX_RUNTIME_MS);
       if (delay === null) {
-        console.log(`::warning title=Game not finalized::${msg} — the nightly post-game pipeline will finalize it.`);
+        console.log(`::warning title=Game not finalized::${escapeAnnotation(msg)} — the nightly post-game pipeline will finalize it.`);
         return false;
       }
       console.warn(`[game-night] Finalization failed (${msg}); retrying in ${delay / 60_000} min.`);
       await sleep(delay);
     }
   }
+}
+
+/**
+ * Pregame insights for the next game. Never throws (the hook reports failure);
+ * skipped for preseason games and once tip has passed. Returns when it ran, or
+ * null when it didn't, so a skipped pass never schedules a refresh.
+ */
+async function runPregame(candidate: LiveCandidate, tip: Date | null): Promise<number | null> {
+  if (!shouldRunPregame({ isPreseason: candidate.is_preseason }, tip?.getTime() ?? null, Date.now())) return null;
+  const r = await pregameAtStart((m) => console.log(runnerLogLine(m)));
+  const failed = insightsFailureAnnotation('Pregame insights failed', r);
+  if (failed) console.log(failed);
+  else console.log(`[game-night] Pregame insights: ${r.message}`);
+  return Date.now();
 }
 
 async function main(): Promise<void> {
@@ -122,6 +146,7 @@ async function main(): Promise<void> {
   console.log(
     `[game-night] Game ${candidate.nba_game_id} (row ${candidate.game_id}), tip ${tip?.toISOString() ?? 'unknown'}`
   );
+  let lastPregameAt = await runPregame(candidate, tip);
 
   if (tip) {
     const wait = tip.getTime() - PRE_TIP_MS - Date.now();
@@ -130,6 +155,7 @@ async function main(): Promise<void> {
       for (let left = wait; left > 0; left = tip.getTime() - PRE_TIP_MS - Date.now()) {
         await sleep(Math.min(left, CODE_CHECK_MS));
         if (await handOffIfMainMoved()) return;
+        if (pregameRefreshDue(Date.now(), tip.getTime(), lastPregameAt)) lastPregameAt = await runPregame(candidate, tip);
       }
     }
   }
@@ -248,6 +274,18 @@ async function pollLoop(candidate: LiveCandidate, tip: Date | null): Promise<voi
           console.log(`[game-night] Play-by-play: ${detail}`);
         } catch (err) {
           console.error(`[game-night] Play-by-play ingest failed: ${(err as Error).message}`);
+        }
+        // Postgame insights minutes after the buzzer (spec §5.1), then a pregame
+        // pass so Up Next moves to the next game now. Neither throws or hangs
+        // (5 min cap each); the post-game workflow re-runs every surface once
+        // the league syncs.
+        const insights = await insightsAtFinal(
+          candidate.game_id, { isPreseason: candidate.is_preseason }, (m) => console.log(runnerLogLine(m))
+        );
+        for (const [title, r] of [['Postgame', insights.postgame], ['Pregame', insights.pregame]] as const) {
+          const failed = insightsFailureAnnotation(`${title} insights failed`, r);
+          if (failed) console.log(failed);
+          else console.log(`[game-night] ${title} insights: ${r.message}`);
         }
       }
       return;

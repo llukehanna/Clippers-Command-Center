@@ -9,7 +9,7 @@ import { parseEngineArgs, type EngineArgs } from './cli.js';
 import type { EngineResult } from './run.js';
 import type { InsightDraft } from './types.js';
 
-export const REPLAY_PLACEMENTS: Placement[] = ['home_hero', 'last_game', 'up_next', 'season_feed'];
+export const REPLAY_PLACEMENTS: Placement[] = ['home_hero', 'last_game', 'up_next', 'season_feed', 'player_page'];
 
 export function parseReplayArgs(argv: string[], today: string): EngineArgs {
   if (!argv.some((a) => a.startsWith('--as-of='))) throw new Error('insights:replay needs --as-of=YYYY-MM-DD');
@@ -34,16 +34,26 @@ export function formatReplay(result: Pick<EngineResult, 'drafts' | 'dropped'>, s
   const lines: string[] = [];
   for (const placement of REPLAY_PLACEMENTS) {
     if (!PLACEMENT_SURFACES[placement].some((s) => surfaces.includes(s))) continue;
-    lines.push(`\n── ${placement} ──`);
-    const feed = composeFeed(items, placement);
-    if (feed.length === 0) lines.push('  (empty)');
-    for (const item of feed) {
-      const d = result.drafts.find((x) => x.key.startsWith(item.insight_id))!;
-      const s = d.score_parts;
-      lines.push(`  [${String(d.importance).padStart(3)}] ${d.headline}`);
-      lines.push(`        ${item.detail ?? ''}`);
-      lines.push(`        ${d.surface}/${d.category} frame=${d.frame.type}(${d.frame.strength}) p=${prob(s.p)} ` +
-        `rarity=${s.rarity.toFixed(2)} sal=${s.salience} rec=${s.recency.toFixed(2)} pol=${s.polarity} nov=${s.novelty.toFixed(2)}`);
+    // The player page is one feed per player; every other placement is one feed.
+    const groups = placement === 'player_page'
+      ? [...new Set(items.filter((i) => i.surface === 'player' && i.player_id).map((i) => i.player_id as string))].map((id) => ({
+          title: `${placement} · ${result.drafts.find((d) => d.player_id === id && d.surface === 'player')?.entities[0]?.name ?? id}`,
+          items: items.filter((i) => i.player_id === id),
+        }))
+      : [{ title: placement, items }];
+    if (groups.length === 0) groups.push({ title: placement, items: [] });
+    for (const group of groups) {
+      lines.push(`\n── ${group.title} ──`);
+      const feed = composeFeed(group.items, placement);
+      if (feed.length === 0) lines.push('  (empty)');
+      for (const item of feed) {
+        const d = result.drafts.find((x) => x.key.startsWith(item.insight_id))!;
+        const s = d.score_parts;
+        lines.push(`  [${String(d.importance).padStart(3)}] ${d.headline}`);
+        lines.push(`        ${item.detail ?? ''}`);
+        lines.push(`        ${d.surface}/${d.category} frame=${d.frame.type}(${d.frame.strength}) p=${prob(s.p)} ` +
+          `rarity=${s.rarity.toFixed(2)} sal=${s.salience} rec=${s.recency.toFixed(2)} pol=${s.polarity} nov=${s.novelty.toFixed(2)}`);
+      }
     }
   }
   const reasons = new Map<string, number>();

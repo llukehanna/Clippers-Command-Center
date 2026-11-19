@@ -298,6 +298,7 @@ export async function loadHome(): Promise<ApiResult> {
           proof_result
         FROM insights
         WHERE scope = 'between_games'
+          AND (surface IS NULL OR surface <> 'player')
           AND is_active = true
         ORDER BY importance DESC
         LIMIT 10

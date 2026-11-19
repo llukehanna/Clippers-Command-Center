@@ -1,10 +1,13 @@
 // scripts/lib/insights/engine/cli.ts
-// generate-insights flags (spec §5.1: --surface, --game, --as-of). Pure.
+// generate-insights flags (spec §5.1: --surface, --game, --as-of; plus --days
+// for the postgame window and --dry). Pure.
 import type { Surface } from '../../../../src/lib/insights/types';
-import { isIsoDate } from './dates.js';
+import { DEFAULT_POSTGAME_DAYS, isIsoDate } from './dates.js';
 
 /** Surfaces generate-insights writes. Live insights come from the game-night runner (Plan 6). */
-export const BATCH_SURFACES: Surface[] = ['season', 'pregame', 'postgame'];
+export const BATCH_SURFACES: Surface[] = ['season', 'pregame', 'postgame', 'player'];
+export const DEFAULT_DAYS = DEFAULT_POSTGAME_DAYS;
+const MAX_DAYS = 400;
 
 export interface EngineArgs {
   surfaces: Surface[];
@@ -12,10 +15,13 @@ export interface EngineArgs {
   asOf: string;
   write: boolean;
   verbose: boolean;
+  /** Postgame window in days (finals dated (asOf − days, asOf]). */
+  days: number;
 }
 
 export function parseEngineArgs(argv: string[], today: string): EngineArgs {
-  const out: EngineArgs = { surfaces: [...BATCH_SURFACES], gameId: null, asOf: today, write: true, verbose: false };
+  const out: EngineArgs = { surfaces: [...BATCH_SURFACES], gameId: null, asOf: today, write: true, verbose: false, days: DEFAULT_DAYS };
+  let daysGiven = false;
   for (const arg of argv) {
     const eq = arg.indexOf('=');
     const flag = eq === -1 ? arg : arg.slice(0, eq);
@@ -40,6 +46,13 @@ export function parseEngineArgs(argv: string[], today: string): EngineArgs {
         if (value > today) throw new Error(`--as-of ${value} is in the future`);
         out.asOf = value;
         break;
+      case '--days': {
+        const n = /^\d+$/.test(value) ? Number(value) : NaN;
+        if (!(n >= 1 && n <= MAX_DAYS)) throw new Error(`--days must be a whole number from 1 to ${MAX_DAYS}, got "${value}"`);
+        out.days = n;
+        daysGiven = true;
+        break;
+      }
       case '--dry':
         out.write = false;
         break;
@@ -53,5 +66,7 @@ export function parseEngineArgs(argv: string[], today: string): EngineArgs {
   if (out.gameId !== null && (out.surfaces.length !== 1 || out.surfaces[0] !== 'postgame')) {
     throw new Error('--game needs --surface=postgame');
   }
+  if (daysGiven && !out.surfaces.includes('postgame')) throw new Error('--days needs the postgame surface');
+  if (daysGiven && out.gameId !== null) throw new Error('--days and --game are exclusive: --game replaces the window');
   return out;
 }
