@@ -62,7 +62,9 @@ export function SegmentedLinks({ value, options, ariaLabel, size = 'md', classNa
             data-active={isActive}
             aria-current={opt.value === value ? 'true' : undefined}
             onClick={(e) => {
-              if (onSelect && isPlainClick(e)) {
+              // A modified click opens elsewhere (new tab, window): this page's selection doesn't move.
+              if (!isPlainClick(e)) return
+              if (onSelect) {
                 e.preventDefault()
                 onSelect(opt.value)
               } else if (opt.value !== value) setPending(opt.value)

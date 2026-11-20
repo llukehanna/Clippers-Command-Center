@@ -37,7 +37,7 @@ const cases: Array<[string, string]> = [
   ['/api/franchise/draft', 'weekly'],
   ['/api/franchise/honors', 'weekly'],
   ['/api/franchise/front-office', 'weekly'],
-  ['/api/franchise/people', 'weekly'],
+  ['/api/franchise/people', 'volatile'],
   ['/api/history/seasons', 'weekly'],
   ['/api/home', 'volatile'],
   ['/api/schedule', 'volatile'],

@@ -22,11 +22,12 @@ export interface ClassifyContext {
   currentSeasonPersonKeys: Set<string>
 }
 
+// /api/franchise/people is volatile (the default): it decides which person pages
+// exist, and those are linked from payloads that refresh every build.
 const WEEKLY_PATHS = new Set([
   '/api/franchise/draft',
   '/api/franchise/honors',
   '/api/franchise/front-office',
-  '/api/franchise/people',
   '/api/history/seasons',
 ])
 

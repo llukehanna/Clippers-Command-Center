@@ -178,8 +178,15 @@ export async function tradeSlugs(): Promise<string[]> {
  * type's list (and loads the /franchise/moves/<type> pages' payloads).
  */
 export async function moveSeasonIds(calendarSeason: number = calendarSeasonId()): Promise<string[]> {
-  const lists = await Promise.all(MOVE_TYPES.map((t) => required<Pick<MovesPayload, 'seasons'>>(`/api/franchise/moves?type=${t}&season=latest`)))
-  const listed = lists.flatMap((l) => l.seasons)
+  const lists = await Promise.all(
+    MOVE_TYPES.map(async (t) => {
+      const path = `/api/franchise/moves?type=${t}&season=latest`
+      const { seasons } = await required<Partial<Pick<MovesPayload, 'seasons'>>>(path)
+      if (!Array.isArray(seasons) || seasons.length === 0) throw new Error(`prebuild params: ${path} has no seasons`)
+      return seasons
+    }),
+  )
+  const listed = lists.flat()
   const last = Math.max(calendarSeason, ...listed)
   const ribbon = Array.from({ length: Math.max(0, last - ERAS[0].first + 1) }, (_, i) => ERAS[0].first + i)
   return [...new Set([...ribbon, ...listed])].sort((a, b) => a - b).map(String)
@@ -195,11 +202,17 @@ export function moveSeasonParams(seasonIds: string[]): Array<{ type: string; sea
 
 /**
  * Every person in a Clippers move (the people search; every player filter link
- * names one of them). Throws on a key whose link wouldn't reach its prerendered
- * page (see personSegment) rather than shipping a link that 404s.
+ * names one of them), plus anyone in the newest season's moves the people list
+ * doesn't have yet (belt and braces: both payloads refresh every build). Throws
+ * on a key whose link wouldn't reach its prerendered page (see personSegment)
+ * rather than shipping a link that 404s.
  */
 export async function personKeys(): Promise<string[]> {
-  const keys = (await required<PeoplePayload>('/api/franchise/people')).people.map((p) => p.person_key)
+  const [people, latest] = await Promise.all([
+    required<PeoplePayload>('/api/franchise/people'),
+    required<MovesPayload>('/api/franchise/moves?type=all&season=latest'),
+  ])
+  const keys = unique([...people.people.map((p) => p.person_key), ...latest.moves.flatMap((m) => m.people.map((p) => p.person_key))])
   const unsafe = keys.filter((k) => !PATH_SAFE_PERSON_KEY.test(k))
   if (unsafe.length > 0) throw new Error(`prebuild params: person keys not safe in a path: ${unsafe.join(', ')}`)
   return keys

@@ -249,6 +249,13 @@ describe('moveSeasonIds', () => {
     latest([2024], ['release'])
     await expect(moveSeasonIds(2026)).rejects.toThrow('/api/franchise/moves?type=release&season=latest')
   })
+  it('throws when a type list has no seasons', async () => {
+    latest([2024])
+    payloads.set('/api/franchise/moves?type=draft&season=latest', { seasons: [] })
+    await expect(moveSeasonIds(2026)).rejects.toThrow('/api/franchise/moves?type=draft&season=latest has no seasons')
+    payloads.set('/api/franchise/moves?type=draft&season=latest', { moves: [] })
+    await expect(moveSeasonIds(2026)).rejects.toThrow('/api/franchise/moves?type=draft&season=latest has no seasons')
+  })
 })
 
 describe('moveSeasonParams', () => {
@@ -264,15 +271,33 @@ describe('moveSeasonParams', () => {
 })
 
 describe('personKeys', () => {
+  const LATEST = '/api/franchise/moves?type=all&season=latest'
+  const latestMoves = (...keys: string[][]) => payloads.set(LATEST, { moves: keys.map((k) => ({ people: k.map((person_key) => ({ person_key })) })) })
+
   it('lists every person in Clippers moves, as served', async () => {
     payloads.set('/api/franchise/people', { people: [{ person_key: 'paulch01' }, { person_key: 'nba:1641715' }] })
+    latestMoves(['paulch01'])
     expect(await personKeys()).toEqual(['paulch01', 'nba:1641715'])
   })
+  it("adds anyone in the newest season's moves the people list doesn't have yet", async () => {
+    payloads.set('/api/franchise/people', { people: [{ person_key: 'paulch01' }] })
+    latestMoves(['newguy01', 'paulch01'], ['nba:1642000'])
+    expect(await personKeys()).toEqual(['paulch01', 'newguy01', 'nba:1642000'])
+  })
   it('throws when the people list is missing', async () => {
+    latestMoves([])
     await expect(personKeys()).rejects.toThrow('/api/franchise/people')
+  })
+  it("throws when the newest season's moves are missing", async () => {
+    payloads.set('/api/franchise/people', { people: [{ person_key: 'paulch01' }] })
+    await expect(personKeys()).rejects.toThrow(LATEST)
   })
   it('throws on a key whose link would not reach its prerendered page', async () => {
     payloads.set('/api/franchise/people', { people: [{ person_key: 'paulch01' }, { person_key: 'o neal' }] })
+    latestMoves([])
     await expect(personKeys()).rejects.toThrow('o neal')
+    payloads.set('/api/franchise/people', { people: [{ person_key: 'paulch01' }] })
+    latestMoves(['d angelo'])
+    await expect(personKeys()).rejects.toThrow('d angelo')
   })
 })
