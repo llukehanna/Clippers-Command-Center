@@ -8,11 +8,17 @@ import { LineCard } from '@/components/preview/LineCard'
 import { Availability } from '@/components/preview/Availability'
 import { Matchup } from '@/components/preview/Matchup'
 import { getJson } from '@/src/lib/ui/api'
+import { scheduleGameIds } from '@/src/lib/prebuild/params'
+import { staticParams } from '@/src/lib/prebuild/static-params'
 import { formatDayShort } from '@/src/lib/ui/time'
 import type { GamePreviewPayload } from '@/src/lib/ui/types'
 
-// Live data on every request (loaders read the database directly).
-export const dynamic = 'force-dynamic'
+// Prerendered at build for every known id; unknown ids 404 until the next build.
+export const dynamicParams = false
+
+export async function generateStaticParams() {
+  return staticParams(await scheduleGameIds()).map((game_id) => ({ game_id }))
+}
 
 type Params = { params: Promise<{ game_id: string }> }
 

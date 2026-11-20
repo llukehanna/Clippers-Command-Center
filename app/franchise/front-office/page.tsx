@@ -9,8 +9,6 @@ import { calendarSeasonId } from '@/src/lib/season'
 import { coachTenures, executiveGroups } from '@/src/lib/franchise/tenures'
 import type { FrontOfficePayload } from '@/src/lib/ui/types'
 
-export const dynamic = 'force-dynamic'
-
 export const metadata: Metadata = { title: 'Front office · Franchise' }
 
 /** Front office: head coaches as a timeline with each season's record, then executives with their dates. */

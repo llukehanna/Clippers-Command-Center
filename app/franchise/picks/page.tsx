@@ -6,8 +6,6 @@ import { PicksOwedList } from '@/components/franchise/PicksOwedList'
 import { getJson } from '@/src/lib/ui/api'
 import type { OwedAsset, PicksOwedPayload } from '@/src/lib/ui/types'
 
-export const dynamic = 'force-dynamic'
-
 export const metadata: Metadata = { title: 'Picks owed · Franchise' }
 
 const count = (list: OwedAsset[]) => {

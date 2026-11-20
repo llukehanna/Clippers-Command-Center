@@ -19,9 +19,6 @@ import { ageLabel } from '@/src/lib/ui/time'
 import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
 import type { HomePayload, MediaPayload, PlayersPayload } from '@/src/lib/ui/types'
 
-// Live data on every request (loaders read the database directly).
-export const dynamic = 'force-dynamic'
-
 export const metadata: Metadata = { title: 'Home' }
 
 export default async function HomePage() {

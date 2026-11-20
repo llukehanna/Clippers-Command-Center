@@ -17,13 +17,19 @@ import { RecordMoments } from '@/components/postgame/RecordMoments'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TeamLogo } from '@/components/ui/team-mark'
 import { getJson } from '@/src/lib/ui/api'
+import { historyGameIds } from '@/src/lib/prebuild/params'
+import { staticParams } from '@/src/lib/prebuild/static-params'
 import { playedGames, type HistoryGame } from '@/src/lib/ui/season'
 import { formatDayLong, formatDayShort } from '@/src/lib/ui/time'
 import { teamName } from '@/src/lib/ui/teams'
 import type { GameStoryPayload, HistoryGameDetailPayload } from '@/src/lib/ui/types'
 
-// Live data on every request (loaders read the database directly).
-export const dynamic = 'force-dynamic'
+// Prerendered at build for every known id; unknown ids 404 until the next build.
+export const dynamicParams = false
+
+export async function generateStaticParams() {
+  return staticParams(await historyGameIds()).map((game_id) => ({ game_id }))
+}
 
 type Params = { params: Promise<{ game_id: string }> }
 

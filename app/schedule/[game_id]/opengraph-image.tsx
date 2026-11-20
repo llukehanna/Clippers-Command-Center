@@ -1,5 +1,7 @@
 import { C, Logo, OG_SIZE, logo, renderCard } from '@/app/_og/card'
 import { getJson } from '@/src/lib/ui/api'
+import { scheduleGameIds } from '@/src/lib/prebuild/params'
+import { staticParams } from '@/src/lib/prebuild/static-params'
 import { formatDay, formatTip } from '@/src/lib/ui/time'
 import { teamName } from '@/src/lib/ui/teams'
 import type { GamePreviewPayload } from '@/src/lib/ui/types'
@@ -7,6 +9,13 @@ import type { GamePreviewPayload } from '@/src/lib/ui/types'
 export const alt = 'Clippers game preview'
 export const size = OG_SIZE
 export const contentType = 'image/png'
+
+// Prerendered at build for every scheduled game; unknown ids 404 until the next build.
+export const dynamicParams = false
+
+export async function generateStaticParams() {
+  return staticParams(await scheduleGameIds()).map((game_id) => ({ game_id }))
+}
 
 export default async function Image({ params }: { params: Promise<{ game_id: string }> }) {
   const { game_id } = await params

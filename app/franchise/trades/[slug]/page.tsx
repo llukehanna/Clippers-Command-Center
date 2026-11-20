@@ -9,13 +9,19 @@ import { GapNote, plink } from '@/components/franchise/bits'
 import { SwapGlyph, TradeSides } from '@/components/franchise/TradeSides'
 import { TradeTree } from '@/components/franchise/TradeTree'
 import { getJson } from '@/src/lib/ui/api'
+import { tradeSlugs } from '@/src/lib/prebuild/params'
+import { staticParams } from '@/src/lib/prebuild/static-params'
 import { highlightNames, kindLabel, moveDate, movesHref, seasonLabel } from '@/src/lib/franchise/display'
 import { TEAM_NOT_RECORDED, teamFullName } from '@/src/lib/franchise/franchise-ids'
 import { assetSummary, sidePanels, sourceNames, tradeHeadline, treeGroups } from '@/src/lib/franchise/trade-display'
 import type { FranchisePersonRef, TradePayload } from '@/src/lib/ui/types'
 
-// Live data on every request (loaders read the database directly).
-export const dynamic = 'force-dynamic'
+// Prerendered at build for every known id; unknown ids 404 until the next build.
+export const dynamicParams = false
+
+export async function generateStaticParams() {
+  return staticParams(await tradeSlugs()).map((slug) => ({ slug }))
+}
 
 type Params = { params: Promise<{ slug: string }> }
 

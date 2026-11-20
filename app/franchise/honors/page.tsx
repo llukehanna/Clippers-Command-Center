@@ -7,8 +7,6 @@ import { PersonName } from '@/components/franchise/bits'
 import { getJson } from '@/src/lib/ui/api'
 import type { HonorsPayload } from '@/src/lib/ui/types'
 
-export const dynamic = 'force-dynamic'
-
 export const metadata: Metadata = { title: 'Honors · Franchise' }
 
 /** Honors: retired numbers first, then Hall of Famers, then awards and All-Star selections by season. */

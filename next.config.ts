@@ -34,12 +34,18 @@ const EDGE_TTLS: Array<[source: string, fresh: number, stale: number]> = [
   ["/history/:game_id", 300, 3600],
   ["/api/history/:path*", 3600, 3600],
   ["/api/history/games/:game_id", 300, 3600],
+  // Rendered on demand (not prerendered); a shared link's card barely changes once the game is final.
+  ["/history/:game_id/opengraph-image", 86400, 86400],
   ["/news", 60, 300],
   ["/api/media", 60, 300],
   ["/api/insights", 30, 120],
 ];
 
 const nextConfig: NextConfig = {
+  // The commit SHA in CI, so a data-only rebuild of the same commit writes
+  // identical paths and Wrangler re-uploads only the files whose bytes changed.
+  // null (local builds) lets Next generate a random id.
+  generateBuildId: async () => process.env.GITHUB_SHA ?? null,
   async headers() {
     return EDGE_TTLS.map(([source, fresh, stale]) => ({ source, headers: edgeTtl(fresh, stale) }));
   },

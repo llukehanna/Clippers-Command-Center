@@ -13,14 +13,20 @@ import { Eyebrow } from '@/components/ui/eyebrow'
 import { CareerHero, CareerHighs, CareerNumbers, CareerSeasons } from '@/components/players/ClippersCareer'
 import type { PlayerCareerPayload } from '@/src/lib/data/player-career'
 import { getJson } from '@/src/lib/ui/api'
+import { playerIds } from '@/src/lib/prebuild/params'
+import { staticParams } from '@/src/lib/prebuild/static-params'
 import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
 import { seasonShort, type HistoryGame } from '@/src/lib/ui/season'
 import type { MovesPayload, PlayerDetailPayload, PlayersPayload } from '@/src/lib/ui/types'
 
-// Live data on every request (loaders read the database directly).
-export const dynamic = 'force-dynamic'
+// Prerendered at build for every known id; unknown ids 404 until the next build.
+export const dynamicParams = false
 
-type Params = { params: Promise<{ player_id: string }>; searchParams: Promise<{ season?: string }> }
+export async function generateStaticParams() {
+  return staticParams(await playerIds()).map((player_id) => ({ player_id }))
+}
+
+type Params = { params: Promise<{ player_id: string }> }
 
 /** Clippers games only: the profile is about a player's Clippers years. */
 const detailPath = (id: string, season: string | null) =>
@@ -32,13 +38,11 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   return { title: data?.player.display_name ?? 'Player' }
 }
 
-export default async function PlayerDetailPage({ params, searchParams }: Params) {
+export default async function PlayerDetailPage({ params }: Params) {
   const { player_id } = await params
-  const { season } = await searchParams
-  const seasonParam = season && /^\d{4}$/.test(season) ? season : null
   const numericId = /^\d{1,15}$/.test(player_id)
   const [data, roster, moves, career] = await Promise.all([
-    getJson<PlayerDetailPayload>(detailPath(player_id, seasonParam)),
+    getJson<PlayerDetailPayload>(detailPath(player_id, null)),
     getJson<PlayersPayload>('/api/players?include_traded=true'),
     numericId ? getJson<MovesPayload>(`/api/franchise/moves?player_id=${player_id}`) : null,
     numericId ? getJson<PlayerCareerPayload>(`/api/players/${player_id}/career`) : null,
