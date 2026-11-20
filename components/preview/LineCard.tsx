@@ -1,7 +1,7 @@
 import { Panel } from '@/components/ui/panel'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { formatSpread } from '@/src/lib/ui/odds'
-import { ageLabel } from '@/src/lib/ui/time'
+import { TimeAgo } from '@/components/ui/clock'
 import { sparklinePath } from '@/src/lib/game-preview-utils'
 import type { GamePreviewPayload } from '@/src/lib/ui/types'
 
@@ -12,10 +12,9 @@ const H = 44
 export function LineCard({ line }: { line: NonNullable<GamePreviewPayload['line']> }) {
   const values = line.movement.map((p) => p.spread)
   const path = sparklinePath(values, W, H, 4)
-  const age = line.current ? ageLabel(line.current.captured_at) : null
   return (
     <Panel className="h-full p-5">
-      <Eyebrow aside={age ? `updated ${age} ago` : undefined}>The line</Eyebrow>
+      <Eyebrow aside={line.current ? <TimeAgo at={line.current.captured_at} prefix="updated " suffix=" ago" /> : undefined}>The line</Eyebrow>
       {line.current ? (
         <div>
           <div className="text-[26px] font-semibold tracking-[-0.03em] tabular-nums">LAC {formatSpread(line.current.spread)}</div>

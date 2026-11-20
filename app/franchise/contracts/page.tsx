@@ -8,8 +8,6 @@ import { calendarSeasonId } from '@/src/lib/season'
 import { moveDate, seasonLabel } from '@/src/lib/franchise/display'
 import type { ContractsPayload } from '@/src/lib/ui/types'
 
-export const dynamic = 'force-dynamic'
-
 export const metadata: Metadata = { title: 'Contracts · Franchise' }
 
 /** Contracts: the current cap sheet (newest snapshot only), then payroll by season from 1984–85. */

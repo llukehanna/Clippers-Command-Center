@@ -18,6 +18,10 @@ import {
   franchiseTab,
   allowsAllSeasons,
   parseMovesSeason,
+  parseMoveType,
+  MOVE_TYPES,
+  personMoves,
+  withLatestAggregates,
   draftPickOutcome,
   draftYearMeta,
   partialWord,
@@ -150,10 +154,35 @@ describe('eras and teams', () => {
 })
 
 describe('moves navigation', () => {
-  it('builds Moves URLs, leaving the default type out', () => {
+  it('builds Moves paths: /franchise for trades in the latest season', () => {
     expect(movesHref({ season: null, type: 'trade', player: null })).toBe('/franchise')
-    expect(movesHref({ season: 2019, type: 'all', player: 'paulch01' })).toBe('/franchise?season=2019&type=all&player=paulch01')
-    expect(movesHref({ season: 'all', type: 'trade', player: null })).toBe('/franchise?season=all')
+  })
+  it('builds /franchise/moves/<type> for another type in its latest season', () => {
+    expect(movesHref({ season: null, type: 'draft', player: null })).toBe('/franchise/moves/draft')
+    expect(movesHref({ season: null, type: 'all', player: null })).toBe('/franchise/moves/all')
+  })
+  it('builds /franchise/moves/<type>/<season|all> for a chosen season', () => {
+    expect(movesHref({ season: 'all', type: 'trade', player: null })).toBe('/franchise/moves/trade/all')
+    expect(movesHref({ season: 2019, type: 'signing', player: null })).toBe('/franchise/moves/signing/2019')
+    expect(movesHref({ season: 2019, type: 'trade', player: null })).toBe('/franchise/moves/trade/2019')
+  })
+  it('drops All seasons where it is not offered (that type opens on its latest season, as before)', () => {
+    expect(movesHref({ season: 'all', type: 'signing', player: null })).toBe('/franchise/moves/signing')
+    expect(movesHref({ season: 'all', type: 'all', player: null })).toBe('/franchise/moves/all')
+  })
+  it('sends any player filter to that person page (type and season are toggles there)', () => {
+    expect(movesHref({ season: 'all', type: 'all', player: 'paulch01' })).toBe('/franchise/person/paulch01')
+    expect(movesHref({ season: 2019, type: 'trade', player: 'paulch01' })).toBe('/franchise/person/paulch01')
+    // The path Next prerenders: it escapes only the path delimiters in a param, so a colon stays raw.
+    expect(movesHref({ season: null, type: 'signing', player: 'nba:1641715' })).toBe('/franchise/person/nba:1641715')
+    expect(movesHref({ season: null, type: 'all', player: 'a/b?c#d' })).toBe('/franchise/person/a%2Fb%3Fc%23d')
+  })
+  it('reads a move type segment', () => {
+    expect(MOVE_TYPES).toEqual(['trade', 'signing', 'release', 'draft', 'other', 'all'])
+    for (const t of MOVE_TYPES) expect(parseMoveType(t)).toBe(t)
+    expect(parseMoveType('trades')).toBeNull()
+    expect(parseMoveType('')).toBeNull()
+    expect(parseMoveType(undefined)).toBeNull()
   })
   it('offers All seasons only where the list stays bounded (Trades, or one player)', () => {
     expect(allowsAllSeasons({ type: 'trade', player: null })).toBe(true)
@@ -229,5 +258,94 @@ describe('partialWord', () => {
     expect(partialWord(false)).toBe('recorded')
     expect(partialWord(null)).toBe('—')
     expect(partialWord(undefined)).toBe('—')
+  })
+})
+
+describe('withLatestAggregates (ribbon and season list from the season=latest payload)', () => {
+  const payload = (season: number | null, player: string | null, seasons: number[], counts: Array<[number, number]>, slugs: string[]) =>
+    ({
+      meta: {},
+      filters: { season, type: 'signing', player },
+      seasons,
+      season_counts: counts.map(([season_id, count]) => ({ season_id, count })),
+      player: player ? { person_key: player, name: 'P' } : null,
+      moves: slugs.map((slug) => ({ slug })),
+    }) as unknown as Parameters<typeof withLatestAggregates>[0]
+  // A past season's payload cached weeks ago: no 2026 yet, an old 2025 count.
+  const past = payload(2019, null, [2025, 2019], [[2025, 3], [2019, 2]], ['a', 'b'])
+  const latest = payload(2026, null, [2026, 2025, 2019], [[2026, 4], [2025, 5], [2019, 2]], ['x'])
+
+  it("takes the latest payload's seasons and counts, keeping the view's season, filters and moves", () => {
+    const r = withLatestAggregates(past, latest)
+    expect(r.seasons).toEqual([2026, 2025, 2019])
+    expect(r.season_counts).toEqual(latest.season_counts)
+    expect(r.filters).toEqual(past.filters)
+    expect(r.moves).toEqual(past.moves)
+    expect(r.player).toBeNull()
+  })
+  it("a person view takes only the season list (its counts are the person's own)", () => {
+    const person = payload(null, 'paulch01', [2025, 2019], [[2019, 1]], ['p'])
+    const r = withLatestAggregates(person, latest)
+    expect(r.seasons).toEqual([2026, 2025, 2019])
+    expect(r.season_counts).toEqual(person.season_counts)
+    expect(r.player).toEqual(person.player)
+    expect(r.moves).toEqual(person.moves)
+  })
+  it('keeps the view as is without a latest payload', () => {
+    expect(withLatestAggregates(past, null)).toBe(past)
+  })
+})
+
+describe('personMoves (a person page filters its all-seasons, all-types list in the browser)', () => {
+  const move = (slug: string, season_id: number | null, kind_group: 'trade' | 'signing' | 'release' | 'draft' | 'other') => ({ slug, season_id, kind_group })
+  // Newest first, as the loader serves them.
+  const all = {
+    meta: { generated_at: 'x' },
+    filters: { season: null, type: 'all', player: 'paulch01' },
+    seasons: [2024, 2019, 2017, 2010],
+    season_counts: [
+      { season_id: 2019, count: 3 },
+      { season_id: 2017, count: 1 },
+    ],
+    player: { person_key: 'paulch01', name: 'Chris Paul' },
+    moves: [move('a', 2019, 'trade'), move('b', 2019, 'signing'), move('c', 2019, 'signing'), move('d', 2017, 'trade'), move('e', null, 'other')],
+  } as unknown as Parameters<typeof personMoves>[0]
+  const slugs = (r: ReturnType<typeof personMoves>) => r.data.moves.map((m) => m.slug)
+
+  it('all types, all seasons: the list as served', () => {
+    const r = personMoves(all, { season: 'all', type: 'all', player: 'paulch01' })
+    expect(r.filters).toEqual({ season: 'all', type: 'all', player: 'paulch01' })
+    expect(slugs(r)).toEqual(['a', 'b', 'c', 'd', 'e'])
+    expect(r.data.season_counts).toEqual([
+      { season_id: 2019, count: 3 },
+      { season_id: 2017, count: 1 },
+    ])
+    expect(r.data.seasons).toEqual(all.seasons)
+    expect(r.data.player).toEqual(all.player)
+  })
+  it('a type: only that kind group, with counts per season for it (seasonless rows uncounted)', () => {
+    const r = personMoves(all, { season: 'all', type: 'trade', player: 'paulch01' })
+    expect(slugs(r)).toEqual(['a', 'd'])
+    expect(r.data.season_counts).toEqual([
+      { season_id: 2019, count: 1 },
+      { season_id: 2017, count: 1 },
+    ])
+    expect(slugs(personMoves(all, { season: 'all', type: 'other', player: 'paulch01' }))).toEqual(['e'])
+    expect(personMoves(all, { season: 'all', type: 'other', player: 'paulch01' }).data.season_counts).toEqual([])
+  })
+  it('a season: that season only, echoed in filters; empty when nothing matches', () => {
+    const r = personMoves(all, { season: 2019, type: 'signing', player: 'paulch01' })
+    expect(r.filters.season).toBe(2019)
+    expect(r.data.filters.season).toBe(2019)
+    expect(slugs(r)).toEqual(['b', 'c'])
+    const none = personMoves(all, { season: 2010, type: 'all', player: 'paulch01' })
+    expect(none.filters.season).toBe(2010)
+    expect(slugs(none)).toEqual([])
+  })
+  it("no season: the latest season with a matching move (the loader's season=latest), or none", () => {
+    expect(personMoves(all, { season: null, type: 'trade', player: 'paulch01' }).filters.season).toBe(2019)
+    const r = personMoves(all, { season: null, type: 'release', player: 'paulch01' })
+    expect(r.filters.season).toBeNull()
+    expect(slugs(r)).toEqual([])
   })
 })

@@ -11,10 +11,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { playedGames, type HistoryGame } from '@/src/lib/ui/season'
 import { formatDayLong } from '@/src/lib/ui/time'
 import { teamName } from '@/src/lib/ui/teams'
+import { clientDataUrl, seasonGamesPath } from '@/src/lib/ui/client-data'
+import { heroCandidates, pickNextGame } from '@/src/lib/ui/clock'
+import { useNow } from '@/hooks/useNow'
 import type { HomePayload } from '@/src/lib/ui/types'
 
-const json = (url: string) =>
-  fetch(url).then((r) => {
+// Keys are API paths; production reads the prebuilt /data file for each.
+const json = (path: string) =>
+  fetch(clientDataUrl(path)).then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return r.json()
   })
@@ -23,7 +27,7 @@ async function loadLastGame() {
   const { seasons } = (await json('/api/history/seasons')) as { seasons: Array<{ season_id: number }> }
   const latest = [...seasons].sort((a, b) => b.season_id - a.season_id)[0]
   if (!latest) return null
-  const { games } = (await json(`/api/history/games?season_id=${latest.season_id}&limit=200`)) as { games: HistoryGame[] }
+  const { games } = (await json(seasonGamesPath(latest.season_id))) as { games: HistoryGame[] }
   return playedGames(games).at(-1) ?? null
 }
 
@@ -31,6 +35,9 @@ async function loadLastGame() {
 export function IdleState() {
   const { data: home, isLoading } = useSWR<HomePayload>('/api/home', json, { revalidateOnFocus: false })
   const { data: last } = useSWR('live:last-game', loadLastGame, { revalidateOnFocus: false })
+  // home.json is from the last build: skip a game that has surely ended since.
+  const now = useNow(60_000)
+  const next = home ? pickNextGame(heroCandidates(home.next_game, home.upcoming_schedule ?? []), now ? now.getTime() : null) : null
 
   return (
     <>
@@ -46,8 +53,8 @@ export function IdleState() {
 
       <div className="enter grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 1 }}>
         {isLoading ? <Skeleton className="h-[320px] rounded-[22px]" /> : <NextGamePanel
-            game={home?.next_game ?? null}
-            href={home?.next_game ? `/schedule/${home.next_game.game_id}` : undefined}
+            game={next}
+            href={next ? `/schedule/${next.game_id}` : undefined}
           />}
         {last && (
           <Panel as={Link} href={`/history/${last.game_id}`} className="flex flex-col gap-5 p-5 transition-colors duration-300 hover:border-line-2 sm:p-6">

@@ -61,3 +61,9 @@ next-env.d.ts
 
 # brainstorm mockups (superpowers visual companion)
 .superpowers/
+
+# prebuild measurement output
+/.prebuild/
+
+# prebuilt client data (scripts/prebuild/client-data.ts, written each build)
+/public/data/

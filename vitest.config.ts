@@ -15,7 +15,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
-          include: ['scripts/lib/**/*.test.ts', 'src/lib/**/*.test.ts'],
+          include: ['scripts/lib/**/*.test.ts', 'scripts/prebuild/**/*.test.ts', 'src/lib/**/*.test.ts'],
           exclude: ['**/node_modules/**', INTEGRATION],
         },
       },

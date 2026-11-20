@@ -1,16 +1,38 @@
 name: Deploy app
 
-# Builds the Next.js app with OpenNext and deploys it to the Cloudflare Worker
-# `clippers-command-center` (wrangler.jsonc) on every push to main — what
-# Vercel's Git integration used to do. Needs repo secrets CLOUDFLARE_API_TOKEN
-# (Workers Scripts: Edit; plus Zone DNS: Edit on lukeghanna.com once custom
-# domains are in wrangler.jsonc) and CLOUDFLARE_ACCOUNT_ID. Until the token is
-# set, the job still builds and skips the deploy (green).
+# Prebuilds every page of the Next.js app (spec 2026-11-19 prebuilt-site §5)
+# and deploys it to the Cloudflare Worker `clippers-command-center`
+# (wrangler.jsonc). Needs repo secrets CLOUDFLARE_API_TOKEN (Workers Scripts:
+# Edit; plus Zone DNS: Edit on lukeghanna.com once custom domains are in
+# wrangler.jsonc), CLOUDFLARE_ACCOUNT_ID and DATABASE_URL. Until the Cloudflare
+# token is set, the job still builds and skips the deploy (green).
+#
+# Pages render from a snapshot of loader payloads (.prebuild/payloads) kept in
+# the Actions cache between runs; `prebuild:invalidate` drops only the entries
+# whose data may have changed, so a build re-reads a small slice of Neon (§5a).
+# Fail closed: a DB error, a failed page, or a failed check-build stops the job
+# before anything deploys. The payload snapshot is saved after any run whose
+# invalidation succeeded (entries are individually valid), so a failed build
+# keeps what it already pulled.
+#
+# Triggers: pushes to main; data jobs dispatch it after they write
+# (post-game, sync-schedule, sync-franchise-moves, sync-franchise-contracts,
+# sync-odds when it stored new snapshots); a daily safety-net build (covers
+# a failed data job and calendar rollovers); manual runs, with `full_refresh`
+# to re-pull every payload.
 on:
   push:
     branches: [main]
     paths-ignore: ['workers/live-hub/**', 'docs/**', 'Docs/**', '.planning/**', '**/*.md']
+  schedule:
+    - cron: '30 11 * * *'   # daily safety net at 11:30 UTC
   workflow_dispatch:
+    inputs:
+      full_refresh:
+        description: 'Re-pull every page payload from the database (ignore the cached snapshot)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -22,11 +44,21 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
       # Secrets can't be read in step `if:` conditions; this boolean can.
       HAS_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+      PREBUILD_CACHE_DIR: .prebuild/payloads
     steps:
+      # A full build writes ~10 GB (.next with its standalone copy, then
+      # .open-next); the runner starts with ~14 GB free. Drop preinstalled
+      # toolchains this job never uses.
+      - name: Free runner disk
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+
       - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v5
@@ -36,18 +68,95 @@ jobs:
 
       - run: npm ci
 
-      # cf-build = opennextjs-cloudflare build + scripts/cloudflare/strip-env.mjs,
-      # which keeps non-public .env values out of the Worker bundle.
-      - name: Build (OpenNext)
-        run: npm run cf-build
+      # The newest snapshot from an earlier run (cache keys are per run; the
+      # prefix picks the most recent). A miss is a cold build: every payload loads.
+      - name: Restore payload snapshot
+        id: restore
+        uses: actions/cache/restore@v6
+        with:
+          path: .prebuild/payloads
+          key: prebuild-payloads-${{ github.run_id }}
+          restore-keys: prebuild-payloads-
+
+      - name: Invalidate stale payloads
+        id: invalidate
+        run: |
+          set -o pipefail
+          if [ "$FULL_REFRESH" = "true" ]; then
+            npm run --silent prebuild:invalidate -- --full | tee invalidate.log
+          else
+            npm run --silent prebuild:invalidate | tee invalidate.log
+          fi
+          echo "result=$(tail -n 1 invalidate.log)" >> "$GITHUB_OUTPUT"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FULL_REFRESH: ${{ inputs.full_refresh }}
+
+      # build:prebuilt = prebuild:client-data (public/data) → cf-build (checks
+      # public/data, opennextjs-cloudflare build, strip-env) → check-build
+      # (page counts, asset cap, internal links). PREBUILD_FULL=1 prerenders
+      # every page; without it check-build fails, so a sample build can't deploy.
+      - name: Build (prebuilt)
+        id: build
+        run: |
+          start=$(date +%s)
+          npm run build:prebuilt
+          echo "seconds=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"
+        env:
+          PREBUILD_FULL: '1'
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Saved whenever invalidation succeeded, even if the build failed: every
+      # entry is written atomically and only for a 2xx/4xx load (a 5xx or DB
+      # error is never cached), so a partial fill is a valid snapshot, and a
+      # failing cold build doesn't re-pull ~100 MB from Neon on every retry.
+      # Deploy below still needs a green build (no status function = success()).
+      - name: Save payload snapshot
+        if: always() && steps.invalidate.outcome == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: .prebuild/payloads
+          # Per attempt: cache keys are immutable, so a re-run needs its own key to save.
+          key: prebuild-payloads-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Skip deploy (no Cloudflare token)
         if: env.HAS_CLOUDFLARE_TOKEN != 'true'
         run: echo "::notice title=App not deployed::CLOUDFLARE_API_TOKEN is not set; skipping deploy."
 
+      # Deploys the already-built .open-next output (no second build).
       - name: Deploy
+        id: deploy
         if: env.HAS_CLOUDFLARE_TOKEN == 'true'
         run: npx opennextjs-cloudflare deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Runs after the deploy, on failures too, and can't fail the job. Page
+      # counts and the deployed asset count come from check-build's own table.
+      - name: Job summary
+        if: always()
+        continue-on-error: true
+        run: |
+          {
+            echo "### Prebuilt deploy"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Trigger | ${{ github.event_name }}${FULL_REFRESH:+ (full_refresh: $FULL_REFRESH)} |"
+            echo "| Snapshot restored from | ${RESTORED_KEY:-none (cold build)} |"
+            echo "| Invalidate | ${INVALIDATE:-did not finish} |"
+            if [ -n "$BUILD_SECONDS" ]; then
+              echo "| Build time | $(( BUILD_SECONDS / 60 ))m $(( BUILD_SECONDS % 60 ))s |"
+            else
+              echo "| Build time | build did not finish ($BUILD_OUTCOME) |"
+            fi
+            echo "| Deploy | ${DEPLOY_OUTCOME:-skipped} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          FULL_REFRESH: ${{ inputs.full_refresh }}
+          RESTORED_KEY: ${{ steps.restore.outputs.cache-matched-key }}
+          INVALIDATE: ${{ steps.invalidate.outputs.result }}
+          BUILD_SECONDS: ${{ steps.build.outputs.seconds }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}

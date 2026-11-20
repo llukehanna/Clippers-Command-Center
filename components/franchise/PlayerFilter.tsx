@@ -6,10 +6,12 @@ import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { PlayerAvatar } from '@/components/ui/player-avatar'
 import { movesHref, type MovesFilters } from '@/src/lib/franchise/display'
+import { clientDataUrl } from '@/src/lib/ui/client-data'
 import type { FranchisePersonRef, PeoplePayload } from '@/src/lib/ui/types'
 
-const json = (url: string) =>
-  fetch(url).then((r) => {
+// Keys are API paths; production reads the prebuilt /data file.
+const json = (path: string) =>
+  fetch(clientDataUrl(path)).then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return r.json()
   })
@@ -22,7 +24,9 @@ const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCas
 /**
  * Player filter for Moves. With a player set it's a removable chip; otherwise a button that
  * opens a search over everyone in Clippers moves (/api/franchise/people, loaded on first open).
- * Picking a player opens their whole Clippers history: all types, all seasons (bounded).
+ * Picking a player opens their person page (/franchise/person/<key>): their whole Clippers
+ * history, all types and seasons, filtered in-page. The chip's × leaves it for the same
+ * type and season without the player (a prerendered Moves page).
  */
 export function PlayerFilter({ filters, player }: { filters: MovesFilters; player: FranchisePersonRef | null }) {
   const router = useRouter()

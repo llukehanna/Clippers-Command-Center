@@ -12,6 +12,7 @@ import { Stat } from '@/components/ui/stat'
 import { positionLabel } from './RosterGrid'
 import { formatDayShort } from '@/src/lib/ui/time'
 import { seasonShort } from '@/src/lib/ui/season'
+import { playerHref } from '@/src/lib/urls'
 import type { CareerHigh, CareerLine, CareerSeason, PlayerCareerPayload } from '@/src/lib/data/player-career'
 
 const one = (v: number | null) => (v == null ? '—' : v.toFixed(1))
@@ -65,7 +66,7 @@ export function CareerSeasons({ playerId, career, selected }: { playerId: string
   const [kind, setKind] = React.useState<'regular' | 'playoffs'>('regular')
   const rows: CareerSeason[] = career.seasons[kind]
   const max = Math.max(1, ...rows.map((r) => r.pts_avg ?? 0))
-  const href = (s: number) => `/players/${playerId}?season=${s}`
+  const href = (s: number) => playerHref(playerId, s)
 
   return (
     <Panel className="overflow-hidden pt-4">

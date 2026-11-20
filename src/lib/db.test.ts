@@ -24,3 +24,12 @@ describe('db without DATABASE_URL', () => {
     expect(() => sql.unsafe('select 1')).toThrow(/DATABASE_URL is not set/)
   })
 })
+
+describe('nodePoolMax', () => {
+  it('keeps each build worker\'s pool small, the dev/server pool as before', async () => {
+    const { nodePoolMax } = await import('./db')
+    expect(nodePoolMax('phase-production-build')).toBe(3)
+    expect(nodePoolMax('phase-development-server')).toBe(10)
+    expect(nodePoolMax(undefined)).toBe(10)
+  })
+})

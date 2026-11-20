@@ -1,0 +1,137 @@
+import { PageHeader } from '@/components/shell/PageHeader'
+import { SeasonSelect } from '@/components/history/SeasonSelect'
+import { SeasonStrip } from '@/components/history/SeasonStrip'
+import { GameList } from '@/components/history/GameList'
+import { SeasonMoves } from '@/components/history/SeasonMoves'
+import { SegmentedLinks } from '@/components/ui/segmented-links'
+import { Panel } from '@/components/ui/panel'
+import { Stat } from '@/components/ui/stat'
+import { Chip } from '@/components/ui/chip'
+import { EmptyState } from '@/components/ui/empty-state'
+import { getJson } from '@/src/lib/ui/api'
+import { historyFilter, historyHref, parseHistoryFilter, type HistoryFilter, type HistoryResult, type HistoryVenue } from '@/src/lib/urls'
+import type { MovesPayload } from '@/src/lib/ui/types'
+import { formatSigned } from '@/src/lib/ui/odds'
+import { playedGames, regularSeason, seasonSummary, streaks, upcomingGames, type HistoryGame } from '@/src/lib/ui/season'
+
+export type SeasonsPayload = { seasons: Array<{ season_id: number; label: string; team_name: string }> }
+
+/**
+ * One History season under one venue × result filter. Every combination is its
+ * own prerendered path (see historyHref); `/history` is the latest season, all games.
+ */
+export async function SeasonPage({ seasonId, filter }: { seasonId: string; filter: HistoryFilter }) {
+  const seasonsRes = await getJson<SeasonsPayload>('/api/history/seasons')
+  const seasons = seasonsRes?.seasons ?? []
+  const [gamesRes, movesRes] = await Promise.all([
+    seasonId ? getJson<{ games: HistoryGame[] }>(`/api/history/games?season_id=${seasonId}&limit=200`) : null,
+    /^\d{4}$/.test(seasonId) ? getJson<MovesPayload>(`/api/franchise/moves?season=${seasonId}&limit=5&sort=significance`) : null,
+  ])
+  const all = gamesRes?.games ?? []
+
+  const { homeAway, result } = parseHistoryFilter(filter) ?? ({ homeAway: 'all', result: 'all' } as const)
+  const played = playedGames(all)
+  const regular = regularSeason(played)
+  const postseason = played.length - regular.length
+  const summary = seasonSummary(regular)
+  const filtered = played.filter((g) => (homeAway === 'all' || g.home_away === homeAway) && (result === 'all' || g.result === result))
+  const upcoming = homeAway === 'all' && result === 'all' ? upcomingGames(all) : []
+  const label = seasons.find((s) => String(s.season_id) === seasonId)?.label.replace('-', '–') ?? ''
+
+  const href = (next: { home_away?: HistoryVenue; result?: HistoryResult }) =>
+    seasonId ? historyHref(seasonId, historyFilter(next.home_away ?? homeAway, next.result ?? result)) : '/history'
+
+  if (!seasonsRes) {
+    return (
+      <div className="page">
+        <PageHeader title="History" />
+        <EmptyState title="History couldn't load" body="The data service didn't respond. Refresh in a moment." />
+      </div>
+    )
+  }
+
+  const pct = (w: number, l: number) => (w + l ? `${((w / (w + l)) * 100).toFixed(0)}%` : '—')
+
+  return (
+    <div className="page">
+      <PageHeader
+        title="History"
+        subtitle={label ? `${label} season · ${regular.length} regular-season games${postseason ? ` + ${postseason} postseason` : ''}` : 'Past seasons'}
+        actions={seasons.length > 0 && <SeasonSelect seasons={seasons} value={seasonId} />}
+      />
+
+      {played.length > 0 && (
+        <section className="enter grid grid-cols-2 gap-2.5 lg:grid-cols-4 lg:gap-3">
+          <Panel className="p-4 sm:p-5">
+            <Stat label="Record" size="lg" value={`${summary.wins}–${summary.losses}`} sub={`${pct(summary.wins, summary.losses)} wins`} />
+          </Panel>
+          <Panel className="p-4 sm:p-5">
+            <Stat label="Home" size="lg" value={`${summary.home.w}–${summary.home.l}`} sub={pct(summary.home.w, summary.home.l)} />
+          </Panel>
+          <Panel className="p-4 sm:p-5">
+            <Stat label="Away" size="lg" value={`${summary.away.w}–${summary.away.l}`} sub={pct(summary.away.w, summary.away.l)} />
+          </Panel>
+          <Panel className="p-4 sm:p-5">
+            <Stat
+              label="Avg margin"
+              size="lg"
+              value={formatSigned(summary.avgMargin, 1)}
+              valueTone={summary.avgMargin == null ? 'default' : summary.avgMargin >= 0 ? 'pos' : 'neg'}
+              sub="points per game"
+            />
+          </Panel>
+        </section>
+      )}
+
+      {played.length > 0 && (
+        <section className="enter" style={{ ['--i' as string]: 1 }}>
+          <SeasonStrip games={played} streaks={streaks(played)} />
+        </section>
+      )}
+
+      <SeasonMoves moves={movesRes?.moves ?? []} seasonId={Number(seasonId)} label={label} />
+
+      {all.length > 0 && all.length < 30 && (
+        <p className="m-0 flex items-center gap-2 text-[13px] text-mute">
+          <Chip tone="warn">Partial</Chip>
+          {all.length} of ~82 games are in the database for this season.
+        </p>
+      )}
+
+      <section className="enter grid gap-4" style={{ ['--i' as string]: 2 }}>
+        <div className="flex flex-wrap items-center gap-2">
+          <SegmentedLinks
+            ariaLabel="Venue"
+            size="sm"
+            value={homeAway}
+            options={[
+              { value: 'all', label: 'All games', href: href({ home_away: 'all' }) },
+              { value: 'home', label: 'Home', href: href({ home_away: 'home' }) },
+              { value: 'away', label: 'Away', href: href({ home_away: 'away' }) },
+            ]}
+          />
+          <SegmentedLinks
+            ariaLabel="Result"
+            size="sm"
+            value={result}
+            options={[
+              { value: 'all', label: 'All results', href: href({ result: 'all' }) },
+              { value: 'W', label: 'Wins', href: href({ result: 'W' }) },
+              { value: 'L', label: 'Losses', href: href({ result: 'L' }) },
+            ]}
+          />
+          {(homeAway !== 'all' || result !== 'all') && (
+            <span className="font-mono text-[11.5px] text-dim">
+              {filtered.length} of {played.length}
+            </span>
+          )}
+        </div>
+        {filtered.length === 0 && upcoming.length === 0 ? (
+          <EmptyState title={played.length ? 'No games match these filters' : 'No games played yet this season'} />
+        ) : (
+          <GameList played={filtered} upcoming={upcoming} />
+        )}
+      </section>
+    </div>
+  )
+}

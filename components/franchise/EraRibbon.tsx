@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { isPlainClick } from '@/components/ui/plain-click'
 import { ERAS, seasonLabel } from '@/src/lib/franchise/display'
 
 interface EraRibbonProps {
@@ -13,6 +14,8 @@ interface EraRibbonProps {
   /** What the bars count, for their labels: "trade", "move"… */
   noun: string
   hrefFor: (season: number) => string
+  /** In-page season state (a person page): a plain click calls this instead of following the href. */
+  onPick?: (season: number) => void
 }
 
 const FIRST = 1970
@@ -22,7 +25,7 @@ const TICKS = [1970, 1980, 1990, 2000, 2010, 2020]
  * The franchise's three eras on one axis, with a bar per season for the moves in the
  * current filter. Each bar jumps to that season. Moves only (Luke's default).
  */
-export function EraRibbon({ counts, lastSeason, selected, playerMode, noun, hrefFor }: EraRibbonProps) {
+export function EraRibbon({ counts, lastSeason, selected, playerMode, noun, hrefFor, onPick }: EraRibbonProps) {
   const total = lastSeason - FIRST + 1
   const bySeason = new Map(counts.map((c) => [c.season_id, c.count]))
   const max = Math.max(1, ...counts.map((c) => c.count))
@@ -43,6 +46,15 @@ export function EraRibbon({ counts, lastSeason, selected, playerMode, noun, href
               href={hrefFor(y)}
               scroll={false}
               prefetch={false}
+              onClick={
+                onPick
+                  ? (e) => {
+                      if (!isPlainClick(e)) return
+                      e.preventDefault()
+                      onPick(y)
+                    }
+                  : undefined
+              }
               // A pointer shortcut: keyboard users pick the season from the select below, not 57 tab stops.
               tabIndex={-1}
               title={label}

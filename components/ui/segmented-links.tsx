@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { useLens } from '@/hooks/useLens'
 import { segmentedClasses } from './segmented-styles'
+import { isPlainClick } from './plain-click'
 
 interface SegmentedLinksProps {
   value: string
@@ -12,13 +13,18 @@ interface SegmentedLinksProps {
   ariaLabel: string
   size?: 'sm' | 'md'
   className?: string
+  /**
+   * In-page state instead of navigation: a plain click calls this and stays on
+   * the page (modified clicks still follow the href, e.g. to a new tab).
+   */
+  onSelect?: (value: string) => void
 }
 
 /**
  * Segmented control whose options are links (URL-driven state). The lens moves
  * to the clicked option immediately; the page catches up.
  */
-export function SegmentedLinks({ value, options, ariaLabel, size = 'md', className }: SegmentedLinksProps) {
+export function SegmentedLinks({ value, options, ariaLabel, size = 'md', className, onSelect }: SegmentedLinksProps) {
   const { item, active, idle, group, lens } = segmentedClasses(size)
   const [pending, setPending] = React.useState<string | null>(null)
   const ref = React.useRef<HTMLElement>(null)
@@ -55,7 +61,14 @@ export function SegmentedLinks({ value, options, ariaLabel, size = 'md', classNa
             scroll={false}
             data-active={isActive}
             aria-current={opt.value === value ? 'true' : undefined}
-            onClick={() => opt.value !== value && setPending(opt.value)}
+            onClick={(e) => {
+              // A modified click opens elsewhere (new tab, window): this page's selection doesn't move.
+              if (!isPlainClick(e)) return
+              if (onSelect) {
+                e.preventDefault()
+                onSelect(opt.value)
+              } else if (opt.value !== value) setPending(opt.value)
+            }}
             className={cn(item, isActive ? active : idle)}
           >
             {opt.label}

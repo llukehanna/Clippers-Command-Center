@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  actions: write   # dispatches deploy-app.yml at the end
 
 concurrency:
   group: db-write
@@ -34,3 +35,10 @@ jobs:
       - run: npm run sync-franchise-contracts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Only after the sync succeeded (default `if: success()`).
+      - name: Rebuild site (dispatch deploy-app)
+        run: gh workflow run deploy-app.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}

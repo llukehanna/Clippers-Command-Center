@@ -2,7 +2,8 @@ import { Panel } from '@/components/ui/panel'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { Chip, type ChipTone } from '@/components/ui/chip'
 import { TeamLogo } from '@/components/ui/team-mark'
-import { ageLabel, formatDayShort } from '@/src/lib/ui/time'
+import { formatDayShort } from '@/src/lib/ui/time'
+import { TimeAgo } from '@/components/ui/clock'
 import { teamName } from '@/src/lib/ui/teams'
 import type { InjuryEntry } from '@/src/lib/ui/types'
 
@@ -43,10 +44,18 @@ function TeamList({ abbr, label, entries }: { abbr: string; label: string; entri
 }
 
 export function Availability({ injuries, oppAbbr }: { injuries: { updated_at: string | null; lac: InjuryEntry[]; opp: InjuryEntry[] }; oppAbbr: string }) {
-  const age = ageLabel(injuries.updated_at)
   return (
     <section aria-label="Availability">
-      <Eyebrow aside={`${age ? `updated ${age} ago · ` : ''}via ESPN`}>Availability</Eyebrow>
+      <Eyebrow
+        aside={
+          <>
+            <TimeAgo at={injuries.updated_at} prefix="updated " suffix=" ago · " />
+            via ESPN
+          </>
+        }
+      >
+        Availability
+      </Eyebrow>
       <div className="grid gap-3 md:grid-cols-2">
         <TeamList abbr="LAC" label="Clippers" entries={injuries.lac} />
         <TeamList abbr={oppAbbr} label={teamName(oppAbbr)} entries={injuries.opp} />

@@ -5,8 +5,6 @@ import { DraftYear } from '@/components/franchise/DraftYear'
 import { getJson } from '@/src/lib/ui/api'
 import type { DraftPayload } from '@/src/lib/ui/types'
 
-export const dynamic = 'force-dynamic'
-
 export const metadata: Metadata = { title: 'Draft · Franchise' }
 
 /** Draft: every pick the Clippers held, by year, newest first; traded-away picks dimmed. */

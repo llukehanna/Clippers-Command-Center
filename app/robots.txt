@@ -9,10 +9,11 @@ Disallow: /
 User-Agent: Bytespider
 Disallow: /
 
-# Every page is reachable without a query string. URLs with one are filtered
-# or re-sorted views of those pages (franchise moves by season/type/player,
-# history filters, a player's other seasons) and multiply into hundreds of
-# thousands of near-duplicates, so crawlers should skip them.
+# Every page is reachable without a query string: filtered views (franchise
+# moves by type/season and person, history filters, a player's other seasons)
+# are their own paths. URLs with a query are old addresses of those views or
+# re-sorted near-duplicates that multiply into the hundreds of thousands, so
+# crawlers should skip them.
 User-Agent: *
 Disallow: /*?
 Disallow: /api/

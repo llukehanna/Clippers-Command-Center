@@ -1,3 +1,4 @@
+import type * as React from 'react'
 import { Panel } from '@/components/ui/panel'
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { Stat } from '@/components/ui/stat'
@@ -9,7 +10,7 @@ interface Split {
 }
 
 interface SeasonPanelProps {
-  title: string
+  title: React.ReactNode
   seasonLabel: string
   record: { wins: number; losses: number }
   last10?: { wins: number; losses: number } | null

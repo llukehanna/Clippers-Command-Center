@@ -17,7 +17,8 @@ function Header({ actions = false }: { actions?: boolean }) {
   )
 }
 
-function Rows({ count = 6, height = 56 }: { count?: number; height?: number }) {
+/** A panel of shimmering list rows (also the body placeholder of client-loaded lists, e.g. news). */
+export function SkeletonRows({ count = 6, height = 56 }: { count?: number; height?: number }) {
   return (
     <div className="panel grid gap-1 p-2">
       {Array.from({ length: count }, (_, i) => (
@@ -36,7 +37,7 @@ export function HomeSkeleton() {
       </div>
       <Skeleton className="h-[250px] rounded-[22px]" />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:gap-[18px]">
-        <Rows count={6} />
+        <SkeletonRows count={6} />
         <Skeleton className="h-[260px] rounded-[22px]" />
       </div>
     </div>
@@ -54,7 +55,7 @@ export function ListPageSkeleton({ actions = true, tiles = false, rows = 8 }: { 
           ))}
         </div>
       )}
-      <Rows count={rows} />
+      <SkeletonRows count={rows} />
     </div>
   )
 }

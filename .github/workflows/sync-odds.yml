@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: write   # dispatches deploy-app.yml at the end
 
 jobs:
   sync-odds:
@@ -23,7 +24,18 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run sync-odds
+      - name: Sync odds
+        id: sync
+        run: npm run sync-odds
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+
+      # Rebuild only when the sync stored new snapshots (scripts/sync-odds.ts
+      # writes `inserted`; a provider outage writes nothing). Spec §5 / §5b.
+      - name: Rebuild site (dispatch deploy-app)
+        if: ${{ success() && steps.sync.outputs.inserted != '' && steps.sync.outputs.inserted != '0' }}
+        run: gh workflow run deploy-app.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}

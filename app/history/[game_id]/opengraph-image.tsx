@@ -8,6 +8,10 @@ export const alt = 'Clippers final score'
 export const size = OG_SIZE
 export const contentType = 'image/png'
 
+// Rendered on demand (only when a link is shared) and held at the edge for a day:
+// prerendering ~4,700 of these would nearly double the static file count.
+export const dynamic = 'force-dynamic'
+
 export default async function Image({ params }: { params: Promise<{ game_id: string }> }) {
   const { game_id } = await params
   const data = await getJson<HistoryGameDetailPayload>(`/api/history/games/${encodeURIComponent(game_id)}`)
