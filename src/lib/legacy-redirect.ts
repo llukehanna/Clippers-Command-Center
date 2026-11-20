@@ -66,9 +66,11 @@ export function legacyRedirect(url: URL): string | null {
   if (path === '/franchise') {
     if (!hasAny(params, LEGACY_KEYS.franchise)) return null
     const rawType = params.get('type')
+    const playerKey = params.get('player') || null
+    // A player wins over everything else, as on the old page, even with a bad type.
+    if (playerKey) return movesHref({ type: 'trade', season: null, player: playerKey })
     const type = rawType == null || rawType === '' ? 'trade' : parseMoveType(rawType)
     if (!type) return '/franchise'
-    const playerKey = params.get('player') || null
     const filters = { type, player: playerKey }
     return movesHref({ ...filters, season: parseMovesSeason(params.get('season') ?? undefined, filters) })
   }
@@ -97,4 +99,28 @@ export function scheduleFallback(url: URL, status: number): string | null {
   if (status !== 404) return null
   const m = /^\/schedule\/(\d+)(?:\/ics)?\/?$/.exec(url.pathname)
   return m ? `/history/${m[1]}` : null
+}
+
+/** A path as Next may route it: percent-escapes decoded (repeatedly, per escape, so malformed ones can't throw), lowercased, slashes collapsed, no trailing slash. */
+function normalizePath(pathname: string): string {
+  let s = pathname
+  for (let i = 0; i < 3; i++) {
+    const next = s.replace(/%([0-9a-f]{2})/gi, (m, h: string) => (parseInt(h, 16) < 128 ? String.fromCharCode(parseInt(h, 16)) : m))
+    if (next === s) break
+    s = next
+  }
+  s = s.toLowerCase().replace(/\/{2,}/g, '/')
+  return s.length > 1 ? s.replace(/\/$/, '') : s
+}
+
+/**
+ * True when a request path is, or could be routed by Next as, an /api route
+ * that isn't allowlisted. Checks the raw and the normalized form, so
+ * /%61pi/home, //api/home, /API/home and /api are all caught.
+ */
+export function apiBlocked(pathname: string): boolean {
+  const norm = normalizePath(pathname)
+  const apiish = /^\/api(\/|$)/
+  if (!apiish.test(pathname) && !apiish.test(norm)) return false
+  return !apiAllowed(norm)
 }

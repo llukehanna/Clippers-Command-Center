@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apiAllowed, legacyRedirect, scheduleFallback } from './legacy-redirect'
+import { apiAllowed, apiBlocked, legacyRedirect, scheduleFallback } from './legacy-redirect'
 
 const r = (path: string) => legacyRedirect(new URL(`https://clippers.lukeghanna.com${path}`))
 
@@ -32,6 +32,7 @@ describe('legacyRedirect', () => {
     expect(r('/franchise?type=signing&season=all')).toBe('/franchise/moves/signing')
     expect(r('/franchise?player=nba:123&season=2019&type=draft')).toBe('/franchise/person/nba:123')
     expect(r('/franchise?player=mcgruro01')).toBe('/franchise/person/mcgruro01')
+    expect(r('/franchise?type=bogus&player=K')).toBe('/franchise/person/K')
   })
   it('maps News show', () => {
     expect(r('/news?show=articles')).toBe('/news/articles')
@@ -71,6 +72,19 @@ describe('apiAllowed', () => {
     expect(apiAllowed('/api/cron/poll-live')).toBe(true)
     expect(apiAllowed('/api/media')).toBe(true)
     expect(apiAllowed('/api/cron/other')).toBe(false)
+  })
+})
+
+describe('apiBlocked', () => {
+  const b = (p: string) => apiBlocked(new URL(`https://x.test${p}`).pathname)
+  it('blocks encoded, doubled, cased and bare api paths', () => {
+    for (const p of ['/%61pi/home', '/%61%70%69/home', '//api/home', '/api', '/api/', '/API/home', '/api%2Fhome', '/%2561pi/home', '/api/home', '/api/players/1', '/api/live/x']) expect(b(p), p).toBe(true)
+  })
+  it('allows the allowlist, with queries', () => {
+    for (const p of ['/api/live', '/api/live?x=1', '/api/media', '/api/media?limit=3', '/api/cron/poll-live']) expect(b(p), p).toBe(false)
+  })
+  it('passes non-api paths through', () => {
+    for (const p of ['/apixyz', '/', '/players', '/history/1', '/x/api/home', '/%E0%A4%A']) expect(b(p), p).toBe(false)
   })
 })
 
