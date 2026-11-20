@@ -11,6 +11,7 @@ const GATE_BYTES = 1e9 // 1 GB/month
 const BUILDS_PER_DAY = 8
 const SETTLED_DAYS = 75
 const lines: string[] = []
+const problems: string[] = []
 const out = (s = '') => {
   console.log(s)
   lines.push(s)
@@ -23,6 +24,7 @@ async function bytes(path: string): Promise<number | null> {
   const r = await loadPath(path)
   if (r.status !== 200) {
     out(`  ! ${r.status} ${path}`)
+    problems.push(`non-200 (${r.status}) for ${path}`)
     return null
   }
   return Buffer.byteLength(JSON.stringify(r.body))
@@ -56,7 +58,8 @@ const gb = (n: number) => `${(n / 1e9).toFixed(3)} GB`
 
 async function main() {
   const means: Record<string, number> = {}
-  const record = (name: string, sizes: number[], count: number) => {
+  const record = (name: string, sizes: number[], count: number, expected: number) => {
+    if (sizes.length < expected) problems.push(`${name}: ${sizes.length} of ${expected} samples`)
     means[name] = mean(sizes)
     out(`${name.padEnd(22)} n=${String(sizes.length).padStart(2)}  mean ${kb(means[name]).padStart(10)}  x ${String(count).padStart(5)} = ${mb(means[name] * count)}`)
   }
@@ -78,25 +81,29 @@ async function main() {
     const l: Any = await body(`/api/history/games?season_id=${sid}&limit=200`)
     gameIds.push(...spread<Any>(l.games, n).map((g) => String(g.game_id)))
   }
-  const gameSizes = await sumPaths(gameIds.map((id) => `/api/history/games/${id}`))
-  const storySizes = await sumPaths(gameIds.map((id) => `/api/history/games/${id}/story`))
-  // one history game page = game + story; combine per-sample sums
-  const pairs = gameSizes.map((g, i) => g + (storySizes[i] ?? 0))
-  record('history game (+story)', pairs, 4700)
+  // one history game page = game + story, paired per game id
+  const pairs: number[] = []
+  for (const id of gameIds) {
+    const g = await bytes(`/api/history/games/${id}`)
+    const st = await bytes(`/api/history/games/${id}/story`)
+    if (g != null && st != null) pairs.push(g + st)
+  }
+  record('history game (+story)', pairs, 4700, 10)
 
   // season game lists
   const listSeasons = spread(seasonIds, 10)
-  record('season game list', await sumPaths(listSeasons.map((s) => `/api/history/games?season_id=${s}&limit=200`)), 57)
+  record('season game list', await sumPaths(listSeasons.map((s) => `/api/history/games?season_id=${s}&limit=200`)), 57, 10)
 
   // players
   const samplePlayers = spread(players, 10)
-  record('player detail', await sumPaths(samplePlayers.map((p) => `/api/players/${p.player_id}?lac_only=true`)), 508)
+  record('player detail', await sumPaths(samplePlayers.map((p) => `/api/players/${p.player_id}?lac_only=true`)), 508, 10)
   record(
     'player season detail',
     await sumPaths(samplePlayers.map((p) => `/api/players/${p.player_id}?season_id=${Math.round((p.first_season + p.last_season) / 2)}`)),
     963,
+    10,
   )
-  record('player career', await sumPaths(samplePlayers.map((p) => `/api/players/${p.player_id}/career`)), 508)
+  record('player career', await sumPaths(samplePlayers.map((p) => `/api/players/${p.player_id}/career`)), 508, 10)
 
   // trades
   const trades: Any[] = []
@@ -105,12 +112,12 @@ async function main() {
     trades.push(...m.moves.slice(0, 2))
   }
   const tradeSlugs = spread(trades, 10).map((t) => t.slug)
-  record('trade', await sumPaths(tradeSlugs.map((s) => `/api/franchise/trades/${s}`)), 203)
+  record('trade', await sumPaths(tradeSlugs.map((s) => `/api/franchise/trades/${s}`)), 203, 10)
 
   // moves type x season
   const types = ['all', 'trade', 'signing', 'draft', 'release', 'other']
   const movePaths = spread(seasonIds, 10).map((s, i) => `/api/franchise/moves?type=${types[i % types.length]}&season=${s}`)
-  record('moves (type x season)', await sumPaths(movePaths), 300)
+  record('moves (type x season)', await sumPaths(movePaths), 300, 10)
 
   // franchise singletons (7 pages)
   const single: Record<string, number> = {}
@@ -131,17 +138,17 @@ async function main() {
       singleSizes.push(b)
     }
   }
-  record('franchise singletons', singleSizes, 7)
+  record('franchise singletons', singleSizes, 7, 7)
   for (const [p, b] of Object.entries(single)) out(`    ${p.padEnd(30)} ${kb(b)}`)
 
   // home / schedule / previews
   const homeSize = (await bytes('/api/home')) ?? 0
   const scheduleSize = (await bytes('/api/schedule')) ?? 0
-  record('home', [homeSize], 1)
-  record('schedule', [scheduleSize], 1)
+  record('home', homeSize ? [homeSize] : [], 1, 1)
+  record('schedule', scheduleSize ? [scheduleSize] : [], 1, 1)
   const upcoming: Any[] = schedule.games.filter((g: Any) => g.status !== 'final')
   const previewIds = spread(upcoming.length >= 10 ? upcoming : schedule.games, 10).map((g: Any) => g.game_id)
-  record('game preview', await sumPaths(previewIds.map((id: string) => `/api/schedule/${id}`)), 90)
+  record('game preview', await sumPaths(previewIds.map((id: string) => `/api/schedule/${id}`)), 90, 10)
 
   // ---- projections
   const counts: Record<string, number> = {
@@ -161,7 +168,19 @@ async function main() {
   const full = fullDb * WIRE
 
   // volatile set per build (Task 4 rules)
-  const rosterN: number = roster.players.length
+  const rosterPlayers: Any[] = roster.players
+  const rosterN: number = rosterPlayers.length
+  const rosterSeason: number = roster.season_id
+  // Actual roster payloads (not class means): detail, current-season detail, career.
+  const rosterDetail = await sumPaths(rosterPlayers.map((p) => `/api/players/${p.player_id}?lac_only=true`))
+  const rosterSeasonDetail = await sumPaths(
+    rosterPlayers.map((p) => `/api/players/${p.player_id}?lac_only=true&season_id=${rosterSeason}`),
+  )
+  const rosterCareer = await sumPaths(rosterPlayers.map((p) => `/api/players/${p.player_id}/career`))
+  for (const [n, a] of [['roster detail', rosterDetail], ['roster season detail', rosterSeasonDetail], ['roster career', rosterCareer]] as const) {
+    if (a.length < rosterN) problems.push(`${n}: ${a.length} of ${rosterN} samples`)
+  }
+  const total = (a: number[]) => a.reduce((x, y) => x + y, 0)
   const today = new Date()
   // The schedule payload only holds unplayed games; finished ones come from the
   // current season's history list.
@@ -178,7 +197,9 @@ async function main() {
     'game previews (all)': means['game preview'] * 90,
     'current-season game list': means['season game list'] * 1,
     'current-season moves': means['moves (type x season)'] * currentMoves,
-    [`roster players detail+career (${rosterN})`]: (means['player detail'] + means['player career']) * rosterN,
+    [`roster detail (${rosterN}, actual)`]: total(rosterDetail),
+    [`roster season ${rosterSeason} detail (${rosterN}, actual)`]: total(rosterSeasonDetail),
+    [`roster career (${rosterN}, actual)`]: total(rosterCareer),
     [`recent 14d games +story (${recentGames})`]: means['history game (+story)'] * recentGames,
     contracts: single['/api/franchise/contracts'] ?? 0,
     picks: single['/api/franchise/picks'] ?? 0,
@@ -198,15 +219,24 @@ async function main() {
   out(`settled/mo  = full / ${SETTLED_DAYS} d x 30 = ${mb(settledPerMonth)}`)
   out(`per month   = per build x ${BUILDS_PER_DAY} x 30 + settled = ${gb(perMonth)}`)
   out('')
-  out(
-    perMonth > GATE_BYTES
-      ? `GATE: FAIL (${(perMonth / 1e9).toFixed(2)} GB/month > 1 GB)`
-      : `GATE: PASS (${(perMonth / 1e9).toFixed(2)} GB/month <= 1 GB)`,
-  )
+  out('Assumption: sizes are JSON bytes of loader output; Neon wire egress (row encoding before the loaders condense rows) cannot be measured here, so the 1.5x factor is the only cushion.')
+  out('')
+  let verdict: string
+  let code = 0
+  if (problems.length) {
+    verdict = `GATE: INVALID (${problems.join('; ')})`
+    code = 1
+  } else if (perMonth > GATE_BYTES) {
+    verdict = `GATE: FAIL (${(perMonth / 1e9).toFixed(2)} GB/month > 1 GB)`
+    code = 1
+  } else {
+    verdict = `GATE: PASS (${(perMonth / 1e9).toFixed(2)} GB/month <= 1 GB)`
+  }
+  out(verdict)
 
   mkdirSync('.prebuild', { recursive: true })
   writeFileSync('.prebuild/measure.txt', lines.join('\n') + '\n')
-  process.exit(0)
+  process.exit(code)
 }
 
 main().catch((e) => {
