@@ -11,8 +11,9 @@ name: Deploy app
 # the Actions cache between runs; `prebuild:invalidate` drops only the entries
 # whose data may have changed, so a build re-reads a small slice of Neon (§5a).
 # Fail closed: a DB error, a failed page, or a failed check-build stops the job
-# before anything deploys, and the payload cache is saved only after a
-# successful build.
+# before anything deploys. The payload snapshot is saved after any run whose
+# invalidation succeeded (entries are individually valid), so a failed build
+# keeps what it already pulled.
 #
 # Triggers: pushes to main; data jobs dispatch it after they write
 # (post-game, sync-schedule, sync-franchise-moves, sync-franchise-contracts,
@@ -96,8 +97,13 @@ jobs:
           PREBUILD_FULL: '1'
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      # Only reached after a successful build, so a half-refreshed snapshot is never saved.
+      # Saved whenever invalidation succeeded, even if the build failed: every
+      # entry is written atomically and only for a 2xx/4xx load (a 5xx or DB
+      # error is never cached), so a partial fill is a valid snapshot, and a
+      # failing cold build doesn't re-pull ~100 MB from Neon on every retry.
+      # Deploy below still needs a green build (no status function = success()).
       - name: Save payload snapshot
+        if: always() && steps.invalidate.outcome == 'success'
         uses: actions/cache/save@v6
         with:
           path: .prebuild/payloads
