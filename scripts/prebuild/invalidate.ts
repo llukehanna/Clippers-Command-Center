@@ -10,7 +10,7 @@ import { sql, LAC_NBA_TEAM_ID } from '@/src/lib/db'
 import { getDisplaySeasonId } from '@/src/lib/season'
 import { loadPath } from '@/src/lib/data/routes'
 import type { CachedPayload } from '@/src/lib/prebuild/payload-cache'
-import { shouldDrop, classify, type ClassifyContext } from './classify'
+import { shouldDrop, classify, personKeysInMoves, type ClassifyContext } from './classify'
 
 async function buildContext(): Promise<ClassifyContext> {
   const currentSeasonId = await getDisplaySeasonId()
@@ -30,10 +30,15 @@ async function buildContext(): Promise<ClassifyContext> {
   const players = (roster.body as { players?: Array<{ player_id: string }> }).players
   if (!Array.isArray(players)) throw new Error('roster payload has no players array')
 
+  // Everyone with a move in the newest season: their person pages refresh every build.
+  const latestMoves = await loadPath('/api/franchise/moves?type=all&season=latest')
+  const currentSeasonPersonKeys = personKeysInMoves(latestMoves.status, latestMoves.body)
+
   return {
     currentSeasonId,
     recentGameIds: new Set(games.map((r) => r.game_id)),
     rosterIds: new Set(players.map((p) => String(p.player_id))),
+    currentSeasonPersonKeys,
   }
 }
 

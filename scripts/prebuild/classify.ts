@@ -14,6 +14,12 @@ export interface ClassifyContext {
   recentGameIds: Set<string>
   /** Player ids on the current roster, including traded. */
   rosterIds: Set<string>
+  /**
+   * Person keys in a move of the latest season with moves: their person-page
+   * payloads (/api/franchise/moves?…player=<key>) refresh every build, so a new
+   * move shows at once; everyone else's stay weekly.
+   */
+  currentSeasonPersonKeys: Set<string>
 }
 
 const WEEKLY_PATHS = new Set([
@@ -61,13 +67,31 @@ export function classify(path: string, ctx: ClassifyContext): CacheClass {
   if (p === '/api/franchise/moves') {
     const s = seasonNum(q.get('season'))
     if (s !== null && s < ctx.currentSeasonId && !q.has('player_id')) return 'settled'
-    if (q.has('player')) return 'weekly'
+    const player = q.get('player')
+    if (player !== null) return ctx.currentSeasonPersonKeys.has(player) ? 'volatile' : 'weekly'
     return 'volatile'
   }
 
   if (/^\/api\/franchise\/trades\/[^/]+$/.test(p) || WEEKLY_PATHS.has(p)) return 'weekly'
 
   return 'volatile'
+}
+
+/**
+ * The person keys in a /api/franchise/moves?type=all&season=latest load (the
+ * newest season's moves). Throws on a failed load or an unexpected shape, so
+ * the invalidation fails before deleting anything.
+ */
+export function personKeysInMoves(status: number, body: unknown): Set<string> {
+  if (status !== 200) throw new Error(`latest moves load failed: ${status}`)
+  const moves = (body as { moves?: unknown }).moves
+  if (!Array.isArray(moves)) throw new Error('latest moves payload has no moves array')
+  const keys = new Set<string>()
+  for (const m of moves as Array<{ people?: unknown }>) {
+    if (!Array.isArray(m.people)) throw new Error('latest moves payload has a move without a people array')
+    for (const p of m.people as Array<{ person_key?: unknown }>) if (typeof p.person_key === 'string') keys.add(p.person_key)
+  }
+  return keys
 }
 
 /** Days a cached payload may be reused. Deterministic jitter spreads expiry so builds don't all refetch at once. */

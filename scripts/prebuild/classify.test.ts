@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { CachedPayload } from '@/src/lib/prebuild/payload-cache'
-import { classify, shouldDrop, ttlDays, type ClassifyContext } from './classify'
+import { classify, personKeysInMoves, shouldDrop, ttlDays, type ClassifyContext } from './classify'
 
 const ctx: ClassifyContext = {
   currentSeasonId: 2025,
   recentGameIds: new Set(['100']),
   rosterIds: new Set(['7']),
+  currentSeasonPersonKeys: new Set(['paulch01', 'nba:1641715']),
 }
 
 const cases: Array<[string, string]> = [
@@ -27,6 +28,10 @@ const cases: Array<[string, string]> = [
   ['/api/franchise/moves?season=2025', 'volatile'],
   ['/api/franchise/moves?season=2020&player_id=5', 'volatile'],
   ['/api/franchise/moves?player=blake-griffin', 'weekly'],
+  ['/api/franchise/moves?type=all&player=griffbl01', 'weekly'],
+  ['/api/franchise/moves?type=all&player=paulch01', 'volatile'],
+  ['/api/franchise/moves?type=all&player=nba%3A1641715', 'volatile'],
+  ['/api/franchise/moves?type=all&player=nba%3A1', 'weekly'],
   ['/api/franchise/moves', 'volatile'],
   ['/api/franchise/trades/some-trade', 'weekly'],
   ['/api/franchise/draft', 'weekly'],
@@ -75,5 +80,24 @@ describe('shouldDrop', () => {
   it('weekly entries expire after 9 days at most', () => {
     expect(shouldDrop(entry('/api/franchise/draft', 10), ctx, now)).toBe(true)
     expect(shouldDrop(entry('/api/franchise/draft', 4), ctx, now)).toBe(false)
+  })
+})
+
+describe('personKeysInMoves', () => {
+  it('collects every person key in the moves of a season=latest payload', () => {
+    const body = {
+      filters: { season: 2026 },
+      moves: [
+        { people: [{ person_key: 'paulch01' }, { person_key: 'nba:1641715' }] },
+        { people: [{ person_key: 'paulch01' }] },
+        { people: [] },
+      ],
+    }
+    expect(personKeysInMoves(200, body)).toEqual(new Set(['paulch01', 'nba:1641715']))
+  })
+  it('throws on a failed load or a payload without moves', () => {
+    expect(() => personKeysInMoves(500, {})).toThrow('500')
+    expect(() => personKeysInMoves(200, { moves: null })).toThrow('moves')
+    expect(() => personKeysInMoves(200, { moves: [{ people: null }] })).toThrow('people')
   })
 })
