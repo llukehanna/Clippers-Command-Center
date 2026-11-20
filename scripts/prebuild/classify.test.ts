@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CachedPayload } from '@/src/lib/prebuild/payload-cache'
-import { classify, personKeysInMoves, shouldDrop, ttlDays, type ClassifyContext } from './classify'
+import { classify, dropReason, personKeysInMoves, rosterIdsFrom, shouldDrop, ttlDays, type ClassifyContext } from './classify'
 
 const ctx: ClassifyContext = {
   currentSeasonId: 2025,
@@ -99,5 +99,39 @@ describe('personKeysInMoves', () => {
     expect(() => personKeysInMoves(500, {})).toThrow('500')
     expect(() => personKeysInMoves(200, { moves: null })).toThrow('moves')
     expect(() => personKeysInMoves(200, { moves: [{ people: null }] })).toThrow('people')
+  })
+})
+
+describe('dropReason', () => {
+  const now = new Date('2026-11-19T12:00:00Z')
+  const entry = (path: unknown, fetchedAt = now.toISOString()) => ({ path, status: 200, body: {}, fetchedAt }) as CachedPayload
+
+  it('reports why an entry drops, or null when it is kept', () => {
+    expect(dropReason(entry('/api/home'), ctx, now)).toBe('volatile')
+    expect(dropReason(entry('/api/franchise/draft', '2026-10-01T00:00:00Z'), ctx, now)).toBe('expired')
+    expect(dropReason(entry('/api/franchise/draft'), ctx, now)).toBeNull()
+  })
+
+  it('drops an entry whose path makes classify throw instead of aborting the sweep', () => {
+    expect(() => classify('/api/history/games/%E0%A4%A', ctx)).toThrow()
+    expect(dropReason(entry('/api/history/games/%E0%A4%A'), ctx, now)).toBe('invalid')
+    expect(shouldDrop(entry('/api/players/%ZZ/career'), ctx, now)).toBe(true)
+  })
+
+  it('drops an entry without a usable path or date', () => {
+    expect(dropReason(entry(undefined), ctx, now)).toBe('invalid')
+    expect(dropReason(entry(42), ctx, now)).toBe('invalid')
+    expect(dropReason(entry('/api/franchise/draft', 'not a date'), ctx, now)).toBe('expired')
+  })
+})
+
+describe('rosterIdsFrom', () => {
+  it('collects player ids from a roster load', () => {
+    expect(rosterIdsFrom(200, { players: [{ player_id: 7 }, { player_id: '9' }] })).toEqual(new Set(['7', '9']))
+  })
+  it('treats an empty roster, a failed load, or a bad shape as a failed context', () => {
+    expect(() => rosterIdsFrom(200, { players: [] })).toThrow('empty')
+    expect(() => rosterIdsFrom(503, {})).toThrow('503')
+    expect(() => rosterIdsFrom(200, {})).toThrow('players')
   })
 })

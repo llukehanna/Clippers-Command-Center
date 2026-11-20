@@ -102,9 +102,40 @@ export function ttlDays(path: string, cls: CacheClass): number {
   return cls === 'weekly' ? 5 + (jitter % 5) : 60 + (jitter % 31)
 }
 
-export function shouldDrop(entry: CachedPayload, ctx: ClassifyContext, now: Date): boolean {
-  const cls = classify(entry.path, ctx)
-  if (cls === 'volatile') return true
+/**
+ * The player ids in a /api/players?include_traded=true load. Throws on a failed
+ * load, an unexpected shape, or an empty roster (a broken roster query must not
+ * mark every player's career payload as settled).
+ */
+export function rosterIdsFrom(status: number, body: unknown): Set<string> {
+  if (status !== 200) throw new Error(`roster load failed: ${status}`)
+  const players = (body as { players?: unknown } | null)?.players
+  if (!Array.isArray(players)) throw new Error('roster payload has no players array')
+  if (players.length === 0) throw new Error('roster payload is empty')
+  return new Set((players as Array<{ player_id: unknown }>).map((p) => String(p.player_id)))
+}
+
+export type DropReason = 'volatile' | 'expired' | 'invalid'
+
+/**
+ * Why a cached entry is dropped before a build, or null when it is reused.
+ * An entry whose path can't be classified (no string path, or a malformed
+ * escape that makes classify throw) is 'invalid' and dropped, so one bad file
+ * never aborts the sweep.
+ */
+export function dropReason(entry: CachedPayload, ctx: ClassifyContext, now: Date): DropReason | null {
+  if (typeof entry?.path !== 'string') return 'invalid'
+  let cls: CacheClass
+  try {
+    cls = classify(entry.path, ctx)
+  } catch {
+    return 'invalid'
+  }
+  if (cls === 'volatile') return 'volatile'
   const ageDays = (now.getTime() - new Date(entry.fetchedAt).getTime()) / 86_400_000
-  return !(ageDays <= ttlDays(entry.path, cls))
+  return ageDays <= ttlDays(entry.path, cls) ? null : 'expired'
+}
+
+export function shouldDrop(entry: CachedPayload, ctx: ClassifyContext, now: Date): boolean {
+  return dropReason(entry, ctx, now) !== null
 }
