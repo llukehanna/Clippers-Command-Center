@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { NextGamePanel } from '@/components/game/NextGamePanel'
 import { Chip } from '@/components/ui/chip'
+import { ClockWindow } from '@/components/ui/clock'
 import { WhereToWatch } from '@/components/preview/WhereToWatch'
 import { LineCard } from '@/components/preview/LineCard'
 import { Availability } from '@/components/preview/Availability'
@@ -11,6 +12,7 @@ import { getJson } from '@/src/lib/ui/api'
 import { scheduleGameIds } from '@/src/lib/prebuild/params'
 import { staticParams } from '@/src/lib/prebuild/static-params'
 import { formatDayShort } from '@/src/lib/ui/time'
+import { liveWindow } from '@/src/lib/ui/clock'
 import type { GamePreviewPayload } from '@/src/lib/ui/types'
 
 // Prerendered at build for every known id; unknown ids 404 until the next build.
@@ -40,6 +42,9 @@ export default async function GamePreviewPage({ params }: Params) {
   const status = game.status.toLowerCase()
   if (status === 'final') redirect(`/history/${game.game_id}`)
   const oppAbbr = game.opponent_abbr
+  // Prerendered before tip: the browser shows the banner once the game is on
+  // (the rebuild after the final turns this page into a redirect).
+  const onNow = liveWindow(game, status)
 
   return (
     <div className="page">
@@ -47,13 +52,15 @@ export default async function GamePreviewPage({ params }: Params) {
         ← Schedule
       </Link>
 
-      {status === 'in_progress' && (
-        <Link href="/live" className="panel enter flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:border-line-2">
-          <span className="flex items-center gap-2.5 text-[14px]">
-            <Chip tone="live">Live</Chip> This game is on now
-          </span>
-          <span className="font-mono text-[12px] text-mute">Follow live →</span>
-        </Link>
+      {onNow && (
+        <ClockWindow {...onNow}>
+          <Link href="/live" className="panel enter flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:border-line-2">
+            <span className="flex items-center gap-2.5 text-[14px]">
+              <Chip tone="live">Live</Chip> This game is on now
+            </span>
+            <span className="font-mono text-[12px] text-mute">Follow live →</span>
+          </Link>
+        </ClockWindow>
       )}
 
       <div className="enter" style={{ ['--i' as string]: 0 }}>

@@ -12,14 +12,21 @@ import { CompactInsightList } from '@/components/insights/kit/CompactInsightList
 import { Eyebrow } from '@/components/ui/eyebrow'
 import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ClockWindow, TimeAgo } from '@/components/ui/clock'
 import { getJson } from '@/src/lib/ui/api'
 import { annotateSchedule } from '@/src/lib/ui/schedule'
 import { playedGames, regularSeason, seasonSummary, type HistoryGame } from '@/src/lib/ui/season'
-import { ageLabel } from '@/src/lib/ui/time'
+import { gamesOverAt, heroCandidates, seasonRolloverAt, slotWindow } from '@/src/lib/ui/clock'
 import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
-import type { HomePayload, PlayersPayload } from '@/src/lib/ui/types'
+import type { HomePayload, PlayersPayload, ScheduleGame } from '@/src/lib/ui/types'
 
 export const metadata: Metadata = { title: 'Home' }
+
+// The page is prerendered: the hero carries the next few games and the browser
+// shows the first not yet over (a late or failed post-final rebuild never
+// leaves a finished game as "next"). Up next slides along with it.
+const HERO_SLOTS = 3
+const UP_NEXT = 4
 
 export default async function HomePage() {
   const [home, roster] = await Promise.all([
@@ -45,17 +52,37 @@ export default async function HomePage() {
   const summary = regular.length ? seasonSummary(regular) : null
   const gameIdByDate = new Map(played.map((g) => [`${g.game_date}|${g.opponent_abbr}`, g.game_id]))
 
-  const next = home.next_game
+  // "This season" turns into "Last season" on July 1; the browser flips it if
+  // that passes between rebuilds.
   const isPastSeason = seasonId != null && seasonId < seasonStartYear()
-  const nextIsOpener = next != null && seasonId != null && seasonStartYear(new Date(`${next.game_date}T12:00:00Z`)) > seasonId
+  const seasonWord = (current: string, past: string) =>
+    seasonId == null ? (
+      current
+    ) : (
+      <>
+        <ClockWindow until={seasonRolloverAt(seasonId)} initial={!isPastSeason}>
+          {current}
+        </ClockWindow>
+        <ClockWindow from={seasonRolloverAt(seasonId)} initial={isPastSeason}>
+          {past}
+        </ClockWindow>
+      </>
+    )
+
   const upcoming = annotateSchedule(home.upcoming_schedule ?? [], null)
-  const nextContext = next ? (
-    nextIsOpener ? (
+  const standById = new Map(upcoming.map((g) => [String(g.game_id), g.annotation.stand]))
+  const contextFor = (g: ScheduleGame) => {
+    const isOpener = seasonId != null && seasonStartYear(new Date(`${g.game_date}T12:00:00Z`)) > seasonId
+    const stand = standById.get(String(g.game_id))
+    return isOpener ? (
       <Chip tone="blue">Season opener</Chip>
-    ) : upcoming[0]?.annotation.stand ? (
-      <Chip tone="blue">{upcoming[0].annotation.stand.kind === 'home' ? 'Home stand' : 'Road trip'}</Chip>
+    ) : stand ? (
+      <Chip tone="blue">{stand.kind === 'home' ? 'Home stand' : 'Road trip'}</Chip>
     ) : null
-  ) : null
+  }
+  const heroGames = heroCandidates(home.next_game, home.upcoming_schedule ?? [])
+  const heroOverAt = gamesOverAt(heroGames)
+  const upcomingOverAt = gamesOverAt(upcoming)
 
   const rosterById = new Map((roster?.players ?? []).map((p) => [String(p.player_id), p]))
   const leaders = [...(home.player_trends ?? [])]
@@ -81,16 +108,26 @@ export default async function HomePage() {
     <div className="page">
       <section className="enter grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:gap-[18px]" style={{ ['--i' as string]: 0 }}>
         <HomeLive>
-          <NextGamePanel
-            game={next}
-            context={nextContext}
-            href={next ? `/schedule/${next.game_id}` : undefined}
-            insights={feeds ? { scouting: feeds.scouting, notes: feeds.notes } : undefined}
-          />
+          {heroGames.slice(0, HERO_SLOTS).map((g, i) => (
+            <ClockWindow key={g.game_id} {...slotWindow(heroOverAt, i, 0, 1)}>
+              <NextGamePanel
+                game={g}
+                context={contextFor(g)}
+                href={`/schedule/${g.game_id}`}
+                // The pregame feeds are about the build's next game only.
+                insights={i === 0 && feeds ? { scouting: feeds.scouting, notes: feeds.notes } : undefined}
+              />
+            </ClockWindow>
+          ))}
+          {heroGames.length <= HERO_SLOTS && (
+            <ClockWindow from={heroOverAt.at(-1)} initial={heroGames.length === 0}>
+              <NextGamePanel game={null} />
+            </ClockWindow>
+          )}
         </HomeLive>
         {snapshot && (
           <SeasonPanel
-            title={isPastSeason ? 'Last season' : 'This season'}
+            title={seasonWord('This season', 'Last season')}
             seasonLabel={formatSeasonLabel(snapshot.season_id).replace('-', '–')}
             record={snapshot.record}
             last10={snapshot.last_10}
@@ -145,7 +182,7 @@ export default async function HomePage() {
 
       {leaders.length > 0 && (
         <section className="enter" style={{ ['--i' as string]: 4 }}>
-          <Eyebrow aside={isPastSeason ? 'final 10 games' : 'last 10 games'}>Player trends</Eyebrow>
+          <Eyebrow aside={seasonWord('last 10 games', 'final 10 games')}>Player trends</Eyebrow>
           <PlayerLeaders players={leaders} />
         </section>
       )}
@@ -155,11 +192,17 @@ export default async function HomePage() {
       {upcoming.length > 1 && (
         <section className="enter" style={{ ['--i' as string]: 6 }}>
           <Eyebrow aside="all times PT">Up next</Eyebrow>
-          <UpNextList games={upcoming.slice(1, 5)} />
+          <UpNextList
+            games={upcoming
+              .slice(1, 1 + UP_NEXT + HERO_SLOTS - 1)
+              .map((g, k) => ({ ...g, window: slotWindow(upcomingOverAt, k + 1, 1, UP_NEXT) }))}
+          />
         </section>
       )}
       {home.meta?.last_sync_at && (
-        <p className="m-0 font-mono text-[11.5px] text-dim">Data synced {ageLabel(home.meta.last_sync_at)} ago</p>
+        <p className="m-0 font-mono text-[11.5px] text-dim">
+          <TimeAgo at={home.meta.last_sync_at} prefix="Data synced " suffix=" ago" />
+        </p>
       )}
     </div>
   )
