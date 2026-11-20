@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkBuild, checkClientData, checkLinks, checkPageCoverage, extractHrefs, resolveLink, type LinkTargets } from './check-build'
+import { checkBuild, checkClientData, checkHomeContent, checkLinks, checkPageCoverage, extractHrefs, resolveLink, type LinkTargets } from './check-build'
 
 const range = <T,>(n: number, f: (i: number) => T): T[] => Array.from({ length: n }, (_, i) => f(i))
 
@@ -239,5 +239,19 @@ describe('checkClientData', () => {
   it('fails with one clear problem when public/data is absent', () => {
     const problems = checkClientData(reader({}))
     expect(problems).toEqual([expect.stringContaining('npm run prebuild:client-data')])
+  })
+})
+
+describe('checkHomeContent', () => {
+  it('passes when home links a next game or a last game', () => {
+    expect(checkHomeContent('<a href="/schedule/22500123">Next</a>')).toEqual([])
+    expect(checkHomeContent('<a href="/history/4531">W 110-100</a>')).toEqual([])
+  })
+  it('fails without a home page, on its error state, or with no game at all', () => {
+    expect(checkHomeContent(null)).toEqual([expect.stringContaining('no prerendered home page')])
+    expect(checkHomeContent('<p>The dashboard couldn&#x27;t load</p><a href="/history/1">x</a>')).toEqual([expect.stringContaining('error state')])
+    expect(checkHomeContent('<a href="/schedule">Schedule</a><a href="/history">History</a>')).toEqual([
+      expect.stringContaining('neither a next game'),
+    ])
   })
 })

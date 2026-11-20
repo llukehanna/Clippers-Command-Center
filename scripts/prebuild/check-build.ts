@@ -9,8 +9,8 @@
 //   tsx scripts/prebuild/check-build.ts
 //     After `npm run cf-build` (last step of `npm run build:prebuilt`): the
 //     prerender manifest has every page family at full size, the Worker's
-//     static asset count is under the cap, and every internal link in the
-//     prerendered HTML resolves. Always fails without PREBUILD_FULL=1, so a
+//     static asset count is under the cap, every internal link in the
+//     prerendered HTML resolves, and home shows a game. Always fails without PREBUILD_FULL=1, so a
 //     sample build (spec §5d) can never deploy.
 //
 // Exits 1 with the problems. The check functions are pure and unit-tested.
@@ -197,6 +197,21 @@ export function checkPageCoverage(input: { pageRoutes: number; htmlFiles: number
   return problems
 }
 
+// ── Content sanity ────────────────────────────────────────────────────────────
+
+/**
+ * Problems with the prerendered home page (spec §5: home has a next game or a
+ * last game); empty = pass. `html` is .next/server/app/home.html, or null.
+ */
+export function checkHomeContent(html: string | null): string[] {
+  if (html === null) return ['no prerendered home page (.next/server/app/home.html)']
+  if (html.includes('The dashboard couldn')) return ['home page rendered its error state']
+  const hrefs = extractHrefs(html)
+  const games = hrefs.filter((h) => /^\/(schedule|history)\/\d+$/.test(h))
+  if (games.length === 0) return ['home page has neither a next game (/schedule/<id>) nor a last game (/history/<id>)']
+  return []
+}
+
 // ── public/data (before the build) ────────────────────────────────────────────
 
 const SEASONS_FILE = dataFileFor('/api/history/seasons')
@@ -323,6 +338,8 @@ function checkBuildCli(root: string) {
   // Page routes have HTML; route handlers (ics, OG images, icons) don't.
   const pageRoutes = Object.values(manifest.routes).filter((r) => r.routeType === undefined || r.routeType === 'page').length
   problems.push(...checkPageCoverage({ pageRoutes, htmlFiles: htmlFiles.length, linkCount }))
+  const homeFile = path.join(appDir, 'home.html')
+  problems.push(...checkHomeContent(fs.existsSync(homeFile) ? fs.readFileSync(homeFile, 'utf8') : null))
 
   const count = (re: RegExp) => routes.filter((r) => re.test(r)).length
   const stats: Array<[string, number | string]> = [
