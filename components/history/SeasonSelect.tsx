@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { groupSeasonsByEra } from '@/src/lib/ui/season-groups'
+import { historyHref } from '@/src/lib/urls'
 
 /** Season picker; changing season clears the other filters. */
 export function SeasonSelect({ seasons, value }: { seasons: Array<{ season_id: number; label: string; team_name: string }>; value: string }) {
@@ -11,7 +12,7 @@ export function SeasonSelect({ seasons, value }: { seasons: Array<{ season_id: n
       <span className="sr-only">Season</span>
       <select
         value={value}
-        onChange={(e) => router.push(`/history?season_id=${e.target.value}`, { scroll: false })}
+        onChange={(e) => router.push(historyHref(e.target.value), { scroll: false })}
         className="glass-track press cursor-pointer appearance-none rounded-full py-2 pl-4 pr-9 text-[16px] md:py-1.5 md:pl-3.5 md:pr-8 md:text-[13.5px] text-text outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-pacific"
       >
         {groupSeasonsByEra(seasons).map((g) => (

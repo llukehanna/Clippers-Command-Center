@@ -7,7 +7,7 @@ vi.mock('@/src/lib/ui/api', () => ({
 }))
 
 import { getJson } from '@/src/lib/ui/api'
-import { historyGameIds, playerIds, playerSeasonParams, scheduleGameIds, tradeSlugs } from './params'
+import { historyFilterParams, historyGameIds, historySeasonIds, playerIds, playerSeasonParams, scheduleGameIds, tradeSlugs } from './params'
 
 const game = (id: string, date: string, played: boolean) => ({
   game_id: id,
@@ -55,6 +55,29 @@ describe('historyGameIds', () => {
 
   it('throws when the seasons list is missing', async () => {
     await expect(historyGameIds()).rejects.toThrow('/api/history/seasons')
+  })
+})
+
+describe('historySeasonIds', () => {
+  it('lists every season the picker offers, in payload order', async () => {
+    payloads.set('/api/history/seasons', { seasons: [{ season_id: 1970 }, { season_id: 2025 }] })
+    expect(await historySeasonIds()).toEqual(['1970', '2025'])
+  })
+
+  it('throws when the seasons list is missing', async () => {
+    await expect(historySeasonIds()).rejects.toThrow('/api/history/seasons')
+  })
+})
+
+describe('historyFilterParams', () => {
+  it('pairs each season with all eight filters', () => {
+    const params = historyFilterParams(['1970', '2025'])
+    expect(params).toHaveLength(16)
+    expect(params.slice(0, 8).map((p) => p.filter)).toEqual([
+      'home', 'away', 'wins', 'losses', 'home-wins', 'home-losses', 'away-wins', 'away-losses',
+    ])
+    expect(params).toContainEqual({ season_id: '2025', filter: 'away-wins' })
+    expect(params.every((p) => p.filter !== 'all')).toBe(true)
   })
 })
 

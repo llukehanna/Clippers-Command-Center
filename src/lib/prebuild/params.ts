@@ -3,6 +3,7 @@
 // throws when its list payload is missing rather than prerendering nothing.
 
 import { getJson } from '@/src/lib/ui/api'
+import { HISTORY_FILTERS } from '@/src/lib/urls'
 import { playedGames, type HistoryGame } from '@/src/lib/ui/season'
 import type { MovesPayload, PlayersPayload, SchedulePayload } from '@/src/lib/ui/types'
 
@@ -51,6 +52,16 @@ const linkedPlayerIds = (value: unknown) => linkedIds(value, '/players/', /^\d+$
 
 const seasonsWithHistory = async () => (await required<SeasonsPayload>('/api/history/seasons')).seasons.map((s) => s.season_id)
 const seasonGames = (seasonId: number) => required<GamesPayload>(`/api/history/games?season_id=${seasonId}&limit=200`)
+
+/** Every season the History season picker offers (the /history/season/<id> pages). */
+export async function historySeasonIds(): Promise<string[]> {
+  return (await seasonsWithHistory()).map(String)
+}
+
+/** The /history/season/<id>/<filter> pages for the given seasons: each with every filter but `all`. */
+export function historyFilterParams(seasonIds: string[]): Array<{ season_id: string; filter: string }> {
+  return seasonIds.flatMap((season_id) => HISTORY_FILTERS.map((filter) => ({ season_id, filter })))
+}
 
 /** Played (final) Clippers games across every season with history. */
 export async function historyGameIds(): Promise<string[]> {

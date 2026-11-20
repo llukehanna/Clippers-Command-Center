@@ -22,6 +22,7 @@ import { staticParams } from '@/src/lib/prebuild/static-params'
 import { playedGames, type HistoryGame } from '@/src/lib/ui/season'
 import { formatDayLong, formatDayShort } from '@/src/lib/ui/time'
 import { teamName } from '@/src/lib/ui/teams'
+import { historyHref } from '@/src/lib/urls'
 import type { GameStoryPayload, HistoryGameDetailPayload } from '@/src/lib/ui/types'
 
 // Prerendered at build for every known id; unknown ids 404 until the next build.
@@ -89,7 +90,7 @@ export default async function HistoryGamePage({ params }: Params) {
   return (
     <div className="page">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link href={`/history?season_id=${game.season_id}`} className="font-mono text-[12px] text-mute hover:text-text">
+        <Link href={historyHref(game.season_id)} className="font-mono text-[12px] text-mute hover:text-text">
           ← History
         </Link>
         <div className="flex flex-wrap gap-2">
