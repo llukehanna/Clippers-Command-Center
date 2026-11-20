@@ -76,3 +76,28 @@ describe('getJson in prebuild mode', () => {
     await expect(getJson('/api/schedule')).rejects.toThrow('db down')
   })
 })
+
+describe('getJson in any other production build', () => {
+  beforeEach(() => {
+    process.env.NEXT_PHASE = 'phase-production-build'
+    clearMemo()
+    loadSchedule.mockReset()
+  })
+  afterEach(() => {
+    delete process.env.NEXT_PHASE
+  })
+
+  it('returns the body, and null on a 4xx', async () => {
+    loadSchedule.mockResolvedValueOnce({ status: 200, body: { games: [1] } })
+    expect(await getJson('/api/schedule')).toEqual({ games: [1] })
+    loadSchedule.mockResolvedValueOnce({ status: 404, body: { error: 'x' } })
+    expect(await getJson('/api/schedule')).toBeNull()
+  })
+
+  it('fails closed on 5xx and loader errors instead of returning an empty state', async () => {
+    loadSchedule.mockResolvedValue({ status: 503, body: null })
+    await expect(getJson('/api/schedule')).rejects.toThrow('503')
+    loadSchedule.mockRejectedValue(new Error('db down'))
+    await expect(getJson('/api/schedule')).rejects.toThrow('db down')
+  })
+})

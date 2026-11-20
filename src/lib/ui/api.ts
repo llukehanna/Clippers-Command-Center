@@ -10,6 +10,7 @@
 
 import { cache } from 'react'
 import { unstable_cache } from 'next/cache'
+import { PHASE_PRODUCTION_BUILD } from 'next/constants'
 import { loadPath } from '@/src/lib/data/routes'
 
 const DATA_TTL_SECONDS = 60
@@ -68,6 +69,14 @@ export async function getJson<T>(path: string): Promise<T | null> {
     const { loadThrough } = await import('@/src/lib/prebuild/payload-cache')
     const payload = await loadThrough(prebuildDir, path, loadPath)
     return payload.status >= 200 && payload.status < 300 ? (payload.body as T) : null
+  }
+  // Any other production build fails closed too: a DB error or loader 5xx
+  // must fail the build, never bake an error state into a prerendered page.
+  // A 4xx is still null (a page's notFound()).
+  if (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD) {
+    const result = await loadPath(path)
+    if (result.status >= 500) throw new Error(`build: ${path} → ${result.status}`)
+    return result.status >= 200 && result.status < 300 ? (result.body as T) : null
   }
   try {
     return (await loadOnce(path)) as T
