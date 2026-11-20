@@ -64,14 +64,56 @@ describe('playerIds', () => {
 })
 
 describe('tradeSlugs', () => {
-  it('lists every trade slug', async () => {
+  const clippersTrades = () =>
     payloads.set('/api/franchise/moves?type=trade', {
       moves: [
-        { slug: '2024-10-01-trade-a', kind_group: 'trade' },
-        { slug: '2019-07-10-trade-b', kind_group: 'trade' },
+        { slug: 'lac-a', kind_group: 'trade', href: '/franchise/trades/lac-a' },
+        { slug: 'lac-b', kind_group: 'trade', href: '/franchise/trades/lac-b' },
       ],
     })
-    expect(await tradeSlugs()).toEqual(['2024-10-01-trade-a', '2019-07-10-trade-b'])
+  const trade = (slug: string, links: string[] = []) =>
+    payloads.set(`/api/franchise/trades/${slug}`, {
+      trade: { slug },
+      became: links.map((l) => ({ href: `/franchise/trades/${l}`, children: [], truncatedAt: null })),
+    })
+
+  beforeEach(() => {
+    payloads.set('/api/franchise/draft', { picks: [] })
+    payloads.set('/api/franchise/picks', { owed: [] })
+  })
+
+  it('lists every Clippers trade', async () => {
+    clippersTrades()
+    trade('lac-a')
+    trade('lac-b')
+    expect(await tradeSlugs()).toEqual(['lac-a', 'lac-b'])
+  })
+
+  it('follows links from the draft page and from trade pages, dropping slugs with no page', async () => {
+    clippersTrades()
+    trade('lac-a')
+    trade('lac-b', ['gone'])
+    payloads.set('/api/franchise/draft', {
+      picks: [{ chain: [{ slug: 'den-nyk', href: '/franchise/trades/den-nyk' }] }],
+    })
+    trade('den-nyk', ['nyk-bos', 'lac-a'])
+    trade('nyk-bos')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect((await tradeSlugs()).sort()).toEqual(['den-nyk', 'lac-a', 'lac-b', 'nyk-bos'])
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0][0]).toContain('gone')
+    warn.mockRestore()
+  })
+
+  it('throws when a trade payload load throws', async () => {
+    clippersTrades()
+    const { getJson } = await import('@/src/lib/ui/api')
+    vi.mocked(getJson).mockImplementation(async (path: string) => {
+      if (path.startsWith('/api/franchise/trades/')) throw new Error('db down')
+      return payloads.get(path) ?? null
+    })
+    await expect(tradeSlugs()).rejects.toThrow('db down')
+    vi.mocked(getJson).mockImplementation(async (path: string) => payloads.get(path) ?? null)
   })
 
   it('throws when the moves list is missing', async () => {
