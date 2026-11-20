@@ -64,3 +64,6 @@ next-env.d.ts
 
 # prebuild measurement output
 /.prebuild/
+
+# prebuilt client data (scripts/prebuild/client-data.ts, written each build)
+/public/data/

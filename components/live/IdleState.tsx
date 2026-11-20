@@ -11,10 +11,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { playedGames, type HistoryGame } from '@/src/lib/ui/season'
 import { formatDayLong } from '@/src/lib/ui/time'
 import { teamName } from '@/src/lib/ui/teams'
+import { clientDataUrl, seasonGamesPath } from '@/src/lib/ui/client-data'
 import type { HomePayload } from '@/src/lib/ui/types'
 
-const json = (url: string) =>
-  fetch(url).then((r) => {
+// Keys are API paths; production reads the prebuilt /data file for each.
+const json = (path: string) =>
+  fetch(clientDataUrl(path)).then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return r.json()
   })
@@ -23,7 +25,7 @@ async function loadLastGame() {
   const { seasons } = (await json('/api/history/seasons')) as { seasons: Array<{ season_id: number }> }
   const latest = [...seasons].sort((a, b) => b.season_id - a.season_id)[0]
   if (!latest) return null
-  const { games } = (await json(`/api/history/games?season_id=${latest.season_id}&limit=200`)) as { games: HistoryGame[] }
+  const { games } = (await json(seasonGamesPath(latest.season_id))) as { games: HistoryGame[] }
   return playedGames(games).at(-1) ?? null
 }
 

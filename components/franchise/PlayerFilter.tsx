@@ -6,10 +6,12 @@ import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { PlayerAvatar } from '@/components/ui/player-avatar'
 import { movesHref, type MovesFilters } from '@/src/lib/franchise/display'
+import { clientDataUrl } from '@/src/lib/ui/client-data'
 import type { FranchisePersonRef, PeoplePayload } from '@/src/lib/ui/types'
 
-const json = (url: string) =>
-  fetch(url).then((r) => {
+// Keys are API paths; production reads the prebuilt /data file.
+const json = (path: string) =>
+  fetch(clientDataUrl(path)).then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return r.json()
   })

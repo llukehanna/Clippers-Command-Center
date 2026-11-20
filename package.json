@@ -15,6 +15,7 @@
     "compute-stats": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/compute-stats.ts",
     "verify-insights": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/verify-insights.ts",
     "prebuild:invalidate": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/prebuild/invalidate.ts",
+    "prebuild:client-data": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/prebuild/client-data.ts",
     "prebuild:measure": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/prebuild/measure.ts",
     "generate-insights": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/generate-insights.ts",
     "insights:replay": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/insights-replay.ts",

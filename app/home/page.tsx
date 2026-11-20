@@ -5,7 +5,7 @@ import { UpNextList } from '@/components/game/UpNextList'
 import { SeasonPanel } from '@/components/home/SeasonPanel'
 import { LastTenPanel } from '@/components/home/LastTenPanel'
 import { PlayerLeaders } from '@/components/home/PlayerLeaders'
-import { BuzzPanel } from '@/components/home/BuzzPanel'
+import { HomeBuzz } from '@/components/home/HomeBuzz'
 import { HomeLive } from '@/components/home/HomeLive'
 import { InsightTile } from '@/components/insights/kit/InsightTile'
 import { CompactInsightList } from '@/components/insights/kit/CompactInsightList'
@@ -17,15 +17,14 @@ import { annotateSchedule } from '@/src/lib/ui/schedule'
 import { playedGames, regularSeason, seasonSummary, type HistoryGame } from '@/src/lib/ui/season'
 import { ageLabel } from '@/src/lib/ui/time'
 import { formatSeasonLabel, seasonStartYear } from '@/src/lib/home-utils'
-import type { HomePayload, MediaPayload, PlayersPayload } from '@/src/lib/ui/types'
+import type { HomePayload, PlayersPayload } from '@/src/lib/ui/types'
 
 export const metadata: Metadata = { title: 'Home' }
 
 export default async function HomePage() {
-  const [home, roster, media] = await Promise.all([
+  const [home, roster] = await Promise.all([
     getJson<HomePayload>('/api/home'),
     getJson<PlayersPayload>('/api/players?include_traded=true'),
-    getJson<MediaPayload>('/api/media?limit=3'),
   ])
 
   if (!home) {
@@ -151,11 +150,8 @@ export default async function HomePage() {
         </section>
       )}
 
-      {media && (media.articles.length > 0 || media.social.length > 0) && (
-        <section className="enter" style={{ ['--i' as string]: 5 }}>
-          <BuzzPanel articles={media.articles.slice(0, 3)} social={media.social.slice(0, 2)} />
-        </section>
-      )}
+      {/* News loads live in the browser, so this prerendered page needn't rebuild for it. */}
+      <HomeBuzz index={5} />
       {upcoming.length > 1 && (
         <section className="enter" style={{ ['--i' as string]: 6 }}>
           <Eyebrow aside="all times PT">Up next</Eyebrow>

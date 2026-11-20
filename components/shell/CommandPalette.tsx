@@ -10,6 +10,7 @@ import { PlayerAvatar } from '@/components/ui/player-avatar'
 import { playedGames, type HistoryGame } from '@/src/lib/ui/season'
 import { formatDayShort } from '@/src/lib/ui/time'
 import { moveDate } from '@/src/lib/franchise/display'
+import { clientDataUrl, seasonGamesPath } from '@/src/lib/ui/client-data'
 import type { MovesPayload, PlayersPayload } from '@/src/lib/ui/types'
 
 export const OPEN_PALETTE_EVENT = 'ccc:open-palette'
@@ -27,8 +28,9 @@ const PAGES = [
   { href: '/news', label: 'News', hint: 'Articles and social' },
 ]
 
-const json = (url: string) =>
-  fetch(url).then((r) => {
+// Keys are API paths; production reads the prebuilt /data file for each.
+const json = (path: string) =>
+  fetch(clientDataUrl(path)).then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return r.json()
   })
@@ -43,7 +45,7 @@ async function loadRecentGames(): Promise<SeasonGames[]> {
   const recent = [...seasons].sort((a, b) => b.season_id - a.season_id).slice(0, 2)
   const lists = await Promise.all(
     recent.map(async (s) => {
-      const { games } = (await json(`/api/history/games?season_id=${s.season_id}&limit=200`)) as { games: HistoryGame[] }
+      const { games } = (await json(seasonGamesPath(s.season_id))) as { games: HistoryGame[] }
       return { label: s.label, games: playedGames(games).reverse() }
     }),
   )
