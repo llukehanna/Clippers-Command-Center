@@ -60,6 +60,15 @@ const loadOnce = cache(async (path: string): Promise<unknown> => {
 })
 
 export async function getJson<T>(path: string): Promise<T | null> {
+  // Build time (CI): read through the on-disk payload cache and fail closed —
+  // errors propagate so a DB/loader failure fails the build. Imported
+  // dynamically so node:fs stays out of the request-time path.
+  const prebuildDir = process.env.PREBUILD_CACHE_DIR
+  if (prebuildDir) {
+    const { loadThrough } = await import('@/src/lib/prebuild/payload-cache')
+    const payload = await loadThrough(prebuildDir, path, loadPath)
+    return payload.status >= 200 && payload.status < 300 ? (payload.body as T) : null
+  }
   try {
     return (await loadOnce(path)) as T
   } catch (err) {
