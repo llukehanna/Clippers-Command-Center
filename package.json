@@ -14,6 +14,7 @@
     "backfill": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/backfill.ts",
     "compute-stats": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/compute-stats.ts",
     "verify-insights": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/verify-insights.ts",
+    "prebuild:measure": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/prebuild/measure.ts",
     "generate-insights": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/generate-insights.ts",
     "insights:replay": "node --env-file-if-exists=.env.local node_modules/.bin/tsx scripts/insights-replay.ts",
     "insights:golden": "GOLDEN_REAL=1 node --env-file-if-exists=.env.local node_modules/.bin/vitest run --project integration scripts/lib/insights/golden.integration.test.ts",
