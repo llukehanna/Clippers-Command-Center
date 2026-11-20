@@ -116,7 +116,8 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: .prebuild/payloads
-          key: prebuild-payloads-${{ github.run_id }}
+          # Per attempt: cache keys are immutable, so a re-run needs its own key to save.
+          key: prebuild-payloads-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Skip deploy (no Cloudflare token)
         if: env.HAS_CLOUDFLARE_TOKEN != 'true'

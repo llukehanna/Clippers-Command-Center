@@ -117,6 +117,16 @@ describe('dropReason', () => {
     expect(dropReason(entry('/api/franchise/draft'), ctx, now)).toBeNull()
   })
 
+  it.each([
+    ['404 settled, 2 days old', 404, 2 * 24, 'expired'],
+    ['404 settled, 1 hour old', 404, 1, null],
+    ['200 settled, 30 days old', 200, 30 * 24, null],
+  ] as const)('a non-2xx entry lives a day at most: %s', (_name, status, hoursAgo, expected) => {
+    const fetchedAt = new Date(now.getTime() - hoursAgo * 3_600_000).toISOString()
+    const e = { path: '/api/history/games/200', status, body: {}, fetchedAt } as CachedPayload
+    expect(dropReason(e, ctx, now)).toBe(expected)
+  })
+
   it('drops an entry whose path makes classify throw instead of aborting the sweep', () => {
     expect(() => classify('/api/history/games/%E0%A4%A', ctx)).toThrow()
     expect(dropReason(entry('/api/history/games/%E0%A4%A'), ctx, now)).toBe('invalid')

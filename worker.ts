@@ -9,10 +9,11 @@
 // 3. Legacy query-string URLs 301 to their path-based pages, and any /api/*
 //    outside the live/media allowlist is a 404 (src/lib/legacy-redirect.ts),
 //    so only the live pipeline reaches the database through the API.
-// 4. A shared edge cache (src/lib/edge-cache.ts): pages and read-only APIs
-//    declare a TTL with CDN-Cache-Control (next.config.ts; /api/live sets its
-//    own 2 s / 30 s), and hits are served from the Cache API without running
-//    Next.js. The Cache API only works on a custom domain; on workers.dev
+// 4. A shared edge cache (src/lib/edge-cache.ts): prerendered pages (a day,
+//    next.config.ts), /api/media and /api/live (its own 2 s / 30 s) declare a
+//    TTL with CDN-Cache-Control, and hits are served from the Cache API
+//    without running OpenNext, so a page's prerender cache entry isn't read
+//    and parsed per request. The Cache API only works on a custom domain; on workers.dev
 //    every lookup misses and every request renders. Old-season /schedule/<id>
 //    pages (not prerendered) 302 to /history/<id> from the cache's response.
 

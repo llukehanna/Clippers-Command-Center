@@ -2,8 +2,11 @@
 // Shared edge cache for the Cloudflare Worker entry (worker.ts): a GET whose
 // response carries `CDN-Cache-Control: s-maxage=N[, stale-while-revalidate=M]`
 // is stored in the Cache API, and later requests in the same Cloudflare
-// location are answered from it without running Next.js. A crawler burst
-// then costs one render per location per TTL instead of one per request.
+// location are answered from it without running Next.js. Pages are
+// prerendered, so a hit skips OpenNext reading and parsing the page's
+// prerender cache entry; a crawler burst costs one such read per location per
+// TTL (and per deploy: the key includes the Worker version) instead of one
+// per request.
 //
 // TTLs are declared by the routes (next.config.ts headers(), and /api/live
 // itself); this module only enforces the rules:

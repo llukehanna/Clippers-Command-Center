@@ -137,7 +137,11 @@ export function dropReason(entry: CachedPayload, ctx: ClassifyContext, now: Date
   }
   if (cls === 'volatile') return 'volatile'
   const ageDays = (now.getTime() - new Date(entry.fetchedAt).getTime()) / 86_400_000
-  return ageDays <= ttlDays(entry.path, cls) ? null : 'expired'
+  // A cached non-2xx (e.g. a transient 404) lives a day at most, whatever the class,
+  // so it can't keep a page missing for weeks.
+  const ok = entry.status >= 200 && entry.status < 300
+  const ttl = ok ? ttlDays(entry.path, cls) : Math.min(1, ttlDays(entry.path, cls))
+  return ageDays <= ttl ? null : 'expired'
 }
 
 export function shouldDrop(entry: CachedPayload, ctx: ClassifyContext, now: Date): boolean {
