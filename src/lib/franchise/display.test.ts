@@ -21,6 +21,7 @@ import {
   parseMoveType,
   MOVE_TYPES,
   personMoves,
+  withLatestAggregates,
   draftPickOutcome,
   draftYearMeta,
   partialWord,
@@ -257,6 +258,41 @@ describe('partialWord', () => {
     expect(partialWord(false)).toBe('recorded')
     expect(partialWord(null)).toBe('—')
     expect(partialWord(undefined)).toBe('—')
+  })
+})
+
+describe('withLatestAggregates (ribbon and season list from the season=latest payload)', () => {
+  const payload = (season: number | null, player: string | null, seasons: number[], counts: Array<[number, number]>, slugs: string[]) =>
+    ({
+      meta: {},
+      filters: { season, type: 'signing', player },
+      seasons,
+      season_counts: counts.map(([season_id, count]) => ({ season_id, count })),
+      player: player ? { person_key: player, name: 'P' } : null,
+      moves: slugs.map((slug) => ({ slug })),
+    }) as unknown as Parameters<typeof withLatestAggregates>[0]
+  // A past season's payload cached weeks ago: no 2026 yet, an old 2025 count.
+  const past = payload(2019, null, [2025, 2019], [[2025, 3], [2019, 2]], ['a', 'b'])
+  const latest = payload(2026, null, [2026, 2025, 2019], [[2026, 4], [2025, 5], [2019, 2]], ['x'])
+
+  it("takes the latest payload's seasons and counts, keeping the view's season, filters and moves", () => {
+    const r = withLatestAggregates(past, latest)
+    expect(r.seasons).toEqual([2026, 2025, 2019])
+    expect(r.season_counts).toEqual(latest.season_counts)
+    expect(r.filters).toEqual(past.filters)
+    expect(r.moves).toEqual(past.moves)
+    expect(r.player).toBeNull()
+  })
+  it("a person view takes only the season list (its counts are the person's own)", () => {
+    const person = payload(null, 'paulch01', [2025, 2019], [[2019, 1]], ['p'])
+    const r = withLatestAggregates(person, latest)
+    expect(r.seasons).toEqual([2026, 2025, 2019])
+    expect(r.season_counts).toEqual(person.season_counts)
+    expect(r.player).toEqual(person.player)
+    expect(r.moves).toEqual(person.moves)
+  })
+  it('keeps the view as is without a latest payload', () => {
+    expect(withLatestAggregates(past, null)).toBe(past)
   })
 })
 

@@ -3,7 +3,7 @@ import { MovesBody } from '@/components/franchise/MovesBody'
 import { PersonMoves } from '@/components/franchise/PersonMoves'
 import { getJson } from '@/src/lib/ui/api'
 import { calendarSeasonId } from '@/src/lib/season'
-import type { MovesFilters } from '@/src/lib/franchise/display'
+import { withLatestAggregates, type MovesFilters } from '@/src/lib/franchise/display'
 import type { MovesPayload } from '@/src/lib/ui/types'
 
 /**
@@ -15,7 +15,15 @@ export async function MovesView({ filters }: { filters: MovesFilters }) {
   const q = new URLSearchParams({ type: filters.type })
   if (filters.season !== 'all') q.set('season', filters.season == null ? 'latest' : String(filters.season))
   if (filters.player) q.set('player', filters.player)
-  const data = await getJson<MovesPayload>(`/api/franchise/moves?${q.toString()}`)
+  const path = `/api/franchise/moves?${q.toString()}`
+  // The ribbon and season list always come from the type's season=latest payload
+  // (reloaded every build; see withLatestAggregates). A person page's list is all seasons.
+  const latestPath = `/api/franchise/moves?type=${filters.player ? 'all' : filters.type}&season=latest`
+  const [view, latest] = await Promise.all([
+    getJson<MovesPayload>(path),
+    path === latestPath ? null : getJson<MovesPayload>(latestPath),
+  ])
+  const data = view && withLatestAggregates(view, latest)
 
   if (!data) {
     return <EmptyState title="Moves couldn't load" body="The data service didn't respond. Refresh in a moment." />

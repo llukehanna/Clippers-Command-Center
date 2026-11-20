@@ -206,6 +206,19 @@ export function parseMovesSeason(raw: string | undefined, f: Pick<MovesFilters, 
 }
 
 /**
+ * A Moves view's payload with its era ribbon and season list taken from the
+ * season=latest payload of the same type. The loader computes `seasons` and
+ * `season_counts` ignoring the season, so they're the same data; but a past
+ * season's payload is cached for weeks at build time while season=latest is
+ * reloaded every build. A person view takes only `seasons`: its counts are the
+ * person's own (and are recomputed from its moves in the browser anyway).
+ */
+export function withLatestAggregates(view: MovesPayload, latest: MovesPayload | null): MovesPayload {
+  if (!latest) return view
+  return view.filters.player ? { ...view, seasons: latest.seasons } : { ...view, seasons: latest.seasons, season_counts: latest.season_counts }
+}
+
+/**
  * A person page's view under in-page type/season filters, from that person's
  * all-types, all-seasons list: what /api/franchise/moves returns for the same
  * filters (rows of the type, per-season counts for the type, season null = the

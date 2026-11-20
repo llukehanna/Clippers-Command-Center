@@ -5,9 +5,12 @@
 // Why: on the Workers free plan each request gets ~10 ms of CPU and the
 // account 100k Hyperdrive queries a day. On 2026-11-19 a crawler on Meta's
 // network (AS32934), sending a desktop-Chrome user agent, walked every
-// /franchise?season=…&type=…&player=… combination (hundreds of thousands of
-// URLs, each a full render with queries) and exhausted the day's queries, so
-// every page lost its data until the reset. Meta did the same in October on
+// combination of the then query-string Moves filters (season × type × player,
+// hundreds of thousands of URLs, each a full render with queries) and exhausted
+// the day's queries, so every page lost its data until the reset. Those views
+// are now a bounded set of prerendered paths (/franchise/moves/<type>/<season>,
+// /franchise/person/<key>), but other pages still render or query at request
+// time, so the guard stays. Meta did the same in October on
 // Vercel, as meta-externalagent. Its link-preview fetcher (facebookexternalhit)
 // is still allowed for plain page URLs, so links shared on Facebook, Instagram
 // and WhatsApp keep their previews.
