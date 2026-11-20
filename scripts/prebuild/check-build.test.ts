@@ -138,6 +138,16 @@ describe('resolveLink', () => {
     expect(resolveLink('/history/%E0%A4%A', targets)).toContain('no prerendered page')
   })
 
+  it('in a full (strict) build, resolves /schedule/<id> only via its own page or the /history page the Worker falls back to', () => {
+    const strict = { ...targets, routes: new Set([...targets.routes, '/schedule/30', '/schedule/30/ics']), strict: true }
+    expect(resolveLink('/schedule/30', strict)).toBeNull()
+    expect(resolveLink('/schedule/30/ics', strict)).toBeNull()
+    expect(resolveLink('/schedule/1', strict)).toBeNull() // /history/1 is prerendered
+    expect(resolveLink('/schedule/1/ics', strict)).toBeNull()
+    expect(resolveLink('/schedule/4530', strict)).toContain('nor a /history page')
+    expect(resolveLink('/schedule/4530/ics', strict)).toContain('nor a /history page')
+  })
+
   it('tolerates links into a dynamic route family when given its patterns (sample builds)', () => {
     const tolerant = { ...targets, dynamicRoutes: ['/history/[game_id]', '/franchise/moves/[type]/[season]'] }
     expect(resolveLink('/history/2', tolerant)).toBeNull()

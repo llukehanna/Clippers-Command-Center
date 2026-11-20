@@ -82,6 +82,10 @@ describe('historyFilterParams', () => {
 })
 
 describe('scheduleGameIds', () => {
+  beforeEach(() => {
+    payloads.set('/api/home', { next_game: null, upcoming_schedule: [] })
+  })
+
   it('adds every game of the current season to the schedule, played games last', async () => {
     payloads.set('/api/schedule', { next_game: null, games: [{ game_id: 30 }, { game_id: '31' }] })
     payloads.set('/api/history/seasons', { seasons: [{ season_id: 2024 }, { season_id: 2025 }] })
@@ -89,6 +93,25 @@ describe('scheduleGameIds', () => {
       games: [game('31', '2025-11-05', false), game('30', '2025-11-03', false), game('21', '2025-10-30', true), game('20', '2025-10-28', true)],
     })
     expect(await scheduleGameIds()).toEqual(['30', '31', '20', '21'])
+  })
+
+  it("includes Home's next game (preseason, on no list), its upcoming games and every /schedule/<id> its insight cards link", async () => {
+    payloads.set('/api/home', {
+      next_game: { game_id: '9001' },
+      upcoming_schedule: [{ game_id: 30 }, { game_id: 40 }],
+      insights: { scouting: [{ href: '/schedule/9001' }, { href: '/schedule/9002' }, { href: '/history/20' }] },
+    })
+    payloads.set('/api/schedule', { next_game: { game_id: 30 }, games: [{ game_id: 30 }] })
+    payloads.set('/api/history/seasons', { seasons: [{ season_id: 2025 }] })
+    payloads.set('/api/history/games?season_id=2025&limit=200', { games: [game('30', '2025-11-03', false), game('20', '2025-10-28', true)] })
+    expect(await scheduleGameIds()).toEqual(['9001', '9002', '30', '40', '20'])
+  })
+
+  it('throws when Home is missing', async () => {
+    payloads.delete('/api/home')
+    payloads.set('/api/schedule', { next_game: null, games: [] })
+    payloads.set('/api/history/seasons', { seasons: [] })
+    await expect(scheduleGameIds()).rejects.toThrow('/api/home')
   })
 
   it('throws when the schedule is missing', async () => {

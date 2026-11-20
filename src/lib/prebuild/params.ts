@@ -7,7 +7,7 @@ import { HISTORY_FILTERS } from '@/src/lib/urls'
 import { allowsAllSeasons, ERAS, MOVE_TYPES, PATH_SAFE_PERSON_KEY } from '@/src/lib/franchise/display'
 import { calendarSeasonId } from '@/src/lib/season'
 import { playedGames, type HistoryGame } from '@/src/lib/ui/season'
-import type { MovesPayload, PeoplePayload, PlayersPayload, SchedulePayload } from '@/src/lib/ui/types'
+import type { HomePayload, MovesPayload, PeoplePayload, PlayersPayload, SchedulePayload } from '@/src/lib/ui/types'
 
 type SeasonsPayload = { seasons: Array<{ season_id: number }> }
 type GamesPayload = { games: HistoryGame[] }
@@ -71,18 +71,36 @@ export async function historyGameIds(): Promise<string[]> {
   return unique(lists.flatMap((l) => playedGames(l.games).map((g) => String(g.game_id))))
 }
 
+/** Game ids a payload links as /schedule/<id> (insight cards), plus its next game's id. */
+function linkedScheduleIds(payload: { next_game?: { game_id: unknown } | null }): string[] {
+  const next = payload.next_game?.game_id
+  return [...(next != null ? [String(next)] : []), ...linkedIds(payload, '/schedule/', /^\d+$/)]
+}
+
 /**
- * Upcoming games on the schedule, plus every other game of the current season:
- * a played game's preview page redirects to its history page, and links to it
- * live on in downloaded calendar files and insight cards. Played games go last.
+ * Every game a /schedule/<id> link can name: the next game (Home's can be a
+ * preseason game, which no list below has), every game Home and the schedule
+ * list or link (incl. pregame insight cards), plus every other game of the
+ * current season: a played game's preview page redirects to its history page,
+ * and links to it live on in downloaded calendar files and insight cards.
+ * Played games go last.
  */
 export async function scheduleGameIds(): Promise<string[]> {
-  const [{ games }, seasons] = await Promise.all([required<SchedulePayload>('/api/schedule'), seasonsWithHistory()])
-  const upcoming = games.map((g) => String(g.game_id))
+  const [schedule, home, seasons] = await Promise.all([
+    required<SchedulePayload>('/api/schedule'),
+    required<HomePayload>('/api/home'),
+    seasonsWithHistory(),
+  ])
+  const upcoming = [
+    ...linkedScheduleIds(home),
+    ...linkedScheduleIds(schedule),
+    ...(home.upcoming_schedule ?? []).map((g) => String(g.game_id)),
+    ...schedule.games.map((g) => String(g.game_id)),
+  ]
   const current = seasons.length > 0 ? (await seasonGames(Math.max(...seasons))).games : []
   const played = new Set(playedGames(current).map((g) => String(g.game_id)))
   const rest = current.map((g) => String(g.game_id)).filter((id) => !played.has(id))
-  return unique([...upcoming, ...rest, ...played])
+  return unique([...upcoming.filter((id) => !played.has(id)), ...rest, ...played])
 }
 
 /** The franchise payloads whose rendered pages link players and trades. */

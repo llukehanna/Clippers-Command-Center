@@ -63,6 +63,13 @@ export interface LinkTargets {
    * resolved. Full builds leave this out, so every link must hit a real page.
    */
   dynamicRoutes?: readonly string[]
+  /**
+   * Full builds: a /schedule/<id> link must reach a real page, its own
+   * prerendered preview or the /history/<id> page the Worker's fallback
+   * redirects to (an id with neither 404s at runtime too). Otherwise any
+   * /schedule/<digits> link counts as served by that fallback.
+   */
+  strict?: boolean
 }
 
 /** Served at request time by the Worker (live pipeline, DB allowlist, or a redirect), never prerendered. */
@@ -72,9 +79,10 @@ const RUNTIME_ROUTES: RegExp[] = [
   /^\/api\/media$/,
   /^\/players\/nba\/[^/]+$/,
   /^\/history\/[^/]+\/opengraph-image$/,
-  // Old-season schedule pages 301 to /history/<id> (worker.ts scheduleFallback).
-  /^\/schedule\/\d+(?:\/ics)?$/,
 ]
+
+/** A schedule page or calendar file the Worker 302s to /history/<id> when it isn't prerendered (worker.ts scheduleFallback). */
+const SCHEDULE_FALLBACK = /^\/schedule\/(\d+)(?:\/ics)?$/
 
 const ENTITIES: Record<string, string> = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>' }
 
@@ -150,8 +158,10 @@ export function resolveLink(href: string, targets: LinkTargets): string | null {
     if (routes.has(c) || targets.publicFiles.has(c)) return null
     if (RUNTIME_ROUTES.some((re) => re.test(c))) return null
     if (targets.dynamicRoutes?.some((r) => patternRegex(r).test(c))) return null
+    const game = c.match(SCHEDULE_FALLBACK)
+    if (game && (!targets.strict || routes.has(`/history/${game[1]}`))) return null
   }
-  return 'no prerendered page or file'
+  return SCHEDULE_FALLBACK.test(p ?? raw) ? 'no prerendered page, nor a /history page to fall back to' : 'no prerendered page or file'
 }
 
 /** Problems for the links that don't resolve (each href once, the first 20 listed with a page linking it); empty = pass. */
@@ -307,6 +317,7 @@ function checkBuildCli(root: string) {
     publicFiles: new Set(assets.map((f) => toUrlPath(assetsDir, f))),
     // Sample builds prerender a few pages per family: tolerate links into a family.
     dynamicRoutes: full ? undefined : Object.keys(manifest.dynamicRoutes ?? {}),
+    strict: full,
   }
   problems.push(...checkLinks(links(), targets))
   // Page routes have HTML; route handlers (ics, OG images, icons) don't.
