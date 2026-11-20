@@ -194,6 +194,16 @@ describe('tradeSlugs', () => {
     }
   })
 
+  it("follows a trade tree row's truncatedAt (rendered as a link to the trade where it continues)", async () => {
+    clippersTrades(['lac-a'])
+    payloads.set('/api/franchise/trades/lac-a', {
+      trade: { slug: 'lac-a' },
+      became: [{ href: '/players/325', children: [{ href: null, children: [], truncatedAt: 'phx-tor' }], truncatedAt: null }],
+    })
+    trade('phx-tor')
+    expect((await tradeSlugs()).sort()).toEqual(['lac-a', 'phx-tor'])
+  })
+
   it('throws when a trade payload load throws', async () => {
     clippersTrades(['lac-a'])
     vi.mocked(getJson).mockImplementation(async (path: string) => {

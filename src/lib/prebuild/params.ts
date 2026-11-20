@@ -48,7 +48,24 @@ function linkedIds(value: unknown, prefix: string, segment: RegExp, out: Set<str
   return out
 }
 
-const linkedTradeSlugs = (value: unknown) => linkedIds(value, '/franchise/trades/', /^.+$/)
+/** Every string value of `key` anywhere in a payload. */
+function valuesOf(value: unknown, key: string, out: Set<string>): Set<string> {
+  if (Array.isArray(value)) {
+    for (const v of value) valuesOf(v, key, out)
+  } else if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) {
+      if (k === key && typeof v === 'string') out.add(v)
+      else valuesOf(v, key, out)
+    }
+  }
+  return out
+}
+
+/**
+ * Trade slugs a payload links: /franchise/trades/<slug> hrefs, plus each trade
+ * tree row's `truncatedAt` (TradeTree renders it as a "continues on" link).
+ */
+const linkedTradeSlugs = (value: unknown) => valuesOf(value, 'truncatedAt', linkedIds(value, '/franchise/trades/', /^.+$/))
 /** Internal player ids only: /players/nba/<id> is a redirect route, not a page. */
 const linkedPlayerIds = (value: unknown) => linkedIds(value, '/players/', /^\d+$/)
 
