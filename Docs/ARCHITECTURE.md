@@ -57,7 +57,9 @@ Desktop/laptop only for MVP.
 Pick one of these two:
 
 ### Option A (fastest)
-- Web + API: Cloudflare Workers via OpenNext (worker `clippers-command-center`), served at clippers.lukeghanna.com (`ccc.lukeghanna.com` redirects there)
+- Web + API: Cloudflare Workers via OpenNext (worker `clippers-command-center`, free plan), served at clippers.lukeghanna.com (`ccc.lukeghanna.com` redirects there)
+- Pages are prerendered in GitHub Actions (`deploy-app.yml`: `npm run build:prebuilt` with `PREBUILD_FULL=1`) and served as static files; only the live pipeline (`/api/live`, `/api/cron/poll-live`), `/api/media`, `/players/nba/<id>` and history OG images reach the database at request time
+- Rebuilds: push to main, each data job after it writes (post-game, sync-schedule, sync-franchise-moves, sync-franchise-contracts, sync-odds when odds changed; not sync-media, news loads live), a daily 11:30 UTC safety net, manual dispatch. Builds reuse a cached payload snapshot (`.prebuild/payloads`, Actions cache) and refresh only changed data from Neon; `check-build` fails the deploy on short page counts, more than 19,000 asset files, or a broken internal link
 - Jobs (sync, live polling, finalization, stats, insights): GitHub Actions
 - Postgres: Neon (or Supabase Postgres)
 - Cron: GitHub Actions scheduled workflows (free)

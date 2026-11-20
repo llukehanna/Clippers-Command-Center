@@ -3,6 +3,7 @@
 // Provider (fetch) failure causes a logged warning and clean exit (exit 0) — non-fatal.
 // Database failures exit non-zero so the workflow surfaces them.
 
+import { appendFileSync } from 'node:fs';
 import { sql } from './lib/db.js';
 import { TheOddsApiAdapter } from './lib/odds-client.js';
 import { setCheckpoint } from './lib/upserts.js';
@@ -109,6 +110,11 @@ async function main(): Promise<void> {
   await setCheckpoint('odds_sync:last_success_at', Date.now());
 
   console.log(`sync-odds complete: ${inserted} rows inserted`);
+  // sync-odds.yml rebuilds the site only when this run stored new snapshots:
+  // pages show the latest line, its captured_at and the line-movement series,
+  // so every new row changes them; a provider outage (exit above) or no
+  // Clippers lines changes nothing.
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `inserted=${inserted}\n`);
   await sql.end();
 }
 

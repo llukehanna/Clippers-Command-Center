@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: write   # dispatches deploy-app.yml at the end
 
 jobs:
   sync-schedule:
@@ -32,3 +33,10 @@ jobs:
         run: npm run backfill-schedule-nba
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Only after both sync steps succeeded (default `if: success()`).
+      - name: Rebuild site (dispatch deploy-app)
+        run: gh workflow run deploy-app.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
