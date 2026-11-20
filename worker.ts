@@ -17,6 +17,7 @@
 import { default as openNext } from './.open-next/worker.js'
 import { serveWithEdgeCache, type EdgeCacheStore, type WaitUntil } from './src/lib/edge-cache'
 import { blockedReason, blockedResponse } from './src/lib/bot-guard'
+import { apiAllowed, legacyRedirect, scheduleFallback } from './src/lib/legacy-redirect'
 
 interface OpenNextWorker {
   fetch(request: Request, env: unknown, ctx: WaitUntil): Promise<Response>
@@ -35,9 +36,22 @@ const worker = {
     }
     // Crawlers that ignore robots.txt are refused before Next.js runs (src/lib/bot-guard.ts).
     if (blockedReason(request)) return blockedResponse()
+    // Old query-string URLs 301 to their path-based pages (src/lib/legacy-redirect.ts).
+    if (request.method === 'GET' || request.method === 'HEAD') {
+      const to = legacyRedirect(url)
+      if (to) return Response.redirect(new URL(to, url).toString(), 301)
+    }
+    // Only the live pipeline and media reach the database; other /api/* are gone.
+    if (url.pathname.startsWith('/api/') && !apiAllowed(url.pathname)) {
+      return new Response('Not found', { status: 404, headers: { 'cache-control': 'no-store' } })
+    }
     const store = (caches as unknown as { default: EdgeCacheStore }).default
     const version = env.CF_VERSION_METADATA?.id
-    return serveWithEdgeCache(request, () => app.fetch(request, env, ctx), { store, ctx, version })
+    const response = await serveWithEdgeCache(request, () => app.fetch(request, env, ctx), { store, ctx, version })
+    // Old-season schedule pages aren't prerendered; send them to History.
+    const fallback = scheduleFallback(url, response.status)
+    if (fallback) return Response.redirect(new URL(fallback, url).toString(), 301)
+    return response
   },
 }
 
