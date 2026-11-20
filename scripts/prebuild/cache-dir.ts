@@ -21,12 +21,12 @@ export function cacheDirProblem(dir: string | undefined, repoRoot: string, cwd: 
   return null
 }
 
-/** A cache entry written by loadThrough (src/lib/prebuild/payload-cache.ts): `<sha1>.json`. */
+/** A cache entry written by loadThrough (src/lib/prebuild/payload-cache.ts): `<sha1 hex>.json`. */
 export function isCacheFile(name: string): boolean {
-  return name.length > '.json'.length && name.endsWith('.json')
+  return /^[0-9a-f]{40}\.json$/.test(name)
 }
 
-/** A temp file a crashed loadThrough left behind (`<sha1>.json.<pid>.<rand>.tmp`). */
+/** A temp file a crashed loadThrough left behind: `<sha1 hex>.json.<pid>.<6 random bytes as hex>.tmp`. */
 export function isTmpFile(name: string): boolean {
-  return name.endsWith('.tmp')
+  return /^[0-9a-f]{40}\.json\.\d+\.[0-9a-f]{12}\.tmp$/.test(name)
 }

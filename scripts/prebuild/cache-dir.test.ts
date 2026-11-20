@@ -35,11 +35,19 @@ describe('cacheDirProblem', () => {
 })
 
 describe('cache file names', () => {
-  it('recognises cache entries and temp files only', () => {
-    expect(isCacheFile('0a1b.json')).toBe(true)
-    expect(isTmpFile('0a1b.json.123.abcdef.tmp')).toBe(true)
-    expect(isCacheFile('README.md')).toBe(false)
-    expect(isTmpFile('notes.txt')).toBe(false)
-    expect(isCacheFile('.json')).toBe(false)
+  const sha = 'da39a3ee5e6b4b0d3255bfef95601890afd80709'
+
+  it('recognises the names loadThrough writes: <sha1>.json and <sha1>.json.<pid>.<12 hex>.tmp', () => {
+    expect(isCacheFile(`${sha}.json`)).toBe(true)
+    expect(isTmpFile(`${sha}.json.4242.0123456789ab.tmp`)).toBe(true)
+  })
+
+  it('matches nothing else, so other files in the dir are never deleted', () => {
+    for (const name of ['public-ish.json', 'package.json', 'README.md', '.json', `${sha.toUpperCase()}.json`, `${sha}.json.bak`, `x${sha}.json`]) {
+      expect(isCacheFile(name), name).toBe(false)
+    }
+    for (const name of ['notes.tmp', 'public-ish.json.1.0123456789ab.tmp', `${sha}.json.tmp`, `${sha}.json.1.xyz.tmp`]) {
+      expect(isTmpFile(name), name).toBe(false)
+    }
   })
 })

@@ -16,15 +16,15 @@ name: Deploy app
 #
 # Triggers: pushes to main; data jobs dispatch it after they write
 # (post-game, sync-schedule, sync-franchise-moves, sync-franchise-contracts,
-# sync-odds when odds changed); a daily safety net after the nightly
-# post-game (covers a failed data job and calendar rollovers); manual runs,
-# with `full_refresh` to re-pull every payload.
+# sync-odds when it stored new snapshots); a daily safety-net build (covers
+# a failed data job and calendar rollovers); manual runs, with `full_refresh`
+# to re-pull every payload.
 on:
   push:
     branches: [main]
     paths-ignore: ['workers/live-hub/**', 'docs/**', 'Docs/**', '.planning/**', '**/*.md']
   schedule:
-    - cron: '30 11 * * *'   # daily at 11:30 UTC, after the nightly post-game (10:00 UTC)
+    - cron: '30 11 * * *'   # daily safety net at 11:30 UTC
   workflow_dispatch:
     inputs:
       full_refresh:
@@ -103,7 +103,24 @@ jobs:
           path: .prebuild/payloads
           key: prebuild-payloads-${{ github.run_id }}
 
+      - name: Skip deploy (no Cloudflare token)
+        if: env.HAS_CLOUDFLARE_TOKEN != 'true'
+        run: echo "::notice title=App not deployed::CLOUDFLARE_API_TOKEN is not set; skipping deploy."
+
+      # Deploys the already-built .open-next output (no second build).
+      - name: Deploy
+        id: deploy
+        if: env.HAS_CLOUDFLARE_TOKEN == 'true'
+        run: npx opennextjs-cloudflare deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Runs after the deploy, on failures too, and can't fail the job. Page
+      # counts and the deployed asset count come from check-build's own table.
       - name: Job summary
+        if: always()
+        continue-on-error: true
         run: |
           {
             echo "### Prebuilt deploy"
@@ -112,28 +129,18 @@ jobs:
             echo "|---|---|"
             echo "| Trigger | ${{ github.event_name }}${FULL_REFRESH:+ (full_refresh: $FULL_REFRESH)} |"
             echo "| Snapshot restored from | ${RESTORED_KEY:-none (cold build)} |"
-            echo "| Invalidate | $INVALIDATE |"
-            echo "| Build time | $(( BUILD_SECONDS / 60 ))m $(( BUILD_SECONDS % 60 ))s |"
-            # Deploy copies .open-next/cache into the assets (cdn-cgi/_next_cache): count both.
-            assets=$(find .open-next/assets -type f -not -path '*/cdn-cgi/_next_cache/*' | wc -l)
-            cache=$(find .open-next/cache -type f | wc -l)
-            echo "| Static asset files (cap 19,000) | $(( assets + cache )) |"
-            echo "| Cached payloads | $(find .prebuild/payloads -maxdepth 1 -name '*.json' | wc -l | tr -d ' ') |"
+            echo "| Invalidate | ${INVALIDATE:-did not finish} |"
+            if [ -n "$BUILD_SECONDS" ]; then
+              echo "| Build time | $(( BUILD_SECONDS / 60 ))m $(( BUILD_SECONDS % 60 ))s |"
+            else
+              echo "| Build time | build did not finish ($BUILD_OUTCOME) |"
+            fi
+            echo "| Deploy | ${DEPLOY_OUTCOME:-skipped} |"
           } >> "$GITHUB_STEP_SUMMARY"
         env:
           FULL_REFRESH: ${{ inputs.full_refresh }}
           RESTORED_KEY: ${{ steps.restore.outputs.cache-matched-key }}
           INVALIDATE: ${{ steps.invalidate.outputs.result }}
           BUILD_SECONDS: ${{ steps.build.outputs.seconds }}
-
-      - name: Skip deploy (no Cloudflare token)
-        if: env.HAS_CLOUDFLARE_TOKEN != 'true'
-        run: echo "::notice title=App not deployed::CLOUDFLARE_API_TOKEN is not set; skipping deploy."
-
-      # Deploys the already-built .open-next output (no second build).
-      - name: Deploy
-        if: env.HAS_CLOUDFLARE_TOKEN == 'true'
-        run: npx opennextjs-cloudflare deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}

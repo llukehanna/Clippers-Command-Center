@@ -72,8 +72,8 @@ Deploy (Cloudflare Workers, `wrangler.jsonc`):
 Every page is prerendered at build time; at request time the Worker only serves files, plus the live
 pipeline (`/api/live`, `/live`), `/api/media` and a few redirects. GitHub Actions (`deploy-app.yml`)
 builds and deploys on pushes to main, after each data job that wrote data (post-game, sync-schedule,
-sync-franchise-moves, sync-franchise-contracts, sync-odds when odds changed), daily at 11:30 UTC as a
-safety net, and on manual dispatch (`full_refresh` re-pulls every payload). Builds render from a cached
+sync-franchise-moves, sync-franchise-contracts, sync-odds when it stored new snapshots), daily at
+11:30 UTC as a safety net, and on manual dispatch (`full_refresh` re-pulls every payload). Builds render from a cached
 snapshot of loader payloads (`.prebuild/payloads`) and refresh only what may have changed, to stay within
 Neon's free tier.
 
@@ -83,13 +83,15 @@ export PREBUILD_CACHE_DIR=.prebuild/payloads
 npm run prebuild:invalidate            # drop stale cached payloads (-- --full to drop all)
 PREBUILD_FULL=1 npm run build:prebuilt # public/data → cf-build → check-build (counts, asset cap, links)
 npx opennextjs-cloudflare deploy       # needs `wrangler login`
+# or both in one: PREBUILD_FULL=1 npm run deploy  (deploy = build:prebuilt + opennextjs-cloudflare deploy)
 
 npx wrangler secret put CRON_SECRET        # runtime secrets: CRON_SECRET, LIVE_HUB_SECRET
 ```
 
-`cf-build`, `preview` and `deploy` fail fast unless `public/data` is complete (production builds read
-client data from `/data`); `build:prebuilt` writes it first. Without `PREBUILD_FULL=1` the build is a small
-sample, and `check-build` fails it so it can't deploy.
+`npm run deploy` always runs the checked build first, so without `PREBUILD_FULL=1` (a small sample build)
+`check-build` fails and nothing deploys. `cf-build` and `npm run preview` (local only, never deploys) fail
+fast unless `public/data` is complete (production builds read client data from `/data`); `build:prebuilt`
+writes it first.
 
 The database is bound through two Hyperdrive configs (`HYPERDRIVE` caches reads for 60 s,
 `HYPERDRIVE_LIVE` never caches); `next dev` keeps using `DATABASE_URL` from `.env.local`.

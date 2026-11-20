@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "preview": "npm run cf-build && opennextjs-cloudflare preview",
-    "deploy": "npm run cf-build && opennextjs-cloudflare deploy",
+    "deploy": "npm run build:prebuilt && opennextjs-cloudflare deploy",
     "cf-build": "tsx scripts/prebuild/check-build.ts --client-data && opennextjs-cloudflare build && node scripts/cloudflare/strip-env.mjs",
     "lint": "eslint",
     "test": "vitest run",

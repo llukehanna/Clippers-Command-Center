@@ -172,6 +172,21 @@ export function checkLinks(links: Iterable<{ from: string; href: string }>, targ
   ]
 }
 
+/**
+ * Problems that would make the link check pass vacuously: no HTML scanned, far
+ * fewer HTML files than prerendered pages, or no links found. Empty = pass.
+ */
+export function checkPageCoverage(input: { pageRoutes: number; htmlFiles: number; linkCount: number }): string[] {
+  const { pageRoutes, htmlFiles, linkCount } = input
+  if (htmlFiles === 0) return ['no prerendered HTML found in .next/server/app: the link check had nothing to scan']
+  const problems: string[] = []
+  if (htmlFiles * 2 < pageRoutes) {
+    problems.push(`only ${htmlFiles} HTML files for ${pageRoutes} prerendered pages (< 50%): the link check would miss most pages`)
+  }
+  if (linkCount === 0) problems.push(`0 internal links found in ${htmlFiles} HTML files: the link check checked nothing`)
+  return problems
+}
+
 // ── public/data (before the build) ────────────────────────────────────────────
 
 const SEASONS_FILE = dataFileFor('/api/history/seasons')
@@ -260,7 +275,7 @@ function checkBuildCli(root: string) {
     fail('check-build', [`no build output (${manifestFile} or ${assetsDir} is missing): run \`npm run cf-build\` first`])
   }
   const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8')) as {
-    routes: Record<string, unknown>
+    routes: Record<string, { routeType?: string }>
     dynamicRoutes?: Record<string, unknown>
   }
   const routes = Object.keys(manifest.routes)
@@ -294,6 +309,9 @@ function checkBuildCli(root: string) {
     dynamicRoutes: full ? undefined : Object.keys(manifest.dynamicRoutes ?? {}),
   }
   problems.push(...checkLinks(links(), targets))
+  // Page routes have HTML; route handlers (ics, OG images, icons) don't.
+  const pageRoutes = Object.values(manifest.routes).filter((r) => r.routeType === undefined || r.routeType === 'page').length
+  problems.push(...checkPageCoverage({ pageRoutes, htmlFiles: htmlFiles.length, linkCount }))
 
   const count = (re: RegExp) => routes.filter((r) => re.test(r)).length
   const stats: Array<[string, number | string]> = [

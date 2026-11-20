@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkBuild, checkClientData, checkLinks, extractHrefs, resolveLink, type LinkTargets } from './check-build'
+import { checkBuild, checkClientData, checkLinks, checkPageCoverage, extractHrefs, resolveLink, type LinkTargets } from './check-build'
 
 const range = <T,>(n: number, f: (i: number) => T): T[] => Array.from({ length: n }, (_, i) => f(i))
 
@@ -165,6 +165,30 @@ describe('checkLinks', () => {
     expect(problems[0]).toBe('30 unresolved internal links (first 20):')
     expect(problems).toHaveLength(21)
     expect(problems[1]).toBe('  /history/0 (no prerendered page or file) ← /home')
+  })
+})
+
+describe('checkPageCoverage', () => {
+  it('passes when the HTML covers the page routes and links were checked', () => {
+    expect(checkPageCoverage({ pageRoutes: 155, htmlFiles: 155, linkCount: 16000 })).toEqual([])
+    expect(checkPageCoverage({ pageRoutes: 100, htmlFiles: 50, linkCount: 1 })).toEqual([])
+  })
+
+  it('fails when no HTML was found, so the link check cannot pass vacuously', () => {
+    const problems = checkPageCoverage({ pageRoutes: 155, htmlFiles: 0, linkCount: 0 })
+    expect(problems.join('\n')).toContain('no prerendered HTML')
+  })
+
+  it('fails when the HTML covers less than half of the page routes', () => {
+    expect(checkPageCoverage({ pageRoutes: 100, htmlFiles: 49, linkCount: 500 })).toEqual([
+      expect.stringContaining('49 HTML files for 100 prerendered pages'),
+    ])
+  })
+
+  it('fails when HTML exists but no internal link was checked', () => {
+    expect(checkPageCoverage({ pageRoutes: 10, htmlFiles: 10, linkCount: 0 })).toEqual([
+      expect.stringContaining('0 internal links'),
+    ])
   })
 })
 
