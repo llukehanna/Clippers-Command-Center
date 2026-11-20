@@ -50,6 +50,15 @@ jobs:
       HAS_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
       PREBUILD_CACHE_DIR: .prebuild/payloads
     steps:
+      # A full build writes ~10 GB (.next with its standalone copy, then
+      # .open-next); the runner starts with ~14 GB free. Drop preinstalled
+      # toolchains this job never uses.
+      - name: Free runner disk
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+
       - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v5
