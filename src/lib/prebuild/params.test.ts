@@ -7,7 +7,7 @@ vi.mock('@/src/lib/ui/api', () => ({
 }))
 
 import { getJson } from '@/src/lib/ui/api'
-import { historyGameIds, playerIds, scheduleGameIds, tradeSlugs } from './params'
+import { historyGameIds, playerIds, playerSeasonParams, scheduleGameIds, tradeSlugs } from './params'
 
 const game = (id: string, date: string, played: boolean) => ({
   game_id: id,
@@ -163,5 +163,40 @@ describe('tradeSlugs', () => {
 
   it('throws when the moves list is missing', async () => {
     await expect(tradeSlugs()).rejects.toThrow('/api/franchise/moves?type=trade')
+  })
+})
+
+describe('playerSeasonParams', () => {
+  const career = (id: string, regular: number[], playoffs: number[] = []) =>
+    payloads.set(`/api/players/${id}/career`, {
+      seasons: { regular: regular.map((season_id) => ({ season_id })), playoffs: playoffs.map((season_id) => ({ season_id })) },
+    })
+
+  it('lists every season the career picker offers, regular and playoffs, per player', async () => {
+    career('1', [2019, 2020], [2020, 2021])
+    career('2', [1984])
+    expect(await playerSeasonParams(['1', '2'])).toEqual([
+      { player_id: '1', season_id: '2019' },
+      { player_id: '1', season_id: '2020' },
+      { player_id: '1', season_id: '2021' },
+      { player_id: '2', season_id: '1984' },
+    ])
+  })
+
+  it('gives players with no Clippers seasons, no career, or a non-numeric id no season pages', async () => {
+    career('1', [])
+    expect(await playerSeasonParams(['1', '3', 'abc'])).toEqual([])
+    expect(getJson).not.toHaveBeenCalledWith('/api/players/abc/career')
+  })
+
+  it('throws when a career load throws', async () => {
+    vi.mocked(getJson).mockImplementation(async () => {
+      throw new Error('db down')
+    })
+    try {
+      await expect(playerSeasonParams(['1'])).rejects.toThrow('db down')
+    } finally {
+      vi.mocked(getJson).mockImplementation(fromPayloads)
+    }
   })
 })

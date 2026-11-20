@@ -93,6 +93,25 @@ export async function playerIds(): Promise<string[]> {
   return unique([...allTime.players.map((p) => String(p.player_id)), ...roster.players.map((p) => String(p.player_id)), ...linked])
 }
 
+type CareerSeasons = { seasons: { regular: Array<{ season_id: number }>; playoffs: Array<{ season_id: number }> } }
+
+/**
+ * The /players/<id>/season/<season> pages for the given players: every season
+ * the profile's season picker (CareerSeasons) links, i.e. each season in the
+ * player's Clippers career payload, regular and playoffs. Players with no
+ * Clippers seasons (or no career payload; only numeric ids have one) get none.
+ */
+export async function playerSeasonParams(ids: string[]): Promise<Array<{ player_id: string; season_id: string }>> {
+  const numeric = ids.filter((id) => /^\d{1,15}$/.test(id))
+  const careers = await inBatches(numeric, (id) => getJson<CareerSeasons>(`/api/players/${id}/career`))
+  return numeric.flatMap((player_id, i) => {
+    const c = careers[i]
+    if (!c) return []
+    const seasons = new Set([...c.seasons.regular, ...c.seasons.playoffs].map((s) => s.season_id))
+    return [...seasons].sort((a, b) => a - b).map((s) => ({ player_id, season_id: String(s) }))
+  })
+}
+
 /**
  * Every trade page the site links to, with its payload: the Clippers trades,
  * the trades the draft and picks pages link (pick chains run through other
