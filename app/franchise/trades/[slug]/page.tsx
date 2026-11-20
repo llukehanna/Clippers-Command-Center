@@ -25,8 +25,8 @@ export async function generateStaticParams() {
 
 type Params = { params: Promise<{ slug: string }> }
 
-// generateMetadata and the page both need the trade: one load per request (open-next on
-// Workers drops data-cache writes, so nothing else dedupes it).
+// generateMetadata and the page both need the trade: one load per prerender (the
+// build reads it from the payload cache; cache() spares the second read).
 const load = cache((slug: string) => getJson<TradePayload>(`/api/franchise/trades/${encodeURIComponent(slug)}`))
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
