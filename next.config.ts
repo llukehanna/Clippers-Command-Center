@@ -49,7 +49,8 @@ const EDGE_TTLS: Array<[source: string, fresh: number, stale: number]> = [
   // The news pages are static shells; their items load live from /api/media.
   ["/news", DAY, DAY],
   ["/news/:path*", DAY, DAY],
-  ["/api/media", 60, 300],
+  // sync-media runs hourly; each render costs ~0.5 s CPU and a query, so keep it 15 min.
+  ["/api/media", 900, 3600],
 ];
 
 const nextConfig: NextConfig = {
