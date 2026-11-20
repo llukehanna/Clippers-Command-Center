@@ -12,6 +12,7 @@
 // of calling process.exit(), so Next.js can surface the error.
 
 import postgres from 'postgres';
+import { PHASE_PRODUCTION_BUILD } from 'next/constants';
 
 type Sql = ReturnType<typeof postgres>;
 
@@ -69,12 +70,22 @@ function missingDatabase(): never {
 // so repeated module evaluation re-uses the same connection pool.
 const globalForDb = globalThis as unknown as { _sql: Sql | undefined };
 
+/**
+ * Connections per Node process. `next build` prerenders in several worker
+ * processes (one per CPU less one: 3 on a GitHub runner, more locally), each
+ * with its own pool, so a build keeps each pool small: 3 still overlaps a
+ * page's queries, and a cold build stays far under Neon's connection limit.
+ */
+export function nodePoolMax(phase: string | undefined = process.env.NEXT_PHASE): number {
+  return phase === PHASE_PRODUCTION_BUILD ? 3 : 10;
+}
+
 function nodeClient(): Sql {
   if (globalForDb._sql) return globalForDb._sql;
   const url = process.env.DATABASE_URL;
   if (!url) missingDatabase();
   globalForDb._sql = postgres(url, {
-    max: 10,
+    max: nodePoolMax(),
     idle_timeout: 30,
     connect_timeout: 10,
   });
