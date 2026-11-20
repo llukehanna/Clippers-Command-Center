@@ -51,6 +51,6 @@ describe('edge TTLs (next.config headers)', () => {
     expect(await cdnCacheControl('/api/live')).toBeNull()
     expect(await cdnCacheControl('/live')).toBeNull()
     expect(await cdnCacheControl('/players/nba/1629029')).toBeNull()
-    expect(await cdnCacheControl('/api/media')).toBe('public, s-maxage=60, stale-while-revalidate=300')
+    expect(await cdnCacheControl('/api/media')).toBe('public, s-maxage=900, stale-while-revalidate=3600')
   })
 })
