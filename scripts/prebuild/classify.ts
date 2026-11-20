@@ -10,7 +10,10 @@ export type CacheClass = 'volatile' | 'weekly' | 'settled'
 export interface ClassifyContext {
   /** season_id of the season the site currently displays (start year; 2025 = 2025-26). */
   currentSeasonId: number
-  /** Clippers game ids played in the last 14 days or not yet final. */
+  /**
+   * Clippers game ids (preseason included) played in the last 14 days or not
+   * yet final: every other game is final and settled.
+   */
   recentGameIds: Set<string>
   /** Player ids on the current roster, including traded. */
   rosterIds: Set<string>
@@ -22,14 +25,10 @@ export interface ClassifyContext {
   currentSeasonPersonKeys: Set<string>
 }
 
-// /api/franchise/people is volatile (the default): it decides which person pages
-// exist, and those are linked from payloads that refresh every build.
-const WEEKLY_PATHS = new Set([
-  '/api/franchise/draft',
-  '/api/franchise/honors',
-  '/api/franchise/front-office',
-  '/api/history/seasons',
-])
+// /api/franchise/people and /api/history/seasons are volatile (the default):
+// they decide which person, season and game pages exist, so a stale copy would
+// leave out a page another (fresh) payload links.
+const WEEKLY_PATHS = new Set(['/api/franchise/draft', '/api/franchise/honors', '/api/franchise/front-office'])
 
 function seasonNum(raw: string | null): number | null {
   return raw !== null && /^\d+$/.test(raw) ? Number(raw) : null
@@ -41,7 +40,9 @@ export function classify(path: string, ctx: ClassifyContext): CacheClass {
   const q = url.searchParams
   let m: RegExpMatchArray | null
 
-  if ((m = p.match(/^\/api\/history\/games\/([^/]+)(?:\/story)?$/))) {
+  // A game's history payloads and its preview (/schedule/<id>, which only
+  // redirects to /history/<id> once the game is final) settle with the game.
+  if ((m = p.match(/^\/api\/history\/games\/([^/]+)(?:\/story)?$/) ?? p.match(/^\/api\/schedule\/([^/]+)$/))) {
     return ctx.recentGameIds.has(decodeURIComponent(m[1])) ? 'volatile' : 'settled'
   }
 
@@ -66,8 +67,11 @@ export function classify(path: string, ctx: ClassifyContext): CacheClass {
   }
 
   if (p === '/api/franchise/moves') {
+    // A player profile's moves (~865 player pages): fresh every build only for the current roster.
+    const playerId = q.get('player_id')
+    if (playerId !== null) return ctx.rosterIds.has(playerId) ? 'volatile' : 'weekly'
     const s = seasonNum(q.get('season'))
-    if (s !== null && s < ctx.currentSeasonId && !q.has('player_id')) return 'settled'
+    if (s !== null && s < ctx.currentSeasonId) return 'settled'
     const player = q.get('player')
     if (player !== null) return ctx.currentSeasonPersonKeys.has(player) ? 'volatile' : 'weekly'
     return 'volatile'

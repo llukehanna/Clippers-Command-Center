@@ -23,9 +23,11 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 async function buildContext(): Promise<ClassifyContext> {
   const currentSeasonId = await getDisplaySeasonId()
 
+  // all_games, not the games view: a preseason game can be the next game, and
+  // its preview payload must stay fresh until it is final.
   const games = await sql<{ game_id: string }[]>`
     SELECT g.game_id::text AS game_id
-    FROM games g
+    FROM all_games g
     WHERE (
         g.home_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
         OR g.away_team_id = (SELECT team_id FROM teams WHERE nba_team_id = ${LAC_NBA_TEAM_ID})
