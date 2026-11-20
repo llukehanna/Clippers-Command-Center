@@ -2,43 +2,54 @@ import type { NextConfig } from "next";
 
 /**
  * Edge TTLs for the Cloudflare Worker's shared cache (worker.ts,
- * src/lib/edge-cache.ts): one render per Cloudflare location per TTL instead
- * of one per request. Browsers ignore CDN-Cache-Control, and still get Next's
- * own Cache-Control. `stale-while-revalidate` = how long a stale copy may be
- * served while one background render refreshes it. Matched to how often the
- * data actually changes (pipelines: games finalize at night or at the final
- * buzzer, schedule daily, media every 15 min). Never listed: /api/live (sets
- * its own 2 s / 30 s), /api/cron/* (refused by the cache anyway).
+ * src/lib/edge-cache.ts): a hit is answered from the Cache API without running
+ * Next.js, so a prerendered page isn't re-read and re-parsed from its (often
+ * multi-MB) OpenNext cache entry on every request. Browsers ignore
+ * CDN-Cache-Control, and still get Next's own Cache-Control.
+ * `stale-while-revalidate` = how long a stale copy may be served while one
+ * background render refreshes it.
+ *
+ * Applies to prerendered pages too: OpenNext's routing layer adds these
+ * headers() to responses its cache interception serves straight from the
+ * prerender cache (@opennextjs/aws core/routingHandler.js), the same as to
+ * rendered ones.
+ *
+ * Every page is prerendered at build time and only a deploy changes it, and
+ * the edge cache is keyed by the Worker version (a deploy starts it empty), so
+ * pages get a full day. Never listed: /api/live (sets its own 2 s / 30 s),
+ * /api/media (below: updated every 15 min at runtime), /api/cron/* (refused by
+ * the cache anyway), /live (live pipeline), and every other /api/* (the Worker
+ * 404s it before the cache).
  */
 const edgeTtl = (fresh: number, stale: number) => [
   { key: "CDN-Cache-Control", value: `public, s-maxage=${fresh}, stale-while-revalidate=${stale}` },
 ];
 
+const DAY = 86400;
+
 const EDGE_TTLS: Array<[source: string, fresh: number, stale: number]> = [
-  ["/home", 300, 600],
-  ["/api/home", 300, 600],
-  ["/schedule", 600, 1800],
-  ["/api/schedule", 600, 1800],
-  ["/schedule/:game_id", 300, 600],
-  ["/api/schedule/:game_id", 300, 600],
-  ["/schedule/:game_id/ics", 3600, 3600],
-  ["/schedule.ics", 3600, 3600],
-  ["/players", 600, 3600],
-  ["/players/:player_id", 600, 3600],
-  ["/api/players", 600, 3600],
-  ["/api/players/:player_id", 600, 3600],
-  ["/api/players/:player_id/career", 3600, 3600],
-  ["/history", 3600, 3600],
-  // A game page gains postgame insights at the final buzzer and again at the nightly run: 5 min fresh, then
-  // served stale while one background render refreshes it (the response's own max-age is 24 h only once settled).
-  ["/history/:game_id", 300, 3600],
-  ["/api/history/:path*", 3600, 3600],
-  ["/api/history/games/:game_id", 300, 3600],
+  ["/home", DAY, DAY],
+  ["/schedule", DAY, DAY],
+  ["/schedule/:game_id", DAY, DAY],
+  ["/schedule/:game_id/ics", DAY, DAY],
+  ["/schedule.ics", DAY, DAY],
+  ["/players", DAY, DAY],
+  ["/players/:player_id", DAY, DAY],
+  ["/players/:player_id/season/:path*", DAY, DAY],
+  ["/players/table", DAY, DAY],
+  ["/players/all-time", DAY, DAY],
+  ["/players/traded/:path*", DAY, DAY],
+  ["/history", DAY, DAY],
+  ["/history/:game_id", DAY, DAY],
+  ["/history/season/:path*", DAY, DAY],
   // Rendered on demand (not prerendered); a shared link's card barely changes once the game is final.
-  ["/history/:game_id/opengraph-image", 86400, 86400],
-  ["/news", 60, 300],
+  ["/history/:game_id/opengraph-image", DAY, DAY],
+  ["/franchise", DAY, DAY],
+  ["/franchise/:path*", DAY, DAY],
+  // The news pages are static shells; their items load live from /api/media.
+  ["/news", DAY, DAY],
+  ["/news/:path*", DAY, DAY],
   ["/api/media", 60, 300],
-  ["/api/insights", 30, 120],
 ];
 
 const nextConfig: NextConfig = {
