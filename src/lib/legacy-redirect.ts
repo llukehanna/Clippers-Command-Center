@@ -94,11 +94,13 @@ export function apiAllowed(pathname: string): boolean {
 /**
  * Only current-season games are prerendered at /schedule/<id>; for an older
  * game the 404 becomes a redirect to its History page (no database access).
+ * A 302, not a 301: browsers keep a 301 indefinitely, and the id may get its
+ * own schedule page in a later build.
  */
-export function scheduleFallback(url: URL, status: number): string | null {
+export function scheduleFallback(url: URL, status: number): { location: string; status: 302 } | null {
   if (status !== 404) return null
   const m = /^\/schedule\/(\d+)(?:\/ics)?\/?$/.exec(url.pathname)
-  return m ? `/history/${m[1]}` : null
+  return m ? { location: `/history/${m[1]}`, status: 302 } : null
 }
 
 /** A path as Next may route it: percent-escapes decoded (repeatedly, per escape, so malformed ones can't throw), lowercased, slashes collapsed, no trailing slash. */

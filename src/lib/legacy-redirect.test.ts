@@ -90,9 +90,9 @@ describe('apiBlocked', () => {
 
 describe('scheduleFallback', () => {
   const u = (p: string) => new URL(`https://clippers.lukeghanna.com${p}`)
-  it('sends a missing old-season schedule page to History', () => {
-    expect(scheduleFallback(u('/schedule/22300123'), 404)).toBe('/history/22300123')
-    expect(scheduleFallback(u('/schedule/22300123/ics'), 404)).toBe('/history/22300123')
+  it('sends a missing old-season schedule page to History with a temporary (302) redirect', () => {
+    expect(scheduleFallback(u('/schedule/22300123'), 404)).toEqual({ location: '/history/22300123', status: 302 })
+    expect(scheduleFallback(u('/schedule/22300123/ics'), 404)).toEqual({ location: '/history/22300123', status: 302 })
   })
   it('only on a 404 for those paths', () => {
     expect(scheduleFallback(u('/schedule/22300123'), 200)).toBeNull()
