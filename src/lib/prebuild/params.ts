@@ -4,8 +4,10 @@
 
 import { getJson } from '@/src/lib/ui/api'
 import { HISTORY_FILTERS } from '@/src/lib/urls'
+import { allowsAllSeasons, ERAS, MOVE_TYPES, PATH_SAFE_PERSON_KEY } from '@/src/lib/franchise/display'
+import { calendarSeasonId } from '@/src/lib/season'
 import { playedGames, type HistoryGame } from '@/src/lib/ui/season'
-import type { MovesPayload, PlayersPayload, SchedulePayload } from '@/src/lib/ui/types'
+import type { MovesPayload, PeoplePayload, PlayersPayload, SchedulePayload } from '@/src/lib/ui/types'
 
 type SeasonsPayload = { seasons: Array<{ season_id: number }> }
 type GamesPayload = { games: HistoryGame[] }
@@ -164,4 +166,41 @@ async function tradeClosure(): Promise<Map<string, unknown>> {
 /** Every trade page the site links to (see tradeClosure). */
 export async function tradeSlugs(): Promise<string[]> {
   return [...(await tradeClosure()).keys()]
+}
+
+/**
+ * Every season a Moves page links for a type, oldest first: the era ribbon
+ * links each season from 1970 to the later of the calendar season and the
+ * newest season with a move (with or without moves of that type: an empty one
+ * shows the empty state), and the season select, the newer/older links and
+ * every other season link come from the payload's `seasons`. `seasons` doesn't
+ * depend on the type, so the union over the type tabs' payloads is every
+ * type's list (and loads the /franchise/moves/<type> pages' payloads).
+ */
+export async function moveSeasonIds(calendarSeason: number = calendarSeasonId()): Promise<string[]> {
+  const lists = await Promise.all(MOVE_TYPES.map((t) => required<Pick<MovesPayload, 'seasons'>>(`/api/franchise/moves?type=${t}&season=latest`)))
+  const listed = lists.flatMap((l) => l.seasons)
+  const last = Math.max(calendarSeason, ...listed)
+  const ribbon = Array.from({ length: Math.max(0, last - ERAS[0].first + 1) }, (_, i) => ERAS[0].first + i)
+  return [...new Set([...ribbon, ...listed])].sort((a, b) => a - b).map(String)
+}
+
+/** The /franchise/moves/<type>/<season> pages for the given seasons: every type, plus `all` where it's offered (Trades). */
+export function moveSeasonParams(seasonIds: string[]): Array<{ type: string; season: string }> {
+  return [
+    ...MOVE_TYPES.flatMap((type) => seasonIds.map((season) => ({ type, season }))),
+    ...MOVE_TYPES.filter((type) => allowsAllSeasons({ type, player: null })).map((type) => ({ type, season: 'all' })),
+  ]
+}
+
+/**
+ * Every person in a Clippers move (the people search; every player filter link
+ * names one of them). Throws on a key whose link wouldn't reach its prerendered
+ * page (see personSegment) rather than shipping a link that 404s.
+ */
+export async function personKeys(): Promise<string[]> {
+  const keys = (await required<PeoplePayload>('/api/franchise/people')).people.map((p) => p.person_key)
+  const unsafe = keys.filter((k) => !PATH_SAFE_PERSON_KEY.test(k))
+  if (unsafe.length > 0) throw new Error(`prebuild params: person keys not safe in a path: ${unsafe.join(', ')}`)
+  return keys
 }

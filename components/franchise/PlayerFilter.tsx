@@ -22,7 +22,9 @@ const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCas
 /**
  * Player filter for Moves. With a player set it's a removable chip; otherwise a button that
  * opens a search over everyone in Clippers moves (/api/franchise/people, loaded on first open).
- * Picking a player opens their whole Clippers history: all types, all seasons (bounded).
+ * Picking a player opens their person page (/franchise/person/<key>): their whole Clippers
+ * history, all types and seasons, filtered in-page. The chip's × leaves it for the same
+ * type and season without the player (a prerendered Moves page).
  */
 export function PlayerFilter({ filters, player }: { filters: MovesFilters; player: FranchisePersonRef | null }) {
   const router = useRouter()

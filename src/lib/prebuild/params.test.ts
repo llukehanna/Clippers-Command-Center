@@ -7,7 +7,7 @@ vi.mock('@/src/lib/ui/api', () => ({
 }))
 
 import { getJson } from '@/src/lib/ui/api'
-import { historyFilterParams, historyGameIds, historySeasonIds, playerIds, playerSeasonParams, scheduleGameIds, tradeSlugs } from './params'
+import { historyFilterParams, historyGameIds, historySeasonIds, moveSeasonIds, moveSeasonParams, personKeys, playerIds, playerSeasonParams, scheduleGameIds, tradeSlugs } from './params'
 
 const game = (id: string, date: string, played: boolean) => ({
   game_id: id,
@@ -221,5 +221,58 @@ describe('playerSeasonParams', () => {
     } finally {
       vi.mocked(getJson).mockImplementation(fromPayloads)
     }
+  })
+})
+
+describe('moveSeasonIds', () => {
+  const TYPES = ['trade', 'signing', 'release', 'draft', 'other', 'all']
+  const latest = (seasons: number[], except: string[] = []) => {
+    for (const t of TYPES) if (!except.includes(t)) payloads.set(`/api/franchise/moves?type=${t}&season=latest`, { seasons })
+  }
+
+  it('lists every season the era ribbon links (1970 to the later of today and the newest move), plus the listed seasons', async () => {
+    latest([2024, 1990, 1975])
+    const ids = await moveSeasonIds(2026)
+    expect(ids[0]).toBe('1970')
+    expect(ids.at(-1)).toBe('2026')
+    expect(ids).toHaveLength(57)
+    expect(new Set(ids).size).toBe(57)
+  })
+  it('runs past this season when a move is recorded later, and keeps a listed season before 1970', async () => {
+    latest([2027, 1969])
+    const ids = await moveSeasonIds(2026)
+    expect(ids[0]).toBe('1969')
+    expect(ids.at(-1)).toBe('2027')
+    expect(ids).toHaveLength(59)
+  })
+  it('throws when a type list is missing', async () => {
+    latest([2024], ['release'])
+    await expect(moveSeasonIds(2026)).rejects.toThrow('/api/franchise/moves?type=release&season=latest')
+  })
+})
+
+describe('moveSeasonParams', () => {
+  it('pairs every type with each season, plus All seasons for trades only', () => {
+    expect(moveSeasonParams(['2019', '2020'])).toEqual([
+      ...['trade', 'signing', 'release', 'draft', 'other', 'all'].flatMap((type) => [
+        { type, season: '2019' },
+        { type, season: '2020' },
+      ]),
+      { type: 'trade', season: 'all' },
+    ])
+  })
+})
+
+describe('personKeys', () => {
+  it('lists every person in Clippers moves, as served', async () => {
+    payloads.set('/api/franchise/people', { people: [{ person_key: 'paulch01' }, { person_key: 'nba:1641715' }] })
+    expect(await personKeys()).toEqual(['paulch01', 'nba:1641715'])
+  })
+  it('throws when the people list is missing', async () => {
+    await expect(personKeys()).rejects.toThrow('/api/franchise/people')
+  })
+  it('throws on a key whose link would not reach its prerendered page', async () => {
+    payloads.set('/api/franchise/people', { people: [{ person_key: 'paulch01' }, { person_key: 'o neal' }] })
+    await expect(personKeys()).rejects.toThrow('o neal')
   })
 })

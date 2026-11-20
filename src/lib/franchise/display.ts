@@ -1,7 +1,7 @@
 // src/lib/franchise/display.ts
 // Formatting for the /franchise tabs. Pure. Unknown stays unknown: null renders —.
 
-import type { DraftLottery, DraftPick, FranchiseTeamRef, MoveTypeFilter } from '@/src/lib/ui/types'
+import type { DraftLottery, DraftPick, FranchiseTeamRef, MovesPayload, MoveTypeFilter } from '@/src/lib/ui/types'
 import { PICK_STATUS_NOTES } from './trade-tree'
 
 export const UNKNOWN = '—'
@@ -165,21 +165,63 @@ export function allowsAllSeasons(f: Pick<MovesFilters, 'type' | 'player'>): bool
   return f.type === 'trade' || f.player != null
 }
 
-/** Moves URL; the page's defaults (type trade, latest season) stay out of it. */
-export function movesHref(f: MovesFilters): string {
-  const q = new URLSearchParams()
-  if (f.season != null) q.set('season', String(f.season))
-  if (f.type !== 'trade') q.set('type', f.type)
-  if (f.player) q.set('player', f.player)
-  const s = q.toString()
-  return s ? `/franchise?${s}` : '/franchise'
+/** The Moves type tabs, in tab order (the /franchise/moves/<type> segments). */
+export const MOVE_TYPES: MoveTypeFilter[] = ['trade', 'signing', 'release', 'draft', 'other', 'all']
+
+/** A /franchise/moves/<type> segment; null for anything else. */
+export function parseMoveType(raw: string | undefined): MoveTypeFilter | null {
+  return MOVE_TYPES.find((t) => t === raw) ?? null
 }
 
-/** Reads the Moves season param: a year, 'all' where allowed, else null (the latest season). */
+/**
+ * A person_key as a /franchise/person/<key> segment. Next prerenders a param
+ * with only the path delimiters escaped, and a request whose path escapes more
+ * (nba%3A123 for nba:123) misses the page, so the colon (nba:… keys) stays raw.
+ */
+export function personSegment(key: string): string {
+  return encodeURIComponent(key).replace(/%3A/gi, ':')
+}
+
+/** Person keys whose segment is the key itself, so the link and the prerendered path agree. */
+export const PATH_SAFE_PERSON_KEY = /^[A-Za-z0-9._~:-]+$/
+
+/**
+ * Moves URL, one prerendered page each: /franchise (trades, latest season),
+ * /franchise/moves/<type> (that type's latest season), /franchise/moves/<type>/<season|all>.
+ * Any player filter goes to that person's page, where type and season are in-page
+ * toggles (no URL state). 'all' seasons where it isn't offered falls back to the latest.
+ */
+export function movesHref(f: MovesFilters): string {
+  if (f.player) return `/franchise/person/${personSegment(f.player)}`
+  const season = f.season === 'all' && !allowsAllSeasons(f) ? null : f.season
+  if (season == null) return f.type === 'trade' ? '/franchise' : `/franchise/moves/${f.type}`
+  return `/franchise/moves/${f.type}/${season}`
+}
+
+/** Reads the Moves season segment: a year, 'all' where allowed, else null. */
 export function parseMovesSeason(raw: string | undefined, f: Pick<MovesFilters, 'type' | 'player'>): MovesFilters['season'] {
   if (raw && /^\d{4}$/.test(raw)) return Number(raw)
   if (raw === 'all' && allowsAllSeasons(f)) return 'all'
   return null
+}
+
+/**
+ * A person page's view under in-page type/season filters, from that person's
+ * all-types, all-seasons list: what /api/franchise/moves returns for the same
+ * filters (rows of the type, per-season counts for the type, season null = the
+ * latest season with a matching move), plus the filters as the page shows them.
+ */
+export function personMoves(all: MovesPayload, f: MovesFilters): { filters: MovesFilters; data: MovesPayload } {
+  const ofType = f.type === 'all' ? all.moves : all.moves.filter((m) => m.kind_group === f.type)
+  const counts = new Map<number, number>()
+  for (const m of ofType) if (m.season_id != null) counts.set(m.season_id, (counts.get(m.season_id) ?? 0) + 1)
+  const season_counts = [...counts].map(([season_id, count]) => ({ season_id, count })).sort((a, b) => b.season_id - a.season_id)
+  const season = f.season === 'all' ? null : (f.season ?? season_counts[0]?.season_id ?? null)
+  const moves = f.season === 'all' ? ofType : season == null ? [] : ofType.filter((m) => m.season_id === season)
+  return {
+    filters: { season: f.season === 'all' ? 'all' : season, type: f.type, player: f.player },
+    data: { ...all, filters: { season, type: f.type, player: f.player }, season_counts, moves },
+  }
 }
 
 /** Neighbours of `current` in a newest-first list of seasons (current need not be in it). */

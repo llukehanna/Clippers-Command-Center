@@ -5,9 +5,20 @@ import { ERAS, eraOf, movesHref, seasonLabel, type MovesFilters } from '@/src/li
 
 /**
  * Season picker for Moves (a hard filter); keeps the type and player filters.
- * "All seasons" appears only where the list stays bounded (allowAll).
+ * "All seasons" appears only where the list stays bounded (allowAll). With
+ * onSelect (a person page) the season is in-page state, not a navigation.
  */
-export function MoveSeasonSelect({ seasons, filters, allowAll }: { seasons: number[]; filters: MovesFilters; allowAll: boolean }) {
+export function MoveSeasonSelect({
+  seasons,
+  filters,
+  allowAll,
+  onSelect,
+}: {
+  seasons: number[]
+  filters: MovesFilters
+  allowAll: boolean
+  onSelect?: (season: MovesFilters['season']) => void
+}) {
   const router = useRouter()
   const groups = ERAS.map((era) => ({ era, seasons: seasons.filter((s) => eraOf(s).key === era.key) }))
     .filter((g) => g.seasons.length > 0)
@@ -20,7 +31,9 @@ export function MoveSeasonSelect({ seasons, filters, allowAll }: { seasons: numb
         value={value}
         onChange={(e) => {
           const v = e.target.value
-          router.push(movesHref({ ...filters, season: v === 'all' ? 'all' : v ? Number(v) : null }), { scroll: false })
+          const season = v === 'all' ? 'all' : v ? Number(v) : null
+          if (onSelect) onSelect(season)
+          else router.push(movesHref({ ...filters, season }), { scroll: false })
         }}
         className="glass-track press cursor-pointer appearance-none rounded-full py-2 pl-4 pr-9 text-[16px] text-text outline-none transition-colors hover:bg-white/[0.05] focus-visible:ring-2 focus-visible:ring-pacific md:py-1.5 md:pl-3.5 md:pr-8 md:text-[13.5px]"
       >
